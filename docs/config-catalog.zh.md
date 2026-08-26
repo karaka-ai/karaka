@@ -873,6 +873,36 @@ export interface Config {
 
 来源：[`packages/host/webserver/src/index.ts:59`](../packages/host/webserver/src/index.ts)
 
+<a id="deepseek-aidsh-identity-jwks"></a>
+
+## `@deepseek-ai/dsh-identity-jwks`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Exact trusted JWT issuer. */
+  issuer: string
+  /** One or more accepted JWT audiences. */
+  audience: string | string[]
+  /** Remote JSON Web Key Set endpoint. HTTPS is required except on loopback. */
+  jwksUrl: string
+  /** Explicit signature-algorithm allowlist, for example `['RS256']`. */
+  algorithms: string[]
+  /** JWKS request deadline in milliseconds. */
+  timeoutMs?: number
+  /** Minimum delay between successful JWKS refreshes in milliseconds. */
+  cooldownMs?: number
+  /** Maximum age of a successfully fetched JWKS in milliseconds. */
+  cacheMaxAgeMs?: number
+  /** Accepted NumericDate clock skew in seconds. */
+  clockToleranceSeconds?: number
+  /** Additional required claim names beyond `sub`, `iat`, and `exp`. */
+  additionalRequiredClaims?: string[]
+}
+```
+
+来源：[`packages/identity/identity-jwks/src/index.ts:33`](../packages/identity/identity-jwks/src/index.ts)
+
 <a id="deepseek-aidsh-invariants"></a>
 
 ## `@deepseek-ai/dsh-invariants`
@@ -3275,6 +3305,7 @@ export interface Config {
 - `@deepseek-ai/dsh-host-directory-picker-auto` — 需要 `webServer` · `loader`（[`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts)）
 - `@deepseek-ai/dsh-host-directory-picker-native`（[`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts)）
 - `@deepseek-ai/dsh-host-plugin-inventory` — 需要 `loader`（[`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts)）
+- `@deepseek-ai/dsh-identity-http-bearer` — 需要 `identity`（[`packages/identity/identity-http-bearer/src/index.ts`](../packages/identity/identity-http-bearer/src/index.ts)）
 - `@deepseek-ai/dsh-llm`（[`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts)）
 - `@deepseek-ai/dsh-lsp`（[`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts)）
 - `@deepseek-ai/dsh-schedule` — 需要 `agents` · `sessions` · `tools` · `sessionPersistence`（[`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts)）
@@ -3306,6 +3337,7 @@ export interface Config {
 - `@deepseek-ai/dsh-file-reference` — 抽象 `FileReferenceService`（[`packages/context/file-reference/src/index.ts`](../packages/context/file-reference/src/index.ts)）
 - `@deepseek-ai/dsh-fs` — 抽象 `FileSystem`（[`packages/fs/fs/src/index.ts`](../packages/fs/fs/src/index.ts)）
 - `@deepseek-ai/dsh-host-directory-picker` — 抽象 `DirectoryPicker`（[`packages/host/directory-picker/src/index.ts`](../packages/host/directory-picker/src/index.ts)）
+- `@deepseek-ai/dsh-identity` — 抽象 `Identity`（[`packages/identity/identity/src/index.ts`](../packages/identity/identity/src/index.ts)）
 - `@deepseek-ai/dsh-jobs` — 抽象 `JobRegistry`（[`packages/jobs/jobs/src/index.ts`](../packages/jobs/jobs/src/index.ts)）
 - `@deepseek-ai/dsh-sandbox` — 抽象 `SandboxProvider`（[`packages/sandbox/sandbox/src/index.ts`](../packages/sandbox/sandbox/src/index.ts)）
 - `@deepseek-ai/dsh-session-persistence` — 抽象 `SessionPersistence`（[`packages/session/session-persistence/src/index.ts`](../packages/session/session-persistence/src/index.ts)）

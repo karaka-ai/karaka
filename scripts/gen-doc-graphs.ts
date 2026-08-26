@@ -199,6 +199,23 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Flows are registered by the plugin that knows how to obtain one credential and keyed by the record they write; the seam owns the conversation and the one-attempt-per-key lifecycle, never the protocol.',
   },
   {
+    key: 'identity',
+    pkg: 'identity',
+    title: 'Verified identity seam',
+    mode: 'seam',
+    implementations: ['identity-jwks'],
+    consumers: ['identity-http-bearer'],
+    note: 'Providers verify opaque credentials into immutable issuer-local identity; authority normalization and resource authorization remain separate capability seams.',
+  },
+  {
+    key: 'identityHttpBearer',
+    pkg: 'identity-http-bearer',
+    title: 'HTTP Bearer identity adapter',
+    mode: 'core',
+    consumers: [],
+    note: 'Transport plugins consume one strict Authorization-header parser and remain independent from the selected identity provider.',
+  },
+  {
     key: 'sessionTelemetry',
     pkg: 'session-telemetry',
     title: 'Session telemetry seam',

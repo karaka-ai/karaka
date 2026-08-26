@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-26-jwt-identity-capability-seam.md
+2026-08-26-jwt-identity-capability-seam.md: 5cd055cba979c11b3caad9f79bf2438e6dbc8b39
+2026-08-26-jwt-identity-capability-seam.zh.md: 481642b4d10958ec5b073ee8c80b30775b574eed

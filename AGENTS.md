@@ -2,6 +2,10 @@
 
 DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
+## Plugin-only implementation approval
+
+Without fresh, explicit user approval, an implementation change may only add a new Cordis plugin package and the tests, documentation, manifest entries, generated references, and composition rows required to define, verify, and mount that plugin. Stop before modifying existing production packages or adding any other production code, including loop changes, facades, clients, shared utilities, adapters, migrations, build logic, or application-specific branches. Every coding agent and subagent must restate this rule in its task plan before editing files.
+
 ## Pre-release stance: foundation over blast radius
 
 **Remove this section at the first tagged release.** With no external consumers, prefer the correct foundation over compatibility shims: rename or repackage freely and update every reference together. Backends reject old on-disk formats. SQLite uses monotonic `SCHEMA_VERSION`; `dsh-session` keeps `SESSION_FORMAT_VERSION` at `0` with no compatibility promise.

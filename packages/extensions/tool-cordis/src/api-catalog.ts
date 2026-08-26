@@ -881,6 +881,32 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'identity',
+    summary: 'Replaceable credential verifier.',
+    description: 'Replaceable credential verifier.',
+    methods: [
+      {
+        signature: 'abstract verify(request: VerifyIdentityRequest): Promise<VerifiedIdentity>',
+        description: 'Verify one credential and return only cryptographically trusted identity claims. Authority normalization and authorization are separate seams.',
+        parameters: [{ name: 'request', description: 'credential envelope and optional cancellation.' }],
+        returns: 'deeply immutable verified identity claims.',
+      },
+    ],
+  },
+  {
+    key: 'identityHttpBearer',
+    summary: 'HTTP-specific credential adapter.',
+    description: 'HTTP-specific credential adapter. Future REST/SSE plugins inject this service instead of parsing credentials or selecting an identity provider.',
+    methods: [
+      {
+        signature: 'async authenticate(request: HttpBearerIdentityRequest): Promise<VerifiedIdentity>',
+        description: 'Parse exactly one Bearer credential and delegate provider verification.',
+        parameters: [{ name: 'request', description: 'raw Authorization value and optional cancellation.' }],
+        returns: 'the provider\'s deeply immutable verified identity.',
+      },
+    ],
+  },
+  {
     key: 'invariants',
     summary: 'Package-owned invariant registry with global and regex-based selection.',
     description: 'Package-owned invariant registry with global and regex-based selection.',
@@ -3014,6 +3040,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: DshEnvironmentKey;\n}',
   },
   {
+    name: 'BearerIdentityCredential',
+    declaration: 'export interface BearerIdentityCredential {\n    readonly kind: \'bearer\';\n    readonly token: string;\n}',
+  },
+  {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
   },
@@ -3444,6 +3474,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GrantRecord',
     declaration: 'export interface GrantRecord {\n    readonly kind: \'grant\';\n    readonly payload: unknown;\n}',
+  },
+  {
+    name: 'HttpBearerIdentityRequest',
+    declaration: 'export interface HttpBearerIdentityRequest {\n    readonly authorization: string | readonly string[] | undefined;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'IdentityAudience',
+    declaration: 'export type IdentityAudience = Branded<\'IdentityAudience\'>;',
+  },
+  {
+    name: 'IdentityClaimValue',
+    declaration: 'export type IdentityClaimValue = null | boolean | number | string | readonly IdentityClaimValue[] | {\n    readonly [key: string]: IdentityClaimValue;\n};',
+  },
+  {
+    name: 'IdentityIssuer',
+    declaration: 'export type IdentityIssuer = Branded<\'IdentityIssuer\'>;',
+  },
+  {
+    name: 'IdentitySubject',
+    declaration: 'export type IdentitySubject = Branded<\'IdentitySubject\'>;',
+  },
+  {
+    name: 'IdentityTokenId',
+    declaration: 'export type IdentityTokenId = Branded<\'IdentityTokenId\'>;',
   },
   {
     name: 'ImageAttachmentLimits',
@@ -4936,6 +4990,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UserQuestionProvider',
     declaration: 'export interface UserQuestionProvider {\n    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>;\n}',
+  },
+  {
+    name: 'VerifiedIdentity',
+    declaration: 'export interface VerifiedIdentity {\n    readonly issuer: IdentityIssuer;\n    readonly subject: IdentitySubject;\n    readonly audiences: readonly IdentityAudience[];\n    readonly issuedAt: number;\n    readonly expiresAt: number;\n    readonly notBefore?: number;\n    readonly tokenId?: IdentityTokenId;\n    readonly claims: Readonly<Record<string, IdentityClaimValue>>;\n}',
+  },
+  {
+    name: 'VerifyIdentityRequest',
+    declaration: 'export interface VerifyIdentityRequest {\n    readonly credential: BearerIdentityCredential;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'WebBootEntry',

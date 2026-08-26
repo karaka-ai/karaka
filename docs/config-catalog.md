@@ -871,6 +871,36 @@ export interface Config {
 
 Source: [`packages/host/webserver/src/index.ts:59`](../packages/host/webserver/src/index.ts)
 
+<a id="deepseek-aidsh-identity-jwks"></a>
+
+## `@deepseek-ai/dsh-identity-jwks`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Exact trusted JWT issuer. */
+  issuer: string
+  /** One or more accepted JWT audiences. */
+  audience: string | string[]
+  /** Remote JSON Web Key Set endpoint. HTTPS is required except on loopback. */
+  jwksUrl: string
+  /** Explicit signature-algorithm allowlist, for example `['RS256']`. */
+  algorithms: string[]
+  /** JWKS request deadline in milliseconds. */
+  timeoutMs?: number
+  /** Minimum delay between successful JWKS refreshes in milliseconds. */
+  cooldownMs?: number
+  /** Maximum age of a successfully fetched JWKS in milliseconds. */
+  cacheMaxAgeMs?: number
+  /** Accepted NumericDate clock skew in seconds. */
+  clockToleranceSeconds?: number
+  /** Additional required claim names beyond `sub`, `iat`, and `exp`. */
+  additionalRequiredClaims?: string[]
+}
+```
+
+Source: [`packages/identity/identity-jwks/src/index.ts:33`](../packages/identity/identity-jwks/src/index.ts)
+
 <a id="deepseek-aidsh-invariants"></a>
 
 ## `@deepseek-ai/dsh-invariants`
@@ -3273,6 +3303,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-host-directory-picker-auto` — requires `webServer` · `loader` ([`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-native` ([`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
+- `@deepseek-ai/dsh-identity-http-bearer` — requires `identity` ([`packages/identity/identity-http-bearer/src/index.ts`](../packages/identity/identity-http-bearer/src/index.ts))
 - `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
 - `@deepseek-ai/dsh-schedule` — requires `agents` · `sessions` · `tools` · `sessionPersistence` ([`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts))
@@ -3304,6 +3335,7 @@ Abstract service classes — a deployment loads a concrete implementation packag
 - `@deepseek-ai/dsh-file-reference` — abstract `FileReferenceService` ([`packages/context/file-reference/src/index.ts`](../packages/context/file-reference/src/index.ts))
 - `@deepseek-ai/dsh-fs` — abstract `FileSystem` ([`packages/fs/fs/src/index.ts`](../packages/fs/fs/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker` — abstract `DirectoryPicker` ([`packages/host/directory-picker/src/index.ts`](../packages/host/directory-picker/src/index.ts))
+- `@deepseek-ai/dsh-identity` — abstract `Identity` ([`packages/identity/identity/src/index.ts`](../packages/identity/identity/src/index.ts))
 - `@deepseek-ai/dsh-jobs` — abstract `JobRegistry` ([`packages/jobs/jobs/src/index.ts`](../packages/jobs/jobs/src/index.ts))
 - `@deepseek-ai/dsh-sandbox` — abstract `SandboxProvider` ([`packages/sandbox/sandbox/src/index.ts`](../packages/sandbox/sandbox/src/index.ts))
 - `@deepseek-ai/dsh-session-persistence` — abstract `SessionPersistence` ([`packages/session/session-persistence/src/index.ts`](../packages/session/session-persistence/src/index.ts))
