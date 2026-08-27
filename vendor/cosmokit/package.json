@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/cosmokit",
+  "name": "@karaka/cosmokit",
   "description": "A collection of common utilities",
   "version": "1.8.2",
   "publishConfig": {
@@ -7,10 +7,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
     "directory": "vendor/cosmokit"
   },
+  "sideEffects": false,
   "type": "module",
+  "engines": { "node": "^22.19.0 || >=24.0.0" },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {

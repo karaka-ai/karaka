@@ -1,0 +1,7 @@
+- id: consumer
+  name: ./plugins/consumer.mjs
+- id: friendly
+  name: ./plugins/provider-friendly.mjs
+- id: brief
+  name: ./plugins/provider-brief.mjs
+  disabled: true

@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/cordis-plugin-timer",
+  "name": "@karaka/cordis-plugin-timer",
   "description": "Timer service for cordis",
   "version": "1.1.3",
   "publishConfig": {
@@ -7,10 +7,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
     "directory": "vendor/timer"
   },
+  "sideEffects": false,
   "type": "module",
+  "engines": { "node": "^22.19.0 || >=24.0.0" },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -30,9 +32,9 @@
   "author": "Shigma <shigma10826@gmail.com>",
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^"
+    "@karaka/cordis": "workspace:^"
   },
   "dependencies": {
-    "@deepseek-ai/cosmokit": "workspace:^"
+    "@karaka/cosmokit": "workspace:^"
   }
 }

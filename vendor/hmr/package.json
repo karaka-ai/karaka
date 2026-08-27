@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/cordis-plugin-hmr",
+  "name": "@karaka/cordis-plugin-hmr",
   "description": "Hot Module Replacement Plugin for Cordis",
   "version": "1.0.16",
   "publishConfig": {
@@ -7,10 +7,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
     "directory": "vendor/hmr"
   },
+  "sideEffects": false,
   "type": "module",
+  "engines": { "node": "^22.19.0 || >=24.0.0" },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -29,7 +31,7 @@
   ],
   "author": "Shigma <shigma10826@gmail.com>",
   "license": "MIT",
-  "@deepseek-ai/cordis": {
+  "@karaka/cordis": {
     "services": {
       "required": [
         "timer"
@@ -41,15 +43,15 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@karaka/cordis-plugin-timer": "workspace:^",
+    "@karaka/cordis": "workspace:^"
   },
   "dependencies": {
     "@babel/code-frame": "^7.29.0",
     "chokidar": "^4.0.3",
-    "@deepseek-ai/cosmokit": "workspace:^",
+    "@karaka/cosmokit": "workspace:^",
     "picomatch": "^4.0.3",
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@karaka/schemastery": "workspace:^"
   },
   "devDependencies": {
     "@types/babel__code-frame": "^7.27.0",

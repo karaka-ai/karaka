@@ -1,11 +1,11 @@
-<!-- 英文源文件由 scripts/gen-cordis-catalog.ts 生成；本中文文件是通过双语配对维护的经评审对侧。
+<!-- 英文源文件由固定版本的 Cordis 声明生成；本中文文件是通过双语配对维护的经评审对侧。
      更新时先运行 `pnpm run gen-cordis-catalog` 更新英文，再更新本文件并运行 `pnpm run verify-translation-pairing --write docs/cordis-api/events.md` 重新记录配对。 -->
 
 # 事件
 
 [English](events.md) | 中文
 
-每个上下文中都混入了事件分发 API。Harness 事件声明及其分发模式会生成到各自所属的[子系统页面](../subsystems/core.zh.md)。
+每个上下文中都混入了事件分发 API。
 
 ### ctx.parallel(name, ...args)
 

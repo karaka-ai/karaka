@@ -1,0 +1,10 @@
+{
+  "name": "@karaka/foundation-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@karaka/cordis": "workspace:^",
+    "@karaka/cordis-plugin-include": "workspace:^",
+    "@karaka/cordis-plugin-loader": "workspace:^"
+  }
+}

@@ -11,7 +11,7 @@ For a resource Cordis does not already manage — a timer, a connection, a watch
 Create `lifecycle.ts` in `tmp/cordis-tutorial`:
 
 ```ts
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@karaka/cordis'
 
 export const name = 'lifecycle-demo'
 
@@ -87,12 +87,10 @@ You rarely write `ctx.effect()` yourself, because the built-in registration APIs
 
 - `ctx.on(event, listener)` — the listener is removed on unload ([chapter 4](04-events.md)).
 - `ctx.plugin(child)` — the child is disposed with its parent.
-- Service registrations are effects. Harness registries such as `ctx.tools.register(...)` also attach their returned disposers to the calling plugin, so they unwind automatically ([chapter 7](07-into-the-harness.md)).
+- Service registrations are effects, so unloading the provider removes the service and suspends its dependents.
 
 For a resource Cordis does not manage, acquire it inside `ctx.effect()` and return a disposer that releases it. Cordis then invokes that release during unloading, including hot reload.
 
 One ordering caveat: disposers start in reverse registration order, but multiple **async** disposers run concurrently. If teardown steps must run in sequence, keep them in one disposer and await them there.
 
 Next: [Services](03-services.md) — how plugins share capabilities.
-
-[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
