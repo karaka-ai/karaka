@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-identity",
-  "description": "Provider-neutral verified identity Service Definition for DeepSeek Harness",
+  "description": "Trusted-host and HTTP Bearer identity service for DeepSeek Harness",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
@@ -36,9 +36,15 @@
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:^",
+    "jose": "^6.2.3"
+  },
   "devDependencies": {
     "@deepseek-ai/dsh-brand": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/cordis-plugin-include": "workspace:^",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   }
 }

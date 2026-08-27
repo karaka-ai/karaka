@@ -201,19 +201,11 @@ const SERVICE_ROLES: ServiceRole[] = [
   {
     key: 'identity',
     pkg: 'identity',
-    title: 'Verified identity seam',
+    title: 'Runtime identity seam',
     mode: 'seam',
-    implementations: ['identity-jwks'],
-    consumers: ['identity-http-bearer'],
-    note: 'Providers verify opaque credentials into immutable issuer-local identity; authority normalization and resource authorization remain separate capability seams.',
-  },
-  {
-    key: 'identityHttpBearer',
-    pkg: 'identity-http-bearer',
-    title: 'HTTP Bearer identity adapter',
-    mode: 'core',
-    consumers: [],
-    note: 'Transport plugins consume one strict Authorization-header parser and remain independent from the selected identity provider.',
+    implementations: ['identity'],
+    consumers: ['identity'],
+    note: 'One package combines trusted-host normalization, strict HTTP Bearer parsing, and optional remote-JWKS verification; resource authorization remains a separate capability.',
   },
   {
     key: 'sessionTelemetry',

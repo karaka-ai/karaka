@@ -13,7 +13,7 @@ export const name = 'identity-invariant'
 /** Service required before the companion can reserve package ownership. */
 export const inject = ['invariants']
 
-/** No runtime invariant: verification correctness is checked at the provider contract boundary. */
+/** No runtime invariant: resolution correctness is checked at the service request boundary. */
 const install: InvariantInstaller = () => {}
 
 /**

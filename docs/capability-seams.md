@@ -54,10 +54,7 @@ flowchart LR
   pkg_authorization["authorization"]
   svc_authorization["ctx.authorization<br/>Authorization flow registry"]
   pkg_identity["identity"]
-  svc_identity["ctx.identity<br/>Verified identity seam"]
-  pkg_identity_jwks["identity-jwks"]
-  pkg_identity_http_bearer["identity-http-bearer"]
-  svc_identityHttpBearer["ctx.identityHttpBearer<br/>HTTP Bearer identity adapter"]
+  svc_identity["ctx.identity<br/>Runtime identity seam"]
   pkg_session_telemetry["session-telemetry"]
   svc_sessionTelemetry["ctx.sessionTelemetry<br/>Session telemetry seam"]
   pkg_session_telemetry_otel["session-telemetry-otel"]
@@ -242,8 +239,6 @@ flowchart LR
   pkg_fs_sandbox --> svc_fs
   pkg_goal --> svc_goals
   pkg_identity --> svc_identity
-  pkg_identity_http_bearer --> svc_identityHttpBearer
-  pkg_identity_jwks --> svc_identity
   pkg_invariants --> svc_invariants
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
@@ -339,7 +334,7 @@ flowchart LR
   svc_e2b --> pkg_fs_e2b
   svc_e2b --> pkg_subprocess_e2b
   svc_fs --> pkg_tool_fs
-  svc_identity --> pkg_identity_http_bearer
+  svc_identity --> pkg_identity
   svc_invariants --> pkg_agent
   svc_invariants --> pkg_agent_loop
   svc_invariants --> pkg_scope
@@ -446,8 +441,7 @@ flowchart LR
 | `ctx.settings` | `seam` | [`settings`](../packages/settings/settings) | [`settings-file`](../packages/settings/settings-file) | [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-pi-ai`](../packages/llm/llm-pi-ai), `apiproxy` | - | Plugins register namespace schemas and resolve layered values; providers store the raw document. The LLM adapters register their entry config as the composition base under the user section; the web gateway serves redacted layered descriptors and writes the user layer. |
 | `ctx.credentials` | `seam` | [`credentials`](../packages/credentials/credentials) | [`credentials-local`](../packages/credentials/credentials-local) | [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-pi-ai`](../packages/llm/llm-pi-ai), `apiproxy` | - | Configuration carries references to secrets; providers own the values. Consumers resolve per operation, so a rotated credential reaches the very next request; the web gateway exposes value-free views and write-only storage. |
 | `ctx.authorization` | `seam` | [`authorization`](../packages/credentials/authorization) | - | [`llm-pi-ai`](../packages/llm/llm-pi-ai) | - | Flows are registered by the plugin that knows how to obtain one credential and keyed by the record they write; the seam owns the conversation and the one-attempt-per-key lifecycle, never the protocol. |
-| `ctx.identity` | `seam` | [`identity`](../packages/identity/identity) | [`identity-jwks`](../packages/identity/identity-jwks) | [`identity-http-bearer`](../packages/identity/identity-http-bearer) | - | Providers verify opaque credentials into immutable issuer-local identity; authority normalization and resource authorization remain separate capability seams. |
-| `ctx.identityHttpBearer` | `core` | [`identity-http-bearer`](../packages/identity/identity-http-bearer) | - | - | - | Transport plugins consume one strict Authorization-header parser and remain independent from the selected identity provider. |
+| `ctx.identity` | `seam` | [`identity`](../packages/identity/identity) | [`identity`](../packages/identity/identity) | [`identity`](../packages/identity/identity) | - | One package combines trusted-host normalization, strict HTTP Bearer parsing, and optional remote-JWKS verification; resource authorization remains a separate capability. |
 | `ctx.sessionTelemetry` | `seam` | [`session-telemetry`](../packages/session/session-telemetry) | [`session-telemetry-otel`](../packages/session/session-telemetry-otel) | - | - | The seam captures, redacts, and hands session records to one backend; nothing else consumes the service — its output leaves the process. |
 | `ctx.storage` | `seam` | [`storage`](../packages/storage/storage) | [`storage-json`](../packages/storage/storage-json), [`storage-sqlite`](../packages/storage/storage-sqlite) | [`storage-domain`](../packages/storage/storage-domain) | - | Backends register side by side under names; data forms (domain first) mount on the hub and translate typed operations into opaque KV-unit primitives. |
 | `ctx.storageDomain` | `core` | [`storage-domain`](../packages/storage/storage-domain) | - | [`workspace`](../packages/workspace/workspace), [`message-feedback`](../packages/feedback/message-feedback) | - | Waits for every configured backend, then publishes the domain form as one lifecycle-bound service for typed durable state. |

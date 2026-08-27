@@ -882,27 +882,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'identity',
-    summary: 'Replaceable credential verifier.',
-    description: 'Replaceable credential verifier.',
+    summary: 'Identity service for trusted host values and configured HTTP Bearer JWTs.',
+    description: 'Identity service for trusted host values and configured HTTP Bearer JWTs.',
     methods: [
       {
-        signature: 'abstract verify(request: VerifyIdentityRequest): Promise<VerifiedIdentity>',
-        description: 'Verify one credential and return only cryptographically trusted identity claims. Authority normalization and authorization are separate seams.',
-        parameters: [{ name: 'request', description: 'credential envelope and optional cancellation.' }],
-        returns: 'deeply immutable verified identity claims.',
-      },
-    ],
-  },
-  {
-    key: 'identityHttpBearer',
-    summary: 'HTTP-specific credential adapter.',
-    description: 'HTTP-specific credential adapter. Future REST/SSE plugins inject this service instead of parsing credentials or selecting an identity provider.',
-    methods: [
-      {
-        signature: 'async authenticate(request: HttpBearerIdentityRequest): Promise<VerifiedIdentity>',
-        description: 'Parse exactly one Bearer credential and delegate provider verification.',
-        parameters: [{ name: 'request', description: 'raw Authorization value and optional cancellation.' }],
-        returns: 'the provider\'s deeply immutable verified identity.',
+        signature: 'async resolve(request: ResolveIdentityRequest): Promise<ResolvedIdentity>',
+        description: 'Normalize a trusted host identity or verify one HTTP Bearer JWT. Trusted input is detached and frozen without hostile validation. HTTP input is parsed strictly, cancels caller settlement cooperatively, and fails with `IDENTITY_VERIFICATION_UNAVAILABLE` when JWT configuration is absent. Cancellation does not abort a shared remote-JWKS fetch, which may continue to populate the process-local cache for other callers.',
+        parameters: [{ name: 'request', description: 'trusted host identity or raw HTTP Authorization input.' }],
+        returns: 'one deeply immutable normalized identity.',
       },
     ],
   },
@@ -3040,10 +3027,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: DshEnvironmentKey;\n}',
   },
   {
-    name: 'BearerIdentityCredential',
-    declaration: 'export interface BearerIdentityCredential {\n    readonly kind: \'bearer\';\n    readonly token: string;\n}',
-  },
-  {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
   },
@@ -3477,7 +3460,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'HttpBearerIdentityRequest',
-    declaration: 'export interface HttpBearerIdentityRequest {\n    readonly authorization: string | readonly string[] | undefined;\n    readonly signal?: AbortSignal;\n}',
+    declaration: 'export interface HttpBearerIdentityRequest {\n    readonly kind: \'http-bearer\';\n    readonly authorization: string | readonly string[] | undefined;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'IdentityAudience',
@@ -3492,12 +3475,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type IdentityIssuer = Branded<\'IdentityIssuer\'>;',
   },
   {
-    name: 'IdentitySubject',
-    declaration: 'export type IdentitySubject = Branded<\'IdentitySubject\'>;',
+    name: 'IdentityTenantId',
+    declaration: 'export type IdentityTenantId = Branded<\'IdentityTenantId\'>;',
   },
   {
     name: 'IdentityTokenId',
     declaration: 'export type IdentityTokenId = Branded<\'IdentityTokenId\'>;',
+  },
+  {
+    name: 'IdentityUserId',
+    declaration: 'export type IdentityUserId = Branded<\'IdentityUserId\'>;',
   },
   {
     name: 'ImageAttachmentLimits',
@@ -3626,6 +3613,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'JsonValue',
     declaration: 'export type JsonValue = null | boolean | number | string | JsonValue[] | {\n    [key: string]: JsonValue;\n};',
+  },
+  {
+    name: 'JwtResolvedIdentity',
+    declaration: 'export interface JwtResolvedIdentity extends NormalizedIdentity {\n    readonly source: \'http-bearer\';\n    readonly issuer: IdentityIssuer;\n    readonly audiences: readonly IdentityAudience[];\n    readonly issuedAt: number;\n    readonly expiresAt: number;\n    readonly notBefore?: number;\n    readonly tokenId?: IdentityTokenId;\n    readonly claims: Readonly<Record<string, IdentityClaimValue>>;\n}',
   },
   {
     name: 'KnobState',
@@ -3852,6 +3843,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n}',
   },
   {
+    name: 'NormalizedIdentity',
+    declaration: 'export interface NormalizedIdentity {\n    readonly userId: IdentityUserId;\n    readonly tenantId?: IdentityTenantId;\n}',
+  },
+  {
     name: 'ObjectJsonSchema',
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
@@ -4000,6 +3995,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
   },
   {
+    name: 'ResolvedIdentity',
+    declaration: 'export type ResolvedIdentity = TrustedResolvedIdentity | JwtResolvedIdentity;',
+  },
+  {
     name: 'ResolvedNormalRetryPolicy',
     declaration: 'export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'normal\';\n    readonly maxRetries: number;\n    readonly retryableCodes: readonly string[];\n}',
   },
@@ -4014,6 +4013,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResolvedSubagentStartRequest',
     declaration: 'export interface ResolvedSubagentStartRequest extends SubagentStartRequest {\n    readonly descriptor: SubagentDescriptorData;\n}',
+  },
+  {
+    name: 'ResolveIdentityRequest',
+    declaration: 'export type ResolveIdentityRequest = TrustedIdentityRequest | HttpBearerIdentityRequest;',
   },
   {
     name: 'RestoredSessionOptions',
@@ -4908,6 +4911,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ToolSchema {\n    name: string;\n    description: string;\n    parameters: Record<string, unknown>;\n}',
   },
   {
+    name: 'TrustedIdentityRequest',
+    declaration: 'export interface TrustedIdentityRequest {\n    readonly kind: \'trusted\';\n    readonly userId: IdentityUserId;\n    readonly tenantId?: IdentityTenantId;\n}',
+  },
+  {
+    name: 'TrustedResolvedIdentity',
+    declaration: 'export interface TrustedResolvedIdentity extends NormalizedIdentity {\n    readonly source: \'trusted\';\n}',
+  },
+  {
     name: 'TurnEndCancelCause',
     declaration: 'export type TurnEndCancelCause = AgentCancelCause | {\n    readonly kind: \'legacy\';\n};',
   },
@@ -4990,14 +5001,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UserQuestionProvider',
     declaration: 'export interface UserQuestionProvider {\n    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>;\n}',
-  },
-  {
-    name: 'VerifiedIdentity',
-    declaration: 'export interface VerifiedIdentity {\n    readonly issuer: IdentityIssuer;\n    readonly subject: IdentitySubject;\n    readonly audiences: readonly IdentityAudience[];\n    readonly issuedAt: number;\n    readonly expiresAt: number;\n    readonly notBefore?: number;\n    readonly tokenId?: IdentityTokenId;\n    readonly claims: Readonly<Record<string, IdentityClaimValue>>;\n}',
-  },
-  {
-    name: 'VerifyIdentityRequest',
-    declaration: 'export interface VerifyIdentityRequest {\n    readonly credential: BearerIdentityCredential;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'WebBootEntry',
