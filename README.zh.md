@@ -2,13 +2,15 @@
 
 [English](README.md) | 中文
 
-Karaka 是一个小型、可发布的 Cordis 基础层，面向基础设施会因部署环境而变化的应用。它提供插件组合、服务、生命周期 effect、配置加载、分组、定时器、热重载和控制台日志。它目前不提供存储、身份、模型、日志厂商、密钥、会话、智能体、工具或用户界面能力。
+Karaka 是基于 Cordis 的可配置基础层，用于组合智能体 SaaS 运行时。稳定的能力接缝定义应用能做什么，普通 Cordis 插件实现这些接缝，YAML 或编程式配置则选择实际运行的产品。
 
-应用应依赖概念服务，并单独安装提供方。例如，未来的存储消费者可以依赖 `ctx.storage`，而应用通过配置选择 S3、GCS、Azure Blob 或私有实现。
+Karaka 提供的插件和用户编写的插件使用相同的服务契约、依赖跟踪、生命周期 effect 和隔离机制。第一个应用接缝是认证：`@karaka/authentication` 拥有租户路由器和提供方无关契约；其中 `authentication-jwks` 插件验证租户令牌，`authentication-host` 插件则建立由可信嵌入宿主断言的隔离身份，也是最简便的本地开发路径。
 
-## 基础包
+## 包
 
-本仓库在 `@karaka` 作用域下发布九个包：`cordis`、`cosmokit`、`schemastery`，以及 Cordis 的 `loader`、`include`、`group`、`timer`、`hmr` 和 `logger-console` 插件。这些包是固定版本的 fork，本地修改记录在 [vendor/README.md](vendor/README.md) 中。
+组合内核在 `@karaka` 作用域下发布九个包：`cordis`、`cosmokit`、`schemastery`，以及 Cordis 的 `loader`、`include`、`group`、`timer`、`hmr` 和 `logger-console` 插件。这些包是固定版本的 fork，本地修改记录在 [vendor/README.md](vendor/README.md) 中。
+
+应用包位于 `vendor/` 之外。第一个应用包是 [`@karaka/authentication`](packages/authentication/README.zh.md)，其 `authentication-jwks` 和 `authentication-host` 子路径都可以通过 Loader 配置独立选择。
 
 ## 开始使用
 

@@ -73,6 +73,18 @@ importers:
         specifier: workspace:^
         version: link:../../vendor/loader
 
+  packages/authentication:
+    dependencies:
+      '@karaka/cordis':
+        specifier: workspace:^
+        version: link:../../vendor/cordis
+      '@karaka/schemastery':
+        specifier: link:../../vendor/schemastery
+        version: link:../../vendor/schemastery
+      jose:
+        specifier: ^6.2.5
+        version: 6.2.10
+
   vendor/cordis:
     dependencies:
       '@karaka/cordis-plugin-include':
@@ -1171,6 +1183,9 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  jose@6.2.10:
+    resolution: {integrity: sha512-iiW7J9qRFlGxvCOIBDBDxFePQSn7ZMAnrYGhrrOo6siO/MIqwfyilLR27pkfDgUk+raLuzADS8A3S/KLBisc0g==}
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
@@ -2410,6 +2425,8 @@ snapshots:
 
   jiti@2.7.0:
     optional: true
+
+  jose@6.2.10: {}
 
   js-tokens@10.0.0: {}
 

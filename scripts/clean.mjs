@@ -6,6 +6,8 @@ for (const path of [
   ...globSync('*.tsbuildinfo'),
   ...globSync('vendor/*/lib'),
   ...globSync('vendor/*/*.tsbuildinfo'),
+  ...globSync('packages/*/lib'),
+  ...globSync('packages/*/*.tsbuildinfo'),
 ]) {
   rmSync(path, { recursive: true, force: true })
 }

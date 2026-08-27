@@ -21,7 +21,7 @@
     "verify:scope": "node scripts/verify-scope.mjs",
     "verify:packages": "node scripts/verify-packages.mjs",
     "verify:packed": "node scripts/verify-packed.mjs",
-    "publint": "pnpm -r --filter './vendor/*' exec publint",
+    "publint": "pnpm -r --filter './vendor/*' --filter './packages/*' exec publint",
     "verify": "pnpm run build && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run example && pnpm run docs:check && pnpm run verify:scope && pnpm run verify:packages && pnpm run publint",
     "release:pack": "node scripts/release.mjs pack",
     "release:publish": "node scripts/release.mjs publish"

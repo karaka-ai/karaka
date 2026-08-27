@@ -3,7 +3,7 @@ import { existsSync, globSync, readFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 
 const failures = []
-const english = globSync('{README.md,CONTRIBUTING.md,docs/**/*.md,examples/foundation/README.md,.agents/notes/{implemented,proposed,rejected}/**/*.md}', {
+const english = globSync('{README.md,CONTRIBUTING.md,docs/**/*.md,examples/foundation/README.md,packages/*/README.md,.agents/notes/{implemented,proposed,rejected}/**/*.md}', {
   exclude: path => path.endsWith('.zh.md'),
 })
 
@@ -27,7 +27,7 @@ for (const file of english) {
   }
 }
 
-for (const file of globSync('{README*.md,CONTRIBUTING*.md,docs/**/*.md,examples/foundation/README*.md,.agents/notes/{implemented,proposed,rejected}/**/*.md}')) {
+for (const file of globSync('{README*.md,CONTRIBUTING*.md,docs/**/*.md,examples/foundation/README*.md,packages/*/README*.md,.agents/notes/{implemented,proposed,rejected}/**/*.md}')) {
   const text = readFileSync(file, 'utf8')
   for (const match of text.matchAll(/\[[^\]]*\]\(([^)\s#]+)(?:#[^)]+)?\)/g)) {
     const target = match[1]

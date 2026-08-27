@@ -1,5 +1,6 @@
 packages:
   - vendor/*
+  - packages/*
   - examples/foundation
 
 linkWorkspacePackages: true

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -10,12 +10,16 @@ const consumer = mkdtempSync(join(tmpdir(), 'karaka-packed-consumer-'))
 try {
   const dependencies = {}
   const tarballs = new Set(readdirSync(artifacts))
-  for (const entry of readdirSync(resolve(root, 'vendor'), { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const manifest = JSON.parse(readFileSync(resolve(root, 'vendor', entry.name, 'package.json'), 'utf8'))
-    const tarball = `${manifest.name.slice(1).replace('/', '-')}-${manifest.version}.tgz`
-    if (!tarballs.has(tarball)) throw new Error(`missing package artifact: ${tarball}`)
-    dependencies[manifest.name] = `file:${resolve(artifacts, tarball)}`
+  for (const parent of ['vendor', 'packages']) {
+    for (const entry of readdirSync(resolve(root, parent), { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const manifestPath = resolve(root, parent, entry.name, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      const tarball = `${manifest.name.slice(1).replace('/', '-')}-${manifest.version}.tgz`
+      if (!tarballs.has(tarball)) throw new Error(`missing package artifact: ${tarball}`)
+      dependencies[manifest.name] = `file:${resolve(artifacts, tarball)}`
+    }
   }
 
   writeFileSync(resolve(consumer, 'package.json'), `${JSON.stringify({
@@ -47,13 +51,46 @@ import Loader from '@karaka/cordis-plugin-loader'
 import LoggerConsole from '@karaka/cordis-plugin-logger-console'
 import Timer from '@karaka/cordis-plugin-timer'
 import Schema from '@karaka/schemastery'
+import Authentication from '@karaka/authentication'
+import AuthenticationHost from '@karaka/authentication/authentication-host'
+import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
+import { writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 
-const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Schema]
+const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Schema, Authentication]
 if (exports.some(value => typeof value !== 'function')) throw new Error('a package entry point did not export its public constructor or plugin')
 if (Object.keys(CosmoKit).length === 0) throw new Error('CosmoKit exported no utilities')
+if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
+if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
 
 const ctx = new Context()
 await ctx.plugin(Timer)
+ctx.baseUrl = pathToFileURL(process.cwd() + '/').href
+writeFileSync('authentication.yml', [
+  "- name: '@karaka/authentication'",
+  "- name: '@karaka/authentication/authentication-jwks'",
+  '  config:',
+  '    tenants:',
+  '      smoke:',
+  '        issuer: https://issuer.example.test/',
+  '        audience: karaka-smoke',
+  '        jwksUri: https://issuer.example.test/jwks',
+  '        algorithms: [RS256]',
+  "- name: '@karaka/authentication/authentication-host'",
+  '  config:',
+  '    tenantId: smoke',
+  '    subject: embedded-developer',
+  '',
+].join('\\n'))
+await ctx.plugin(Loader)
+ctx.loader.builtins.include = Include
+await ctx.loader.create({
+  name: 'cordis:include',
+  config: { path: new URL('authentication.yml', ctx.baseUrl).href },
+})
+await ctx.loader.await()
+if (ctx.get('authentication')?.list()[0]?.name !== 'jwks') throw new Error('Loader did not compose the JWKS authentication subpath')
+if (ctx.get('identity')?.subject !== 'embedded-developer') throw new Error('Loader did not compose the host authentication subpath')
 await ctx.fiber.dispose()
 `)
   writeFileSync(resolve(consumer, 'smoke.cts'), `
