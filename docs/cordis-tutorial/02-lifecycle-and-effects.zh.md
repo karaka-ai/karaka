@@ -11,7 +11,7 @@ Cordis 插件可能因修改配置、热重载、显式资源释放或所需服�
 创建 `lifecycle.ts`，将它放在 `tmp/cordis-tutorial` 中：
 
 ```ts
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@karaka/cordis'
 
 export const name = 'lifecycle-demo'
 
@@ -87,12 +87,10 @@ PENDING → LOADING → ACTIVE → UNLOADING → DISPOSED
 
 - `ctx.on(event, listener)`：监听器会在卸载时移除（[第 4 章](04-events.zh.md)）。
 - `ctx.plugin(child)`：子插件会随父插件一同 dispose（资源释放）。
-- 服务注册属于 effect。`ctx.tools.register(...)` 等 harness 注册表也会把返回的 disposer 附着到调用插件上，因此会自动撤销（[第 7 章](07-into-the-harness.zh.md)）。
+- 服务注册属于 effect，因此卸载提供方会移除服务，并暂停其依赖方。
 
 对于 Cordis 不管理的资源，应在 `ctx.effect()` 内获取它，并返回用于释放资源的 disposer。此后 Cordis 会在卸载期间调用该释放逻辑，热重载时也不例外。
 
 有一项顺序注意事项：disposer 会按注册顺序的逆序启动，但多个**异步** disposer 会并发运行。如果拆除步骤必须按顺序执行，请把它们放在同一个 disposer 中，并在其中依次等待每步完成。
 
 下一章：[服务](03-services.zh.md)：插件如何共享功能。
-
-[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

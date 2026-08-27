@@ -2,7 +2,7 @@
 
 [English](cordis-primer.md) | 中文
 
-Cordis 是 DeepSeek Harness 底层以 vendor 方式引入的插件框架。本文介绍 harness 插件作者在阅读[子系统页面](subsystems/core.zh.md)上生成的服务/事件参考之前需要了解的 Cordis 核心概念；[Cordis 教程](cordis-tutorial/index.zh.md)则通过实践逐一讲解这些概念。vendor 源码与同步流程见 [vendor/README.md](../vendor/README.md)。
+Cordis 是 Karaka 以 vendor 方式引入的插件框架。本文介绍组合服务、提供方和消费者所需的概念；[Cordis 教程](cordis-tutorial/index.zh.md)通过可运行示例讲解相同内容。vendor 源码与同步流程见 [vendor/README.md](../vendor/README.md)。
 
 ## 五个核心概念
 
@@ -25,7 +25,7 @@ Cordis 是 DeepSeek Harness 底层以 vendor 方式引入的插件框架。本�
 | `parallel` | 是 | 所有监听器并行观察事件 | 否 |
 | `serial` | 是 | 监听器按注册顺序观察 | 是 |
 
-分发模式是事件公开约定的一部分。新的 harness 事件通过 `@mode` 标签记录模式，以便生成的目录可以将声明与分发调用点做交叉校验。
+分发模式是事件公开 API 的一部分。插件记录和调用事件时必须与该模式保持一致。
 
 <a id="cordis-waterfall-semantics"></a>
 
@@ -41,7 +41,7 @@ Cordis 是 DeepSeek Harness 底层以 vendor 方式引入的插件框架。本�
 
 ## Loader 配置
 
-`@deepseek-ai/cordis-plugin-include` 将 `!!js` 解析为表达式节点。Loader 在声明的注入激活后，基于该插件上下文（`ctx.serviceName`）插值条目的 `config`，并在每次挂载决策时基于 loader 上下文插值其 `disabled` 字段；Include 会保留嵌套行表达式，直到目标行激活。其余条目元数据保持字面值。由环境选择插件时，请使用 overlay。
+`@karaka/cordis-plugin-include` 将 `!!js` 解析为表达式节点。Loader 在声明的注入激活后，基于该插件上下文（`ctx.serviceName`）插值条目的 `config`，并在每次挂载决策时基于 loader 上下文插值其 `disabled` 字段；Include 会保留嵌套行表达式，直到目标行激活。其余条目元数据保持字面值。由环境选择插件时，请使用 overlay。
 
 ## 实践规则
 

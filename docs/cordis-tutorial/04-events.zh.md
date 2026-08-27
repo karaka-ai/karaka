@@ -2,16 +2,16 @@
 
 [English](04-events.md) | 中文
 
-服务支持直接调用；**事件**让插件无需知道有哪些插件正在监听，就能发出通知。harness 使用事件处理工具结果、模型请求和审批决定等交互。
+服务支持直接调用；**事件**让插件无需知道有哪些插件正在监听，就能发出通知。
 
 ## 声明、发出与监听
 
 创建 `stats.ts`，将它放在 `tmp/cordis-tutorial` 中。它是一项负责计数并在每次变化时发出通知的服务：
 
 ```ts
-import { Service, type Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@karaka/cordis'
 
-declare module '@deepseek-ai/cordis' {
+declare module '@karaka/cordis' {
   interface Context {
     stats: StatsService
   }
@@ -46,7 +46,7 @@ export function apply(ctx: Context) {
 创建 `reporter.ts`：
 
 ```ts ignore-check
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@karaka/cordis'
 import type {} from './stats.ts'
 
 export const name = 'reporter'
@@ -89,16 +89,16 @@ export function apply(ctx: Context) {
 | bail | `ctx.bail(name, ...args)` | serial 的同步版本。 |
 | waterfall（瀑布式事件） | `ctx.waterfall(name, ...args, next)` | 环绕中间件，见下文。 |
 
-每个 harness 事件都会在其所属[子系统页面](../subsystems/core.zh.md)自动生成的参考文档中记录其模式。
+每个事件都必须以一致方式记录并使用其分发模式。
 
 ## waterfall：转换或短路
 
 waterfall 是实现拦截的模式。每个监听器都会收到参数和一个 `next()` continuation；它可以转换 `next()` 的返回值，也可以不调用 `next()` 就直接返回，从而短路链条的其余部分。Cordis 文档把后一种行为称为否决。创建 `waterfall-demo.ts`：
 
 ```ts
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@karaka/cordis'
 
-declare module '@deepseek-ai/cordis' {
+declare module '@karaka/cordis' {
   interface Events {
     'demo/transform'(input: string, next: () => Promise<string>): Promise<string>
   }
@@ -137,8 +137,6 @@ HELLO
 
 由此得到一项纪律：**只负责观察或标注的 waterfall 监听器必须调用 `next()`**；不调用就直接返回代表有意短路。如果日志监听器忘记调用 `next()`，会悄无声息地吞掉所有下游的默认行为。这是本仓库的常设规则（[waterfall 语义](../cordis-primer.zh.md#cordis-waterfall-semantics)）。
 
-harness 使用 waterfall 处理协作插件可以包装或回答的决策：[`agent/request`](../subsystems/core.zh.md#agentrequest--waterfall) 允许插件替换模型调用配置，[`approval/request`](../subsystems/approval.zh.md#approvalrequest--waterfall) 允许策略代替用户作答。
+协作插件可以包装或回答的决策适合使用 waterfall。每个监听器要么返回自己的答案，要么调用 `next()` 委托给后续监听器。
 
 下一章：[配置](05-config.zh.md)：来自 `cordis.yml` 的插件选项。
-
-[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

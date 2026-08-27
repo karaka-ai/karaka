@@ -2,7 +2,7 @@
 
 English | [中文](cordis-primer.zh.md)
 
-Cordis is the vendored plugin framework underneath DeepSeek Harness. This primer teaches the Cordis ideas a harness plugin author needs before reading the generated service/event reference on the [subsystem pages](subsystems/core.md); the [Cordis tutorial](cordis-tutorial/index.md) walks the same ideas hands-on. The vendored source and sync procedure live in [vendor/README.md](../vendor/README.md).
+Cordis is Karaka's vendored plugin framework. This primer introduces the concepts needed to compose services, providers, and consumers; the [Cordis tutorial](cordis-tutorial/index.md) develops the same ideas through runnable examples. The vendored source and sync procedure live in [vendor/README.md](../vendor/README.md).
 
 ## Cordis In Five Ideas
 
@@ -23,7 +23,7 @@ Every event can have one of the following dispatch mode and can only be dispatch
 | `parallel` | Yes | all listeners observe the event in parallel | No |
 | `serial` | Yes | listeners observe in registration order | Yes |
 
-The dispatch mode is part of the event's public contract. New harness events document it with an `@mode` tag so the generated catalog can check declarations against dispatch sites.
+The dispatch mode is part of an event's public API. Plugins must document and call each event consistently with that mode.
 
 ## Cordis Waterfall Semantics
 
@@ -35,7 +35,7 @@ For single-decision events, short-circuiting is the design. A policy listener ca
 
 ## Loader Configuration
 
-`@deepseek-ai/cordis-plugin-include` parses `!!js` into expression nodes. Loader interpolates an entry's `config` (after declared injections activate, against that plugin context — `ctx.serviceName`) and its `disabled` field (at every mount decision, against the loader context); Include preserves nested row expressions until target activation. Other entry metadata stays literal. Use overlays when the environment selects plugins.
+`@karaka/cordis-plugin-include` parses `!!js` into expression nodes. Loader interpolates an entry's `config` (after declared injections activate, against that plugin context — `ctx.serviceName`) and its `disabled` field (at every mount decision, against the loader context); Include preserves nested row expressions until target activation. Other entry metadata stays literal. Use overlays when the environment selects plugins.
 
 ## Practical Rules
 

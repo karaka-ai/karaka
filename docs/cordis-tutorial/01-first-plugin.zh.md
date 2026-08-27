@@ -9,7 +9,7 @@
 在 `tmp/cordis-tutorial` 目录中（参见[环境设置](index.zh.md#setup)）创建 `hello.ts`：
 
 ```ts
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@karaka/cordis'
 
 export const name = 'hello'
 
@@ -48,14 +48,14 @@ hello from my first plugin
 2. Loader 读取 `cordis.yml`，解析 `./hello.ts`，然后将其作为子插件挂载。
 3. Cordis 调用你的 `apply(ctx)`。
 
-你的文件中没有框架启动代码：插件描述自己的贡献，`cordis.yml` 则组合应用。例如，[`dsh` base](../../packages/bundle/base/cordis.patch.yml) 就是一份更长的插件组合，由部署 overlay 对它进行修补。
+你的文件中没有框架启动代码：插件描述自己的贡献，`cordis.yml` 则组合应用。Karaka 的[基础示例](../../examples/foundation/cordis.yml)使用同一机制组合多个协作插件。
 
 ## 其他两种插件形态
 
 函数是最常见的形式，但 Cordis 接受三种形式：
 
 ```ts
-import { Service, type Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@karaka/cordis'
 
 // 1. Function plugin (what you just wrote).
 export function apply(ctx: Context) {}
@@ -91,5 +91,3 @@ export function apply(ctx: Context) {
 还需要尽早了解一个例外：如果某个配置项的模块无法被 **解析**，例如路径或包名拼写错误，Cordis 会通过 logger 服务报告错误，而不会使进程崩溃。在启动阶段，这条报告可能在 console 导出器开始观察之前丢失。如果新增配置项似乎没有任何效果，请先检查拼写。
 
 下一章：[生命周期与 effect](02-lifecycle-and-effects.zh.md)：插件卸载时会发生什么。
-
-[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

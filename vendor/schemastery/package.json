@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/schemastery",
+  "name": "@karaka/schemastery",
   "description": "Type driven schema validator",
   "version": "3.18.1",
   "publishConfig": {
@@ -7,18 +7,25 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
     "directory": "vendor/schemastery"
   },
+  "sideEffects": false,
   "type": "module",
+  "engines": { "node": "^22.19.0 || >=24.0.0" },
   "main": "lib/index.cjs",
   "module": "lib/index.mjs",
   "types": "lib/types/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/types/index.d.ts",
-      "import": "./lib/index.mjs",
-      "require": "./lib/index.cjs"
+      "import": {
+        "types": "./lib/types/index.d.ts",
+        "default": "./lib/index.mjs"
+      },
+      "require": {
+        "types": "./index.d.cts",
+        "default": "./lib/index.cjs"
+      }
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
@@ -26,6 +33,7 @@
   "files": [
     "lib/index.mjs",
     "lib/index.cjs",
+    "index.d.cts",
     "lib/types/**/*.d.ts",
     "lib/types/**/*.d.ts.map",
     "src"
@@ -34,6 +42,6 @@
   "license": "MIT",
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",
-    "@deepseek-ai/cosmokit": "workspace:^"
+    "@karaka/cosmokit": "workspace:^"
   }
 }

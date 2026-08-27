@@ -2,16 +2,16 @@
 
 [English](03-services.md) | 中文
 
-**服务**是一个插件提供、其他插件通过 `ctx` 消费的具名能力。在 harness 中，`ctx.tools`、`ctx.llm` 和 `ctx.agents` 都是服务。消费方只指定 `'tools'` 之类的能力，而不导入其提供方，因此配置可以选择提供方，无需修改消费方。
+**服务**是一个插件提供、其他插件通过 `ctx` 消费的具名能力。消费方指定能力名称，而不导入其提供方，因此配置可以选择提供方，无需修改消费方。
 
 ## 提供服务
 
 创建 `greeter.ts`，将它放在 `tmp/cordis-tutorial` 中：
 
 ```ts
-import { Service, type Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@karaka/cordis'
 
-declare module '@deepseek-ai/cordis' {
+declare module '@karaka/cordis' {
   interface Context {
     greeter: GreeterService
   }
@@ -37,7 +37,7 @@ export function apply(ctx: Context) {
 两部分协同工作：
 
 - **运行时**：`super(ctx, 'greeter')` 以名称 `greeter` 注册该实例。此后，任何插件都可以通过 `ctx.greeter` 访问它。注册属于 effect，卸载提供方时会移除该服务。
-- **编译时**：`declare module '@deepseek-ai/cordis'` 块使用 TypeScript 声明合并，把 `greeter` 加入 `Context` 接口，使 `ctx.greeter` 在各处都能通过类型检查。它不会生成代码；没有该声明时，服务在运行时仍能工作，但消费方会失去类型安全。
+- **编译时**：`declare module '@karaka/cordis'` 块使用 TypeScript 声明合并，把 `greeter` 加入 `Context` 接口，使 `ctx.greeter` 在各处都能通过类型检查。它不会生成代码；没有该声明时，服务在运行时仍能工作，但消费方会失去类型安全。
 
 `Service` 子类本身就是插件（第 1 章介绍的类形态），因此 `ctx.plugin(GreeterService)` 会像挂载其他插件一样挂载它。
 
@@ -46,7 +46,7 @@ export function apply(ctx: Context) {
 创建 `consumer.ts`：
 
 ```ts
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@karaka/cordis'
 
 export const name = 'consumer'
 export const inject = ['greeter']
@@ -75,7 +75,7 @@ Hello, world!
 
 `inject` 并非一次性的启动检查。如果应用运行期间所需服务消失，例如提供方被卸载或热替换，每个依赖插件也会随之卸载，并在服务恢复后再次加载。结合 effect（[第 2 章](02-lifecycle-and-effects.zh.md)），这能防止运行中的消费方保留对不可用服务的引用：依赖消失时，它自己的注册也会撤销。
 
-这也是配置中可以替换服务的原因：卸载 Cordis 配置项 `dsh-bash-local`，挂载另一个 `shell` 提供方，所有注入 `'shell'` 的插件都会重新启动并使用新实现。
+这也是配置中可以替换服务的原因：卸载一个提供方，再为同一名称挂载另一个提供方，所有注入该服务的插件都会重新启动并使用新实现。
 
 ## 可选依赖
 
@@ -91,8 +91,6 @@ export function apply(ctx: Context) {
 
 ## 命名
 
-每个应用中的服务名称共用一个扁平命名空间。请为自有服务添加有辨识度的前缀或命名空间（harness 已占用 `tools` 和 `llm` 等普通名称）；[子系统页面](../subsystems/core.zh.md)上生成的 `cordis-surface` 区块列出 harness 注册的每个名称。
+每个应用中的服务名称共用一个扁平命名空间。请选择描述能力而非提供方的稳定名称。
 
 下一章：[事件](04-events.zh.md)：无需共享服务即可通信。
-
-[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

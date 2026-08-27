@@ -1,59 +1,26 @@
-# DeepSeek Harness
+# Karaka
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+Karaka is a small, publishable Cordis foundation for applications whose infrastructure varies by deployment. It provides plugin composition, services, lifecycle effects, configuration loading, grouping, timers, hot reload, and console logging. It does not yet provide storage, identity, model, logging-vendor, secrets, session, agent, tool, or user-interface capabilities.
 
-It uses an architecture where **everything is a plugin**, and is powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper).
+Applications should depend on conceptual services and install providers separately. A later storage consumer, for example, can depend on `ctx.storage` while an application chooses an S3, GCS, Azure Blob, or private implementation through configuration.
 
-## Developer preview
+## Foundation packages
 
-DeepSeek Harness is currently in _developer preview_ and is iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+The repository publishes nine packages under `@karaka`: `cordis`, `cosmokit`, `schemastery`, and the `loader`, `include`, `group`, `timer`, `hmr`, and `logger-console` Cordis plugins. They are pinned forks with local changes documented in [vendor/README.md](vendor/README.md).
 
-## Run
-
-### Run from `npm`
-
-Install `Node.js`, then run:
+## Start
 
 ```sh
-npx @deepseek-ai/dsh web
-```
-
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
-
-### Run from source
-
-To run from a repository checkout:
-
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
 pnpm install
 pnpm run build
-pnpm dsh web
+pnpm run example
+pnpm run verify
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+The [foundation example](examples/foundation/README.md) composes a service definition, two providers, and one consumer through a real Loader/Include tree. The [Cordis primer](docs/cordis-primer.md), [tutorial](docs/cordis-tutorial/index.md), and [architecture reference](docs/architecture.md) explain the framework.
 
-## Community and support
+Manual package verification and publication are available through `pnpm run release:pack` and `pnpm run release:publish`. This repository intentionally has no CI configuration during the foundation phase.
 
-- Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Development
-
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## License
-
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Historical DeepSeek Harness documentation and decision records live under [`legacy/deepseek-harness`](legacy/deepseek-harness/README.md). Git history owns removed product source.
