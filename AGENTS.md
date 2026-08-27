@@ -2,7 +2,7 @@
 
 Every agent must read `/home/aman/.codex/skills/clarity/SKILL.md` before working in this repository.
 
-Karaka is a Cordis foundation. The active runtime consists only of the nine packages under `vendor/`; application capabilities belong in future plugins rather than this foundation.
+Karaka is a Cordis foundation. The nine packages under `vendor/` form the pinned composition kernel; application capabilities belong in first-party or user-authored plugins under `packages/` or external packages. Authentication is the first active application seam.
 
 ## Rules
 

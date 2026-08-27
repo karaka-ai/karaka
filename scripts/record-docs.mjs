@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { globSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
 
-const english = globSync('{README.md,CONTRIBUTING.md,docs/**/*.md,examples/foundation/README.md,.agents/notes/{implemented,proposed,rejected}/**/*.md}', {
+const english = globSync('{README.md,CONTRIBUTING.md,docs/**/*.md,examples/foundation/README.md,packages/*/README.md,.agents/notes/{implemented,proposed,rejected}/**/*.md}', {
   exclude: path => path.endsWith('.zh.md'),
 })
 

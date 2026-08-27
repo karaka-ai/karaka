@@ -1,0 +1,51 @@
+{
+  "name": "@karaka/authentication",
+  "description": "Composable authentication seam for Karaka",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
+    "directory": "packages/authentication"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./authentication-jwks": {
+      "types": "./lib/types/authentication-jwks.d.ts",
+      "default": "./lib/authentication-jwks.js"
+    },
+    "./authentication-host": {
+      "types": "./lib/types/authentication-host.d.ts",
+      "default": "./lib/authentication-host.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@karaka/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@karaka/schemastery": "workspace:^",
+    "jose": "^6.2.5"
+  }
+}

@@ -10,6 +10,7 @@
   },
   "include": [
     "tests/**/*.ts",
+    "packages/*/tests/**/*.ts",
     "vitest.config.ts",
     "tsdown.config.ts"
   ]

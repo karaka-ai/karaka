@@ -30,7 +30,10 @@
       "@karaka/cordis-plugin-group": ["./vendor/group/src"],
       "@karaka/cordis-plugin-timer": ["./vendor/timer/src"],
       "@karaka/cordis-plugin-hmr": ["./vendor/hmr/src"],
-      "@karaka/cordis-plugin-logger-console": ["./vendor/logger-console/src"]
+      "@karaka/cordis-plugin-logger-console": ["./vendor/logger-console/src"],
+      "@karaka/authentication": ["./packages/authentication/src/index.ts"],
+      "@karaka/authentication/authentication-jwks": ["./packages/authentication/src/authentication-jwks.ts"],
+      "@karaka/authentication/authentication-host": ["./packages/authentication/src/authentication-host.ts"]
     }
   }
 }

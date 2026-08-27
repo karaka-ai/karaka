@@ -2,13 +2,15 @@
 
 English | [中文](README.zh.md)
 
-Karaka is a small, publishable Cordis foundation for applications whose infrastructure varies by deployment. It provides plugin composition, services, lifecycle effects, configuration loading, grouping, timers, hot reload, and console logging. It does not yet provide storage, identity, model, logging-vendor, secrets, session, agent, tool, or user-interface capabilities.
+Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what an application can do, ordinary Cordis plugins implement those seams, and YAML or programmatic configuration selects the running product.
 
-Applications should depend on conceptual services and install providers separately. A later storage consumer, for example, can depend on `ctx.storage` while an application chooses an S3, GCS, Azure Blob, or private implementation through configuration.
+Karaka-provided and user-authored plugins use the same service contracts, dependency tracking, lifecycle effects, and isolation. The first application seam is Authentication: `@karaka/authentication` owns the tenant router and provider-neutral contract. Its `authentication-jwks` plugin verifies tenant tokens, while `authentication-host` establishes an isolated identity asserted by a trusted embedding host—the simplest local-development path.
 
-## Foundation packages
+## Packages
 
-The repository publishes nine packages under `@karaka`: `cordis`, `cosmokit`, `schemastery`, and the `loader`, `include`, `group`, `timer`, `hmr`, and `logger-console` Cordis plugins. They are pinned forks with local changes documented in [vendor/README.md](vendor/README.md).
+The composition kernel publishes nine packages under `@karaka`: `cordis`, `cosmokit`, `schemastery`, and the `loader`, `include`, `group`, `timer`, `hmr`, and `logger-console` Cordis plugins. They are pinned forks with local changes documented in [vendor/README.md](vendor/README.md).
+
+Application packages live outside `vendor/`. The first is [`@karaka/authentication`](packages/authentication/README.md); its `authentication-jwks` and `authentication-host` subpaths are independently selectable from Loader configuration.
 
 ## Start
 
