@@ -22,4 +22,9 @@ export default defineConfig([
     workspace: ['packages/authentication'],
     entry: ['lib/types/index.js', 'lib/types/authentication-jwks.js', 'lib/types/authentication-host.js'],
   },
+  {
+    ...shared,
+    workspace: ['packages/agent-runtime'],
+    entry: ['lib/types/index.js', 'lib/types/agent.js', 'lib/types/model-echo.js'],
+  },
 ])

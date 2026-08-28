@@ -1,0 +1,48 @@
+{
+  "name": "@karaka/agent-runtime",
+  "description": "Composable agent runtime seam for Karaka",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
+    "directory": "packages/agent-runtime"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./agent": {
+      "types": "./lib/types/agent.d.ts",
+      "default": "./lib/agent.js"
+    },
+    "./model-echo": {
+      "types": "./lib/types/model-echo.d.ts",
+      "default": "./lib/model-echo.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@karaka/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@karaka/schemastery": "workspace:^"
+  }
+}

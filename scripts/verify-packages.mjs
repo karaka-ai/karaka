@@ -12,6 +12,7 @@ const expectedFoundation = new Set([
   '@karaka/cordis-plugin-logger-console',
 ])
 const expectedApplications = new Set([
+  '@karaka/agent-runtime',
   '@karaka/authentication',
 ])
 
