@@ -171,6 +171,14 @@ A **service** is a runtime-facing capability exposed through the Cordis context.
 
 A **tool** is an operation intentionally exposed to a model inside the Agent Runtime seam. A core Tool plugin will provide an internal service such as `ctx.tools`; it will own model-visible names, schemas, agent allowlists, semantic validation, and cleanup. Tool-host, manifest-bridge, discovery-provider, and tool-policy implementations are ordinary Cordis plugins in the Tool plugin family. Placement and transport belong to Execution, whose local, sandbox, Kubernetes, and remote implementations are Execution provider plugins because Execution also places work other than tool calls. Execution dispatches an already-resolved operation locally or to the application that owns it; it does not interpret model-visible schemas.
 
+### Tool package boundary
+
+The first-party Tool family will be published as the separately installable `@karaka/tool` package. It is an application-capability package above the nine-package kernel, not a new top-level seam.
+
+The package root exports the metadata-only `tool` decorator and shared TypeScript contracts, schemas, and metadata types. These exports are inert: importing `@karaka/tool` neither mounts behavior nor registers a tool. First-party runtime behavior is exposed through plugin subpaths of the same package. The target naming convention includes `@karaka/tool/core`, framework-specific `@karaka/tool/host-*`, `@karaka/tool/discovery-*`, `@karaka/tool/manifest-bridge`, and `@karaka/tool/policy-*`. Each behavioral subpath exports an ordinary Cordis plugin, and every registration it makes is owned by a reversible effect. The exact list grows with implementations, but first-party Tool behavior must not escape this plugin contract.
+
+Third-party and private Tool-family plugins may use their own package names. They integrate through the same public Tool contracts and Cordis lifecycle; they do not receive a separate registry or extension mechanism. Placement and transport providers remain in the Execution package family, such as `@karaka/execution/remote`, because they serve tools, subagents, sandbox work, and other executable workloads.
+
 | Property | Service | Tool |
 | --- | --- | --- |
 | Primary caller | Runtime and plugins | Agent or model |
@@ -461,6 +469,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 - Name services after capabilities, not vendors.
 - Keep service contracts independent of providers and consumers.
 - Keep models, sessions, tools, skills, agents, and subagents inside the Agent Runtime seam.
+- Publish the first-party Tool family as the separate `@karaka/tool` package: keep inert authoring contracts at its root and expose runtime behavior as Cordis plugin subpaths.
 - Let applications create chats and send messages without constructing identities, sessions, agents, or invocation contexts.
 - Treat a chat ID as an opaque locator and authenticate and authorize every chat operation.
 - Mount each agent YAML as an isolated composition root whose descriptor, child plugins, and contributions have one reversible Cordis lifecycle.
