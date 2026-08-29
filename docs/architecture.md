@@ -138,7 +138,9 @@ The current low-level transient Agent Runtime request names the overall entitlem
 
 `@karaka/storage` exposes one active provider for namespaced, versioned JSON records. Consumers read and create records or replace an expected version; the compare-and-swap rule prevents silent lost updates without making the contract depend on SQL, files, sessions, or another consumer. Provider plugins are effect-owned, while record keys and values remain ordinary runtime data.
 
-`@karaka/storage/local` is the first persistent provider and stores those records in a configured SQLite file. `@karaka/agent-runtime/session-storage` is an ordinary Agent Runtime consumer plugin: it persists the canonical tenant and user owner, agent ID, overall-entitlement account reference, and model-visible message history. It resolves `currentPrincipal()` for every durable operation and refuses a chat owned by another principal. A resumed turn resolves the stored agent ID against the current Cordis graph; no composition version is stored or pinned.
+`@karaka/storage/default` is an ordinary bundle plugin that mounts the contract and `@karaka/storage/local`, using `./.karaka/storage.sqlite` unless setup overrides the path. Remote SQLite-compatible services remain separate provider plugins because their transport, credentials, and lifecycle differ; provider placement is selected by plugin composition, not a local-or-remote mode inside one plugin.
+
+`@karaka/agent-runtime/session-storage` is an ordinary Agent Runtime consumer plugin: it persists the canonical tenant and user owner, agent ID, overall-entitlement account reference, and model-visible message history. It resolves `currentPrincipal()` for every durable operation and refuses a chat owned by another principal. A resumed turn resolves the stored agent ID against the current Cordis graph; no composition version is stored or pinned.
 
 ## Authentication and invocation identity
 
