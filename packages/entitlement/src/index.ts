@@ -27,6 +27,14 @@ export interface EntitlementProvider {
   recordSpend(account: string, spend: Readonly<SpendAmount>): Promise<EntitlementStatus>
 }
 
+/** One overall account bound to the provider that resolved it. */
+export interface EntitlementAccount {
+  readonly account: string
+  status(): Promise<EntitlementStatus>
+  assertAvailable(unit: string): Promise<EntitlementStatus>
+  recordSpend(spend: Readonly<SpendAmount>): Promise<EntitlementStatus>
+}
+
 /** Stable entitlement failures independent of storage implementations. */
 export type EntitlementErrorCode =
   | 'INVALID_REQUEST'
@@ -48,6 +56,9 @@ export class EntitlementError extends Error {
 interface RegisteredProvider {
   readonly name: string
   readonly implementation: EntitlementProvider
+  leases: number
+  active: boolean
+  resolveDrained?: () => void
 }
 
 /** Routes overall account checks and spend recording to the active provider plugin. */
@@ -61,59 +72,117 @@ export class EntitlementService extends Service {
   /** Register the provider until the contributing plugin unloads. */
   register(provider: EntitlementProvider) {
     const name = requireText(provider.name, 'provider name')
-    const registration = Object.freeze({ name, implementation: provider })
+    const registration: RegisteredProvider = {
+      name,
+      implementation: provider,
+      leases: 0,
+      active: true,
+    }
 
     return this.ctx.effect(() => {
       if (this.provider) throw new Error(`entitlement provider "${this.provider.name}" is already registered`)
       this.provider = registration
 
-      return () => {
+      return async () => {
         if (this.provider === registration) this.provider = undefined
+        registration.active = false
+        if (registration.leases) {
+          await new Promise<void>(resolve => {
+            registration.resolveDrained = resolve
+          })
+        }
       }
     }, `entitlement.register(${JSON.stringify(name)})`)
   }
 
   /** Read the current overall spend status for an account. */
-  async status(account: string): Promise<EntitlementStatus> {
-    const { accountId, provider } = this.resolve(account)
-    return validateStatus(await provider.status(accountId), accountId)
+  status(account: string): Promise<EntitlementStatus> {
+    return this.withAccount(account, lease => lease.status())
   }
 
   /** Reject an exhausted account or a balance in the wrong spend unit. */
-  async assertAvailable(account: string, unit: string): Promise<EntitlementStatus> {
-    const expectedUnit = requireRequestText(unit, 'spend unit')
-    const status = await this.status(account)
-    if (status.unit !== expectedUnit) {
-      throw new EntitlementError('UNIT_MISMATCH', `entitlement account "${status.account}" does not use "${expectedUnit}"`)
-    }
-    if (status.spent >= status.limit) {
-      throw new EntitlementError('EXHAUSTED', `entitlement account "${status.account}" is exhausted`)
-    }
-    return status
+  assertAvailable(account: string, unit: string): Promise<EntitlementStatus> {
+    return this.withAccount(account, lease => lease.assertAvailable(unit))
   }
 
   /** Add actual spend to an account's accumulated total. */
-  async recordSpend(account: string, spend: Readonly<SpendAmount>): Promise<EntitlementStatus> {
-    const { accountId, provider } = this.resolve(account)
-    const amount = validateSpend(spend)
-    const current = validateStatus(await provider.status(accountId), accountId)
-    if (current.unit !== amount.unit) {
-      throw new EntitlementError('UNIT_MISMATCH', `entitlement account "${accountId}" does not use "${amount.unit}"`)
-    }
-    const updated = validateStatus(await provider.recordSpend(accountId, amount), accountId)
-    if (updated.unit !== amount.unit || updated.spent < current.spent + amount.amount) {
-      throw new EntitlementError('INVALID_PROVIDER_RESPONSE', 'entitlement provider did not record spend')
-    }
-    return updated
+  recordSpend(account: string, spend: Readonly<SpendAmount>): Promise<EntitlementStatus> {
+    return this.withAccount(account, lease => lease.recordSpend(spend))
   }
 
-  private resolve(account: string) {
+  /** Run related operations against one provider capability, even while it unloads. */
+  async withAccount<T>(
+    account: string,
+    operation: (boundAccount: EntitlementAccount) => T | Promise<T>,
+  ): Promise<T> {
     const accountId = requireRequestText(account, 'entitlement account')
-    if (!this.provider) {
+    const registration = this.provider
+    if (!registration) {
       throw new EntitlementError('UNAVAILABLE', 'no entitlement provider is available')
     }
-    return { accountId, provider: this.provider.implementation }
+    registration.leases++
+
+    let released = false
+    const assertLeased = () => {
+      if (released) throw new EntitlementError('UNAVAILABLE', 'entitlement account is no longer active')
+    }
+    const boundAccount: EntitlementAccount = Object.freeze({
+      account: accountId,
+      status: async () => {
+        assertLeased()
+        return readStatus(registration.implementation, accountId)
+      },
+      assertAvailable: async (unit: string) => {
+        assertLeased()
+        return assertProviderAvailable(registration.implementation, accountId, unit)
+      },
+      recordSpend: async (spend: Readonly<SpendAmount>) => {
+        assertLeased()
+        return recordProviderSpend(registration.implementation, accountId, spend)
+      },
+    })
+
+    try {
+      return await operation(boundAccount)
+    } finally {
+      released = true
+      registration.leases--
+      if (!registration.active && !registration.leases) registration.resolveDrained?.()
+    }
   }
+}
+
+async function readStatus(provider: EntitlementProvider, account: string) {
+  return validateStatus(await provider.status(account), account)
+}
+
+async function assertProviderAvailable(provider: EntitlementProvider, account: string, unit: string) {
+  const expectedUnit = requireRequestText(unit, 'spend unit')
+  const status = await readStatus(provider, account)
+  if (status.unit !== expectedUnit) {
+    throw new EntitlementError('UNIT_MISMATCH', `entitlement account "${status.account}" does not use "${expectedUnit}"`)
+  }
+  if (status.spent >= status.limit) {
+    throw new EntitlementError('EXHAUSTED', `entitlement account "${status.account}" is exhausted`)
+  }
+  return status
+}
+
+async function recordProviderSpend(
+  provider: EntitlementProvider,
+  account: string,
+  spend: Readonly<SpendAmount>,
+) {
+  const amount = validateSpend(spend)
+  const current = await readStatus(provider, account)
+  if (current.unit !== amount.unit) {
+    throw new EntitlementError('UNIT_MISMATCH', `entitlement account "${account}" does not use "${amount.unit}"`)
+  }
+  const updated = validateStatus(await provider.recordSpend(account, amount), account)
+  if (updated.unit !== amount.unit || updated.spent < current.spent + amount.amount) {
+    throw new EntitlementError('INVALID_PROVIDER_RESPONSE', 'entitlement provider did not record spend')
+  }
+  return updated
 }
 
 function validateSpend(spend: Readonly<SpendAmount>): SpendAmount {

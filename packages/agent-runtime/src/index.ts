@@ -1,5 +1,5 @@
 import { Service, type Context } from '@karaka/cordis'
-import type { SpendAmount } from '@karaka/entitlement'
+import type { EntitlementAccount, SpendAmount } from '@karaka/entitlement'
 
 declare module '@karaka/cordis' {
   interface Context {
@@ -136,25 +136,29 @@ export class AgentRuntimeService extends Service {
     const entitlementAccount = model.spendUnit === undefined
       ? undefined
       : requireRequestText(request.entitlementAccount, 'entitlement account')
-    if (model.spendUnit !== undefined) {
-      await this.ctx.entitlement.assertAvailable(entitlementAccount!, model.spendUnit)
-    }
-
     const messages = Object.freeze([
       Object.freeze({ role: 'system' as const, content: agent.prompt }),
       Object.freeze({ role: 'user' as const, content: message }),
     ])
-    const response = await model.generate(Object.freeze({ agentId, messages }))
-    if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
-      throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
-    }
-    const spend = validateModelSpend(model, response.spend)
-    if (spend) await this.ctx.entitlement.recordSpend(entitlementAccount!, spend)
+    const generate = async (entitlement?: EntitlementAccount) => {
+      const response = await model.generate(Object.freeze({ agentId, messages }))
+      const spend = validateModelSpend(model, response?.spend)
+      if (spend) await entitlement!.recordSpend(spend)
+      if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
+        throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
+      }
 
-    return Object.freeze({
-      agentId,
-      model: agent.model,
-      message: Object.freeze({ role: response.message.role, content: response.message.content }),
+      return Object.freeze({
+        agentId,
+        model: agent.model,
+        message: Object.freeze({ role: response.message.role, content: response.message.content }),
+      })
+    }
+
+    if (model.spendUnit === undefined) return generate()
+    return this.ctx.entitlement.withAccount(entitlementAccount!, async (entitlement) => {
+      await entitlement.assertAvailable(model.spendUnit!)
+      return generate(entitlement)
     })
   }
 }

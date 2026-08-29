@@ -121,7 +121,7 @@ await ctx.loader.create({
 await ctx.loader.await()
 if (ctx.get('authentication')?.list()[0]?.name !== 'jwks') throw new Error('Loader did not compose the JWKS authentication subpath')
 if (ctx.get('identity')?.subject !== 'embedded-developer') throw new Error('Loader did not compose the host authentication subpath')
-if ((await ctx.entitlement.status('smoke')).limit !== 1000000n) throw new Error('Loader did not compose the memory entitlement subpath')
+if ((await ctx.entitlement.status('smoke')).limit !== 1000000n) throw new Error('Loader did not compose the local entitlement subpath')
 const result = await ctx.agentRuntime.run({ agentId: 'smoke-agent', message: 'Hello' })
 if (result.message.content !== 'Packed: Hello') throw new Error('Loader did not compose the Agent Runtime subpaths')
 await ctx.fiber.dispose()
