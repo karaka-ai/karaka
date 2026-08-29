@@ -4,7 +4,7 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication and an initial Agent Runtime registry/model slice exist today. The setup-YAML contract, agent plugin model, tool authoring and hosting APIs, Chat API, subagent coordination, and Execution seam described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, and an initial Agent Runtime registry/model slice exist today. The setup-YAML contract, agent plugin model, tool authoring and hosting APIs, Chat API, subagent coordination, and Execution seam described below are target architecture unless stated otherwise.
 
 ## Foundation boundary
 
@@ -46,6 +46,8 @@ The following illustrative partial setup fragment selects providers, discovers r
 plugins:
   - name: '@karaka/authentication'
   - name: '@karaka/authentication/authentication-jwks'
+  - name: '@karaka/entitlement'
+  - name: '@company/entitlement-ledger'
   - name: '@karaka/storage-postgres'
   - name: '@karaka/execution/remote'
   - name: '@karaka/tool/discovery-kubernetes'
@@ -114,13 +116,23 @@ Karaka has seven top-level application seams. A seam is an architectural boundar
 | --- | --- | --- |
 | Authentication | Authenticate requests and resolve users, tenants, services, and agents | Provider registry, JWKS verifier, trusted-host identity, user-authored providers and policy |
 | Authorization | Decide whether a principal may perform an action on a resource | Contract, policy engines, role or relationship providers, enforcement plugins |
-| Entitlement | Resolve plans, features, quotas, and usage allowances | Contract, billing adapters, quota providers, usage policy |
+| Entitlement | Track and enforce an account's overall accumulated model spend | Contract, in-memory development provider, durable ledger providers |
 | Storage | Store application data independently of a backend | Contract, PostgreSQL/S3/GCS providers, private storage providers, storage policy |
 | Execution | Run work without binding consumers to its location | Contract, local/sandbox/Kubernetes/remote providers, execution policy |
 | Observability | Record operational and audit information | Contract, OpenTelemetry/Datadog exporters, audit and usage plugins |
 | Agent Runtime | Run and coordinate model-driven work | Model adapters, sessions, tool registry and tools, skills, agent loop, agent registry, subagent registry and providers |
 
 Each deployment composes the plugins it needs within every seam. Karaka publishes useful defaults as ordinary first-party plugins, while an application can add or replace them through the same Cordis contracts. In particular, a standard agent bundle can compose the default loop, session coordination, tool-call handling, user interaction, delegation, child control, skill resolution, cancellation, and runtime events without hard-coding those behaviors into Agent Runtime. Ordinary backend methods use the tool decorator described below and do not require developers to author one plugin per method.
+
+## Overall-spend entitlement
+
+Entitlement has one narrow meaning in Karaka: whether an overall spend account may continue consuming metered models. `ctx.entitlement` exposes the provider-neutral account status and actual-spend recording contract. It does not understand application plans, subscriptions, features, model-call counts, or per-call budgets.
+
+Amounts are non-negative integers in an explicit unit such as `USD_MICRO` or `CREDIT`; floating-point currency is never used. Model provider plugins own model-specific pricing and report the actual spend of a completed generation. Agent Runtime checks that the selected overall account is not already exhausted before calling a metered model, then records the provider-reported spend. Image, audio, video, cached-token, and text pricing therefore remain model-provider concerns rather than conversions invented by Entitlement.
+
+The current low-level Agent Runtime request names the overall entitlement account but carries no amount or call budget. The future Chat boundary must derive that account from trusted identity and stored chat state rather than model-visible input. Because this first slice deliberately has no reservation, one completed call may take accumulated spend past its limit; later calls are rejected. Atomic reservation and settlement may be added later without changing the meaning of entitlement into a per-call agent policy.
+
+`@karaka/entitlement` supplies the service contract. One provider plugin is active in a Cordis graph, while arbitrary account IDs remain runtime data resolved by that provider. `@karaka/entitlement/entitlement-memory` is an ordinary, effect-owned provider for development and tests; its state is process-local and not a production ledger. Durable or billing-backed implementations remain replaceable provider plugins through the same contract.
 
 ## Authentication and invocation identity
 
@@ -256,7 +268,7 @@ Creating a chat coordinates the installed seams:
 chat.create()
     -> authenticate the current caller
     -> authorize chat creation
-    -> check entitlements
+    -> resolve the caller's overall entitlement account
     -> select an agent through the installed routing policy
     -> resolve Agent Runtime contributions
     -> create and persist session state and chat ownership
@@ -272,6 +284,7 @@ chat.send({ chatId, message })
     -> authorize that caller against canonical chat ownership
     -> restore the selected agent and session state
     -> resolve models, tools, skills and delegation policy
+    -> check overall spend before each metered model call and record actual spend afterward
     -> execute and persist the turn
     -> return the response
 ```

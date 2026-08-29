@@ -12,6 +12,7 @@
     { "path": "./vendor/hmr" },
     { "path": "./vendor/logger-console" },
     { "path": "./packages/authentication" },
+    { "path": "./packages/entitlement" },
     { "path": "./packages/agent-runtime" }
   ]
 }

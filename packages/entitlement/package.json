@@ -1,6 +1,6 @@
 {
-  "name": "@karaka/agent-runtime",
-  "description": "Composable agent runtime seam for Karaka",
+  "name": "@karaka/entitlement",
+  "description": "Overall spend entitlement seam for Karaka",
   "version": "0.1.0",
   "publishConfig": {
     "access": "public"
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/karaka-ai/karaka.git",
-    "directory": "packages/agent-runtime"
+    "directory": "packages/entitlement"
   },
   "sideEffects": false,
   "type": "module",
@@ -22,9 +22,9 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./model-echo": {
-      "types": "./lib/types/model-echo.d.ts",
-      "default": "./lib/model-echo.js"
+    "./entitlement-memory": {
+      "types": "./lib/types/entitlement-memory.d.ts",
+      "default": "./lib/entitlement-memory.js"
     },
     "./package.json": "./package.json"
   },
@@ -36,8 +36,7 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@karaka/cordis": "workspace:^",
-    "@karaka/entitlement": "workspace:^"
+    "@karaka/cordis": "workspace:^"
   },
   "dependencies": {
     "@karaka/schemastery": "workspace:^"

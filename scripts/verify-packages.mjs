@@ -14,6 +14,7 @@ const expectedFoundation = new Set([
 const expectedApplications = new Set([
   '@karaka/agent-runtime',
   '@karaka/authentication',
+  '@karaka/entitlement',
 ])
 
 verifyPackages('vendor/*/package.json', expectedFoundation, 'foundation')

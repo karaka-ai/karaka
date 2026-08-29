@@ -1,4 +1,5 @@
 import { Service, type Context } from '@karaka/cordis'
+import type { SpendAmount } from '@karaka/entitlement'
 
 declare module '@karaka/cordis' {
   interface Context {
@@ -28,13 +29,23 @@ export interface ModelRequest {
 /** Model implementation contributed by a provider plugin. */
 export interface ModelProvider {
   readonly id: string
-  generate(request: Readonly<ModelRequest>): Promise<ModelMessage>
+  /** Omit only when this provider never reports spend. */
+  readonly spendUnit?: string
+  generate(request: Readonly<ModelRequest>): Promise<ModelGeneration>
+}
+
+/** Provider-neutral model output and optional actual spend. */
+export interface ModelGeneration {
+  readonly message: ModelMessage
+  readonly spend?: SpendAmount
 }
 
 /** Input for the initial single-turn Agent Runtime slice. */
 export interface AgentRunRequest {
   readonly agentId: string
   readonly message: string
+  /** Overall entitlement account. Required only for metered models. */
+  readonly entitlementAccount?: string
 }
 
 /** Output from one single-turn agent run. */
@@ -62,6 +73,8 @@ export class AgentRuntimeError extends Error {
 
 /** Registry and single-turn coordinator for Agent Runtime contributions. */
 export class AgentRuntimeService extends Service {
+  static inject = ['entitlement']
+
   private readonly agents = new Map<string, AgentDescriptor>()
   private readonly models = new Map<string, ModelProvider>()
 
@@ -89,6 +102,7 @@ export class AgentRuntimeService extends Service {
   /** Register a model provider until the contributing plugin unloads. */
   registerModel(provider: ModelProvider) {
     const id = requireText(provider.id, 'model ID')
+    if (provider.spendUnit !== undefined) requireText(provider.spendUnit, 'model spend unit')
 
     return this.ctx.effect(() => {
       if (this.models.has(id)) throw new Error(`model "${id}" is already registered`)
@@ -119,21 +133,45 @@ export class AgentRuntimeService extends Service {
     const model = this.models.get(agent.model)
     if (!model) throw new AgentRuntimeError('UNKNOWN_MODEL', `model "${agent.model}" is not registered`)
 
+    const entitlementAccount = model.spendUnit === undefined
+      ? undefined
+      : requireRequestText(request.entitlementAccount, 'entitlement account')
+    if (model.spendUnit !== undefined) {
+      await this.ctx.entitlement.assertAvailable(entitlementAccount!, model.spendUnit)
+    }
+
     const messages = Object.freeze([
       Object.freeze({ role: 'system' as const, content: agent.prompt }),
       Object.freeze({ role: 'user' as const, content: message }),
     ])
     const response = await model.generate(Object.freeze({ agentId, messages }))
-    if (response?.role !== 'assistant' || typeof response.content !== 'string') {
+    if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
       throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
     }
+    const spend = validateModelSpend(model, response.spend)
+    if (spend) await this.ctx.entitlement.recordSpend(entitlementAccount!, spend)
 
     return Object.freeze({
       agentId,
       model: agent.model,
-      message: Object.freeze({ role: response.role, content: response.content }),
+      message: Object.freeze({ role: response.message.role, content: response.message.content }),
     })
   }
+}
+
+function validateModelSpend(model: ModelProvider, spend: SpendAmount | undefined): SpendAmount | undefined {
+  if (model.spendUnit === undefined) {
+    if (spend === undefined) return undefined
+    throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `unmetered model "${model.id}" reported spend`)
+  }
+  if (
+    spend?.unit !== model.spendUnit
+    || typeof spend.amount !== 'bigint'
+    || spend.amount < 0n
+  ) {
+    throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned invalid spend`)
+  }
+  return Object.freeze({ unit: spend.unit, amount: spend.amount })
 }
 
 function requireText(value: unknown, label: string): string {

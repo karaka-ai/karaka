@@ -1,6 +1,8 @@
 import AgentRuntime, { AgentRuntimeError } from '@karaka/agent-runtime'
 import EchoModel from '@karaka/agent-runtime/model-echo'
 import { Context, type Context as CordisContext } from '@karaka/cordis'
+import Entitlement from '@karaka/entitlement'
+import EntitlementMemory from '@karaka/entitlement/entitlement-memory'
 import Include from '@karaka/cordis-plugin-include'
 import Loader from '@karaka/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
@@ -36,6 +38,7 @@ describe('Agent Runtime', () => {
     const ctx = new Context()
 
     try {
+      await ctx.plugin(Entitlement)
       await ctx.plugin(AgentRuntime)
       const model = ctx.plugin(EchoModel, { id: 'test-model' })
       const agent = ctx.plugin(createAgentPlugin('test-agent', 'test-model'))
@@ -61,6 +64,7 @@ describe('Agent Runtime', () => {
     const ctx = new Context()
 
     try {
+      await ctx.plugin(Entitlement)
       await ctx.plugin(AgentRuntime)
       await expect(ctx.agentRuntime.run({ agentId: '', message: 'Hello' })).rejects.toEqual(
         expect.objectContaining<Partial<AgentRuntimeError>>({ code: 'INVALID_REQUEST' }),
@@ -74,7 +78,7 @@ describe('Agent Runtime', () => {
           pluginContext.agentRuntime.registerModel({
             id: 'broken-model',
             async generate() {
-              return { role: 'user', content: 'not an assistant response' }
+              return { message: { role: 'user', content: 'not an assistant response' } }
             },
           })
         },
@@ -82,6 +86,96 @@ describe('Agent Runtime', () => {
 
       await expect(ctx.agentRuntime.run({ agentId: 'broken-agent', message: 'Hello' }))
         .rejects.toMatchObject({ code: 'INVALID_MODEL_RESPONSE' })
+
+      await ctx.plugin(createAgentPlugin('hidden-spend-agent', 'hidden-spend-model'))
+      await ctx.plugin({
+        name: 'hidden-spend-model',
+        inject: ['agentRuntime'],
+        apply(pluginContext) {
+          pluginContext.agentRuntime.registerModel({
+            id: 'hidden-spend-model',
+            async generate() {
+              return {
+                message: { role: 'assistant', content: 'not really unmetered' },
+                spend: { unit: 'USD_MICRO', amount: 1n },
+              }
+            },
+          })
+        },
+      })
+
+      await expect(ctx.agentRuntime.run({ agentId: 'hidden-spend-agent', message: 'Hello' }))
+        .rejects.toMatchObject({ code: 'INVALID_MODEL_RESPONSE' })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('checks overall availability and records actual model spend without a per-call budget', async () => {
+    const ctx = new Context()
+    let calls = 0
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(EntitlementMemory, { accounts: { paid: '100' } })
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
+      await ctx.plugin({
+        name: 'paid-model',
+        inject: ['agentRuntime'],
+        apply(pluginContext) {
+          pluginContext.agentRuntime.registerModel({
+            id: 'paid-model',
+            spendUnit: 'USD_MICRO',
+            async generate() {
+              calls++
+              return {
+                message: { role: 'assistant', content: 'paid response' },
+                spend: { unit: 'USD_MICRO', amount: 60n },
+              }
+            },
+          })
+        },
+      })
+
+      const request = { agentId: 'paid-agent', message: 'Hello', entitlementAccount: 'paid' }
+      await expect(ctx.agentRuntime.run(request)).resolves.toMatchObject({ model: 'paid-model' })
+      await expect(ctx.agentRuntime.run(request)).resolves.toMatchObject({ model: 'paid-model' })
+      await expect(ctx.entitlement.status('paid')).resolves.toMatchObject({ limit: 100n, spent: 120n })
+      await expect(ctx.agentRuntime.run(request)).rejects.toMatchObject({ code: 'EXHAUSTED' })
+      expect(calls).toBe(2)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('requires an overall account for metered models', async () => {
+    const ctx = new Context()
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(EntitlementMemory, { accounts: { paid: '100' } })
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
+      await ctx.plugin({
+        name: 'paid-model',
+        inject: ['agentRuntime'],
+        apply(pluginContext) {
+          pluginContext.agentRuntime.registerModel({
+            id: 'paid-model',
+            spendUnit: 'USD_MICRO',
+            async generate() {
+              return {
+                message: { role: 'assistant', content: 'paid response' },
+                spend: { unit: 'USD_MICRO', amount: 1n },
+              }
+            },
+          })
+        },
+      })
+
+      await expect(ctx.agentRuntime.run({ agentId: 'paid-agent', message: 'Hello' }))
+        .rejects.toMatchObject({ code: 'INVALID_REQUEST' })
     } finally {
       await ctx.fiber.dispose()
     }

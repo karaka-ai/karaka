@@ -78,6 +78,9 @@ importers:
       '@karaka/cordis':
         specifier: workspace:^
         version: link:../../vendor/cordis
+      '@karaka/entitlement':
+        specifier: workspace:^
+        version: link:../entitlement
       '@karaka/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
@@ -93,6 +96,15 @@ importers:
       jose:
         specifier: ^6.2.5
         version: 6.2.10
+
+  packages/entitlement:
+    dependencies:
+      '@karaka/cordis':
+        specifier: workspace:^
+        version: link:../../vendor/cordis
+      '@karaka/schemastery':
+        specifier: link:../../vendor/schemastery
+        version: link:../../vendor/schemastery
 
   vendor/cordis:
     dependencies:
