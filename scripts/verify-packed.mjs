@@ -60,7 +60,7 @@ import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
 import Storage from '@karaka/storage'
-import StorageLocal from '@karaka/storage/local'
+import StorageDefault from '@karaka/storage/default'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
@@ -71,7 +71,7 @@ if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpa
 if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
 if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
-if (typeof StorageLocal.apply !== 'function') throw new Error('the local storage subpath did not export a plugin')
+if (typeof StorageDefault.apply !== 'function') throw new Error('the default storage subpath did not export a plugin')
 if (typeof SessionStorage.apply !== 'function') throw new Error('the storage session subpath did not export a plugin')
 
 const ctx = new Context()
@@ -109,8 +109,7 @@ writeFileSync('authentication.yml', [
   "- name: '@karaka/entitlement/local'",
   '  config:',
   "    defaultLimit: '1000000'",
-  "- name: '@karaka/storage'",
-  "- name: '@karaka/storage/local'",
+  "- name: '@karaka/storage/default'",
   '  config:',
   "    path: './smoke.sqlite'",
   "- name: '@karaka/agent-runtime'",

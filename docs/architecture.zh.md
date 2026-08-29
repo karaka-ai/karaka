@@ -138,7 +138,9 @@ Karaka 有七个顶层应用接缝。接缝是由多个 Cordis 插件组成的�
 
 `@karaka/storage` 为带命名空间和版本的 JSON 记录暴露一个活动提供方。消费方可以读取和创建记录，或只在符合预期版本时替换记录；该比较并交换规则可防止更新被静默覆盖，而不会让契约依赖 SQL、文件、会话或其他消费方。提供方插件由 effect 所有，记录键和值则仍是普通运行时数据。
 
-`@karaka/storage/local` 是第一个持久提供方，将这些记录存入已配置的 SQLite 文件。`@karaka/agent-runtime/session-storage` 是普通的智能体运行时消费方插件：它持久化权威租户与用户所有者、智能体 ID、总权益账户引用和模型可见的消息历史。它会为每个持久操作解析 `currentPrincipal()`，并拒绝属于其他主体的聊天。恢复某一轮时，它会针对当前 Cordis 图解析已存储的智能体 ID；不会存储或固定组合版本。
+`@karaka/storage/default` 是一个普通 bundle 插件，它会挂载契约和 `@karaka/storage/local`；除非设置覆盖路径，否则使用 `./.karaka/storage.sqlite`。远程 SQLite 兼容服务仍应是独立的提供方插件，因为它们的传输、凭据和生命周期不同；提供方位置由插件组合选择，而不是在一个插件内通过本地或远程模式选择。
+
+`@karaka/agent-runtime/session-storage` 是普通的智能体运行时消费方插件：它持久化权威租户与用户所有者、智能体 ID、总权益账户引用和模型可见的消息历史。它会为每个持久操作解析 `currentPrincipal()`，并拒绝属于其他主体的聊天。恢复某一轮时，它会针对当前 Cordis 图解析已存储的智能体 ID；不会存储或固定组合版本。
 
 ## 认证与调用身份
 
