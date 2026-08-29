@@ -1,7 +1,11 @@
 import { createServer, type Server } from 'node:http'
 import { AddressInfo } from 'node:net'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { AuthenticationError, AuthenticationService, type AuthenticationProvider } from '@karaka/authentication'
-import AuthenticationHost from '@karaka/authentication/authentication-host'
+import AuthenticationHost, {
+  authenticationHost,
+  type HostPrincipal,
+} from '@karaka/authentication/authentication-host'
 import AuthenticationJwks, {
   JwksAuthenticationProvider,
   type JwksAlgorithm,
@@ -50,64 +54,123 @@ afterAll(async () => {
 })
 
 describe('Authentication seam', () => {
-  it('scopes trusted host identities to independent embedded callers', async () => {
-    const root = new Context()
-    const acme = root.isolate('identity')
-    const beta = root.isolate('identity')
+  it('resolves one static trusted host principal from YAML-compatible config', async () => {
+    const ctx = new Context()
 
-    const acmeHost = acme.plugin(AuthenticationHost, {
+    await ctx.plugin(AuthenticationService)
+    const host = ctx.plugin(AuthenticationHost, {
       tenantId: 'acme',
       subject: 'user-acme',
       claims: { role: 'developer' },
     })
-    const betaHost = beta.plugin(AuthenticationHost, {
-      tenantId: 'beta',
-      subject: 'user-beta',
-    })
-    await Promise.all([acmeHost, betaHost])
+    await host
 
-    expect(root.get('identity')).toBeUndefined()
-    expect(acme.identity).toEqual({
+    await expect(ctx.authentication.currentPrincipal()).resolves.toEqual({
       tenantId: 'acme',
       subject: 'user-acme',
       provider: 'host',
       claims: { role: 'developer' },
     })
-    expect(beta.identity).toEqual({
-      tenantId: 'beta',
-      subject: 'user-beta',
-      provider: 'host',
-      claims: {},
-    })
 
-    const observed: string[] = []
-    const consumer = acme.plugin({
-      name: 'identity-consumer',
-      inject: ['identity'],
-      apply(ctx) {
-        observed.push(`${ctx.identity.tenantId}:${ctx.identity.subject}`)
-      },
-    })
-    await consumer
-    expect(observed).toEqual(['acme:user-acme'])
+    await host.dispose()
+    await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
+    await ctx.fiber.dispose()
+  })
 
-    await acmeHost.dispose()
-    expect(acme.get('identity')).toBeUndefined()
-    expect(beta.identity.subject).toBe('user-beta')
+  it('uses one mounted resolver for concurrent request-local principals', async () => {
+    const ctx = new Context()
+    const principals = new AsyncLocalStorage<HostPrincipal>()
 
-    await root.fiber.dispose()
+    try {
+      await ctx.plugin(AuthenticationService)
+      await ctx.plugin(authenticationHost({
+        async currentPrincipal() {
+          await Promise.resolve()
+          return principals.getStore()
+        },
+      }))
+
+      const [acme, beta] = await Promise.all([
+        principals.run(
+          { tenantId: 'acme', subject: 'user-acme', claims: { role: 'developer' } },
+          () => ctx.authentication.currentPrincipal(),
+        ),
+        principals.run(
+          { tenantId: 'beta', subject: 'user-beta' },
+          () => ctx.authentication.currentPrincipal(),
+        ),
+      ])
+
+      expect(acme).toMatchObject({ tenantId: 'acme', subject: 'user-acme', provider: 'host' })
+      expect(beta).toMatchObject({ tenantId: 'beta', subject: 'user-beta', provider: 'host' })
+      await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('rejects empty trusted host identity fields', async () => {
-    const ctx = new Context().isolate('identity')
+    const ctx = new Context()
+    await ctx.plugin(AuthenticationService)
     const host = ctx.plugin(AuthenticationHost, {
       tenantId: ' ',
       subject: 'developer',
     })
 
     await expect(host).rejects.toThrow('tenant ID must be a non-empty string')
-    expect(ctx.get('identity')).toBeUndefined()
-    await ctx.root.fiber.dispose()
+    await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
+    await ctx.fiber.dispose()
+  })
+
+  it('drains an in-flight resolver while replacement serves new invocations', async () => {
+    const ctx = new Context()
+    const started = deferred<void>()
+    const finish = deferred<void>()
+
+    try {
+      await ctx.plugin(AuthenticationService)
+      const original = ctx.plugin(authenticationHost({
+        async currentPrincipal() {
+          started.resolve()
+          await finish.promise
+          return { tenantId: 'original', subject: 'user-original' }
+        },
+      }))
+      await original
+
+      const current = ctx.authentication.currentPrincipal()
+      await started.promise
+      let disposed = false
+      const disposal = original.dispose().then(() => {
+        disposed = true
+      })
+
+      await expect.poll(async () => {
+        try {
+          await ctx.authentication.currentPrincipal()
+          return 'AVAILABLE'
+        } catch (error) {
+          return (error as { code?: string }).code
+        }
+      }).toBe('NO_CURRENT_PRINCIPAL')
+      expect(disposed).toBe(false)
+
+      await ctx.plugin(authenticationHost({
+        currentPrincipal: () => ({ tenantId: 'replacement', subject: 'user-replacement' }),
+      }))
+      await expect(ctx.authentication.currentPrincipal()).resolves.toMatchObject({
+        tenantId: 'replacement',
+        subject: 'user-replacement',
+      })
+
+      finish.resolve()
+      await expect(current).resolves.toMatchObject({ tenantId: 'original', subject: 'user-original' })
+      await disposal
+      expect(disposed).toBe(true)
+    } finally {
+      finish.resolve()
+      await ctx.fiber.dispose()
+    }
   })
 
   it('owns custom provider registrations through the contributing Cordis plugin', async () => {
@@ -250,4 +313,12 @@ function signToken(subject: string, organization: string, options: SignTokenOpti
     .setIssuedAt()
   if (options.expires !== false) token.setExpirationTime('5m')
   return token.sign(privateKey)
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(complete => {
+    resolve = complete
+  })
+  return { promise, resolve }
 }

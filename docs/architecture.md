@@ -145,7 +145,7 @@ Karaka ships two ordinary plugins for the first trust models:
 | `@karaka/authentication/authentication-jwks` | Karaka receives a bearer token and verifies it against preconfigured tenant JWKS policy | Returns a verified provider-neutral identity through `ctx.authentication.authenticate(...)` |
 | `@karaka/authentication/authentication-host` | The embedding host has already authenticated the caller and exposes its current principal through a trusted adapter | Resolves a provider-neutral identity with `provider: 'host'` |
 
-The current `authentication-host` implementation still establishes `ctx.identity` in a Cordis scope. It must be refactored to the invocation resolver described here before it can back the multi-user Chat API; the existing scoped-service pattern is not the target application abstraction.
+The `authentication-host` plugin registers the once-mounted invocation resolver described here. It does not establish a caller-specific Cordis service or require one plugin instance per request.
 
 The host plugin is the common shared-process and local-development path. A single-identity development deployment may select a trusted static assertion from YAML:
 
@@ -161,9 +161,9 @@ The host plugin is the common shared-process and local-development path. A singl
 This configuration is trusted input. It must never be generated from model output or copied directly from request parameters. As an explicit embedded or custom-integration escape hatch, a multi-user host may programmatically install one adapter that reads the host framework's request-local principal:
 
 ```ts
-const authentication = authenticationHost({
+await ctx.plugin(authenticationHost({
   currentPrincipal: () => hostAuthentication.currentPrincipal(),
-})
+}))
 ```
 
 The adapter is mounted once as an ordinary Cordis plugin. This is not a normal third configuration surface. Its callback is illustrative: an integration can use framework request state, asynchronous local storage, or another host mechanism, but it must not use one mutable global principal. Concurrent callers in that process share the Karaka runtime and plugin graph while the host adapter resolves a different principal for each invocation.
