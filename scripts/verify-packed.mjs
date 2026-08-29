@@ -51,15 +51,20 @@ import Loader from '@karaka/cordis-plugin-loader'
 import LoggerConsole from '@karaka/cordis-plugin-logger-console'
 import Timer from '@karaka/cordis-plugin-timer'
 import Schema from '@karaka/schemastery'
+import AgentRuntime from '@karaka/agent-runtime'
+import AgentDefinition from '@karaka/agent-runtime/agent'
+import EchoModel from '@karaka/agent-runtime/model-echo'
 import Authentication from '@karaka/authentication'
 import AuthenticationHost from '@karaka/authentication/authentication-host'
 import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Schema, Authentication]
+const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Schema, AgentRuntime, Authentication]
 if (exports.some(value => typeof value !== 'function')) throw new Error('a package entry point did not export its public constructor or plugin')
 if (Object.keys(CosmoKit).length === 0) throw new Error('CosmoKit exported no utilities')
+if (typeof AgentDefinition.apply !== 'function') throw new Error('the agent definition subpath did not export a plugin')
+if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpath did not export a plugin')
 if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
 
@@ -80,6 +85,16 @@ writeFileSync('authentication.yml', [
   '  config:',
   '    tenantId: smoke',
   '    subject: embedded-developer',
+  "- name: '@karaka/agent-runtime'",
+  "- name: '@karaka/agent-runtime/model-echo'",
+  '  config:',
+  '    id: smoke-model',
+  "    prefix: 'Packed: '",
+  "- name: '@karaka/agent-runtime/agent'",
+  '  config:',
+  '    id: smoke-agent',
+  '    prompt: Packed smoke agent.',
+  '    model: smoke-model',
   '',
 ].join('\\n'))
 await ctx.plugin(Loader)
@@ -91,6 +106,8 @@ await ctx.loader.create({
 await ctx.loader.await()
 if (ctx.get('authentication')?.list()[0]?.name !== 'jwks') throw new Error('Loader did not compose the JWKS authentication subpath')
 if (ctx.get('identity')?.subject !== 'embedded-developer') throw new Error('Loader did not compose the host authentication subpath')
+const result = await ctx.agentRuntime.run({ agentId: 'smoke-agent', message: 'Hello' })
+if (result.message.content !== 'Packed: Hello') throw new Error('Loader did not compose the Agent Runtime subpaths')
 await ctx.fiber.dispose()
 `)
   writeFileSync(resolve(consumer, 'smoke.cts'), `

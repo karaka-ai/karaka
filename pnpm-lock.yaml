@@ -73,6 +73,15 @@ importers:
         specifier: workspace:^
         version: link:../../vendor/loader
 
+  packages/agent-runtime:
+    dependencies:
+      '@karaka/cordis':
+        specifier: workspace:^
+        version: link:../../vendor/cordis
+      '@karaka/schemastery':
+        specifier: link:../../vendor/schemastery
+        version: link:../../vendor/schemastery
+
   packages/authentication:
     dependencies:
       '@karaka/cordis':

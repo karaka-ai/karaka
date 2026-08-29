@@ -1,0 +1,13 @@
+- id: runtime
+  name: '@karaka/agent-runtime'
+- id: echo
+  name: '@karaka/agent-runtime/model-echo'
+  config:
+    id: support-model
+    prefix: 'Received: '
+- id: support
+  name: '@karaka/agent-runtime/agent'
+  config:
+    id: support
+    prompt: You are a helpful support agent.
+    model: support-model
