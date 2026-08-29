@@ -53,21 +53,26 @@ import Timer from '@karaka/cordis-plugin-timer'
 import Schema from '@karaka/schemastery'
 import AgentRuntime from '@karaka/agent-runtime'
 import EchoModel from '@karaka/agent-runtime/model-echo'
+import SessionStorage from '@karaka/agent-runtime/session-storage'
 import Authentication from '@karaka/authentication'
 import AuthenticationHost from '@karaka/authentication/authentication-host'
 import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
+import Storage from '@karaka/storage'
+import StorageLocal from '@karaka/storage/local'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Schema, AgentRuntime, Authentication, Entitlement]
+const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Schema, AgentRuntime, Authentication, Entitlement, Storage]
 if (exports.some(value => typeof value !== 'function')) throw new Error('a package entry point did not export its public constructor or plugin')
 if (Object.keys(CosmoKit).length === 0) throw new Error('CosmoKit exported no utilities')
 if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpath did not export a plugin')
 if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
 if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
+if (typeof StorageLocal.apply !== 'function') throw new Error('the local storage subpath did not export a plugin')
+if (typeof SessionStorage.apply !== 'function') throw new Error('the storage session subpath did not export a plugin')
 
 const ctx = new Context()
 await ctx.plugin(Timer)
@@ -104,7 +109,12 @@ writeFileSync('authentication.yml', [
   "- name: '@karaka/entitlement/local'",
   '  config:',
   "    defaultLimit: '1000000'",
+  "- name: '@karaka/storage'",
+  "- name: '@karaka/storage/local'",
+  '  config:',
+  "    path: './smoke.sqlite'",
   "- name: '@karaka/agent-runtime'",
+  "- name: '@karaka/agent-runtime/session-storage'",
   "- name: '@karaka/agent-runtime/model-echo'",
   '  config:',
   '    id: smoke-model',

@@ -1,6 +1,6 @@
 {
-  "name": "@karaka/agent-runtime",
-  "description": "Composable agent runtime seam for Karaka",
+  "name": "@karaka/storage",
+  "description": "Provider-neutral durable storage seam for Karaka",
   "version": "0.1.0",
   "publishConfig": {
     "access": "public"
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/karaka-ai/karaka.git",
-    "directory": "packages/agent-runtime"
+    "directory": "packages/storage"
   },
   "sideEffects": false,
   "type": "module",
@@ -22,13 +22,9 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./model-echo": {
-      "types": "./lib/types/model-echo.d.ts",
-      "default": "./lib/model-echo.js"
-    },
-    "./session-storage": {
-      "types": "./lib/types/session-storage.d.ts",
-      "default": "./lib/session-storage.js"
+    "./local": {
+      "types": "./lib/types/local.d.ts",
+      "default": "./lib/local.js"
     },
     "./package.json": "./package.json"
   },
@@ -40,10 +36,7 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@karaka/authentication": "workspace:^",
-    "@karaka/cordis": "workspace:^",
-    "@karaka/entitlement": "workspace:^",
-    "@karaka/storage": "workspace:^"
+    "@karaka/cordis": "workspace:^"
   },
   "dependencies": {
     "@karaka/schemastery": "workspace:^"

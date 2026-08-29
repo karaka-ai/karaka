@@ -48,6 +48,21 @@ export interface AgentRunRequest {
   readonly entitlementAccount?: string
 }
 
+/** Start a durable chat through the installed session plugin. */
+export interface AgentChatStartRequest {
+  readonly agentId: string
+  readonly message: string
+  readonly persist: true
+}
+
+/** Resume a durable chat without accepting caller-selected runtime state. */
+export interface AgentChatResumeRequest {
+  readonly chatId: string
+  readonly message: string
+}
+
+export type AgentRuntimeRequest = AgentRunRequest | AgentChatStartRequest | AgentChatResumeRequest
+
 /** Output from one single-turn agent run. */
 export interface AgentRunResult {
   readonly agentId: string
@@ -55,11 +70,56 @@ export interface AgentRunResult {
   readonly message: ModelMessage
 }
 
+/** One durable chat turn and its opaque locator. */
+export interface AgentChatRunResult extends AgentRunResult {
+  readonly chatId: string
+}
+
+/** Canonical identity stored as chat ownership data. */
+export interface AgentSessionOwner {
+  readonly tenantId: string
+  readonly subject: string
+}
+
+/** Durable state restored by an Agent Runtime session plugin. */
+export interface AgentSession {
+  readonly id: string
+  readonly owner: AgentSessionOwner
+  readonly agentId: string
+  readonly entitlementAccount: string
+  readonly messages: readonly ModelMessage[]
+  readonly version: number
+}
+
+/** Select a new or existing durable session without exposing mutable state. */
+export type AgentSessionOpenRequest =
+  | { readonly agentId: string }
+  | { readonly chatId: string }
+
+/** One session capability bound for the complete durable turn. */
+export interface AgentSessionLease {
+  readonly session: AgentSession
+  commit(messages: readonly ModelMessage[]): Promise<AgentSession>
+}
+
+/** Session behavior contributed by an ordinary Agent Runtime plugin. */
+export interface AgentSessionProvider {
+  readonly name: string
+  withSession<T>(
+    request: Readonly<AgentSessionOpenRequest>,
+    operation: (session: AgentSessionLease) => T | Promise<T>,
+  ): Promise<T>
+}
+
 /** Stable Agent Runtime failures independent of model implementations. */
 export type AgentRuntimeErrorCode =
   | 'INVALID_REQUEST'
   | 'UNKNOWN_AGENT'
   | 'UNKNOWN_MODEL'
+  | 'SESSION_UNAVAILABLE'
+  | 'CHAT_NOT_FOUND'
+  | 'SESSION_CONFLICT'
+  | 'INVALID_SESSION'
   | 'INVALID_MODEL_RESPONSE'
 
 /** Provider-neutral Agent Runtime failure. */
@@ -77,6 +137,7 @@ export class AgentRuntimeService extends Service {
 
   private readonly agents = new Map<string, AgentDescriptor>()
   private readonly models = new Map<string, ModelProvider>()
+  private sessionProvider: RegisteredSessionProvider | undefined
 
   constructor(ctx: Context) {
     super(ctx, 'agentRuntime')
@@ -113,6 +174,34 @@ export class AgentRuntimeService extends Service {
     }, `agentRuntime.registerModel(${JSON.stringify(id)})`)
   }
 
+  /** Register session behavior until the contributing plugin unloads. */
+  registerSessionProvider(provider: AgentSessionProvider) {
+    const name = requireText(provider.name, 'session provider name')
+    const registration: RegisteredSessionProvider = {
+      name,
+      implementation: provider,
+      operations: 0,
+      active: true,
+    }
+
+    return this.ctx.effect(() => {
+      if (this.sessionProvider) {
+        throw new Error(`agent session provider "${this.sessionProvider.name}" is already registered`)
+      }
+      this.sessionProvider = registration
+
+      return async () => {
+        if (this.sessionProvider === registration) this.sessionProvider = undefined
+        registration.active = false
+        if (registration.operations) {
+          await new Promise<void>(resolve => {
+            registration.resolveDrained = resolve
+          })
+        }
+      }
+    }, `agentRuntime.registerSessionProvider(${JSON.stringify(name)})`)
+  }
+
   /** List active agent descriptors without exposing mutable registry state. */
   listAgents(): readonly AgentDescriptor[] {
     return [...this.agents.values()]
@@ -123,21 +212,81 @@ export class AgentRuntimeService extends Service {
     return [...this.models.keys()]
   }
 
-  /** Resolve an agent and its model provider, then execute one text turn. */
-  async run(request: Readonly<AgentRunRequest>): Promise<AgentRunResult> {
+  /** Resolve the current agent graph and execute one transient or durable text turn. */
+  run(request: Readonly<AgentRunRequest>): Promise<AgentRunResult>
+  run(request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>): Promise<AgentChatRunResult>
+  run(request: Readonly<AgentRuntimeRequest>): Promise<AgentRunResult | AgentChatRunResult>
+  async run(request: Readonly<AgentRuntimeRequest>): Promise<AgentRunResult | AgentChatRunResult> {
+    if (isResumeRequest(request)) return this.resumeChat(request)
+    if (isPersistedStartRequest(request)) return this.startChat(request)
+    return this.runTransient(request)
+  }
+
+  private async runTransient(request: Readonly<AgentRunRequest>): Promise<AgentRunResult> {
     const agentId = requireRequestText(request?.agentId, 'agent ID')
     const message = requireRequestText(request?.message, 'message')
-    const agent = this.agents.get(agentId)
-    if (!agent) throw new AgentRuntimeError('UNKNOWN_AGENT', `agent "${agentId}" is not registered`)
+    return (await this.generateTurn(agentId, message, request.entitlementAccount, [])).result
+  }
 
+  private async startChat(request: Readonly<AgentChatStartRequest>): Promise<AgentChatRunResult> {
+    const agentId = requireRequestText(request.agentId, 'agent ID')
+    const message = requireRequestText(request.message, 'message')
+    this.resolveAgent(agentId)
+
+    return this.withSessionProvider(async provider => {
+      return provider.withSession({ agentId }, async lease => {
+        const session = validateSession(lease.session, { agentId, messages: [] })
+        return this.runSessionTurn(lease, session, message)
+      })
+    })
+  }
+
+  private async resumeChat(request: Readonly<AgentChatResumeRequest>): Promise<AgentChatRunResult> {
+    const chatId = requireRequestText(request.chatId, 'chat ID')
+    const message = requireRequestText(request.message, 'message')
+
+    return this.withSessionProvider(async provider => {
+      return provider.withSession({ chatId }, async lease => {
+        const session = validateSession(lease.session, { id: chatId })
+        return this.runSessionTurn(lease, session, message)
+      })
+    })
+  }
+
+  private async runSessionTurn(
+    lease: AgentSessionLease,
+    session: AgentSession,
+    message: string,
+  ): Promise<AgentChatRunResult> {
+    const turn = await this.generateTurn(session.agentId, message, session.entitlementAccount, session.messages)
+    const saved = await lease.commit(turn.messages)
+    validateSession(saved, {
+      id: session.id,
+      owner: session.owner,
+      agentId: session.agentId,
+      entitlementAccount: session.entitlementAccount,
+      messages: turn.messages,
+      version: session.version + 1,
+    })
+    return Object.freeze({ chatId: session.id, ...turn.result })
+  }
+
+  private async generateTurn(
+    agentId: string,
+    message: string,
+    requestedEntitlementAccount: string | undefined,
+    history: readonly ModelMessage[],
+  ) {
+    const agent = this.resolveAgent(agentId)
     const model = this.models.get(agent.model)
     if (!model) throw new AgentRuntimeError('UNKNOWN_MODEL', `model "${agent.model}" is not registered`)
 
     const entitlementAccount = model.spendUnit === undefined
       ? undefined
-      : requireRequestText(request.entitlementAccount, 'entitlement account')
-    const messages = Object.freeze([
+      : requireRequestText(requestedEntitlementAccount, 'entitlement account')
+    const messages: readonly ModelMessage[] = Object.freeze([
       Object.freeze({ role: 'system' as const, content: agent.prompt }),
+      ...conversationMessages(history),
       Object.freeze({ role: 'user' as const, content: message }),
     ])
     const generate = async (entitlement?: EntitlementAccount) => {
@@ -148,10 +297,10 @@ export class AgentRuntimeService extends Service {
         throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
       }
 
+      const assistant = Object.freeze({ role: response.message.role, content: response.message.content })
       return Object.freeze({
-        agentId,
-        model: agent.model,
-        message: Object.freeze({ role: response.message.role, content: response.message.content }),
+        result: Object.freeze({ agentId, model: agent.model, message: assistant }),
+        messages: Object.freeze([...messages, assistant]),
       })
     }
 
@@ -161,6 +310,120 @@ export class AgentRuntimeService extends Service {
       return generate(entitlement)
     })
   }
+
+  private resolveAgent(agentId: string) {
+    const agent = this.agents.get(agentId)
+    if (!agent) throw new AgentRuntimeError('UNKNOWN_AGENT', `agent "${agentId}" is not registered`)
+    return agent
+  }
+
+  private async withSessionProvider<T>(operation: (provider: AgentSessionProvider) => Promise<T>): Promise<T> {
+    const registration = this.sessionProvider
+    if (!registration) {
+      throw new AgentRuntimeError('SESSION_UNAVAILABLE', 'no agent session provider is available')
+    }
+    registration.operations++
+    try {
+      return await operation(registration.implementation)
+    } finally {
+      registration.operations--
+      if (!registration.active && !registration.operations) registration.resolveDrained?.()
+    }
+  }
+}
+
+interface RegisteredSessionProvider {
+  readonly name: string
+  readonly implementation: AgentSessionProvider
+  operations: number
+  active: boolean
+  resolveDrained?: () => void
+}
+
+interface ExpectedSession {
+  readonly id?: string
+  readonly owner?: AgentSessionOwner
+  readonly agentId?: string
+  readonly entitlementAccount?: string
+  readonly messages?: readonly ModelMessage[]
+  readonly version?: number
+}
+
+function isResumeRequest(request: Readonly<AgentRuntimeRequest>): request is AgentChatResumeRequest {
+  if (!request || typeof request !== 'object' || !Object.hasOwn(request, 'chatId')) return false
+  const supplied = request as AgentChatResumeRequest & Partial<AgentChatStartRequest & AgentRunRequest>
+  if (supplied.agentId !== undefined || supplied.entitlementAccount !== undefined || supplied.persist !== undefined) {
+    throw new AgentRuntimeError('INVALID_REQUEST', 'a resumed chat accepts only chat ID and message')
+  }
+  return true
+}
+
+function isPersistedStartRequest(
+  request: Readonly<AgentRuntimeRequest>,
+): request is AgentChatStartRequest {
+  if (!request || typeof request !== 'object' || !Object.hasOwn(request, 'persist')) return false
+  const supplied = request as AgentChatStartRequest & Partial<AgentRunRequest & AgentChatResumeRequest>
+  if (supplied.persist !== true || supplied.chatId !== undefined || supplied.entitlementAccount !== undefined) {
+    throw new AgentRuntimeError('INVALID_REQUEST', 'a new persisted chat accepts only agent ID and message')
+  }
+  return true
+}
+
+function validateSession(session: AgentSession, expected: ExpectedSession): AgentSession {
+  try {
+    const id = requireText(session?.id, 'chat ID')
+    const owner = Object.freeze({
+      tenantId: requireText(session?.owner?.tenantId, 'session tenant ID'),
+      subject: requireText(session?.owner?.subject, 'session subject'),
+    })
+    const agentId = requireText(session?.agentId, 'session agent ID')
+    const entitlementAccount = requireText(session?.entitlementAccount, 'session entitlement account')
+    if (!Number.isSafeInteger(session?.version) || session.version < 1) {
+      throw new TypeError('session version must be a positive safe integer')
+    }
+    if (!Array.isArray(session?.messages)) throw new TypeError('session messages must be an array')
+    const messages = Object.freeze(session.messages.map((message, index) => {
+      if (
+        !message
+        || !['system', 'user', 'assistant'].includes(message.role)
+        || typeof message.content !== 'string'
+        || (message.role === 'system' && index !== 0)
+      ) {
+        throw new TypeError('session contains an invalid model message')
+      }
+      return Object.freeze({ role: message.role, content: message.content })
+    }))
+    if (
+      (expected.id !== undefined && id !== expected.id)
+      || (expected.owner !== undefined && !sameOwner(owner, expected.owner))
+      || (expected.agentId !== undefined && agentId !== expected.agentId)
+      || (expected.entitlementAccount !== undefined && entitlementAccount !== expected.entitlementAccount)
+      || (expected.messages !== undefined && !sameMessages(messages, expected.messages))
+      || (expected.version !== undefined && session.version !== expected.version)
+    ) {
+      throw new TypeError('session provider changed stable session state')
+    }
+    return Object.freeze({ id, owner, agentId, entitlementAccount, messages, version: session.version })
+  } catch (error) {
+    if (error instanceof AgentRuntimeError) throw error
+    throw new AgentRuntimeError('INVALID_SESSION', 'agent session provider returned invalid state', { cause: error })
+  }
+}
+
+function conversationMessages(history: readonly ModelMessage[]): readonly ModelMessage[] {
+  if (!history.length) return []
+  return history[0]?.role === 'system' ? history.slice(1) : history
+}
+
+function sameOwner(left: AgentSessionOwner, right: AgentSessionOwner) {
+  return left.tenantId === right.tenantId && left.subject === right.subject
+}
+
+function sameMessages(left: readonly ModelMessage[], right: readonly ModelMessage[]) {
+  return left.length === right.length && left.every((message, index) => {
+    const expected = right[index]
+    return message.role === expected?.role && message.content === expected.content
+  })
 }
 
 function validateModelSpend(model: ModelProvider, spend: SpendAmount | undefined): SpendAmount | undefined {
