@@ -1,4 +1,4 @@
-import type { Context } from '@karaka/cordis'
+import type { Context, Plugin } from '@karaka/cordis'
 import Schema from '@karaka/schemastery'
 import type { AuthenticatedIdentity } from './index.ts'
 
@@ -9,31 +9,70 @@ export interface Config {
   claims?: Record<string, unknown>
 }
 
+/** Principal supplied by trusted request-local host state. */
+export interface HostPrincipal {
+  readonly tenantId: string
+  readonly subject: string
+  readonly claims?: Readonly<Record<string, unknown>>
+}
+
+/** Programmatic adapter for a shared-process embedding host. */
+export interface HostAuthenticationOptions {
+  currentPrincipal(): HostPrincipal | null | undefined | Promise<HostPrincipal | null | undefined>
+}
+
 export const Config: Schema<Config> = Schema.object({
   tenantId: Schema.string().required(),
   subject: Schema.string().required(),
   claims: Schema.dict(Schema.any()).default({}),
 })
 
-/**
- * Establish an identity already authenticated by the embedding host.
- *
- * Mount this plugin below an isolated `identity` context whenever more than
- * one caller may be active in the same process.
- */
+/** Resolve one static, trusted identity for local development. */
 export const plugin = {
   name: 'authentication-host',
-  provide: 'identity',
+  inject: ['authentication'],
   Config,
   apply(ctx: Context, config: Config) {
-    const identity: AuthenticatedIdentity = Object.freeze({
-      tenantId: requireText(config.tenantId, 'tenant ID'),
-      subject: requireText(config.subject, 'subject'),
-      provider: 'host',
-      claims: Object.freeze({ ...config.claims }),
-    })
-    ctx.provide('identity', identity)
+    const principal = createIdentity(config)
+    registerHostResolver(ctx, () => principal)
   },
+}
+
+/** Create a once-mounted plugin backed by the host's request-local state. */
+export function authenticationHost(options: HostAuthenticationOptions): Plugin.Object<void> {
+  if (typeof options?.currentPrincipal !== 'function') {
+    throw new TypeError('currentPrincipal must be a function')
+  }
+  return {
+    name: 'authentication-host',
+    inject: ['authentication'],
+    apply(ctx: Context) {
+      registerHostResolver(ctx, async () => {
+        const principal = await options.currentPrincipal()
+        return principal == null ? undefined : createIdentity(principal)
+      })
+    },
+  }
+}
+
+function registerHostResolver(
+  ctx: Context,
+  currentPrincipal: () => AuthenticatedIdentity | undefined | Promise<AuthenticatedIdentity | undefined>,
+) {
+  ctx.authentication.registerCurrentPrincipal({ name: 'host', currentPrincipal })
+}
+
+function createIdentity(principal: HostPrincipal): AuthenticatedIdentity {
+  const claims = principal.claims ?? {}
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) {
+    throw new TypeError('claims must be an object')
+  }
+  return Object.freeze({
+    tenantId: requireText(principal.tenantId, 'tenant ID'),
+    subject: requireText(principal.subject, 'subject'),
+    provider: 'host',
+    claims: Object.freeze({ ...claims }),
+  })
 }
 
 function requireText(value: unknown, label: string): string {

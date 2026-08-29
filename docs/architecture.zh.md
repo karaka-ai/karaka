@@ -145,7 +145,7 @@ Karaka 为最初的两种信任模型提供普通插件：
 | `@karaka/authentication/authentication-jwks` | Karaka 接收 bearer token，并根据预先配置的租户 JWKS 策略进行验证 | 通过 `ctx.authentication.authenticate(...)` 返回已验证且提供方无关的身份 |
 | `@karaka/authentication/authentication-host` | 嵌入宿主已完成调用方认证，并通过可信适配器暴露当前主体 | 解析提供方无关、且 `provider` 为 `'host'` 的身份 |
 
-当前 `authentication-host` 实现仍会在 Cordis 作用域中建立 `ctx.identity`。它必须重构为这里描述的调用解析器，才能支持多用户聊天 API；现有的作用域服务模式不是目标应用抽象。
+`authentication-host` 插件会注册这里描述的单次挂载调用解析器。它不会建立调用方专属的 Cordis 服务，也不要求为每个请求创建一个插件实例。
 
 host 插件是共享进程和本地开发的常见路径。单一身份的开发部署可以通过 YAML 选择可信的静态断言：
 
@@ -161,9 +161,9 @@ host 插件是共享进程和本地开发的常见路径。单一身份的开发
 这些配置属于可信输入，绝不能由模型输出生成，也不能直接复制请求参数。作为明确的嵌入式或自定义集成逃生舱口，多用户宿主可以编程式安装一个适配器，由它读取宿主框架的请求局部主体：
 
 ```ts
-const authentication = authenticationHost({
+await ctx.plugin(authenticationHost({
   currentPrincipal: () => hostAuthentication.currentPrincipal(),
-})
+}))
 ```
 
 该适配器作为普通 Cordis 插件挂载一次。这不是第三种普通配置界面。示例中的回调只是概念说明：集成可以使用框架请求状态、异步局部存储或其他宿主机制，但不能使用单个可变的全局主体。同一进程内的并发调用方共享 Karaka 运行时和插件图，而宿主适配器为每次调用解析不同主体。

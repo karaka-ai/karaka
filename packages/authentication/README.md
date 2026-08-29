@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-`@karaka/authentication` is Karaka's Authentication seam. The package root provides the provider-neutral `ctx.authentication` service, tenant router, and identity contract. Two built-in plugin subpaths establish identities in different trust models:
+`@karaka/authentication` is Karaka's Authentication seam. The package root provides the provider-neutral `ctx.authentication` service, tenant router, current-principal resolver, and identity contract. Two built-in plugin subpaths establish identities in different trust models:
 
 - `@karaka/authentication/authentication-jwks` verifies bearer tokens through configured tenant JWKS endpoints.
 - `@karaka/authentication/authentication-host` accepts an identity assertion from a trusted embedding application.
@@ -14,6 +14,7 @@ Authentication establishes an identity. It does not make authorization, entitlem
 The host plugin is the shortest path for local development and embedded applications whose host has already authenticated the caller:
 
 ```yaml
+- name: '@karaka/authentication'
 - name: '@karaka/authentication/authentication-host'
   config:
     tenantId: local
@@ -22,24 +23,19 @@ The host plugin is the shortest path for local development and embedded applicat
       role: developer
 ```
 
-This provides `ctx.identity` with `provider: 'host'`. The configuration is a trust assertion, not evidence that Karaka verifies. Only trusted deployment configuration or trusted host code may supply it; never populate it directly from model output, request parameters, or other untrusted input.
+This makes `await ctx.authentication.currentPrincipal()` return the configured identity with `provider: 'host'`. The configuration is a trust assertion, not evidence that Karaka verifies. Only trusted deployment configuration or trusted host code may supply it; never populate it directly from model output, request parameters, or other untrusted input.
 
-The static YAML form is intended for a single local identity. A shared-process host must isolate `identity` for every request, session, or job and mount the host plugin inside that context:
+The static YAML form is intended for a single local identity. A shared-process host instead mounts one adapter that reads its request-local state:
 
 ```ts
-import AuthenticationHost from '@karaka/authentication/authentication-host'
+import { authenticationHost } from '@karaka/authentication/authentication-host'
 
-const caller = ctx.isolate('identity')
-await caller.plugin(AuthenticationHost, {
-  tenantId: hostPrincipal.tenantId,
-  subject: hostPrincipal.subject,
-  claims: hostPrincipal.claims,
-})
-
-await caller.plugin(applicationWorkflows)
+await ctx.plugin(authenticationHost({
+  currentPrincipal: () => hostAuthentication.currentPrincipal(),
+}))
 ```
 
-The root context receives no caller identity. Disposing the isolated host plugin removes that identity and stops consumers that inject it, without changing another caller's identity scope.
+The callback may use asynchronous local storage or an equivalent framework mechanism and returns `null` or `undefined` when no invocation is active. It must never read one mutable global principal. Concurrent callers share the same Cordis graph while `currentPrincipal()` resolves each caller independently. Disposing the adapter rejects new lookups and waits for lookups already in flight.
 
 ## Verify tokens from YAML
 

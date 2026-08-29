@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-`@karaka/authentication` 是 Karaka 的认证接缝。包根路径提供与提供方无关的 `ctx.authentication` 服务、租户路由器和身份契约。两个内置插件子路径通过不同的信任模型建立身份：
+`@karaka/authentication` 是 Karaka 的认证接缝。包根路径提供与提供方无关的 `ctx.authentication` 服务、租户路由器、当前主体解析器和身份契约。两个内置插件子路径通过不同的信任模型建立身份：
 
 - `@karaka/authentication/authentication-jwks` 通过已配置的租户 JWKS 端点验证 bearer token。
 - `@karaka/authentication/authentication-host` 接受可信嵌入应用给出的身份断言。
@@ -14,6 +14,7 @@
 对于本地开发，以及宿主已经完成调用方认证的嵌入式应用，host 插件是最短路径：
 
 ```yaml
+- name: '@karaka/authentication'
 - name: '@karaka/authentication/authentication-host'
   config:
     tenantId: local
@@ -22,24 +23,19 @@
       role: developer
 ```
 
-该插件会提供 `ctx.identity`，并将 `provider` 固定为 `'host'`。这些配置是信任断言，不是 Karaka 自行验证的证据。它只能来自可信部署配置或可信宿主代码；绝不能直接取自模型输出、请求参数或其他不可信输入。
+此时，`await ctx.authentication.currentPrincipal()` 会返回配置的身份，并将 `provider` 固定为 `'host'`。这些配置是信任断言，不是 Karaka 自行验证的证据。它只能来自可信部署配置或可信宿主代码；绝不能直接取自模型输出、请求参数或其他不可信输入。
 
-静态 YAML 形式适用于单一本地身份。共享进程的宿主必须为每个请求、会话或任务隔离 `identity`，并在该上下文内挂载 host 插件：
+静态 YAML 形式适用于单一本地身份。共享进程的宿主则挂载一个读取请求局部状态的适配器：
 
 ```ts
-import AuthenticationHost from '@karaka/authentication/authentication-host'
+import { authenticationHost } from '@karaka/authentication/authentication-host'
 
-const caller = ctx.isolate('identity')
-await caller.plugin(AuthenticationHost, {
-  tenantId: hostPrincipal.tenantId,
-  subject: hostPrincipal.subject,
-  claims: hostPrincipal.claims,
-})
-
-await caller.plugin(applicationWorkflows)
+await ctx.plugin(authenticationHost({
+  currentPrincipal: () => hostAuthentication.currentPrincipal(),
+}))
 ```
 
-根上下文不会获得调用方身份。释放隔离的 host 插件会删除该身份，并停止注入它的消费者，同时不影响其他调用方的身份作用域。
+该回调可以使用异步局部存储或框架提供的同等机制；没有活动调用时返回 `null` 或 `undefined`。它绝不能读取一个可变的全局主体。并发调用方共享同一张 Cordis 图，而 `currentPrincipal()` 会分别解析各自的主体。释放适配器会拒绝新的解析，并等待已经开始的解析完成。
 
 ## 通过 YAML 验证令牌
 

@@ -3,7 +3,6 @@ import { Service, type Context } from '@karaka/cordis'
 declare module '@karaka/cordis' {
   interface Context {
     authentication: AuthenticationService
-    identity: AuthenticatedIdentity
   }
 }
 
@@ -28,10 +27,17 @@ export interface AuthenticationProvider {
   authenticate(request: Readonly<AuthenticationRequest>): Promise<AuthenticatedIdentity>
 }
 
+/** Once-mounted resolver for the principal active in the current invocation. */
+export interface CurrentPrincipalResolver {
+  readonly name: string
+  currentPrincipal(): AuthenticatedIdentity | null | undefined | Promise<AuthenticatedIdentity | null | undefined>
+}
+
 /** Stable authentication failures consumers may handle without provider coupling. */
 export type AuthenticationErrorCode =
   | 'INVALID_REQUEST'
   | 'UNKNOWN_TENANT'
+  | 'NO_CURRENT_PRINCIPAL'
   | 'INVALID_TOKEN'
   | 'INVALID_IDENTITY'
 
@@ -58,6 +64,14 @@ interface RegisteredProvider extends AuthenticationProviderDescriptor {
   implementation: AuthenticationProvider
 }
 
+interface RegisteredPrincipalResolver {
+  readonly name: string
+  readonly implementation: CurrentPrincipalResolver
+  calls: number
+  active: boolean
+  resolveDrained?: () => void
+}
+
 /**
  * Authentication service and tenant router.
  *
@@ -67,6 +81,7 @@ interface RegisteredProvider extends AuthenticationProviderDescriptor {
 export class AuthenticationService extends Service {
   private readonly providers = new Map<string, RegisteredProvider>()
   private readonly tenantProviders = new Map<string, RegisteredProvider>()
+  private principalResolver: RegisteredPrincipalResolver | undefined
 
   constructor(ctx: Context) {
     super(ctx, 'authentication')
@@ -106,6 +121,59 @@ export class AuthenticationService extends Service {
     }, `authentication.register(${JSON.stringify(name)})`)
   }
 
+  /** Register the current-principal resolver until its plugin unloads. */
+  registerCurrentPrincipal(resolver: CurrentPrincipalResolver) {
+    const name = requireText(resolver.name, 'principal resolver name')
+    if (typeof resolver.currentPrincipal !== 'function') {
+      throw new TypeError('currentPrincipal must be a function')
+    }
+    const registration: RegisteredPrincipalResolver = {
+      name,
+      implementation: resolver,
+      calls: 0,
+      active: true,
+    }
+
+    return this.ctx.effect(() => {
+      if (this.principalResolver) {
+        throw new Error(`current principal resolver "${this.principalResolver.name}" is already registered`)
+      }
+      this.principalResolver = registration
+
+      return async () => {
+        if (this.principalResolver === registration) this.principalResolver = undefined
+        registration.active = false
+        if (registration.calls) {
+          await new Promise<void>(resolve => {
+            registration.resolveDrained = resolve
+          })
+        }
+      }
+    }, `authentication.registerCurrentPrincipal(${JSON.stringify(name)})`)
+  }
+
+  /** Resolve the principal attached to the caller's current invocation. */
+  async currentPrincipal(): Promise<AuthenticatedIdentity> {
+    const registration = this.principalResolver
+    if (!registration) throw noCurrentPrincipal()
+    registration.calls++
+
+    try {
+      let identity: AuthenticatedIdentity | null | undefined
+      try {
+        identity = await registration.implementation.currentPrincipal()
+      } catch (error) {
+        if (error instanceof AuthenticationError) throw error
+        throw new AuthenticationError('INVALID_IDENTITY', 'authentication failed', { cause: error })
+      }
+      if (identity == null) throw noCurrentPrincipal()
+      return normalizeIdentity(identity, registration.name)
+    } finally {
+      registration.calls--
+      if (!registration.active && !registration.calls) registration.resolveDrained?.()
+    }
+  }
+
   /** Authenticate a token through the provider registered for its tenant. */
   async authenticate(request: Readonly<AuthenticationRequest>) {
     const tenantId = requireText(request?.tenantId, 'tenant ID', 'INVALID_REQUEST')
@@ -123,17 +191,7 @@ export class AuthenticationService extends Service {
       throw new AuthenticationError('INVALID_TOKEN', 'authentication failed', { cause: error })
     }
 
-    if (
-      identity.tenantId !== tenantId
-      || !identity.subject
-      || identity.provider !== registration.name
-      || !identity.claims
-      || typeof identity.claims !== 'object'
-      || Array.isArray(identity.claims)
-    ) {
-      throw new AuthenticationError('INVALID_IDENTITY', 'authentication provider returned an invalid identity')
-    }
-    return identity
+    return normalizeIdentity(identity, registration.name, tenantId)
   }
 
   /** List active providers without exposing their implementations. */
@@ -143,6 +201,38 @@ export class AuthenticationService extends Service {
       tenantIds: registration.tenantIds,
     }))
   }
+}
+
+function normalizeIdentity(
+  identity: AuthenticatedIdentity,
+  provider: string,
+  tenantId?: string,
+): AuthenticatedIdentity {
+  if (
+    !identity
+    || typeof identity !== 'object'
+    || (tenantId !== undefined && identity.tenantId !== tenantId)
+    || typeof identity.tenantId !== 'string'
+    || !identity.tenantId.trim()
+    || typeof identity.subject !== 'string'
+    || !identity.subject.trim()
+    || identity.provider !== provider
+    || !identity.claims
+    || typeof identity.claims !== 'object'
+    || Array.isArray(identity.claims)
+  ) {
+    throw new AuthenticationError('INVALID_IDENTITY', 'authentication provider returned an invalid identity')
+  }
+  return Object.freeze({
+    tenantId: identity.tenantId,
+    subject: identity.subject,
+    provider: identity.provider,
+    claims: Object.freeze({ ...identity.claims }),
+  })
+}
+
+function noCurrentPrincipal() {
+  return new AuthenticationError('NO_CURRENT_PRINCIPAL', 'authentication failed')
 }
 
 function requireText(value: unknown, label: string, code?: AuthenticationErrorCode): string {
