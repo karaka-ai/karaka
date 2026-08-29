@@ -25,6 +25,6 @@ export default defineConfig([
   {
     ...shared,
     workspace: ['packages/agent-runtime'],
-    entry: ['lib/types/index.js', 'lib/types/agent.js', 'lib/types/model-echo.js'],
+    entry: ['lib/types/index.js', 'lib/types/model-echo.js'],
   },
 ])

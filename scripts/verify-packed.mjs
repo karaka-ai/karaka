@@ -52,7 +52,6 @@ import LoggerConsole from '@karaka/cordis-plugin-logger-console'
 import Timer from '@karaka/cordis-plugin-timer'
 import Schema from '@karaka/schemastery'
 import AgentRuntime from '@karaka/agent-runtime'
-import AgentDefinition from '@karaka/agent-runtime/agent'
 import EchoModel from '@karaka/agent-runtime/model-echo'
 import Authentication from '@karaka/authentication'
 import AuthenticationHost from '@karaka/authentication/authentication-host'
@@ -63,7 +62,6 @@ import { pathToFileURL } from 'node:url'
 const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Schema, AgentRuntime, Authentication]
 if (exports.some(value => typeof value !== 'function')) throw new Error('a package entry point did not export its public constructor or plugin')
 if (Object.keys(CosmoKit).length === 0) throw new Error('CosmoKit exported no utilities')
-if (typeof AgentDefinition.apply !== 'function') throw new Error('the agent definition subpath did not export a plugin')
 if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpath did not export a plugin')
 if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
@@ -71,6 +69,20 @@ if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS au
 const ctx = new Context()
 await ctx.plugin(Timer)
 ctx.baseUrl = pathToFileURL(process.cwd() + '/').href
+writeFileSync('smoke-agent.mjs', [
+  'export default {',
+  "  name: 'smoke-agent',",
+  "  inject: ['agentRuntime'],",
+  '  apply(ctx) {',
+  '    ctx.agentRuntime.registerAgent({',
+  "      id: 'smoke-agent',",
+  "      prompt: 'Packed smoke agent.',",
+  "      model: 'smoke-model',",
+  '    })',
+  '  },',
+  '}',
+  '',
+].join('\\n'))
 writeFileSync('authentication.yml', [
   "- name: '@karaka/authentication'",
   "- name: '@karaka/authentication/authentication-jwks'",
@@ -90,11 +102,7 @@ writeFileSync('authentication.yml', [
   '  config:',
   '    id: smoke-model',
   "    prefix: 'Packed: '",
-  "- name: '@karaka/agent-runtime/agent'",
-  '  config:',
-  '    id: smoke-agent',
-  '    prompt: Packed smoke agent.',
-  '    model: smoke-model',
+  "- name: './smoke-agent.mjs'",
   '',
 ].join('\\n'))
 await ctx.plugin(Loader)

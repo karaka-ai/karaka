@@ -22,10 +22,6 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./agent": {
-      "types": "./lib/types/agent.d.ts",
-      "default": "./lib/agent.js"
-    },
     "./model-echo": {
       "types": "./lib/types/model-echo.d.ts",
       "default": "./lib/model-echo.js"
