@@ -1,13 +1,12 @@
 import AgentRuntime, { AgentRuntimeError } from '@karaka/agent-runtime'
-import AgentDefinition from '@karaka/agent-runtime/agent'
 import EchoModel from '@karaka/agent-runtime/model-echo'
-import { Context } from '@karaka/cordis'
+import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Include from '@karaka/cordis-plugin-include'
 import Loader from '@karaka/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
 
 describe('Agent Runtime', () => {
-  it('composes a single-turn runtime from YAML', async () => {
+  it('loads an agent plugin from setup YAML and runs one turn', async () => {
     const ctx = new Context()
     ctx.baseUrl = new URL('./fixtures/', import.meta.url).href
 
@@ -39,11 +38,7 @@ describe('Agent Runtime', () => {
     try {
       await ctx.plugin(AgentRuntime)
       const model = ctx.plugin(EchoModel, { id: 'test-model' })
-      const agent = ctx.plugin(AgentDefinition, {
-        id: 'test-agent',
-        prompt: 'Test prompt',
-        model: 'test-model',
-      })
+      const agent = ctx.plugin(createAgentPlugin('test-agent', 'test-model'))
       await Promise.all([model, agent])
 
       expect(ctx.agentRuntime.listAgents()).toEqual([
@@ -71,11 +66,7 @@ describe('Agent Runtime', () => {
         expect.objectContaining<Partial<AgentRuntimeError>>({ code: 'INVALID_REQUEST' }),
       )
 
-      await ctx.plugin(AgentDefinition, {
-        id: 'broken-agent',
-        prompt: 'Test prompt',
-        model: 'broken-model',
-      })
+      await ctx.plugin(createAgentPlugin('broken-agent', 'broken-model'))
       await ctx.plugin({
         name: 'broken-model',
         inject: ['agentRuntime'],
@@ -96,3 +87,13 @@ describe('Agent Runtime', () => {
     }
   })
 })
+
+function createAgentPlugin(id: string, model: string) {
+  return {
+    name: `${id}-agent`,
+    inject: ['agentRuntime'],
+    apply(ctx: CordisContext) {
+      ctx.agentRuntime.registerAgent({ id, prompt: 'Test prompt', model })
+    },
+  }
+}

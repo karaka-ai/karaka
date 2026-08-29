@@ -35,7 +35,6 @@
       "@karaka/authentication/authentication-jwks": ["./packages/authentication/src/authentication-jwks.ts"],
       "@karaka/authentication/authentication-host": ["./packages/authentication/src/authentication-host.ts"],
       "@karaka/agent-runtime": ["./packages/agent-runtime/src/index.ts"],
-      "@karaka/agent-runtime/agent": ["./packages/agent-runtime/src/agent.ts"],
       "@karaka/agent-runtime/model-echo": ["./packages/agent-runtime/src/model-echo.ts"]
     }
   }

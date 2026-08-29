@@ -6,8 +6,8 @@ declare module '@karaka/cordis' {
   }
 }
 
-/** Declarative recipe contributed for one available agent. */
-export interface AgentDefinition {
+/** Minimal descriptor contributed by an agent plugin. */
+export interface AgentDescriptor {
   readonly id: string
   readonly prompt: string
   readonly model: string
@@ -62,15 +62,15 @@ export class AgentRuntimeError extends Error {
 
 /** Registry and single-turn coordinator for Agent Runtime contributions. */
 export class AgentRuntimeService extends Service {
-  private readonly agents = new Map<string, AgentDefinition>()
+  private readonly agents = new Map<string, AgentDescriptor>()
   private readonly models = new Map<string, ModelProvider>()
 
   constructor(ctx: Context) {
     super(ctx, 'agentRuntime')
   }
 
-  /** Register an agent definition until the contributing plugin unloads. */
-  registerAgent(definition: Readonly<AgentDefinition>) {
+  /** Register an agent descriptor until the contributing plugin unloads. */
+  registerAgent(definition: Readonly<AgentDescriptor>) {
     const agent = Object.freeze({
       id: requireText(definition.id, 'agent ID'),
       prompt: requireText(definition.prompt, 'agent prompt'),
@@ -99,8 +99,8 @@ export class AgentRuntimeService extends Service {
     }, `agentRuntime.registerModel(${JSON.stringify(id)})`)
   }
 
-  /** List active agent definitions without exposing mutable registry state. */
-  listAgents(): readonly AgentDefinition[] {
+  /** List active agent descriptors without exposing mutable registry state. */
+  listAgents(): readonly AgentDescriptor[] {
     return [...this.agents.values()]
   }
 
