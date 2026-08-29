@@ -4,7 +4,7 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, and an initial Agent Runtime registry/model slice exist today. The setup-YAML contract, agent plugin model, tool authoring and hosting APIs, Chat API, subagent coordination, and Execution seam described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, and an initial Agent Runtime with durable sessions exist today. The setup-YAML contract, agent plugin model, tool authoring and hosting APIs, Chat API, subagent coordination, and Execution seam described below are target architecture unless stated otherwise.
 
 ## Foundation boundary
 
@@ -117,7 +117,7 @@ Karaka has seven top-level application seams. A seam is an architectural boundar
 | Authentication | Authenticate requests and resolve users, tenants, services, and agents | Provider registry, JWKS verifier, trusted-host identity, user-authored providers and policy |
 | Authorization | Decide whether a principal may perform an action on a resource | Contract, policy engines, role or relationship providers, enforcement plugins |
 | Entitlement | Track and enforce an account's overall accumulated model spend | Contract, in-memory development provider, durable ledger providers |
-| Storage | Store application data independently of a backend | Contract, PostgreSQL/S3/GCS providers, private storage providers, storage policy |
+| Storage | Store application data independently of a backend | Contract, local SQLite provider, PostgreSQL/S3/GCS providers, private storage providers, storage policy |
 | Execution | Run work without binding consumers to its location | Contract, local/sandbox/Kubernetes/remote providers, execution policy |
 | Observability | Record operational and audit information | Contract, OpenTelemetry/Datadog exporters, audit and usage plugins |
 | Agent Runtime | Run and coordinate model-driven work | Model adapters, sessions, tool registry and tools, skills, agent loop, agent registry, subagent registry and providers |
@@ -130,9 +130,15 @@ Entitlement has one narrow meaning in Karaka: whether an overall spend account m
 
 Amounts are non-negative integers in an explicit unit such as `USD_MICRO` or `CREDIT`; floating-point currency is never used. Model provider plugins own model-specific pricing and report the actual spend of a completed generation. Agent Runtime checks that the selected overall account is not already exhausted before calling a metered model, then records the provider-reported spend. Image, audio, video, cached-token, and text pricing therefore remain model-provider concerns rather than conversions invented by Entitlement.
 
-The current low-level Agent Runtime request names the overall entitlement account but carries no amount or call budget. The future Chat boundary must derive that account from trusted identity and stored chat state rather than model-visible input. Because this first slice deliberately has no reservation, one completed call may take accumulated spend past its limit; later calls are rejected. Atomic reservation and settlement may be added later without changing the meaning of entitlement into a per-call agent policy.
+The current low-level transient Agent Runtime request names the overall entitlement account but carries no amount or call budget. Durable sessions derive that account from trusted identity and stored chat state rather than model-visible input. Because this first slice deliberately has no reservation, one completed call may take accumulated spend past its limit; later calls are rejected. Atomic reservation and settlement may be added later without changing the meaning of entitlement into a per-call agent policy.
 
 `@karaka/entitlement` supplies the service contract. One provider plugin is active in a Cordis graph, while arbitrary account IDs remain runtime data resolved by that provider. `@karaka/entitlement/local` is an ordinary, effect-owned provider for development and tests; it lazily creates accounts with one configured default limit. Its state is process-local and not a production ledger. Durable or billing-backed implementations remain replaceable provider plugins through the same contract.
+
+## Durable storage
+
+`@karaka/storage` exposes one active provider for namespaced, versioned JSON records. Consumers read and create records or replace an expected version; the compare-and-swap rule prevents silent lost updates without making the contract depend on SQL, files, sessions, or another consumer. Provider plugins are effect-owned, while record keys and values remain ordinary runtime data.
+
+`@karaka/storage/local` is the first persistent provider and stores those records in a configured SQLite file. `@karaka/agent-runtime/session-storage` is an ordinary Agent Runtime consumer plugin: it persists the canonical tenant and user owner, agent ID, overall-entitlement account reference, and model-visible message history. It resolves `currentPrincipal()` for every durable operation and refuses a chat owned by another principal. A resumed turn resolves the stored agent ID against the current Cordis graph; no composition version is stored or pinned.
 
 ## Authentication and invocation identity
 
@@ -313,11 +319,11 @@ Agent plugins, extensions, routers, tool semantics, model policies, session poli
 
 Plugins define behavior and capabilities. A principal, chat, message, model response, or tool invocation is runtime data flowing through those plugins, not another plugin. This distinction preserves Cordis composition without misusing service isolation for per-request state.
 
-### Composition generations and durable chat state
+### Plugin changes and durable chat state
 
-A standing agent plugin composition is process-local executable state; a chat is durable application state. Chat storage must record the agent ID, composition generation or content hash, messages, model requests and responses, tool calls and results, turn boundaries, and every plugin-owned fact needed to reconstruct behavior. Essential plugin state cannot live only in an in-memory map. External effects require stable invocation IDs so recovery does not duplicate work.
+A standing agent plugin composition is process-local executable state; a chat is durable application state. Chat storage records the agent ID, messages, model requests and responses, tool calls and results, turn boundaries, and every plugin-owned fact needed to continue the chat. It does not pin a composition generation or content hash. Essential runtime state cannot live only in an in-memory map, and external effects require stable invocation IDs so recovery does not duplicate work.
 
-When an agent plugin or one of its installed dependencies changes, Karaka validates and mounts a new composition generation before routing new work to it. Existing live chats may remain pinned to their active generation until a safe boundary. After a process restart, no old Cordis fiber remains: resuming a chat creates a fresh live scope against the currently deployed compatible generation, loads its durable log, and lets the mounted plugins rebuild their projections before publication. If the recorded generation differs, Karaka records an explicit composition transition and requires the new plugins to understand or migrate the stored event versions. Exact historical execution is a different policy and requires retaining the historical deployment artifact; Cordis cannot reconstruct code that is no longer deployed.
+On every turn, including after a process restart, Agent Runtime resolves the stored agent ID against the current Cordis graph and loads the durable chat state into that behavior. Replacing or reloading an agent plugin therefore changes subsequent turns while preserving the conversation. Stored data and event formats still need explicit versions and migrations when their schemas change. Exact historical execution is a separate deployment policy that requires retaining an old executable artifact; a chat record cannot preserve code that is no longer deployed.
 
 An agent is a runtime participant with its own conversation state, tools, skills, and authority. A subagent is not simply a direct child object exposed to the parent model. The target Agent Runtime delegation path has three layers:
 
@@ -463,7 +469,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 - Let each agent plugin own its descriptor, child plugins, and contributions through one reversible Cordis lifecycle.
 - Ship useful default agent behavior as replaceable first-party plugins and an inspectable standard bundle that is itself a plugin mounting child plugins; do not hard-code replaceable policy in the agent loop.
 - Treat subagent references as delegation rather than implicit definition, prompt, tool, session, or authority inheritance.
-- Persist every chat and plugin-owned fact required for reconstruction; resume under a new compatible composition generation only through explicit version handling or migration.
+- Persist every chat and plugin-owned fact needed to continue it, but resolve behavior from the current Cordis plugin graph rather than pinning a stored composition version.
 - Keep principals, chats, messages, responses, and invocations as runtime data rather than Cordis plugins or services.
 - Expose model actions through narrow tools; do not expose whole services implicitly.
 - Let methods on backend-managed application services become tools through `@tool`, without per-method YAML or authored plugins.

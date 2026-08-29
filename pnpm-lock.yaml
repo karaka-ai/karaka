@@ -75,6 +75,9 @@ importers:
 
   packages/agent-runtime:
     dependencies:
+      '@karaka/authentication':
+        specifier: workspace:^
+        version: link:../authentication
       '@karaka/cordis':
         specifier: workspace:^
         version: link:../../vendor/cordis
@@ -84,6 +87,9 @@ importers:
       '@karaka/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
+      '@karaka/storage':
+        specifier: workspace:^
+        version: link:../storage
 
   packages/authentication:
     dependencies:
@@ -98,6 +104,15 @@ importers:
         version: 6.2.10
 
   packages/entitlement:
+    dependencies:
+      '@karaka/cordis':
+        specifier: workspace:^
+        version: link:../../vendor/cordis
+      '@karaka/schemastery':
+        specifier: link:../../vendor/schemastery
+        version: link:../../vendor/schemastery
+
+  packages/storage:
     dependencies:
       '@karaka/cordis':
         specifier: workspace:^

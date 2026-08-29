@@ -13,15 +13,6 @@
     },
     {
       "path": "../../vendor/schemastery"
-    },
-    {
-      "path": "../entitlement"
-    },
-    {
-      "path": "../authentication"
-    },
-    {
-      "path": "../storage"
     }
   ]
 }

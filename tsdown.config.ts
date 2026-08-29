@@ -29,7 +29,12 @@ export default defineConfig([
   },
   {
     ...shared,
+    workspace: ['packages/storage'],
+    entry: ['lib/types/index.js', 'lib/types/local.js'],
+  },
+  {
+    ...shared,
     workspace: ['packages/agent-runtime'],
-    entry: ['lib/types/index.js', 'lib/types/model-echo.js'],
+    entry: ['lib/types/index.js', 'lib/types/model-echo.js', 'lib/types/session-storage.js'],
   },
 ])
