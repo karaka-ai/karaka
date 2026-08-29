@@ -22,9 +22,9 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./entitlement-memory": {
-      "types": "./lib/types/entitlement-memory.d.ts",
-      "default": "./lib/entitlement-memory.js"
+    "./local": {
+      "types": "./lib/types/local.d.ts",
+      "default": "./lib/local.js"
     },
     "./package.json": "./package.json"
   },

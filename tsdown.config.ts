@@ -25,7 +25,7 @@ export default defineConfig([
   {
     ...shared,
     workspace: ['packages/entitlement'],
-    entry: ['lib/types/index.js', 'lib/types/entitlement-memory.js'],
+    entry: ['lib/types/index.js', 'lib/types/local.js'],
   },
   {
     ...shared,

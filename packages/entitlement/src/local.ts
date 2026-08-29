@@ -1,18 +1,18 @@
 import type { Context } from '@karaka/cordis'
 import Schema from '@karaka/schemastery'
-import { EntitlementError, type EntitlementProvider, type EntitlementStatus, type SpendAmount } from './index.ts'
+import type { EntitlementProvider, EntitlementStatus, SpendAmount } from './index.ts'
 
-/** YAML-serializable overall spend limits, expressed as exact integer strings. */
+/** YAML-serializable defaults for ephemeral local entitlement accounts. */
 export interface Config {
   name?: string
   unit?: string
-  accounts: Record<string, string>
+  defaultLimit: string
 }
 
 export const Config: Schema<Config> = Schema.object({
-  name: Schema.string().default('memory'),
+  name: Schema.string().default('local'),
   unit: Schema.string().default('USD_MICRO'),
-  accounts: Schema.dict(Schema.string()).required(),
+  defaultLimit: Schema.string().required(),
 })
 
 interface AccountState {
@@ -20,30 +20,25 @@ interface AccountState {
   spent: bigint
 }
 
-/** Process-local overall spend provider intended for development and tests. */
-export class MemoryEntitlementProvider implements EntitlementProvider {
+/** Process-local entitlement provider intended for development and tests. */
+export class LocalEntitlementProvider implements EntitlementProvider {
   readonly name: string
   private readonly unit: string
+  private readonly defaultLimit: bigint
   private readonly states = new Map<string, AccountState>()
 
   constructor(config: Config) {
-    this.name = requireText(config.name ?? 'memory', 'provider name')
+    this.name = requireText(config.name ?? 'local', 'provider name')
     this.unit = requireText(config.unit ?? 'USD_MICRO', 'spend unit')
-    const accounts = Object.keys(config.accounts)
-    if (!accounts.length) throw new TypeError('memory entitlement requires at least one account')
-
-    for (const account of accounts) {
-      requireText(account, 'account')
-      this.states.set(account, { limit: parseAmount(config.accounts[account]!, account), spent: 0n })
-    }
+    this.defaultLimit = parseAmount(config.defaultLimit)
   }
 
   async status(account: string): Promise<EntitlementStatus> {
-    return this.snapshot(account, this.requireAccount(account))
+    return this.snapshot(account, this.resolveAccount(account))
   }
 
   async recordSpend(account: string, spend: Readonly<SpendAmount>): Promise<EntitlementStatus> {
-    const state = this.requireAccount(account)
+    const state = this.resolveAccount(account)
     if (spend.unit !== this.unit) throw new TypeError(`account "${account}" does not use "${spend.unit}"`)
     if (typeof spend.amount !== 'bigint' || spend.amount < 0n) {
       throw new TypeError('spend amount must be a non-negative bigint')
@@ -52,9 +47,12 @@ export class MemoryEntitlementProvider implements EntitlementProvider {
     return this.snapshot(account, state)
   }
 
-  private requireAccount(account: string) {
-    const state = this.states.get(account)
-    if (!state) throw new EntitlementError('UNKNOWN_ACCOUNT', `entitlement account "${account}" is unknown`)
+  private resolveAccount(account: string) {
+    let state = this.states.get(account)
+    if (!state) {
+      state = { limit: this.defaultLimit, spent: 0n }
+      this.states.set(account, state)
+    }
     return state
   }
 
@@ -63,18 +61,18 @@ export class MemoryEntitlementProvider implements EntitlementProvider {
   }
 }
 
-/** Contribute one process-local overall spend provider. */
+/** Contribute one ephemeral local entitlement provider. */
 export const plugin = {
-  name: 'entitlement-memory',
+  name: 'entitlement-local',
   inject: ['entitlement'],
   Config,
   apply(ctx: Context, config: Config) {
-    ctx.entitlement.register(new MemoryEntitlementProvider(config))
+    ctx.entitlement.register(new LocalEntitlementProvider(config))
   },
 }
 
-function parseAmount(value: string, account: string) {
-  if (!/^\d+$/.test(value)) throw new TypeError(`limit for account "${account}" must be a non-negative integer string`)
+function parseAmount(value: string) {
+  if (!/^\d+$/.test(value)) throw new TypeError('default limit must be a non-negative integer string')
   return BigInt(value)
 }
 

@@ -2,7 +2,7 @@ import AgentRuntime, { AgentRuntimeError } from '@karaka/agent-runtime'
 import EchoModel from '@karaka/agent-runtime/model-echo'
 import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Entitlement from '@karaka/entitlement'
-import EntitlementMemory from '@karaka/entitlement/entitlement-memory'
+import EntitlementLocal from '@karaka/entitlement/local'
 import Include from '@karaka/cordis-plugin-include'
 import Loader from '@karaka/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
@@ -117,7 +117,7 @@ describe('Agent Runtime', () => {
 
     try {
       await ctx.plugin(Entitlement)
-      await ctx.plugin(EntitlementMemory, { accounts: { paid: '100' } })
+      await ctx.plugin(EntitlementLocal, { defaultLimit: '100' })
       await ctx.plugin(AgentRuntime)
       await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({
@@ -154,7 +154,7 @@ describe('Agent Runtime', () => {
 
     try {
       await ctx.plugin(Entitlement)
-      await ctx.plugin(EntitlementMemory, { accounts: { paid: '100' } })
+      await ctx.plugin(EntitlementLocal, { defaultLimit: '100' })
       await ctx.plugin(AgentRuntime)
       await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({

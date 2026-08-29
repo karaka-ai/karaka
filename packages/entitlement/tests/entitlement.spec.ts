@@ -1,5 +1,5 @@
 import Entitlement, { EntitlementError } from '@karaka/entitlement'
-import EntitlementMemory from '@karaka/entitlement/entitlement-memory'
+import EntitlementLocal from '@karaka/entitlement/local'
 import { Context } from '@karaka/cordis'
 import { describe, expect, it } from 'vitest'
 
@@ -9,12 +9,16 @@ describe('Entitlement', () => {
 
     try {
       await ctx.plugin(Entitlement)
-      await ctx.plugin(EntitlementMemory, {
-        accounts: { developer: '1000' },
-      })
+      await ctx.plugin(EntitlementLocal, { defaultLimit: '1000' })
 
       await expect(ctx.entitlement.assertAvailable('developer', 'USD_MICRO')).resolves.toEqual({
         account: 'developer',
+        unit: 'USD_MICRO',
+        limit: 1000n,
+        spent: 0n,
+      })
+      await expect(ctx.entitlement.status('created-on-demand')).resolves.toEqual({
+        account: 'created-on-demand',
         unit: 'USD_MICRO',
         limit: 1000n,
         spent: 0n,
@@ -36,7 +40,7 @@ describe('Entitlement', () => {
 
     try {
       await ctx.plugin(Entitlement)
-      const provider = ctx.plugin(EntitlementMemory, { accounts: { temporary: '1' } })
+      const provider = ctx.plugin(EntitlementLocal, { defaultLimit: '1' })
       await provider
       await provider.dispose()
 
@@ -80,7 +84,7 @@ describe('Entitlement', () => {
 
     try {
       await ctx.plugin(Entitlement)
-      await ctx.plugin(EntitlementMemory, { accounts: { developer: '10' } })
+      await ctx.plugin(EntitlementLocal, { defaultLimit: '10' })
 
       await expect(ctx.entitlement.recordSpend('developer', { unit: 'CREDIT', amount: 1n }))
         .rejects.toMatchObject({ code: 'UNIT_MISMATCH' })

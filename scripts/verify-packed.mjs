@@ -57,7 +57,7 @@ import Authentication from '@karaka/authentication'
 import AuthenticationHost from '@karaka/authentication/authentication-host'
 import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
 import Entitlement from '@karaka/entitlement'
-import EntitlementMemory from '@karaka/entitlement/entitlement-memory'
+import EntitlementLocal from '@karaka/entitlement/local'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
@@ -67,7 +67,7 @@ if (Object.keys(CosmoKit).length === 0) throw new Error('CosmoKit exported no ut
 if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpath did not export a plugin')
 if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
-if (typeof EntitlementMemory.apply !== 'function') throw new Error('the memory entitlement subpath did not export a plugin')
+if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
 
 const ctx = new Context()
 await ctx.plugin(Timer)
@@ -101,10 +101,9 @@ writeFileSync('authentication.yml', [
   '    tenantId: smoke',
   '    subject: embedded-developer',
   "- name: '@karaka/entitlement'",
-  "- name: '@karaka/entitlement/entitlement-memory'",
+  "- name: '@karaka/entitlement/local'",
   '  config:',
-  '    accounts:',
-  "      smoke: '1000000'",
+  "    defaultLimit: '1000000'",
   "- name: '@karaka/agent-runtime'",
   "- name: '@karaka/agent-runtime/model-echo'",
   '  config:',

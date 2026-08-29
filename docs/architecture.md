@@ -132,7 +132,7 @@ Amounts are non-negative integers in an explicit unit such as `USD_MICRO` or `CR
 
 The current low-level Agent Runtime request names the overall entitlement account but carries no amount or call budget. The future Chat boundary must derive that account from trusted identity and stored chat state rather than model-visible input. Because this first slice deliberately has no reservation, one completed call may take accumulated spend past its limit; later calls are rejected. Atomic reservation and settlement may be added later without changing the meaning of entitlement into a per-call agent policy.
 
-`@karaka/entitlement` supplies the service contract. One provider plugin is active in a Cordis graph, while arbitrary account IDs remain runtime data resolved by that provider. `@karaka/entitlement/entitlement-memory` is an ordinary, effect-owned provider for development and tests; its state is process-local and not a production ledger. Durable or billing-backed implementations remain replaceable provider plugins through the same contract.
+`@karaka/entitlement` supplies the service contract. One provider plugin is active in a Cordis graph, while arbitrary account IDs remain runtime data resolved by that provider. `@karaka/entitlement/local` is an ordinary, effect-owned provider for development and tests; it lazily creates accounts with one configured default limit. Its state is process-local and not a production ledger. Durable or billing-backed implementations remain replaceable provider plugins through the same contract.
 
 ## Authentication and invocation identity
 
