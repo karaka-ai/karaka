@@ -1,3 +1,5 @@
+- id: entitlement
+  name: '@karaka/entitlement'
 - id: runtime
   name: '@karaka/agent-runtime'
 - id: echo

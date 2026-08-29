@@ -20,7 +20,7 @@ const packages = [
   'hmr',
   'logger-console',
 ].map(directory => resolve(root, 'vendor', directory))
-packages.push(...['authentication', 'agent-runtime'].map(directory => resolve(root, 'packages', directory)))
+packages.push(...['authentication', 'entitlement', 'agent-runtime'].map(directory => resolve(root, 'packages', directory)))
 
 if (action === 'pack') {
   const destination = resolve(root, '.artifacts')

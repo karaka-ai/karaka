@@ -26,8 +26,10 @@ export class EchoModelProvider implements ModelProvider {
   async generate(request: Readonly<ModelRequest>) {
     const message = request.messages.findLast(item => item.role === 'user')
     return {
-      role: 'assistant' as const,
-      content: `${this.prefix}${message?.content ?? ''}`,
+      message: {
+        role: 'assistant' as const,
+        content: `${this.prefix}${message?.content ?? ''}`,
+      },
     }
   }
 }

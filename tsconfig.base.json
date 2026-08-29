@@ -34,6 +34,8 @@
       "@karaka/authentication": ["./packages/authentication/src/index.ts"],
       "@karaka/authentication/authentication-jwks": ["./packages/authentication/src/authentication-jwks.ts"],
       "@karaka/authentication/authentication-host": ["./packages/authentication/src/authentication-host.ts"],
+      "@karaka/entitlement": ["./packages/entitlement/src/index.ts"],
+      "@karaka/entitlement/local": ["./packages/entitlement/src/local.ts"],
       "@karaka/agent-runtime": ["./packages/agent-runtime/src/index.ts"],
       "@karaka/agent-runtime/model-echo": ["./packages/agent-runtime/src/model-echo.ts"]
     }

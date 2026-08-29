@@ -24,6 +24,11 @@ export default defineConfig([
   },
   {
     ...shared,
+    workspace: ['packages/entitlement'],
+    entry: ['lib/types/index.js', 'lib/types/local.js'],
+  },
+  {
+    ...shared,
     workspace: ['packages/agent-runtime'],
     entry: ['lib/types/index.js', 'lib/types/model-echo.js'],
   },
