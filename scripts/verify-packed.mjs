@@ -65,6 +65,7 @@ import StorageDefault from '@karaka/storage/default'
 import { createKarakaClient } from '@karaka/sdk'
 import * as Transport from '@karaka/transport'
 import TransportHttp from '@karaka/transport/http'
+import TransportIpc from '@karaka/transport/ipc'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
@@ -80,6 +81,7 @@ if (typeof StorageDefault.apply !== 'function') throw new Error('the default sto
 if (typeof SessionStorage.apply !== 'function') throw new Error('the storage session subpath did not export a plugin')
 if (Transport.EVENT_STREAM_MEDIA_TYPE !== 'text/event-stream') throw new Error('the transport root did not export its contracts')
 if (typeof TransportHttp.apply !== 'function') throw new Error('the HTTP transport subpath did not export a plugin')
+if (typeof TransportIpc.apply !== 'function') throw new Error('the IPC transport subpath did not export a plugin')
 const sdk = createKarakaClient({
   credentials: { tenantId: 'smoke', token: 'packed-user' },
   connection: {

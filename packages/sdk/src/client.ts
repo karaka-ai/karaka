@@ -1,4 +1,5 @@
 import { HttpConnection } from './transport/http.ts'
+import { IpcConnection } from './transport/ipc.ts'
 import {
   type ChatRequest,
   type ChatResult,
@@ -78,7 +79,9 @@ async function prepareInvocation(
 
 function resolveConnection(options: Readonly<KarakaClientOptions>): KarakaConnection {
   if ('endpoint' in options && options.endpoint !== undefined && options.connection === undefined) {
-    return new HttpConnection(options.endpoint)
+    const endpoint = new URL(options.endpoint)
+    if (endpoint.protocol === 'unix:') return new IpcConnection(endpoint)
+    return new HttpConnection(endpoint)
   }
   if ('connection' in options && options.connection !== undefined && options.endpoint === undefined) {
     const connection = options.connection
