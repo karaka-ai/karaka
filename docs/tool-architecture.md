@@ -15,9 +15,11 @@ Both can use HTTP, but they must not be treated as the same API.
 
 ## Application to Karaka
 
-The application backend uses the Karaka SDK to create or resume a chat, send input, stream output, and cancel work. The default remote transport is Karaka's HTTP API with SSE for streamed events.
+The application backend uses the Karaka SDK to create or resume a chat, send input, stream output, and cancel work. Transport follows the deployment boundary: direct invocation within one process, operating-system IPC such as a Unix domain socket or named pipe between colocated processes, and Karaka's HTTP API with SSE for streamed events across a network.
 
-The SDK owns the developer-facing API. Its internal client transport maps those operations onto the configured Karaka endpoint. A future transport may replace HTTP/SSE, but it must implement the same SDK contract and have a matching server-side Karaka plugin.
+**Avoidable transport latency is an architectural defect even when model inference dominates total turn time. Same-host deployments must not take a network path merely because HTTP/SSE already exists.**
+
+The SDK owns the developer-facing API. Its internal client transport maps those operations onto the configured Karaka endpoint. Each carrier implements the same SDK contract and has a matching server-side Karaka plugin, so selecting IPC does not change chat semantics.
 
 This API is not MCP. It represents Karaka concepts such as agents, chats, turns, events, and cancellation rather than exposing each agent as an MCP tool. An optional MCP-facing Karaka transport may be added later, but it is not the primary application API.
 
@@ -87,7 +89,7 @@ flowchart LR
   Adapter["Model-provider plugin"]
   Model["Model API"]
 
-  App --> SDKClient -->|chat API over HTTP/SSE| Transport --> Runtime
+  App --> SDKClient -->|chat API over IPC or HTTP/SSE| Transport --> Runtime
   Runtime -->|structured tool definitions| Adapter --> Model
   Model -->|structured tool call| Runtime
   Runtime -->|logical invocation| Registry --> MCPClient

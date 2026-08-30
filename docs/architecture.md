@@ -8,6 +8,10 @@ The repository publishes nine packages that form the composition kernel. Seam co
 
 Concrete unresolved defects and architectural gaps are tracked in [Open Issues](issues.md).
 
+## Latency is a first-class constraint
+
+**Karaka treats avoidable latency at every boundary as an architectural defect. Microseconds matter independently: a slow downstream operation, including model inference, never justifies unnecessary overhead elsewhere. A deployment must prefer direct invocation within one process, operating-system IPC between colocated processes, and network transport only across a network boundary, subject to correctness, security, and isolation requirements. Public contracts must remain independent of the carrier so a lower-latency transport can replace another without changing application semantics.**
+
 ## Foundation boundary
 
 `@karaka/cosmokit` supplies small utilities. `@karaka/schemastery` supplies configuration schemas. `@karaka/cordis` owns contexts, services, events, fibers, effects, and dependency tracking.
@@ -474,6 +478,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 ## Design rules
 
 - Keep one composition system: Cordis.
+- Treat latency at every boundary as an independent requirement; never justify avoidable overhead with slower downstream work.
 - Implement every configurable or executable runtime behavior as a Cordis plugin; do not add parallel lifecycle, registry, or discovery systems.
 - Use one Karaka deployment specification and one Cordis graph per process; connect independently deployed backend graphs through authenticated protocols rather than shared configuration.
 - Expose one normal deployment surface: setup YAML loading ordinary Cordis plugins.

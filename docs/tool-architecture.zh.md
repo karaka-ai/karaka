@@ -15,9 +15,11 @@ Karaka 必须让应用能够与其智能体通信，也让这些智能体能够�
 
 ## 应用到 Karaka
 
-应用后端使用 Karaka SDK 创建或恢复聊天、发送输入、流式接收输出以及取消工作。默认远程传输是 Karaka HTTP API，并通过 SSE 传输流式事件。
+应用后端使用 Karaka SDK 创建或恢复聊天、发送输入、流式接收输出以及取消工作。传输方式遵循部署边界：同一进程内直接调用；同机不同进程之间使用 Unix 域套接字或命名管道等操作系统 IPC；跨网络时使用 Karaka HTTP API，并通过 SSE 传输流式事件。
 
-SDK 拥有面向开发者的 API。其内部客户端传输把这些操作映射到配置的 Karaka 端点。未来可以用其他传输替换 HTTP/SSE，但它必须实现相同的 SDK 契约，并在 Karaka 服务端有匹配的插件。
+**即使模型推理占据整轮运行的大部分时间，可避免的传输延迟仍然是架构缺陷。同机部署不得仅仅因为 HTTP/SSE 已经存在就绕行网络路径。**
+
+SDK 拥有面向开发者的 API。其内部客户端传输把这些操作映射到配置的 Karaka 端点。每种载体都实现相同的 SDK 契约，并在 Karaka 服务端有匹配的插件，因此选择 IPC 不会改变聊天语义。
 
 这个 API 不是 MCP。它表达智能体、聊天、轮次、事件和取消等 Karaka 概念，而不是把每个智能体暴露成 MCP 工具。以后可以增加一个可选的、面向 MCP 的 Karaka 传输，但它不是主要的应用 API。
 
@@ -87,7 +89,7 @@ flowchart LR
   Adapter["模型提供方插件"]
   Model["模型 API"]
 
-  App --> SDKClient -->|基于 HTTP/SSE 的聊天 API| Transport --> Runtime
+  App --> SDKClient -->|基于 IPC 或 HTTP/SSE 的聊天 API| Transport --> Runtime
   Runtime -->|结构化工具定义| Adapter --> Model
   Model -->|结构化工具调用| Runtime
   Runtime -->|逻辑调用| Registry --> MCPClient
