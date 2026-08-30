@@ -55,12 +55,12 @@ import AgentRuntime from '@karaka/agent-runtime'
 import EchoModel from '@karaka/agent-runtime/model-echo'
 import SessionStorage from '@karaka/agent-runtime/session-storage'
 import Authentication from '@karaka/authentication'
-import AuthenticationHost from '@karaka/authentication/authentication-host'
-import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
+import AuthenticationOAuth from '@karaka/authentication/oauth-client-credentials'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
 import OpenAIModel from '@karaka/model-openai'
 import ToolCore from '@karaka/tool/core'
+import ToolMcpClient from '@karaka/tool/mcp-client'
 import ToolMcpServer from '@karaka/tool/mcp-server'
 import Storage from '@karaka/storage'
 import StorageDefault from '@karaka/storage/default'
@@ -75,12 +75,12 @@ const exports = [Context, Group, Hmr, Include, Loader, LoggerConsole, Timer, Sch
 if (exports.some(value => typeof value !== 'function')) throw new Error('a package entry point did not export its public constructor or plugin')
 if (Object.keys(CosmoKit).length === 0) throw new Error('CosmoKit exported no utilities')
 if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpath did not export a plugin')
-if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
-if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
+if (typeof AuthenticationOAuth.apply !== 'function') throw new Error('the OAuth authentication subpath did not export a plugin')
 if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
 if (typeof OpenAIModel.apply !== 'function') throw new Error('the OpenAI model package did not export a plugin')
 if (![defineTool, getToolMetadata, tool].every(value => typeof value === 'function')) throw new Error('the SDK did not export its Tool authoring API')
 if (typeof ToolCore !== 'function') throw new Error('the Tool core subpath did not export a plugin')
+if (typeof ToolMcpClient.apply !== 'function') throw new Error('the Tool MCP client subpath did not export a plugin')
 if (typeof ToolMcpServer.apply !== 'function') throw new Error('the Tool MCP server subpath did not export a plugin')
 if (typeof StorageDefault.apply !== 'function') throw new Error('the default storage subpath did not export a plugin')
 if (typeof SessionStorage.apply !== 'function') throw new Error('the storage session subpath did not export a plugin')
@@ -88,7 +88,8 @@ if (Transport.EVENT_STREAM_MEDIA_TYPE !== 'text/event-stream') throw new Error('
 if (typeof TransportHttp.apply !== 'function') throw new Error('the HTTP transport subpath did not export a plugin')
 if (typeof TransportIpc.apply !== 'function') throw new Error('the IPC transport subpath did not export a plugin')
 const sdk = createKarakaClient({
-  credentials: { tenantId: 'smoke', token: 'packed-user' },
+  authentication: { request: (_target, request, dispatch) => dispatch(request) },
+  user: { tenantId: 'smoke', userId: 'packed-user' },
   connection: {
     async send(request) {
       return { chatId: 'packed-chat', agentId: request.agentId ?? 'packed-agent', model: 'packed-model', message: { role: 'assistant', content: request.message } }
@@ -118,19 +119,15 @@ writeFileSync('smoke-agent.mjs', [
   '',
 ].join('\\n'))
 writeFileSync('authentication.yml', [
-  "- name: '@karaka/authentication'",
-  "- name: '@karaka/authentication/authentication-jwks'",
+  "- name: '@karaka/authentication/oauth-client-credentials'",
   '  config:',
-  '    tenants:',
-  '      smoke:',
-  '        issuer: https://issuer.example.test/',
-  '        audience: karaka-smoke',
-  '        jwksUri: https://issuer.example.test/jwks',
-  '        algorithms: [RS256]',
-  "- name: '@karaka/authentication/authentication-host'",
-  '  config:',
-  '    tenantId: smoke',
-  '    subject: embedded-developer',
+  '    issuer: https://issuer.example.test/',
+  '    audience: https://karaka.example.test',
+  '    tokenEndpoint: https://issuer.example.test/token',
+  '    jwksUri: https://issuer.example.test/jwks',
+  '    clientId: packed-application',
+  '    clientSecretEnv: KARAKA_PACKED_CLIENT_SECRET',
+  '    algorithms: [RS256]',
   "- name: '@karaka/entitlement'",
   "- name: '@karaka/entitlement/local'",
   '  config:',
@@ -166,8 +163,7 @@ await ctx.loader.create({
   config: { path: new URL('authentication.yml', ctx.baseUrl).href },
 })
 await ctx.loader.await()
-if (ctx.get('authentication')?.list()[0]?.name !== 'jwks') throw new Error('Loader did not compose the JWKS authentication subpath')
-if ((await ctx.authentication.currentPrincipal()).subject !== 'embedded-developer') throw new Error('Loader did not compose the host authentication subpath')
+if (ctx.get('authentication')?.currentProvider()?.name !== 'oauth-client-credentials') throw new Error('Loader did not compose the OAuth authentication subpath')
 if ((await ctx.entitlement.status('smoke')).limit !== 1000000n) throw new Error('Loader did not compose the local entitlement subpath')
 if (!ctx.get('tools')) throw new Error('Loader did not compose the Tool core subpath')
 if (!ctx.agentModels.list().includes('packed-openai')) throw new Error('Loader did not compose the OpenAI model package')

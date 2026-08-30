@@ -18,10 +18,13 @@ export {
   type ChatResult,
   type ChatStreamEvent,
   type ChatTextDeltaEvent,
+  type KarakaAuthenticationTarget,
   type KarakaConnection,
-  type KarakaCredentials,
-  type KarakaCredentialSource,
+  type KarakaDispatch,
   type KarakaInvocationOptions,
+  type KarakaServerAuthentication,
+  type KarakaUserContext,
+  type KarakaUserSource,
   type TransportStreamEvent,
 } from './transport/index.ts'
 export {

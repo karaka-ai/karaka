@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@karaka/entitlement": "workspace:^",
-    "@karaka/storage": "workspace:^"
+    "@karaka/storage": "workspace:^",
+    "jose": "^6.2.5"
   }
 }

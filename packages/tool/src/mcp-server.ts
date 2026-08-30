@@ -1,5 +1,12 @@
 import type { Context } from '@karaka/cordis'
 import {
+  AuthenticationError,
+  decodeTrustedUserContext,
+  TRUSTED_USER_CONTEXT_HEADER,
+  type AuthenticatedIdentity,
+  type AuthenticatedServer,
+} from '@karaka/authentication'
+import {
   getToolMetadata,
   type JsonValue,
   type ToolDescriptor,
@@ -18,19 +25,17 @@ import {
 const toolVersionMetaKey = 'ai.karaka/toolVersion'
 
 export interface ToolMcpAuthorizationRequest {
-  readonly authInfo: Readonly<AuthInfo>
+  readonly server: Readonly<AuthenticatedServer>
+  readonly user?: Readonly<AuthenticatedIdentity>
   readonly permission: string
   readonly request: Request
   readonly tool: ToolDescriptor
 }
 
-export interface ToolMcpSecurity {
-  authenticate(request: Request): AuthInfo | Response | Promise<AuthInfo | Response>
-  authorize<T>(
-    request: Readonly<ToolMcpAuthorizationRequest>,
-    invoke: () => Promise<T>,
-  ): Promise<T>
-}
+export type ToolMcpAuthorize = <T>(
+  request: Readonly<ToolMcpAuthorizationRequest>,
+  invoke: () => Promise<T>,
+) => Promise<T>
 
 export interface ToolMcpEndpoint {
   fetch(request: Request): Promise<Response>
@@ -42,7 +47,7 @@ export type ToolMcpUnmount = () => void | Promise<void>
 export interface Config {
   readonly services: readonly object[]
   readonly mount: (endpoint: Readonly<ToolMcpEndpoint>) => ToolMcpUnmount | Promise<ToolMcpUnmount>
-  readonly security: Readonly<ToolMcpSecurity>
+  readonly authorize: ToolMcpAuthorize
   readonly allowedHosts: readonly string[]
   readonly allowedOrigins?: readonly string[]
   readonly name?: string
@@ -53,13 +58,13 @@ export interface Config {
 /** Expose decorated application services through one modern, stateless MCP endpoint. */
 export const plugin = {
   name: 'tool-mcp-server',
-  inject: ['tools'],
+  inject: ['authentication', 'tools'],
   async apply(ctx: Context, config: Config) {
     const resolved = resolveConfig(config)
     const toolIds = registerServices(ctx, resolved.services)
     const handler = createHandler(ctx, toolIds, resolved)
     const endpoint = Object.freeze<ToolMcpEndpoint>({
-      fetch: request => fetchMcp(handler, request, resolved),
+      fetch: request => fetchMcp(ctx, handler, request, resolved),
     })
 
     let unmount: ToolMcpUnmount
@@ -99,13 +104,7 @@ function resolveConfig(config: Config): ResolvedConfig {
     if (!service || typeof service !== 'object') throw new TypeError('MCP application services must be objects')
   }
   if (typeof config.mount !== 'function') throw new TypeError('MCP endpoint mount must be a function')
-  if (
-    !config.security
-    || typeof config.security.authenticate !== 'function'
-    || typeof config.security.authorize !== 'function'
-  ) {
-    throw new TypeError('MCP server security must provide authenticate and authorize functions')
-  }
+  if (typeof config.authorize !== 'function') throw new TypeError('MCP server must provide an authorize function')
 
   const allowedHosts = requireTextArray(config.allowedHosts, 'allowed MCP host', true)
   const allowedOrigins = requireTextArray(config.allowedOrigins ?? [], 'allowed MCP origin')
@@ -193,8 +192,9 @@ function createHandler(ctx: Context, toolIds: readonly string[], config: Resolve
         _meta: { [toolVersionMetaKey]: descriptor.version },
       }, async (input, requestContext) => {
         try {
-          const output = await config.security.authorize({
-            authInfo,
+          const output = await config.authorize({
+            server: serverFrom(authInfo),
+            ...await currentUser(ctx),
             permission: descriptor.permission!,
             request: requestInfo,
             tool: descriptor,
@@ -221,23 +221,37 @@ function createHandler(ctx: Context, toolIds: readonly string[], config: Resolve
   })
 }
 
-async function fetchMcp(handler: McpHttpHandler, request: Request, config: ResolvedConfig): Promise<Response> {
+async function fetchMcp(ctx: Context, handler: McpHttpHandler, request: Request, config: ResolvedConfig): Promise<Response> {
   const invalidHost = hostHeaderValidationResponse(request, [...config.allowedHosts])
   if (invalidHost) return invalidHost
   const invalidOrigin = validateOrigin(request, config.allowedOrigins)
   if (invalidOrigin) return invalidOrigin
 
   try {
-    const authenticated = await config.security.authenticate(request)
-    if (authenticated instanceof Response) return authenticated
-    return handler.fetch(request, { authInfo: requireAuthInfo(authenticated) })
+    const server = await ctx.authentication.authenticate(request)
+    const user = decodeTrustedUserContext(request.headers.get(TRUSTED_USER_CONTEXT_HEADER))
+    const invoke = () => handler.fetch(request, { authInfo: toAuthInfo(server) })
+    return user ? ctx.authentication.withUser(user, server, invoke) : invoke()
   } catch (error) {
     reportError(config, error)
+    const challenge = ctx.authentication.challenge(error)
     return Response.json({
       jsonrpc: '2.0',
       error: { code: -32_603, message: 'Authentication failed' },
       id: null,
-    }, { status: 500 })
+    }, {
+      status: 401,
+      ...(challenge ? { headers: { 'www-authenticate': challenge } } : {}),
+    })
+  }
+}
+
+async function currentUser(ctx: Context): Promise<{ user?: AuthenticatedIdentity }> {
+  try {
+    return { user: await ctx.authentication.currentPrincipal() }
+  } catch (error) {
+    if (!(error instanceof AuthenticationError) || error.code !== 'NO_CURRENT_PRINCIPAL') throw error
+    return {}
   }
 }
 
@@ -251,20 +265,30 @@ function validateOrigin(request: Request, allowedOrigins: readonly string[]): Re
   }, { status: 403 })
 }
 
-function requireAuthInfo(value: AuthInfo): AuthInfo {
-  if (
-    !value
-    || typeof value !== 'object'
-    || typeof value.token !== 'string'
-    || !value.token
-    || typeof value.clientId !== 'string'
-    || !value.clientId
-    || !Array.isArray(value.scopes)
-    || value.scopes.some(scope => typeof scope !== 'string' || !scope)
-  ) {
-    throw new TypeError('MCP authenticator returned invalid authentication information')
+function toAuthInfo(server: Readonly<AuthenticatedServer>): AuthInfo {
+  return {
+    token: 'verified-by-karaka-authentication',
+    clientId: server.id,
+    scopes: [],
+    extra: { server },
   }
-  return value
+}
+
+function serverFrom(value: AuthInfo): AuthenticatedServer {
+  const server = value.extra?.server
+  if (
+    !server
+    || typeof server !== 'object'
+    || Array.isArray(server)
+    || typeof (server as AuthenticatedServer).id !== 'string'
+    || typeof (server as AuthenticatedServer).provider !== 'string'
+    || !(server as AuthenticatedServer).claims
+    || typeof (server as AuthenticatedServer).claims !== 'object'
+    || Array.isArray((server as AuthenticatedServer).claims)
+  ) {
+    throw new TypeError('MCP request has no authenticated server identity')
+  }
+  return server as AuthenticatedServer
 }
 
 function reportError(config: ResolvedConfig, error: unknown) {

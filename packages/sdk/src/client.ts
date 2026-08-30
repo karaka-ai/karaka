@@ -5,15 +5,16 @@ import {
   type ChatResult,
   type ChatStreamEvent,
   type KarakaConnection,
-  type KarakaCredentials,
-  type KarakaCredentialSource,
+  type KarakaServerAuthentication,
+  type KarakaUserContext,
+  type KarakaUserSource,
   normalizeChatRequest,
-  resolveCredentials,
+  resolveUser,
 } from './transport/index.ts'
 
 export interface ChatCallOptions {
-  /** Overrides the client credential source for this invocation. */
-  readonly credentials?: KarakaCredentialSource
+  /** Overrides the trusted user context for this invocation. */
+  readonly user?: KarakaUserSource
   readonly signal?: AbortSignal
 }
 
@@ -27,12 +28,14 @@ export interface KarakaClient {
 }
 
 interface SharedClientOptions {
-  /** Static credentials or a resolver called separately for every invocation. */
-  readonly credentials?: KarakaCredentialSource
+  /** Server-authentication client supplied by the selected provider package. */
+  readonly authentication: KarakaServerAuthentication
+  /** Static user context or a resolver called separately for every invocation. */
+  readonly user: KarakaUserSource
 }
 
 export type KarakaClientOptions = SharedClientOptions & (
-  | { readonly endpoint: string | URL, readonly connection?: never }
+  | { readonly endpoint: string | URL, readonly audience?: string, readonly connection?: never }
   | { readonly connection: KarakaConnection, readonly endpoint?: never }
 )
 
@@ -41,10 +44,10 @@ export function createKarakaClient(options: Readonly<KarakaClientOptions>): Kara
   const connection = resolveConnection(options)
   const chat: KarakaChatClient = Object.freeze({
     send(request: Readonly<ChatRequest>, callOptions?: Readonly<ChatCallOptions>) {
-      return invoke(connection, options.credentials, request, callOptions)
+      return invoke(connection, options.authentication, options.user, request, callOptions)
     },
     async *stream(request: Readonly<ChatRequest>, callOptions?: Readonly<ChatCallOptions>) {
-      const invocation = await prepareInvocation(options.credentials, request, callOptions)
+      const invocation = await prepareInvocation(options.authentication, options.user, request, callOptions)
       yield* connection.stream(invocation.request, invocation.options)
     },
   })
@@ -53,35 +56,44 @@ export function createKarakaClient(options: Readonly<KarakaClientOptions>): Kara
 
 async function invoke(
   connection: KarakaConnection,
-  defaultCredentials: KarakaCredentialSource | undefined,
+  authentication: KarakaServerAuthentication,
+  defaultUser: KarakaUserSource,
   request: Readonly<ChatRequest>,
   options: Readonly<ChatCallOptions> | undefined,
 ): Promise<ChatResult> {
-  const invocation = await prepareInvocation(defaultCredentials, request, options)
+  const invocation = await prepareInvocation(authentication, defaultUser, request, options)
   return connection.send(invocation.request, invocation.options)
 }
 
 async function prepareInvocation(
-  defaultCredentials: KarakaCredentialSource | undefined,
+  authentication: KarakaServerAuthentication,
+  defaultUser: KarakaUserSource,
   request: Readonly<ChatRequest>,
   options: Readonly<ChatCallOptions> | undefined,
 ): Promise<{
   readonly request: ChatRequest
-  readonly options: { readonly credentials: Readonly<KarakaCredentials>, readonly signal?: AbortSignal }
+  readonly options: {
+    readonly authentication: KarakaServerAuthentication
+    readonly user: Readonly<KarakaUserContext>
+    readonly signal?: AbortSignal
+  }
 }> {
+  if (!authentication || typeof authentication.request !== 'function') {
+    throw new TypeError('Karaka server authentication is required')
+  }
   const normalized = normalizeChatRequest(request)
-  const credentials = await resolveCredentials(options?.credentials ?? defaultCredentials)
+  const user = await resolveUser(options?.user ?? defaultUser)
   const invocationOptions = options?.signal === undefined
-    ? Object.freeze({ credentials })
-    : Object.freeze({ credentials, signal: options.signal })
+    ? Object.freeze({ authentication, user })
+    : Object.freeze({ authentication, user, signal: options.signal })
   return Object.freeze({ request: normalized, options: invocationOptions })
 }
 
 function resolveConnection(options: Readonly<KarakaClientOptions>): KarakaConnection {
   if ('endpoint' in options && options.endpoint !== undefined && options.connection === undefined) {
     const endpoint = new URL(options.endpoint)
-    if (endpoint.protocol === 'unix:') return new IpcConnection(endpoint)
-    return new HttpConnection(endpoint)
+    if (endpoint.protocol === 'unix:') return new IpcConnection(endpoint, options.audience)
+    return new HttpConnection(endpoint, undefined, options.audience)
   }
   if ('connection' in options && options.connection !== undefined && options.endpoint === undefined) {
     const connection = options.connection

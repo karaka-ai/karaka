@@ -12,6 +12,9 @@
       "path": "../../vendor/cordis"
     },
     {
+      "path": "../authentication"
+    },
+    {
       "path": "../sdk"
     }
   ]

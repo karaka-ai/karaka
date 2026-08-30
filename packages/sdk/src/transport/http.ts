@@ -12,24 +12,24 @@ import {
   validateErrorBody,
 } from './index.ts'
 
-const TENANT_HEADER = 'x-karaka-tenant'
-
-export type HttpDispatcher = (
-  url: string,
-  init: RequestInit,
-  signal: AbortSignal | undefined,
-) => Promise<Response>
+export type HttpDispatcher = (request: Request) => Promise<Response>
 
 /** HTTP client connection paired with the server-side HTTP Transport plugin. */
 export class HttpConnection implements KarakaConnection {
   private readonly endpoint: string
+  private readonly audience: string
 
-  constructor(endpoint: string | URL, private readonly dispatch: HttpDispatcher = performFetch) {
+  constructor(
+    endpoint: string | URL,
+    private readonly dispatch: HttpDispatcher = performFetch,
+    audience?: string,
+  ) {
     this.endpoint = normalizeEndpoint(endpoint)
+    this.audience = requireAudience(audience ?? new URL(this.endpoint).origin)
   }
 
   async send(request: Readonly<ChatRequest>, options: Readonly<KarakaInvocationOptions>): Promise<ChatResult> {
-    const response = await this.request(this.url(request), this.init(request, options, JSON_MEDIA_TYPE), options.signal)
+    const response = await this.request(this.createRequest(request, options, JSON_MEDIA_TYPE), options)
     if (!response.ok) throw await readHttpError(response)
     return validateChatResult(await readJson(response))
   }
@@ -38,7 +38,7 @@ export class HttpConnection implements KarakaConnection {
     request: Readonly<ChatRequest>,
     options: Readonly<KarakaInvocationOptions>,
   ): AsyncIterable<ChatStreamEvent> {
-    const response = await this.request(this.url(request), this.init(request, options, EVENT_STREAM_MEDIA_TYPE), options.signal)
+    const response = await this.request(this.createRequest(request, options, EVENT_STREAM_MEDIA_TYPE), options)
     if (!response.ok) throw await readHttpError(response)
     if (mediaType(response) !== EVENT_STREAM_MEDIA_TYPE || !response.body) {
       throw new KarakaClientError('INVALID_RESPONSE', `Karaka stream must use ${EVENT_STREAM_MEDIA_TYPE}`, response.status)
@@ -66,40 +66,38 @@ export class HttpConnection implements KarakaConnection {
     return `${this.endpoint}/chats/${encodeURIComponent(request.chatId)}/messages`
   }
 
-  private init(
+  private createRequest(
     request: Readonly<ChatRequest>,
     options: Readonly<KarakaInvocationOptions>,
     accept: string,
-  ): RequestInit {
+  ): Request {
     const body = 'agentId' in request
-      ? { agentId: request.agentId, message: request.message }
-      : { message: request.message }
+      ? { agentId: request.agentId, message: request.message, user: options.user }
+      : { message: request.message, user: options.user }
     const init: RequestInit = {
       method: 'POST',
       headers: {
         accept,
-        authorization: `Bearer ${options.credentials.token}`,
         'content-type': JSON_MEDIA_TYPE,
-        [TENANT_HEADER]: options.credentials.tenantId,
       },
       body: JSON.stringify(body),
     }
     if (options.signal !== undefined) init.signal = options.signal
-    return init
+    return new Request(this.url(request), init)
   }
 
-  private async request(url: string, init: RequestInit, signal: AbortSignal | undefined): Promise<Response> {
+  private async request(request: Request, options: Readonly<KarakaInvocationOptions>): Promise<Response> {
     try {
-      return await this.dispatch(url, init, signal)
+      return await options.authentication.request({ audience: this.audience }, request, this.dispatch)
     } catch (cause) {
-      if (signal?.aborted) throw aborted(cause)
+      if (options.signal?.aborted) throw aborted(cause)
       throw new KarakaClientError('TRANSPORT_ERROR', 'Karaka request failed', undefined, { cause })
     }
   }
 }
 
-async function performFetch(url: string, init: RequestInit, _signal: AbortSignal | undefined): Promise<Response> {
-  return fetch(url, init)
+async function performFetch(request: Request): Promise<Response> {
+  return fetch(request)
 }
 
 async function readHttpError(response: Response): Promise<KarakaClientError> {
@@ -179,8 +177,16 @@ function normalizeEndpoint(endpoint: string | URL): string {
   if (!['http:', 'https:'].includes(url.protocol)) throw new TypeError('Karaka endpoint must use HTTP or HTTPS')
   if (url.username || url.password) throw new TypeError('Karaka endpoint must not contain credentials')
   if (url.search || url.hash) throw new TypeError('Karaka endpoint must not contain a query or fragment')
+  if (url.protocol === 'http:' && !['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)) {
+    throw new TypeError('Karaka endpoint must use HTTPS unless it is loopback')
+  }
   url.pathname = url.pathname.replace(/\/+$/, '')
   return url.toString().replace(/\/$/, '')
+}
+
+function requireAudience(value: string): string {
+  if (typeof value === 'string' && value.trim()) return value
+  throw new TypeError('Karaka authentication audience must be a non-empty string')
 }
 
 function mediaType(response: Response): string | undefined {

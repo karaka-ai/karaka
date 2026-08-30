@@ -18,9 +18,13 @@ interface IpcEndpoint {
 export class IpcConnection implements KarakaConnection {
   private readonly connection: HttpConnection
 
-  constructor(endpoint: string | URL) {
+  constructor(endpoint: string | URL, audience?: string) {
     const resolved = resolveEndpoint(endpoint)
-    this.connection = new HttpConnection(`http://karaka.local${resolved.basePath}`, createDispatcher(resolved.socketPath))
+    this.connection = new HttpConnection(
+      `http://localhost${resolved.basePath}`,
+      createDispatcher(resolved.socketPath),
+      audience ?? `unix://${resolved.socketPath}`,
+    )
   }
 
   send(request: Readonly<ChatRequest>, options: Readonly<KarakaInvocationOptions>): Promise<ChatResult> {
@@ -36,22 +40,20 @@ export class IpcConnection implements KarakaConnection {
 }
 
 function createDispatcher(socketPath: string): HttpDispatcher {
-  return (url, init, signal) => dispatch(socketPath, new URL(url).pathname, init, signal)
+  return request => dispatch(socketPath, request)
 }
 
 async function dispatch(
   socketPath: string,
-  path: string,
-  init: RequestInit,
-  signal: AbortSignal | undefined,
+  source: Request,
 ): Promise<Response> {
   return new Promise<Response>((resolve, reject) => {
     const request = requestHttp({
       socketPath,
-      path,
-      method: init.method,
-      headers: init.headers as Record<string, string>,
-      signal,
+      path: new URL(source.url).pathname,
+      method: source.method,
+      headers: Object.fromEntries(source.headers),
+      signal: source.signal,
     }, response => {
       const headers = new Headers()
       for (let index = 0; index < response.rawHeaders.length; index += 2) {
@@ -64,7 +66,7 @@ async function dispatch(
       }))
     })
     request.once('error', reject)
-    request.end(requireBody(init.body))
+    void source.text().then(body => request.end(body), reject)
   })
 }
 
@@ -94,9 +96,4 @@ function normalizeBasePath(value: string): string {
     throw new TypeError('Karaka IPC base path must be an absolute URL path')
   }
   return basePath
-}
-
-function requireBody(body: BodyInit | null | undefined): string {
-  if (typeof body === 'string') return body
-  throw new TypeError('Karaka IPC request body must be a string')
 }
