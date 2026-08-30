@@ -128,8 +128,8 @@ function registerServices(ctx: Context, services: readonly object[]): readonly s
       if (!method.descriptor.permission) {
         throw new TypeError(`application tool "${method.descriptor.id}" must declare a permission`)
       }
-      if (typeof method.descriptor.input === 'boolean') {
-        throw new TypeError(`application tool "${method.descriptor.id}" must use an object-form input schema`)
+      if (typeof method.descriptor.input === 'boolean' || method.descriptor.input.type !== 'object') {
+        throw new TypeError(`application tool "${method.descriptor.id}" must use a top-level object input schema`)
       }
       ctx.tools.register({
         descriptor: method.descriptor,
@@ -158,11 +158,25 @@ function decoratedMethods(service: object): readonly DecoratedMethod[] {
       shadowed.add(key)
       const method = Reflect.getOwnPropertyDescriptor(prototype, key)?.value
       const descriptor = getToolMetadata(method)
-      if (descriptor) methods.push(Object.freeze({ descriptor, invoke: method.bind(service) }))
+      if (!descriptor) continue
+      requireServiceMethod(service, key, descriptor.id)
+      methods.push(Object.freeze({
+        descriptor,
+        invoke: (input: JsonValue, context: { readonly signal?: AbortSignal }) => {
+          const implementation = requireServiceMethod(service, key, descriptor.id)
+          return Reflect.apply(implementation, service, [input, context])
+        },
+      }))
     }
     prototype = Object.getPrototypeOf(prototype)
   }
   return methods
+}
+
+function requireServiceMethod(service: object, key: PropertyKey, id: string): Function {
+  const method = Reflect.get(service, key)
+  if (typeof method === 'function') return method
+  throw new TypeError(`application tool "${id}" is not callable on its service instance`)
 }
 
 function createHandler(ctx: Context, toolIds: readonly string[], config: ResolvedConfig): McpHttpHandler {

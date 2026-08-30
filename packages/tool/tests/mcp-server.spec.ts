@@ -133,7 +133,31 @@ describe('Tool MCP server', () => {
     }
   })
 
-  it('requires permissions, object-form inputs, decorated methods, and reversible mounts', async () => {
+  it('invokes the effective framework-managed service method', async () => {
+    const service = calculatorService(2, new AsyncLocalStorage())
+    decorate(service, 'multiply', 'math.multiply', 'math.use')
+    const original = service.multiply
+    let wrapperCalls = 0
+    service.multiply = async function multiply(input: { value: number }) {
+      wrapperCalls++
+      const output = await Reflect.apply(original, this, [input])
+      return { result: output.result + 1 }
+    }
+    const mounted = await mountServer({ services: [service] })
+    const client = createClient(mounted.endpoint)
+
+    try {
+      await client.connect()
+      const result = await client.client.callTool({ name: 'math.multiply', arguments: { value: 4 } })
+      expect(result.structuredContent).toEqual({ result: 9 })
+      expect(wrapperCalls).toBe(1)
+    } finally {
+      await client.close()
+      await mounted.dispose()
+    }
+  })
+
+  it('requires permissions, top-level object inputs, decorated methods, and reversible mounts', async () => {
     const ctx = new Context()
 
     try {
@@ -156,7 +180,18 @@ describe('Tool MCP server', () => {
         permission: 'math.use',
       })(Object.getPrototypeOf(booleanInput), 'multiply', legacyDescriptor(booleanInput, 'multiply'))
       await expect(ctx.plugin(ToolMcpServer, config([booleanInput], () => () => undefined)))
-        .rejects.toThrow('must use an object-form input schema')
+        .rejects.toThrow('must use a top-level object input schema')
+
+      const primitiveInput = calculatorService(2, new AsyncLocalStorage())
+      tool({
+        id: 'math.primitive-input',
+        description: 'Invalid MCP input.',
+        input: { type: 'string' },
+        output: outputSchema,
+        permission: 'math.use',
+      })(Object.getPrototypeOf(primitiveInput), 'multiply', legacyDescriptor(primitiveInput, 'multiply'))
+      await expect(ctx.plugin(ToolMcpServer, config([primitiveInput], () => () => undefined)))
+        .rejects.toThrow('must use a top-level object input schema')
 
       const valid = calculatorService(2, new AsyncLocalStorage())
       decorate(valid, 'multiply', 'math.multiply', 'math.use')
