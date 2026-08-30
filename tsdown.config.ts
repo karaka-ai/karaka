@@ -50,12 +50,12 @@ export default defineConfig([
   {
     ...shared,
     workspace: ['packages/tool'],
-    entry: ['lib/types/index.js', 'lib/types/core.js'],
+    entry: ['lib/types/core.js', 'lib/types/mcp-server.js'],
   },
   {
     ...shared,
     workspace: ['packages/sdk'],
-    entry: ['lib/types/index.js'],
+    entry: ['lib/types/index.js', 'lib/types/tool.js'],
   },
   {
     ...shared,

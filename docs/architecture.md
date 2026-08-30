@@ -4,7 +4,7 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted MCP server plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, an OpenAI Responses model provider, the initial Tool authoring API and effect-owned core registry, setup-YAML process bootstrap, authenticated HTTP and IPC Transports, and a matching application SDK exist today. The agent plugin model, MCP server and client integrations, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, an OpenAI Responses model provider, the initial Tool authoring API, effect-owned core registry, and application MCP server plugin, setup-YAML process bootstrap, authenticated HTTP and IPC Transports, and a matching application SDK exist today. The agent plugin model, framework-specific MCP server adapters, endpoint discovery and the MCP client bridge, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
 
 Concrete unresolved defects and architectural gaps are tracked in [Open Issues](issues.md).
 
@@ -189,13 +189,13 @@ Identity alone never permits an action. Authorization plugins must compare the i
 
 A **service** is a runtime-facing capability exposed through the Cordis context. Plugins use services to cooperate without importing one another's implementations. A top-level seam may use one service or coordinate several internal services and registries.
 
-A **tool** is an operation intentionally exposed to a model inside the Agent Runtime seam. The core Tool plugin provides `ctx.tools`, an effect-owned registry for model-visible names and JSON schemas. It compiles boundary validators once per registration, binds an explicit allowlist, validates input and output, drains active calls during disposal, and removes the contribution. MCP server integrations, endpoint-discovery providers, the MCP client bridge, and tool-policy implementations remain ordinary planned Cordis plugins in the Tool plugin family. MCP supplies the remote tool protocol; Karaka's application-facing Transport seam remains a separate Chat API boundary.
+A **tool** is an operation intentionally exposed to a model inside the Agent Runtime seam. The core Tool plugin provides `ctx.tools`, an effect-owned registry for model-visible names and JSON schemas. It compiles boundary validators once per registration, binds an explicit allowlist, validates input and output, drains active calls during disposal, and removes the contribution. The current application MCP server plugin binds decorated services to this registry and exposes them through MCP. Framework adapters, endpoint-discovery providers, the MCP client bridge, and tool-policy implementations remain ordinary planned Cordis plugins in the Tool plugin family. MCP supplies the remote tool protocol; Karaka's application-facing Transport seam remains a separate Chat API boundary.
 
 ### Tool package boundary
 
-The first-party Tool family is published as the separately installable `@karaka/tool` package. It is an application-capability package above the nine-package kernel, not a new top-level seam.
+The first-party Tool runtime family is published as the separately installable `@karaka/tool` package. It is an application-capability package above the nine-package kernel, not a new top-level seam. Application authors receive the inert decorator and its schemas through the existing `@karaka/sdk` package.
 
-The package root exports the metadata-only `tool` decorator, immutable JSON Schema 2020-12 descriptors, and shared invocation types. These exports are inert: importing `@karaka/tool` neither mounts behavior nor registers a tool. The current `@karaka/tool/core` subpath exports the effect-owned registry plugin. Future first-party runtime behavior will be exposed through plugin subpaths of the same package. Target naming includes framework-specific `@karaka/tool/mcp-server-*`, `@karaka/tool/discovery-*`, `@karaka/tool/mcp-client`, and `@karaka/tool/policy-*`. Each behavioral subpath exports an ordinary Cordis plugin, and every registration it makes is owned by a reversible effect. The exact list grows with implementations, but first-party Tool behavior must not escape this plugin contract.
+The `@karaka/sdk` package exports the metadata-only `tool` decorator, immutable JSON Schema 2020-12 descriptors, and invocation context types. These exports are inert: importing the SDK neither mounts behavior nor registers a tool. The `@karaka/tool/core` subpath exports the effect-owned registry plugin, and `@karaka/tool/mcp-server` exports the application-side MCP server plugin. Future first-party runtime behavior will be exposed through plugin subpaths of the Tool package. Target naming includes framework-specific `@karaka/tool/mcp-server-*`, `@karaka/tool/discovery-*`, `@karaka/tool/mcp-client`, and `@karaka/tool/policy-*`. Each behavioral subpath exports an ordinary Cordis plugin, and every registration it makes is owned by a reversible effect. The exact list grows with implementations, but first-party Tool behavior must not escape this plugin contract.
 
 Third-party and private Tool-family plugins may use their own package names. They integrate through the same public Tool contracts and Cordis lifecycle; they do not receive a separate registry or extension mechanism. Local handlers and remote MCP clients are Tool-family plugins behind the same logical invocation contract.
 
@@ -217,10 +217,10 @@ flowchart LR
   Storage --> Backend["Selected storage provider"]
 ```
 
-The same pattern applies to SaaS domains, but normal application developers should not write a plugin or setup entry for every method. The current `tool` decorator marks methods on services already created by the backend framework. A future tool-host plugin will discover and bind them. The authoring API is:
+The same pattern applies to SaaS domains, but normal application developers should not write a plugin or setup entry for every method. The current `tool` decorator marks methods on services already created by the backend framework. The current MCP server plugin receives those instances once and discovers and binds their decorated methods. The authoring API is:
 
 ```ts
-import { tool } from '@karaka/tool'
+import { tool } from '@karaka/sdk'
 
 class InvoiceService {
   @tool({
@@ -236,7 +236,7 @@ class InvoiceService {
 }
 ```
 
-`@tool` attaches immutable metadata to the method only. It is an inert authoring helper, not a second plugin system. Importing a decorated class does not register it or mutate a global registry. A future framework-specific application MCP server plugin will enumerate backend-managed instances during application bootstrap, read their tool metadata, bind the methods, and expose them through one MCP endpoint using reversible Cordis effects. The server plugin owns those effects, so disposal removes the handlers. The decorator does not create another service container, lifecycle, registry, or non-disposable global side channel. A framework with no inspectable container may require one application-level server registration point, but never one YAML entry per method.
+`@tool` attaches immutable metadata to the method only. It is an inert authoring helper, not a second plugin system. Importing a decorated class does not register it or mutate a global registry. The application MCP server plugin receives backend-managed instances during application bootstrap, reads their tool metadata, binds the methods, and exposes them through one MCP endpoint using reversible Cordis effects. Its mount callback connects the web-standard endpoint to the backend's existing server and must return an unmount function. Future framework-specific adapters will supply that wiring automatically. The server plugin owns the handler, registrations, active-call cancellation, and unmount lifecycle. The decorator does not create another service container, lifecycle, registry, or non-disposable global side channel.
 
 In a remote deployment, every application or microservice MCP server plugin exposes its bound tools over authenticated MCP Streamable HTTP. A setup-selected endpoint-discovery plugin supplies trusted MCP endpoint URLs through static configuration or a provider such as DNS, Kubernetes, Consul, or Cloud Map. Endpoint discovery does not inspect tools. The MCP client bridge negotiates each known endpoint, calls `tools/list`, validates its schemas, and registers model-visible descriptors and invocation clients in Agent Runtime through reversible effects. Discovery, MCP client, and policy roles remain plugins in the Tool family; there is no separate discovery daemon or lifecycle outside Cordis. The application graph therefore owns server-handler effects, while the Karaka graph owns descriptor and client effects. A shared-process development or embedded deployment may combine both roles in one graph without changing their ownership.
 
@@ -435,7 +435,7 @@ Additional worker roles are deferred until Karaka has a concrete need such as un
 A Karaka code API has two deliberately different purposes:
 
 1. The current `@karaka/sdk` package provides application-facing `chat.send()` and `chat.stream()` operations. Karaka performs cross-seam orchestration behind that facade.
-2. The current `@tool` decorator marks methods on backend-managed application services for a future installed MCP server plugin to expose.
+2. The current `@tool` decorator marks methods on backend-managed application services for the installed MCP server plugin to expose.
 
 These APIs do not form another Karaka definition format. Setup remains in one setup YAML, and agents and subagents remain ordinary Cordis plugin modules loaded by it. A backend's framework bootstrap and ordinary deployment configuration install its MCP server integration but do not define agents. Agent authors use normal plugin effects rather than a parallel `defineAgent` system.
 
@@ -489,7 +489,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 - Name services after capabilities, not vendors.
 - Keep service contracts independent of providers and consumers.
 - Keep models, sessions, tools, skills, agents, and subagents inside the Agent Runtime seam.
-- Publish the first-party Tool family as the separate `@karaka/tool` package: keep inert authoring contracts at its root and expose runtime behavior as Cordis plugin subpaths.
+- Export inert Tool authoring contracts from `@karaka/sdk`; publish Cordis-owned Tool runtime behavior through plugin subpaths of the separate `@karaka/tool` package.
 - Let applications create chats and send messages without constructing identities, sessions, agents, or invocation contexts.
 - Treat a chat ID as an opaque locator and authenticate and authorize every chat operation.
 - Keep the SDK and server Transport on one explicit public protocol; update both sides and their compatibility tests whenever that protocol changes.

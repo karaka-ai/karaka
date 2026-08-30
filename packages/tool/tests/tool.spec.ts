@@ -4,9 +4,8 @@ import {
   getToolMetadata,
   tool,
   type JsonValue,
-  type ToolContribution,
-} from '@karaka/tool'
-import ToolCore, { ToolError } from '@karaka/tool/core'
+} from '@karaka/sdk'
+import ToolCore, { ToolError, type ToolContribution } from '@karaka/tool/core'
 import { describe, expect, it } from 'vitest'
 
 const inputSchema = {

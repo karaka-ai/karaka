@@ -14,7 +14,7 @@ export interface ToolDefinition {
   readonly permission?: string
 }
 
-/** Normalized metadata shared by manifests, registries, and model adapters. */
+/** Normalized metadata shared by SDK decorators and Tool-family plugins. */
 export interface ToolDescriptor {
   readonly id: string
   readonly version: string
@@ -24,24 +24,12 @@ export interface ToolDescriptor {
   readonly permission?: string
 }
 
-/** Runtime-only invocation context; it is never part of model arguments. */
+/** Invocation context supplied by a Tool-family server plugin, never by model arguments. */
 export interface ToolInvocationContext {
   readonly signal?: AbortSignal
 }
 
-/** A local or remote implementation behind one logical tool descriptor. */
-export type ToolHandler = (
-  input: JsonValue,
-  context: Readonly<ToolInvocationContext>,
-) => unknown | Promise<unknown>
-
-/** Effect-owned contribution consumed by the Tool core registry. */
-export interface ToolContribution {
-  readonly descriptor: ToolDefinition | ToolDescriptor
-  readonly invoke: ToolHandler
-}
-
-const metadataSymbol = Symbol.for('@karaka/tool/metadata')
+const metadataSymbol = Symbol.for('@karaka/sdk/tool/metadata')
 const toolIdPattern = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/
 
 type Method<This, Args extends unknown[], Result> = (this: This, ...args: Args) => Result
@@ -80,13 +68,13 @@ export function tool(definition: Readonly<ToolDefinition>): ToolDecorator {
   } as ToolDecorator
 }
 
-/** Read metadata without registering the method or mutating global state. */
+/** Read SDK metadata without registering the method or mutating global state. */
 export function getToolMetadata(value: unknown): ToolDescriptor | undefined {
   if (typeof value !== 'function' || !Object.hasOwn(value, metadataSymbol)) return undefined
   return Reflect.get(value, metadataSymbol) as ToolDescriptor
 }
 
-/** Normalize a descriptor for decorators and direct plugin contributions. */
+/** Normalize a descriptor for decorators and Tool-family plugin contributions. */
 export function defineTool(definition: Readonly<ToolDefinition | ToolDescriptor>): ToolDescriptor {
   if (!definition || typeof definition !== 'object') throw new TypeError('tool definition must be an object')
   const id = requireText(definition.id, 'tool ID')

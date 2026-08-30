@@ -1,6 +1,6 @@
 {
   "name": "@karaka/tool",
-  "description": "Tool authoring contracts and runtime plugins for Karaka",
+  "description": "Cordis runtime plugins for Karaka tools",
   "version": "0.1.0",
   "publishConfig": {
     "access": "public"
@@ -15,16 +15,14 @@
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
-  "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./lib/types/index.d.ts",
-      "default": "./lib/index.js"
-    },
     "./core": {
       "types": "./lib/types/core.d.ts",
       "default": "./lib/core.js"
+    },
+    "./mcp-server": {
+      "types": "./lib/types/mcp-server.d.ts",
+      "default": "./lib/mcp-server.js"
     },
     "./package.json": "./package.json"
   },
@@ -38,12 +36,12 @@
   "peerDependencies": {
     "@karaka/cordis": "workspace:^"
   },
-  "peerDependenciesMeta": {
-    "@karaka/cordis": {
-      "optional": true
-    }
-  },
   "dependencies": {
+    "@karaka/sdk": "workspace:^",
+    "@modelcontextprotocol/server": "^2.0.0",
     "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0"
   }
 }

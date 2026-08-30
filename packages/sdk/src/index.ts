@@ -24,3 +24,14 @@ export {
   type KarakaInvocationOptions,
   type TransportStreamEvent,
 } from './transport/index.ts'
+export {
+  defineTool,
+  getToolMetadata,
+  tool,
+  type JsonValue,
+  type ToolDecorator,
+  type ToolDefinition,
+  type ToolDescriptor,
+  type ToolInvocationContext,
+  type ToolJsonSchema,
+} from './tool.ts'
