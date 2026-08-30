@@ -138,6 +138,10 @@ importers:
       openai:
         specifier: ^7.8.0
         version: 7.8.0(undici@7.28.0)
+    devDependencies:
+      '@karaka/entitlement':
+        specifier: workspace:^
+        version: link:../entitlement
 
   packages/sdk: {}
 

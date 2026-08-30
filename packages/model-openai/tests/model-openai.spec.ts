@@ -1,5 +1,7 @@
-import { AgentModelsService, type ModelRequest } from '@karaka/agent-runtime'
+import AgentRuntime, { AgentModelsService, type ModelRequest } from '@karaka/agent-runtime'
 import { Context } from '@karaka/cordis'
+import Entitlement from '@karaka/entitlement'
+import EntitlementLocal from '@karaka/entitlement/local'
 import OpenAIModel, {
   OpenAIModelProvider,
   type Config,
@@ -9,6 +11,8 @@ import type {
   Response,
   ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
+  ResponseOutputRefusal,
+  ResponseOutputText,
   ResponseStreamEvent,
 } from 'openai/resources/responses/responses'
 import { describe, expect, it } from 'vitest'
@@ -92,6 +96,56 @@ describe('OpenAI model provider', () => {
     ])
   })
 
+  it('preserves refusal content in completed and streamed generations', async () => {
+    const refusal = 'I cannot help with that.'
+    const completed = new OpenAIModelProvider(config, clientWith({
+      async generate() {
+        return responseWithContent('', [{ type: 'refusal', refusal }])
+      },
+    }))
+    await expect(completed.generate(request)).resolves.toMatchObject({
+      message: { role: 'assistant', content: refusal },
+    })
+
+    const streamed = new OpenAIModelProvider(config, clientWith({
+      async *stream() {
+        yield event({ type: 'response.refusal.delta', delta: 'I cannot ' })
+        yield event({ type: 'response.refusal.delta', delta: 'help with that.' })
+        yield event({
+          type: 'response.completed',
+          response: responseWithContent('', [{ type: 'refusal', refusal }]),
+        })
+      },
+    }))
+
+    const events = []
+    for await (const item of streamed.stream!(request)) events.push(item)
+    expect(events).toEqual([
+      { type: 'text-delta', delta: 'I cannot ' },
+      { type: 'text-delta', delta: 'help with that.' },
+      {
+        type: 'completed',
+        generation: {
+          message: { role: 'assistant', content: refusal },
+          spend: { unit: 'USD_MICRO', amount: 5n },
+        },
+      },
+    ])
+  })
+
+  it('rejects streamed text that differs from the completed response output', async () => {
+    const provider = new OpenAIModelProvider(config, clientWith({
+      async *stream() {
+        yield event({ type: 'response.output_text.delta', delta: 'partial' })
+        yield event({ type: 'response.completed', response: response('different') })
+      },
+    }))
+
+    await expect(async () => {
+      for await (const _event of provider.stream!(request)) void _event
+    }).rejects.toThrow('did not match its completed output')
+  })
+
   it('rejects incomplete responses and streams without a completion event', async () => {
     const incomplete = new OpenAIModelProvider(config, clientWith({
       async generate() {
@@ -128,6 +182,48 @@ describe('OpenAI model provider', () => {
       await ctx.fiber.dispose()
     }
   })
+
+  it('records OpenAI spend through Agent Runtime and Entitlement', async () => {
+    const ctx = new Context()
+    const provider = new OpenAIModelProvider(config, clientWith({
+      async generate() {
+        return response('Provider response')
+      },
+    }))
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(EntitlementLocal, { defaultLimit: '100' })
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin({
+        name: 'openai-runtime-integration',
+        inject: ['agentRuntime', 'agentModels'],
+        apply(pluginContext) {
+          pluginContext.agentModels.register(provider)
+          pluginContext.agentRuntime.registerAgent({
+            id: 'support',
+            prompt: 'Be helpful.',
+            model: provider.id,
+          }, pluginContext.agentModels)
+        },
+      })
+
+      await expect(ctx.agentRuntime.run({
+        agentId: 'support',
+        message: 'Hello',
+        entitlementAccount: 'developer',
+      })).resolves.toMatchObject({
+        model: 'support-model',
+        message: { role: 'assistant', content: 'Provider response' },
+      })
+      await expect(ctx.entitlement.status('developer')).resolves.toMatchObject({
+        unit: 'USD_MICRO',
+        spent: 5n,
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
 })
 
 interface ClientBehavior {
@@ -158,13 +254,33 @@ function response(outputText: string, usage: Response['usage'] = {
   output_tokens_details: { reasoning_tokens: 0 },
   total_tokens: 2,
 }): Response {
+  return responseWithContent(outputText, [{ type: 'output_text', text: outputText, annotations: [] }], usage)
+}
+
+function responseWithContent(
+  outputText: string,
+  content: Array<ResponseOutputText | ResponseOutputRefusal>,
+  usage: Response['usage'] = {
+    input_tokens: 1,
+    input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+    output_tokens: 1,
+    output_tokens_details: { reasoning_tokens: 0 },
+    total_tokens: 2,
+  },
+): Response {
   return {
     id: 'response-test',
     object: 'response',
     created_at: 0,
     model: 'gpt-test',
     output_text: outputText,
-    output: [],
+    output: [{
+      id: 'message-test',
+      type: 'message',
+      role: 'assistant',
+      status: 'completed',
+      content,
+    }],
     status: 'completed',
     error: null,
     incomplete_details: null,

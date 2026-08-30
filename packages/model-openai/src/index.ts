@@ -112,7 +112,7 @@ export class OpenAIModelProvider implements ModelProvider {
       ...(this.maxOutputTokens === undefined ? {} : { max_output_tokens: this.maxOutputTokens }),
     }, request.signal ? { signal: request.signal } : undefined)
 
-    return generation(response.output_text, response, this.pricing)
+    return generation(responseContent(response), response, this.pricing)
   }
 
   async *stream(request: Readonly<ModelRequest>) {
@@ -127,7 +127,7 @@ export class OpenAIModelProvider implements ModelProvider {
     let completed: Response | undefined
     let content = ''
     for await (const event of events) {
-      if (event.type === 'response.output_text.delta') {
+      if (event.type === 'response.output_text.delta' || event.type === 'response.refusal.delta') {
         content += event.delta
         if (event.delta) yield { type: 'text-delta' as const, delta: event.delta }
       } else if (event.type === 'response.completed') {
@@ -137,7 +137,11 @@ export class OpenAIModelProvider implements ModelProvider {
     }
 
     if (!completed) throw new Error('OpenAI response stream ended without completion')
-    yield { type: 'completed' as const, generation: generation(content, completed, this.pricing) }
+    const completedContent = responseContent(completed)
+    if (content !== completedContent) {
+      throw new Error('OpenAI response stream did not match its completed output')
+    }
+    yield { type: 'completed' as const, generation: generation(completedContent, completed, this.pricing) }
   }
 }
 
@@ -159,6 +163,21 @@ function modelInput(request: Readonly<ModelRequest>) {
     role: message.role,
     content: message.content,
   }))
+}
+
+function responseContent(response: Response) {
+  const content: string[] = []
+  let foundContent = false
+
+  for (const item of response.output) {
+    if (item.type !== 'message') continue
+    for (const part of item.content) {
+      foundContent = true
+      content.push(part.type === 'output_text' ? part.text : part.refusal)
+    }
+  }
+
+  return foundContent ? content.join('') : response.output_text
 }
 
 function generation(content: string, response: Response, pricing: ParsedPricing): ModelGeneration {
