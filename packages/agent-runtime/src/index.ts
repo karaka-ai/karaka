@@ -4,6 +4,7 @@ import type { EntitlementAccount, SpendAmount } from '@karaka/entitlement'
 declare module '@karaka/cordis' {
   interface Context {
     agentRuntime: AgentRuntimeService
+    agentModels: AgentModelsService
   }
 }
 
@@ -38,6 +39,41 @@ export interface ModelProvider {
 export interface ModelGeneration {
   readonly message: ModelMessage
   readonly spend?: SpendAmount
+}
+
+/** Model providers visible inside one native Cordis service scope. */
+export class AgentModelsService extends Service {
+  static readonly provide = 'agentModels'
+
+  private readonly providers = new Map<string, ModelProvider>()
+
+  constructor(ctx: Context) {
+    super(ctx, AgentModelsService.provide)
+  }
+
+  /** Register a model provider until the contributing plugin unloads. */
+  register(provider: ModelProvider) {
+    const id = requireText(provider.id, 'model ID')
+    if (provider.spendUnit !== undefined) requireText(provider.spendUnit, 'model spend unit')
+
+    return this.ctx.effect(() => {
+      if (this.providers.has(id)) throw new Error(`model "${id}" is already registered`)
+      this.providers.set(id, provider)
+      return () => {
+        if (this.providers.get(id) === provider) this.providers.delete(id)
+      }
+    }, `agentModels.register(${JSON.stringify(id)})`)
+  }
+
+  /** Resolve one provider from this Cordis service scope. */
+  resolve(id: string): ModelProvider | undefined {
+    return this.providers.get(id)
+  }
+
+  /** List model IDs from this Cordis service scope. */
+  list(): readonly string[] {
+    return [...this.providers.keys()]
+  }
 }
 
 /** Input for the initial single-turn Agent Runtime slice. */
@@ -135,43 +171,36 @@ export class AgentRuntimeError extends Error {
 export class AgentRuntimeService extends Service {
   static inject = ['entitlement']
 
-  private readonly agents = new Map<string, AgentDescriptor>()
-  private readonly models = new Map<string, ModelProvider>()
+  private readonly agents = new Map<string, RegisteredAgent>()
   private sessionProvider: RegisteredSessionProvider | undefined
 
   constructor(ctx: Context) {
     super(ctx, 'agentRuntime')
+    new AgentModelsService(ctx)
   }
 
   /** Register an agent descriptor until the contributing plugin unloads. */
-  registerAgent(definition: Readonly<AgentDescriptor>) {
+  registerAgent(definition: Readonly<AgentDescriptor>, models: AgentModelsService) {
     const agent = Object.freeze({
       id: requireText(definition.id, 'agent ID'),
       prompt: requireText(definition.prompt, 'agent prompt'),
       model: requireText(definition.model, 'agent model'),
     })
+    if (!models || typeof models.resolve !== 'function') {
+      throw new TypeError('agent models service is required')
+    }
+    const registration: RegisteredAgent = Object.freeze({
+      definition: agent,
+      resolveModel: (id: string) => models.resolve(id),
+    })
 
     return this.ctx.effect(() => {
       if (this.agents.has(agent.id)) throw new Error(`agent "${agent.id}" is already registered`)
-      this.agents.set(agent.id, agent)
+      this.agents.set(agent.id, registration)
       return () => {
-        if (this.agents.get(agent.id) === agent) this.agents.delete(agent.id)
+        if (this.agents.get(agent.id) === registration) this.agents.delete(agent.id)
       }
     }, `agentRuntime.registerAgent(${JSON.stringify(agent.id)})`)
-  }
-
-  /** Register a model provider until the contributing plugin unloads. */
-  registerModel(provider: ModelProvider) {
-    const id = requireText(provider.id, 'model ID')
-    if (provider.spendUnit !== undefined) requireText(provider.spendUnit, 'model spend unit')
-
-    return this.ctx.effect(() => {
-      if (this.models.has(id)) throw new Error(`model "${id}" is already registered`)
-      this.models.set(id, provider)
-      return () => {
-        if (this.models.get(id) === provider) this.models.delete(id)
-      }
-    }, `agentRuntime.registerModel(${JSON.stringify(id)})`)
   }
 
   /** Register session behavior until the contributing plugin unloads. */
@@ -202,14 +231,14 @@ export class AgentRuntimeService extends Service {
     }, `agentRuntime.registerSessionProvider(${JSON.stringify(name)})`)
   }
 
-  /** List active agent descriptors without exposing mutable registry state. */
+  /** List globally addressable agent descriptors. */
   listAgents(): readonly AgentDescriptor[] {
-    return [...this.agents.values()]
+    return [...this.agents.values()].map(registration => registration.definition)
   }
 
-  /** List active model IDs without exposing provider implementations. */
+  /** List model IDs from the caller's native Cordis model scope. */
   listModels(): readonly string[] {
-    return [...this.models.keys()]
+    return this.ctx.agentModels.list()
   }
 
   /** Resolve the current agent graph and execute one transient or durable text turn. */
@@ -277,8 +306,9 @@ export class AgentRuntimeService extends Service {
     requestedEntitlementAccount: string | undefined,
     history: readonly ModelMessage[],
   ) {
-    const agent = this.resolveAgent(agentId)
-    const model = this.models.get(agent.model)
+    const registration = this.resolveAgent(agentId)
+    const agent = registration.definition
+    const model = registration.resolveModel(agent.model)
     if (!model) throw new AgentRuntimeError('UNKNOWN_MODEL', `model "${agent.model}" is not registered`)
 
     const entitlementAccount = model.spendUnit === undefined
@@ -312,9 +342,9 @@ export class AgentRuntimeService extends Service {
   }
 
   private resolveAgent(agentId: string) {
-    const agent = this.agents.get(agentId)
-    if (!agent) throw new AgentRuntimeError('UNKNOWN_AGENT', `agent "${agentId}" is not registered`)
-    return agent
+    const registration = this.agents.get(agentId)
+    if (!registration) throw new AgentRuntimeError('UNKNOWN_AGENT', `agent "${agentId}" is not registered`)
+    return registration
   }
 
   private async withSessionProvider<T>(operation: (provider: AgentSessionProvider) => Promise<T>): Promise<T> {
@@ -338,6 +368,11 @@ interface RegisteredSessionProvider {
   operations: number
   active: boolean
   resolveDrained?: () => void
+}
+
+interface RegisteredAgent {
+  readonly definition: AgentDescriptor
+  readonly resolveModel: (id: string) => ModelProvider | undefined
 }
 
 interface ExpectedSession {

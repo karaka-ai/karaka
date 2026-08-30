@@ -111,9 +111,9 @@ describe('Agent Runtime storage sessions', () => {
       await ctx.plugin(createAgentPlugin('Prompt', 'delayed-model'))
       await ctx.plugin({
         name: 'delayed-model',
-        inject: ['agentRuntime'],
+        inject: ['agentModels'],
         apply(pluginContext) {
-          pluginContext.agentRuntime.registerModel({
+          pluginContext.agentModels.register({
             id: 'delayed-model',
             async generate() {
               generationStarted.resolve()
@@ -185,9 +185,9 @@ async function createRuntime(
 function createAgentPlugin(prompt: string, model: string) {
   return {
     name: 'support-agent',
-    inject: ['agentRuntime'],
+    inject: ['agentRuntime', 'agentModels'],
     apply(ctx: CordisContext) {
-      ctx.agentRuntime.registerAgent({ id: 'support', prompt, model })
+      ctx.agentRuntime.registerAgent({ id: 'support', prompt, model }, ctx.agentModels)
     },
   }
 }
@@ -195,9 +195,9 @@ function createAgentPlugin(prompt: string, model: string) {
 function createModelPlugin(id: string, requests: ModelRequest[]) {
   return {
     name: id,
-    inject: ['agentRuntime'],
+    inject: ['agentModels'],
     apply(ctx: CordisContext) {
-      ctx.agentRuntime.registerModel({
+      ctx.agentModels.register({
         id,
         spendUnit: 'USD_MICRO',
         async generate(request) {

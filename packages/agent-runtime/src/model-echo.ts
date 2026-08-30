@@ -37,10 +37,10 @@ export class EchoModelProvider implements ModelProvider {
 /** Contribute one deterministic echo model. */
 export const plugin = {
   name: 'model-echo',
-  inject: ['agentRuntime'],
+  inject: ['agentModels'],
   Config,
   apply(ctx: Context, config: Config) {
-    ctx.agentRuntime.registerModel(new EchoModelProvider(config))
+    ctx.agentModels.register(new EchoModelProvider(config))
   },
 }
 
