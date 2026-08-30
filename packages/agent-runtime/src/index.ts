@@ -25,6 +25,7 @@ export interface ModelMessage {
 export interface ModelRequest {
   readonly agentId: string
   readonly messages: readonly ModelMessage[]
+  readonly signal?: AbortSignal
 }
 
 /** Model implementation contributed by a provider plugin. */
@@ -33,6 +34,8 @@ export interface ModelProvider {
   /** Omit only when this provider never reports spend. */
   readonly spendUnit?: string
   generate(request: Readonly<ModelRequest>): Promise<ModelGeneration>
+  /** Optional incremental generation path used by streaming consumers. */
+  stream?(request: Readonly<ModelRequest>): AsyncIterable<ModelStreamEvent>
 }
 
 /** Provider-neutral model output and optional actual spend. */
@@ -40,6 +43,11 @@ export interface ModelGeneration {
   readonly message: ModelMessage
   readonly spend?: SpendAmount
 }
+
+/** Incremental output from a streaming model provider. */
+export type ModelStreamEvent =
+  | { readonly type: 'text-delta', readonly delta: string }
+  | { readonly type: 'completed', readonly generation: ModelGeneration }
 
 /** Model providers visible inside one native Cordis service scope. */
 export class AgentModelsService extends Service {
@@ -99,6 +107,20 @@ export interface AgentChatResumeRequest {
 
 export type AgentRuntimeRequest = AgentRunRequest | AgentChatStartRequest | AgentChatResumeRequest
 
+/** Protocol-neutral output emitted while an Agent Runtime turn is active. */
+export interface AgentRuntimeTextDelta {
+  readonly type: 'text-delta'
+  readonly delta: string
+}
+
+export interface AgentRuntimeStreamOptions {
+  readonly signal?: AbortSignal
+}
+
+export type AgentRuntimeEventSink = (
+  event: Readonly<AgentRuntimeTextDelta>,
+) => void | Promise<void>
+
 /** Output from one single-turn agent run. */
 export interface AgentRunResult {
   readonly agentId: string
@@ -150,6 +172,7 @@ export interface AgentSessionProvider {
 /** Stable Agent Runtime failures independent of model implementations. */
 export type AgentRuntimeErrorCode =
   | 'INVALID_REQUEST'
+  | 'ABORTED'
   | 'UNKNOWN_AGENT'
   | 'UNKNOWN_MODEL'
   | 'SESSION_UNAVAILABLE'
@@ -246,48 +269,75 @@ export class AgentRuntimeService extends Service {
   run(request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>): Promise<AgentChatRunResult>
   run(request: Readonly<AgentRuntimeRequest>): Promise<AgentRunResult | AgentChatRunResult>
   async run(request: Readonly<AgentRuntimeRequest>): Promise<AgentRunResult | AgentChatRunResult> {
-    if (isResumeRequest(request)) return this.resumeChat(request)
-    if (isPersistedStartRequest(request)) return this.startChat(request)
-    return this.runTransient(request)
+    return this.executeRequest(request, (agentId, message, entitlementAccount, history) => {
+      return this.generateTurn(agentId, message, entitlementAccount, history)
+    })
   }
 
-  private async runTransient(request: Readonly<AgentRunRequest>): Promise<AgentRunResult> {
+  /** Execute one turn while emitting protocol-neutral incremental text. */
+  stream(
+    request: Readonly<AgentRunRequest>,
+    emit: AgentRuntimeEventSink,
+    options?: Readonly<AgentRuntimeStreamOptions>,
+  ): Promise<AgentRunResult>
+  stream(
+    request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
+    emit: AgentRuntimeEventSink,
+    options?: Readonly<AgentRuntimeStreamOptions>,
+  ): Promise<AgentChatRunResult>
+  stream(
+    request: Readonly<AgentRuntimeRequest>,
+    emit: AgentRuntimeEventSink,
+    options?: Readonly<AgentRuntimeStreamOptions>,
+  ): Promise<AgentRunResult | AgentChatRunResult>
+  async stream(
+    request: Readonly<AgentRuntimeRequest>,
+    emit: AgentRuntimeEventSink,
+    options: Readonly<AgentRuntimeStreamOptions> = {},
+  ): Promise<AgentRunResult | AgentChatRunResult> {
+    if (typeof emit !== 'function') throw new TypeError('agent event sink must be a function')
+    assertNotAborted(options.signal)
+    return this.executeRequest(request, (agentId, message, entitlementAccount, history) => {
+      return this.streamTurn(agentId, message, entitlementAccount, history, emit, options)
+    }, options.signal)
+  }
+
+  private async executeRequest(
+    request: Readonly<AgentRuntimeRequest>,
+    generate: TurnGenerator,
+    signal?: AbortSignal,
+  ): Promise<AgentRunResult | AgentChatRunResult> {
+    if (isResumeRequest(request)) {
+      const chatId = requireRequestText(request.chatId, 'chat ID')
+      const message = requireRequestText(request.message, 'message')
+      return this.withSessionProvider(provider => provider.withSession({ chatId }, async lease => {
+        const session = validateSession(lease.session, { id: chatId })
+        return this.executeSessionTurn(lease, session, message, generate, signal)
+      }))
+    }
+
     const agentId = requireRequestText(request?.agentId, 'agent ID')
     const message = requireRequestText(request?.message, 'message')
-    return (await this.generateTurn(agentId, message, request.entitlementAccount, [])).result
-  }
+    if (!isPersistedStartRequest(request)) {
+      return (await generate(agentId, message, request.entitlementAccount, [])).result
+    }
 
-  private async startChat(request: Readonly<AgentChatStartRequest>): Promise<AgentChatRunResult> {
-    const agentId = requireRequestText(request.agentId, 'agent ID')
-    const message = requireRequestText(request.message, 'message')
     this.resolveAgent(agentId)
-
-    return this.withSessionProvider(async provider => {
-      return provider.withSession({ agentId }, async lease => {
-        const session = validateSession(lease.session, { agentId, messages: [] })
-        return this.runSessionTurn(lease, session, message)
-      })
-    })
+    return this.withSessionProvider(provider => provider.withSession({ agentId }, async lease => {
+      const session = validateSession(lease.session, { agentId, messages: [] })
+      return this.executeSessionTurn(lease, session, message, generate, signal)
+    }))
   }
 
-  private async resumeChat(request: Readonly<AgentChatResumeRequest>): Promise<AgentChatRunResult> {
-    const chatId = requireRequestText(request.chatId, 'chat ID')
-    const message = requireRequestText(request.message, 'message')
-
-    return this.withSessionProvider(async provider => {
-      return provider.withSession({ chatId }, async lease => {
-        const session = validateSession(lease.session, { id: chatId })
-        return this.runSessionTurn(lease, session, message)
-      })
-    })
-  }
-
-  private async runSessionTurn(
+  private async executeSessionTurn(
     lease: AgentSessionLease,
     session: AgentSession,
     message: string,
+    generate: TurnGenerator,
+    signal?: AbortSignal,
   ): Promise<AgentChatRunResult> {
-    const turn = await this.generateTurn(session.agentId, message, session.entitlementAccount, session.messages)
+    const turn = await generate(session.agentId, message, session.entitlementAccount, session.messages)
+    assertNotAborted(signal)
     const saved = await lease.commit(turn.messages)
     validateSession(saved, {
       id: session.id,
@@ -341,6 +391,93 @@ export class AgentRuntimeService extends Service {
     })
   }
 
+  private async streamTurn(
+    agentId: string,
+    message: string,
+    requestedEntitlementAccount: string | undefined,
+    history: readonly ModelMessage[],
+    emit: AgentRuntimeEventSink,
+    options: Readonly<AgentRuntimeStreamOptions>,
+  ) {
+    const registration = this.resolveAgent(agentId)
+    const agent = registration.definition
+    const model = registration.resolveModel(agent.model)
+    if (!model) throw new AgentRuntimeError('UNKNOWN_MODEL', `model "${agent.model}" is not registered`)
+
+    const entitlementAccount = model.spendUnit === undefined
+      ? undefined
+      : requireRequestText(requestedEntitlementAccount, 'entitlement account')
+    const messages: readonly ModelMessage[] = Object.freeze([
+      Object.freeze({ role: 'system' as const, content: agent.prompt }),
+      ...conversationMessages(history),
+      Object.freeze({ role: 'user' as const, content: message }),
+    ])
+    const request: Readonly<ModelRequest> = Object.freeze(options.signal
+      ? { agentId, messages, signal: options.signal }
+      : { agentId, messages })
+    const complete = async (response: ModelGeneration, entitlement?: EntitlementAccount) => {
+      const spend = validateModelSpend(model, response?.spend)
+      if (spend) await entitlement!.recordSpend(spend)
+      if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
+        throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
+      }
+      const assistant = Object.freeze({ role: response.message.role, content: response.message.content })
+      return Object.freeze({
+        result: Object.freeze({ agentId, model: agent.model, message: assistant }),
+        messages: Object.freeze([...messages, assistant]),
+      })
+    }
+    const generate = async (entitlement?: EntitlementAccount) => {
+      try {
+        assertNotAborted(options.signal)
+        if (!model.stream) {
+          const turn = await complete(await model.generate(request), entitlement)
+          assertNotAborted(options.signal)
+          if (turn.result.message.content) {
+            await emit(Object.freeze({ type: 'text-delta', delta: turn.result.message.content }))
+          }
+          return turn
+        }
+
+        let response: ModelGeneration | undefined
+        let content = ''
+        for await (const event of model.stream(request)) {
+          assertNotAborted(options.signal)
+          if (response) {
+            throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" streamed after completion`)
+          }
+          if (event?.type === 'text-delta' && typeof event.delta === 'string') {
+            content += event.delta
+            if (event.delta) await emit(Object.freeze({ type: 'text-delta', delta: event.delta }))
+          } else if (event?.type === 'completed' && event.generation) {
+            response = event.generation
+          } else {
+            throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" streamed an invalid event`)
+          }
+        }
+        if (!response) {
+          throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" did not complete its stream`)
+        }
+        const turn = await complete(response, entitlement)
+        if (turn.result.message.content !== content) {
+          throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" streamed inconsistent text`)
+        }
+        return turn
+      } catch (error) {
+        if (options.signal?.aborted && !(error instanceof AgentRuntimeError && error.code === 'ABORTED')) {
+          throw aborted(error)
+        }
+        throw error
+      }
+    }
+
+    if (model.spendUnit === undefined) return generate()
+    return this.ctx.entitlement.withAccount(entitlementAccount!, async (entitlement) => {
+      await entitlement.assertAvailable(model.spendUnit!)
+      return generate(entitlement)
+    })
+  }
+
   private resolveAgent(agentId: string) {
     const registration = this.agents.get(agentId)
     if (!registration) throw new AgentRuntimeError('UNKNOWN_AGENT', `agent "${agentId}" is not registered`)
@@ -374,6 +511,18 @@ interface RegisteredAgent {
   readonly definition: AgentDescriptor
   readonly resolveModel: (id: string) => ModelProvider | undefined
 }
+
+interface GeneratedTurn {
+  readonly result: AgentRunResult
+  readonly messages: readonly ModelMessage[]
+}
+
+type TurnGenerator = (
+  agentId: string,
+  message: string,
+  entitlementAccount: string | undefined,
+  history: readonly ModelMessage[],
+) => Promise<GeneratedTurn>
 
 interface ExpectedSession {
   readonly id?: string
@@ -487,6 +636,18 @@ function requireRequestText(value: unknown, label: string): string {
   } catch (error) {
     throw new AgentRuntimeError('INVALID_REQUEST', `${label} must be a non-empty string`, { cause: error })
   }
+}
+
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw aborted(signal.reason)
+}
+
+function aborted(cause?: unknown) {
+  return new AgentRuntimeError(
+    'ABORTED',
+    'agent turn was cancelled',
+    cause === undefined ? undefined : { cause },
+  )
 }
 
 export default AgentRuntimeService

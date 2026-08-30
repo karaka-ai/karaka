@@ -4,7 +4,7 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions, and setup-YAML process bootstrap exist today. The agent plugin model, tool authoring and hosting APIs, Chat API, subagent coordination, and Transport seam described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, setup-YAML process bootstrap, and an authenticated HTTP Transport exist today. The agent plugin model, tool authoring and hosting APIs, richer Chat API, and subagent coordination described below are target architecture unless stated otherwise.
 
 ## Foundation boundary
 
@@ -144,6 +144,8 @@ The current low-level transient Agent Runtime request names the overall entitlem
 ## Authentication and invocation identity
 
 `ctx.authentication` is a long-lived provider registry and tenant-aware authentication service. An authenticated principal is short-lived invocation data, not a Cordis service and not a plugin mounted for each caller. Karaka resolves the principal at its runtime boundary and carries it through the chat turn internally. Application code and model-visible tool arguments must not choose the effective caller.
+
+`ctx.authentication.withPrincipal(...)` binds a verified identity to one synchronous or asynchronous invocation using request-local async state. A Transport plugin authenticates once, runs the complete turn or stream inside that binding, and lets consumers resolve the same immutable identity through `currentPrincipal()`. Concurrent invocations remain isolated without mounting caller-specific plugins.
 
 Karaka ships two ordinary plugins for the first trust models:
 
@@ -369,6 +371,8 @@ flowchart LR
 ```
 
 An in-process adapter can call the same Chat API directly for embedded deployments. An HTTP adapter opens the network server for a standalone Karaka process. Transport does not replace Authentication or Authorization: every adapter must establish the trusted invocation boundary before calling the Chat API.
+
+The current `@karaka/transport/http` plugin exposes durable chat start and resume routes. It accepts bearer authentication plus an explicit tenant-routing header, binds the verified principal for the complete turn, and returns JSON by default. `Accept: text/event-stream` selects SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. Browser access is disabled unless the setup explicitly allowlists its origin. Deadlines, disconnect cancellation, backpressure, and server disposal belong to the HTTP plugin. Another protocol can be implemented as an ordinary Transport plugin over the same Authentication and Agent Runtime contracts.
 
 ### Running Karaka and scaling agents
 

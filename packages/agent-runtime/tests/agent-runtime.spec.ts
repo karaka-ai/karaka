@@ -8,6 +8,37 @@ import Loader from '@karaka/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
 
 describe('Agent Runtime', () => {
+  it('emits provider-neutral incremental text while returning the completed turn', async () => {
+    const ctx = new Context()
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(EchoModel, { id: 'stream-model', prefix: 'Received: ' })
+      await ctx.plugin(createAgentPlugin('stream-agent', 'stream-model'))
+      const events: Array<{ type: 'text-delta', delta: string }> = []
+
+      const result = await ctx.agentRuntime.stream({
+        agentId: 'stream-agent',
+        message: 'Hello',
+      }, event => {
+        events.push(event)
+      })
+
+      expect(events).toEqual([
+        { type: 'text-delta', delta: 'Received: ' },
+        { type: 'text-delta', delta: 'Hello' },
+      ])
+      expect(result).toEqual({
+        agentId: 'stream-agent',
+        model: 'stream-model',
+        message: { role: 'assistant', content: 'Received: Hello' },
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('loads an agent plugin from setup YAML and runs one turn', async () => {
     const ctx = new Context()
     ctx.baseUrl = new URL('./fixtures/', import.meta.url).href

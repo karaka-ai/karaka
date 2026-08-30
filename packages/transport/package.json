@@ -1,0 +1,50 @@
+{
+  "name": "@karaka/transport",
+  "description": "Pluggable application transport seam for Karaka",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
+    "directory": "packages/transport"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./http": {
+      "types": "./lib/types/http.d.ts",
+      "default": "./lib/http.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@karaka/agent-runtime": "workspace:^",
+    "@karaka/authentication": "workspace:^",
+    "@karaka/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@karaka/schemastery": "workspace:^"
+  },
+  "devDependencies": {
+    "@karaka/entitlement": "workspace:^",
+    "@karaka/storage": "workspace:^"
+  }
+}

@@ -1,4 +1,5 @@
 import { Service, type Context } from '@karaka/cordis'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 declare module '@karaka/cordis' {
   interface Context {
@@ -81,6 +82,7 @@ interface RegisteredPrincipalResolver {
 export class AuthenticationService extends Service {
   private readonly providers = new Map<string, RegisteredProvider>()
   private readonly tenantProviders = new Map<string, RegisteredProvider>()
+  private readonly invocationPrincipal = new AsyncLocalStorage<AuthenticatedIdentity>()
   private principalResolver: RegisteredPrincipalResolver | undefined
 
   constructor(ctx: Context) {
@@ -154,6 +156,9 @@ export class AuthenticationService extends Service {
 
   /** Resolve the principal attached to the caller's current invocation. */
   async currentPrincipal(): Promise<AuthenticatedIdentity> {
+    const bound = this.invocationPrincipal.getStore()
+    if (bound) return bound
+
     const registration = this.principalResolver
     if (!registration) throw noCurrentPrincipal()
     registration.calls++
@@ -172,6 +177,14 @@ export class AuthenticationService extends Service {
       registration.calls--
       if (!registration.active && !registration.calls) registration.resolveDrained?.()
     }
+  }
+
+  /** Bind one verified principal to an isolated synchronous or asynchronous invocation. */
+  withPrincipal<T>(identity: AuthenticatedIdentity, operation: () => T): T {
+    if (typeof operation !== 'function') throw new TypeError('principal operation must be a function')
+    const provider = requireText(identity?.provider, 'identity provider')
+    const principal = normalizeIdentity(identity, provider)
+    return this.invocationPrincipal.run(principal, operation)
   }
 
   /** Authenticate a token through the provider registered for its tenant. */

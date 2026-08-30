@@ -61,6 +61,8 @@ import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
 import Storage from '@karaka/storage'
 import StorageDefault from '@karaka/storage/default'
+import * as Transport from '@karaka/transport'
+import TransportHttp from '@karaka/transport/http'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
@@ -73,6 +75,8 @@ if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS au
 if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
 if (typeof StorageDefault.apply !== 'function') throw new Error('the default storage subpath did not export a plugin')
 if (typeof SessionStorage.apply !== 'function') throw new Error('the storage session subpath did not export a plugin')
+if (Transport.EVENT_STREAM_MEDIA_TYPE !== 'text/event-stream') throw new Error('the transport root did not export its contracts')
+if (typeof TransportHttp.apply !== 'function') throw new Error('the HTTP transport subpath did not export a plugin')
 
 const ctx = new Context()
 await ctx.plugin(Timer)
@@ -80,13 +84,13 @@ ctx.baseUrl = pathToFileURL(process.cwd() + '/').href
 writeFileSync('smoke-agent.mjs', [
   'export default {',
   "  name: 'smoke-agent',",
-  "  inject: ['agentRuntime'],",
+  "  inject: ['agentRuntime', 'agentModels'],",
   '  apply(ctx) {',
   '    ctx.agentRuntime.registerAgent({',
   "      id: 'smoke-agent',",
   "      prompt: 'Packed smoke agent.',",
   "      model: 'smoke-model',",
-  '    })',
+  '    }, ctx.agentModels)',
   '  },',
   '}',
   '',
