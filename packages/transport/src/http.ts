@@ -47,6 +47,14 @@ export interface Config {
   requestTimeoutMs?: number
 }
 
+/** Shared configuration for the Karaka chat protocol over a Node server. */
+export interface NodeTransportConfig {
+  basePath?: string
+  corsOrigins?: string[]
+  maxBodyBytes?: number
+  requestTimeoutMs?: number
+}
+
 export const Config: Schema<Config> = Schema.object({
   host: Schema.string().default('127.0.0.1'),
   port: Schema.natural().max(65_535).default(3_000),
@@ -56,9 +64,7 @@ export const Config: Schema<Config> = Schema.object({
   requestTimeoutMs: Schema.natural().min(1).default(120_000),
 })
 
-interface ResolvedConfig {
-  readonly host: string
-  readonly port: number
+interface ResolvedNodeTransportConfig {
   readonly basePath: string
   readonly corsOrigins: ReadonlySet<string>
   readonly maxBodyBytes: number
@@ -71,9 +77,9 @@ export const plugin = {
   inject: ['agentRuntime', 'authentication'],
   Config,
   async apply(ctx: Context, config: Config) {
-    const transport = new HttpTransport(ctx, resolveConfig(config))
-    await transport.open()
-    return () => transport.close()
+    const host = requireText(config.host ?? '127.0.0.1', 'transport host')
+    const port = requireInteger(config.port ?? 3_000, 'transport port', 0, 65_535)
+    return openNodeTransport(ctx, config, server => server.listen(port, host))
   },
 }
 
@@ -81,7 +87,11 @@ class HttpTransport {
   private readonly activeInvocations = new Set<AbortController>()
   private readonly server: Server
 
-  constructor(private readonly ctx: Context, private readonly config: ResolvedConfig) {
+  constructor(
+    private readonly ctx: Context,
+    private readonly config: ResolvedNodeTransportConfig,
+    private readonly listen: (server: Server) => void,
+  ) {
     this.server = createServer((request, response) => {
       void this.handle(request, response)
     })
@@ -99,7 +109,7 @@ class HttpTransport {
       }
       this.server.once('error', onError)
       this.server.once('listening', onListening)
-      this.server.listen(this.config.port, this.config.host)
+      this.listen(this.server)
     })
   }
 
@@ -287,9 +297,7 @@ class HttpTransportError extends Error {
   }
 }
 
-function resolveConfig(config: Config): ResolvedConfig {
-  const host = requireText(config.host ?? '127.0.0.1', 'transport host')
-  const port = requireInteger(config.port ?? 3_000, 'transport port', 0, 65_535)
+function resolveConfig(config: NodeTransportConfig): ResolvedNodeTransportConfig {
   const maxBodyBytes = requireInteger(config.maxBodyBytes ?? 65_536, 'maximum body bytes', 1)
   const requestTimeoutMs = requireInteger(config.requestTimeoutMs ?? 120_000, 'request timeout', 1)
   const basePath = requireText(config.basePath ?? '/v1', 'transport base path').replace(/\/$/, '')
@@ -297,7 +305,18 @@ function resolveConfig(config: Config): ResolvedConfig {
     throw new TypeError('transport base path must be an absolute URL path')
   }
   const corsOrigins = new Set((config.corsOrigins ?? []).map(origin => requireOrigin(origin)))
-  return Object.freeze({ host, port, basePath, corsOrigins, maxBodyBytes, requestTimeoutMs })
+  return Object.freeze({ basePath, corsOrigins, maxBodyBytes, requestTimeoutMs })
+}
+
+/** @internal Open the shared chat protocol on a caller-selected Node listener. */
+export async function openNodeTransport(
+  ctx: Context,
+  config: NodeTransportConfig,
+  listen: (server: Server) => void,
+): Promise<() => Promise<void>> {
+  const transport = new HttpTransport(ctx, resolveConfig(config), listen)
+  await transport.open()
+  return () => transport.close()
 }
 
 async function readJson(request: IncomingMessage, maxBodyBytes: number): Promise<Record<string, unknown>> {

@@ -1,0 +1,3 @@
+# Bilingual-pair consistency record. Both files are authoritative.
+tool-architecture.md: b0914d8080c36e318e409ebb3ce66e8af4bc496d
+tool-architecture.zh.md: f854d50e89bff0502913430813163847e32ead93
