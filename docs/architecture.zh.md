@@ -66,13 +66,13 @@ import type { Context } from '@karaka/cordis'
 
 export default {
   name: 'support-agent',
-  inject: ['agentRuntime'],
+  inject: ['agentRuntime', 'agentModels'],
   apply(ctx: Context) {
     ctx.agentRuntime.registerAgent({
       id: 'support',
       prompt: 'You are a helpful support agent.',
       model: 'support-model-policy',
-    })
+    }, ctx.agentModels)
   },
 }
 ```
@@ -245,7 +245,7 @@ ctx.agentRuntime.registerAgent({
   id: 'support',
   tools: ['customers.read', 'invoices.refund'],
   // 提示词、模型、会话和其他智能体策略
-})
+}, ctx.agentModels)
 ```
 
 发现工具只表示运行时可以找到它，并不授予每个智能体调用权限。如果允许列表中的工具不在已验证 manifest 中，或其版本或 schema 不兼容，智能体激活必须失败。智能体运行时会先验证模型参数，再要求执行接缝传输调用。拥有该工具的后端会再次验证输入，使用内部传递的主体授权请求，执行绑定方法，并验证输出。智能体运行时还会验证返回的输出，再将其交给模型。工具 ID 必须全局稳定；发现层必须拒绝相互冲突的所有者或不兼容描述符，不能依赖到达顺序。Karaka 原生控制工具可以由智能体运行时插件贡献，但应用业务工具通常保持远程执行。

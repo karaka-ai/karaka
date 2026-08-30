@@ -66,13 +66,13 @@ import type { Context } from '@karaka/cordis'
 
 export default {
   name: 'support-agent',
-  inject: ['agentRuntime'],
+  inject: ['agentRuntime', 'agentModels'],
   apply(ctx: Context) {
     ctx.agentRuntime.registerAgent({
       id: 'support',
       prompt: 'You are a helpful support agent.',
       model: 'support-model-policy',
-    })
+    }, ctx.agentModels)
   },
 }
 ```
@@ -245,7 +245,7 @@ ctx.agentRuntime.registerAgent({
   id: 'support',
   tools: ['customers.read', 'invoices.refund'],
   // prompt, model, session and other agent policy
-})
+}, ctx.agentModels)
 ```
 
 Discovery makes a tool available to the runtime; it does not grant every agent access. Agent activation must fail if an allowed tool is absent from the verified manifests or its version or schema is incompatible. Agent Runtime validates model arguments before asking Execution to transport a call. The owning backend validates the input again, authorizes the internally carried principal, executes the bound method, and validates its output. Agent Runtime validates the returned output before giving it to the model. Tool IDs must be globally stable, and discovery must reject conflicting owners or incompatible descriptors instead of depending on arrival order. Karaka-native control tools may be contributed by Agent Runtime plugins, but application business tools normally remain remote.

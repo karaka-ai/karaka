@@ -1,4 +1,4 @@
-import AgentRuntime, { AgentRuntimeError } from '@karaka/agent-runtime'
+import AgentRuntime, { AgentModelsService, AgentRuntimeError } from '@karaka/agent-runtime'
 import EchoModel from '@karaka/agent-runtime/model-echo'
 import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Entitlement from '@karaka/entitlement'
@@ -60,6 +60,48 @@ describe('Agent Runtime', () => {
     }
   })
 
+  it('binds globally addressable agents to native Cordis model services', async () => {
+    const ctx = new Context()
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      const support = ctx.isolate(AgentModelsService.provide)
+      const billing = ctx.isolate(AgentModelsService.provide)
+      const supportModels = support.plugin(AgentModelsService)
+      await supportModels
+      await billing.plugin(AgentModelsService)
+
+      const supportModel = support.plugin(createModelPlugin('shared-model', 'support response'))
+      await supportModel
+      await support.plugin(createAgentPlugin('support', 'shared-model'))
+      await billing.plugin(createModelPlugin('shared-model', 'billing response'))
+      await billing.plugin(createAgentPlugin('billing', 'shared-model'))
+
+      expect(ctx.agentRuntime.listModels()).toEqual([])
+      expect(support.agentRuntime.listModels()).toEqual(['shared-model'])
+      expect(billing.agentRuntime.listModels()).toEqual(['shared-model'])
+      await expect(ctx.agentRuntime.run({ agentId: 'support', message: 'Hello' }))
+        .resolves.toMatchObject({ message: { content: 'support response' } })
+      await expect(ctx.agentRuntime.run({ agentId: 'billing', message: 'Hello' }))
+        .resolves.toMatchObject({ message: { content: 'billing response' } })
+
+      await supportModel.dispose()
+      await expect(ctx.agentRuntime.run({ agentId: 'support', message: 'Again' }))
+        .rejects.toMatchObject({ code: 'UNKNOWN_MODEL' })
+      await expect(ctx.agentRuntime.run({ agentId: 'billing', message: 'Again' }))
+        .resolves.toMatchObject({ message: { content: 'billing response' } })
+
+      await supportModels.dispose()
+      await expect(ctx.agentRuntime.run({ agentId: 'support', message: 'After disposal' }))
+        .rejects.toMatchObject({ code: 'UNKNOWN_AGENT' })
+      await expect(ctx.agentRuntime.run({ agentId: 'billing', message: 'After disposal' }))
+        .resolves.toMatchObject({ message: { content: 'billing response' } })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects invalid requests and model responses at the seam', async () => {
     const ctx = new Context()
 
@@ -73,9 +115,9 @@ describe('Agent Runtime', () => {
       await ctx.plugin(createAgentPlugin('broken-agent', 'broken-model'))
       await ctx.plugin({
         name: 'broken-model',
-        inject: ['agentRuntime'],
+        inject: ['agentModels'],
         apply(pluginContext) {
-          pluginContext.agentRuntime.registerModel({
+          pluginContext.agentModels.register({
             id: 'broken-model',
             async generate() {
               return { message: { role: 'user', content: 'not an assistant response' } }
@@ -90,9 +132,9 @@ describe('Agent Runtime', () => {
       await ctx.plugin(createAgentPlugin('hidden-spend-agent', 'hidden-spend-model'))
       await ctx.plugin({
         name: 'hidden-spend-model',
-        inject: ['agentRuntime'],
+        inject: ['agentModels'],
         apply(pluginContext) {
-          pluginContext.agentRuntime.registerModel({
+          pluginContext.agentModels.register({
             id: 'hidden-spend-model',
             async generate() {
               return {
@@ -122,9 +164,9 @@ describe('Agent Runtime', () => {
       await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({
         name: 'paid-model',
-        inject: ['agentRuntime'],
+        inject: ['agentModels'],
         apply(pluginContext) {
-          pluginContext.agentRuntime.registerModel({
+          pluginContext.agentModels.register({
             id: 'paid-model',
             spendUnit: 'USD_MICRO',
             async generate() {
@@ -159,9 +201,9 @@ describe('Agent Runtime', () => {
       await ctx.plugin(createAgentPlugin('invalid-agent', 'invalid-model'))
       await ctx.plugin({
         name: 'invalid-metered-model',
-        inject: ['agentRuntime'],
+        inject: ['agentModels'],
         apply(pluginContext) {
-          pluginContext.agentRuntime.registerModel({
+          pluginContext.agentModels.register({
             id: 'invalid-model',
             spendUnit: 'USD_MICRO',
             async generate() {
@@ -211,9 +253,9 @@ describe('Agent Runtime', () => {
       await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({
         name: 'delayed-paid-model',
-        inject: ['agentRuntime'],
+        inject: ['agentModels'],
         apply(pluginContext) {
-          pluginContext.agentRuntime.registerModel({
+          pluginContext.agentModels.register({
             id: 'paid-model',
             spendUnit: 'USD_MICRO',
             async generate() {
@@ -282,9 +324,9 @@ describe('Agent Runtime', () => {
       await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({
         name: 'paid-model',
-        inject: ['agentRuntime'],
+        inject: ['agentModels'],
         apply(pluginContext) {
-          pluginContext.agentRuntime.registerModel({
+          pluginContext.agentModels.register({
             id: 'paid-model',
             spendUnit: 'USD_MICRO',
             async generate() {
@@ -308,9 +350,24 @@ describe('Agent Runtime', () => {
 function createAgentPlugin(id: string, model: string) {
   return {
     name: `${id}-agent`,
-    inject: ['agentRuntime'],
+    inject: ['agentRuntime', 'agentModels'],
     apply(ctx: CordisContext) {
-      ctx.agentRuntime.registerAgent({ id, prompt: 'Test prompt', model })
+      ctx.agentRuntime.registerAgent({ id, prompt: 'Test prompt', model }, ctx.agentModels)
+    },
+  }
+}
+
+function createModelPlugin(id: string, content: string) {
+  return {
+    name: `${id}-model`,
+    inject: ['agentModels'],
+    apply(ctx: CordisContext) {
+      ctx.agentModels.register({
+        id,
+        async generate() {
+          return { message: { role: 'assistant' as const, content } }
+        },
+      })
     },
   }
 }
