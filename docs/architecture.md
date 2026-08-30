@@ -49,8 +49,14 @@ Setup and agent modules use one composition model: plugins and effect-owned cont
 The following illustrative partial setup fragment selects providers, discovers remote MCP endpoints, and mounts agent plugins. Provider names and configuration shapes are planned, not current API:
 
 ```yaml
-- name: '@karaka/authentication'
-- name: '@karaka/authentication/authentication-jwks'
+- name: '@karaka/authentication/oauth-client-credentials'
+  config:
+    issuer: https://identity.example.com/
+    audience: https://karaka.internal
+    tokenEndpoint: https://identity.example.com/oauth/token
+    jwksUri: https://identity.example.com/.well-known/jwks.json
+    clientId: application-backend
+    clientSecretEnv: KARAKA_OAUTH_CLIENT_SECRET
 - name: '@karaka/entitlement'
 - name: '@company/entitlement-ledger'
 - name: '@karaka/storage-postgres'
@@ -119,7 +125,7 @@ Karaka has seven top-level application seams. A seam is an architectural boundar
 
 | Top-level seam | Responsibility | Example plugin families |
 | --- | --- | --- |
-| Authentication | Authenticate requests and resolve users, tenants, services, and agents | Provider registry, JWKS verifier, trusted-host identity, user-authored providers and policy |
+| Authentication | Authenticate server-to-server requests and carry trusted user context through an invocation | OAuth Client Credentials, mTLS, signed-request, and private authentication providers |
 | Authorization | Decide whether a principal may perform an action on a resource | Contract, policy engines, role or relationship providers, enforcement plugins |
 | Entitlement | Track and enforce an account's overall accumulated model spend | Contract, in-memory development provider, durable ledger providers |
 | Storage | Store application data independently of a backend | Contract, local SQLite provider, PostgreSQL/S3/GCS providers, private storage providers, storage policy |
@@ -149,41 +155,15 @@ The current low-level transient Agent Runtime request names the overall entitlem
 
 ## Authentication and invocation identity
 
-`ctx.authentication` is a long-lived provider registry and tenant-aware authentication service. An authenticated principal is short-lived invocation data, not a Cordis service and not a plugin mounted for each caller. Karaka resolves the principal at its runtime boundary and carries it through the chat turn internally. Application code and model-visible tool arguments must not choose the effective caller.
+`ctx.authentication` has one active server-authentication provider. Its stable contract verifies incoming requests and performs outgoing authenticated requests. OAuth, mTLS, signed requests, or a private mechanism can therefore be selected as an ordinary Cordis plugin without changing Transport, MCP, or Agent Runtime. Provider registration is effect-owned and exactly one provider is active in a process graph.
 
-`ctx.authentication.withPrincipal(...)` binds a verified identity to one synchronous or asynchronous invocation using request-local async state. A Transport plugin authenticates once, runs the complete turn or stream inside that binding, and lets consumers resolve the same immutable identity through `currentPrincipal()`. Concurrent invocations remain isolated without mounting caller-specific plugins.
+Karaka's default provider is `@karaka/authentication/oauth-client-credentials`. It obtains short-lived, resource-specific OAuth access tokens for outgoing requests and verifies incoming JWT access tokens against configured issuer, audience, algorithms, and JWKS policy. Setup references a client-secret environment variable or a private-key file; secrets are not embedded in agent plugins or request payloads. `private_key_jwt` is preferred when the authorization server supports it. Static bearer credentials are not a production Authentication contract.
 
-Karaka ships two ordinary plugins for the first trust models:
+The application backend remains responsible for authenticating its own users. After Karaka authenticates that backend, Transport accepts the backend-supplied `tenantId`, `userId`, and optional claims as trusted request data. `ctx.authentication.withUser(...)` binds that context to the complete synchronous or asynchronous invocation, while `currentPrincipal()` exposes the same immutable internal identity to sessions, Entitlement, Authorization, Agent Runtime, and tools. Concurrent calls remain isolated through request-local asynchronous state.
 
-| Plugin | Trust boundary | Result |
-| --- | --- | --- |
-| `@karaka/authentication/authentication-jwks` | Karaka receives a bearer token and verifies it against preconfigured tenant JWKS policy | Returns a verified provider-neutral identity through `ctx.authentication.authenticate(...)` |
-| `@karaka/authentication/authentication-host` | The embedding host has already authenticated the caller and exposes its current principal through a trusted adapter | Resolves a provider-neutral identity with `provider: 'host'` |
+When Karaka calls an application MCP endpoint, it authenticates itself through the same provider contract. `tools/list` requires only the authenticated Karaka server. `tools/call` additionally carries the already-bound tenant and user IDs over that authenticated channel; this context is not another credential and is trusted only after the MCP server verifies Karaka. If an authenticated application supplies an incorrect user ID, that application has violated the trust boundary; Karaka does not reauthenticate the end user.
 
-The `authentication-host` plugin registers the once-mounted invocation resolver described here. It does not establish a caller-specific Cordis service or require one plugin instance per request.
-
-The host plugin is the common shared-process and local-development path. A single-identity development deployment may select a trusted static assertion from YAML:
-
-```yaml
-- name: '@karaka/authentication/authentication-host'
-  config:
-    tenantId: local
-    subject: developer
-    claims:
-      role: developer
-```
-
-This configuration is trusted input. It must never be generated from model output or copied directly from request parameters. As an explicit embedded or custom-integration escape hatch, a multi-user host may programmatically install one adapter that reads the host framework's request-local principal:
-
-```ts
-await ctx.plugin(authenticationHost({
-  currentPrincipal: () => hostAuthentication.currentPrincipal(),
-}))
-```
-
-The adapter is mounted once as an ordinary Cordis plugin. This is not a normal third configuration surface. Its callback is illustrative: an integration can use framework request state, asynchronous local storage, or another host mechanism, but it must not use one mutable global principal. Concurrent callers in that process share the Karaka runtime and plugin graph while the host adapter resolves a different principal for each invocation.
-
-Identity alone never permits an action. Authorization plugins must compare the internally carried principal, requested action, and canonical resource ownership. Model-facing tools obtain the acting tenant and subject from the Agent Runtime invocation, scope storage operations to that tenant, and require an explicit cross-user permission before targeting another subject. Giving an agent an identity therefore identifies whose authority it may request; it does not grant arbitrary access to every identity.
+Authentication establishes the calling server and trusted user context, but it does not permit an action. Authorization plugins compare that context, the requested action, and canonical resource ownership. Model-visible arguments cannot select or replace the effective server or user.
 
 ## Services and tools
 
@@ -240,9 +220,9 @@ class InvoiceService {
 
 In a remote deployment, every application or microservice MCP server plugin exposes its bound tools over authenticated MCP Streamable HTTP. The current MCP client receives trusted static endpoint URLs from setup, negotiates each endpoint, calls `tools/list`, validates its schemas and Karaka version metadata, and registers model-visible descriptors and invocation clients through reversible effects. It rejects duplicate logical owners rather than depending on endpoint order. Future discovery plugins may supply changing endpoint sets through DNS, Kubernetes, Consul, Cloud Map, or private registries; discovery does not inspect tools. Discovery, MCP client, and policy roles remain plugins in the Tool family, with no separate daemon or lifecycle outside Cordis. The application graph therefore owns server-handler effects, while the Karaka graph owns descriptor and client effects. A shared-process development or embedded deployment may combine both roles in one graph without changing their ownership.
 
-The application server exposes all decorated methods through one MCP endpoint; the decorator does not create one network route per method. Remote authentication has two layers. Service authentication, such as mTLS or a service credential, proves that the call came from an authorized Karaka deployment. A short-lived, audience-bound delegation carries the verified principal and tenant whose authority the invocation may exercise. The model cannot supply or modify either identity. On every `tools/call`, the application authenticates the service and delegation, validates the input, applies the tool's declared permission through Authorization, executes the bound method, validates the output, and records the audit event.
+The application server exposes all decorated methods through one MCP endpoint; the decorator does not create one network route per method. The selected Authentication plugin verifies that every request came from an authorized Karaka deployment. A `tools/call` may also carry the user context already bound to that Karaka invocation; because the server has authenticated Karaka, the application accepts that context without reauthenticating the end user. The model cannot supply or modify either identity. The application then validates input, applies the tool's declared permission through Authorization, executes the bound method, validates output, and records the audit event.
 
-MCP supplies tool discovery, schemas, structured results, and invocation framing. It does not locate endpoints, grant agent access, or replace application authorization. Credentials and the effective principal remain transport metadata, never model-visible tool arguments. Authentication mechanisms remain replaceable providers selected in setup.
+MCP supplies tool discovery, schemas, structured results, and invocation framing. It does not locate endpoints, grant agent access, or replace application authorization. Server credentials and trusted user context remain transport metadata, never model-visible tool arguments. Authentication mechanisms remain replaceable providers selected in setup.
 
 The current setup YAML configures trusted static endpoints on the MCP client plugin, not one entry per method or source repository. A future setup-selected discovery provider may replace the static list without changing tool descriptors or agent plugins. Each backend discovers its own decorated methods; Karaka discovers trusted running endpoints and then inspects them through MCP. Remote execution is the production default for application-owned tools because business logic remains with the service that owns its data, transactions, and authorization. Local execution inside Karaka is reserved for Karaka-owned control capabilities, tests, and explicit embedded deployments. Both placements expose logical tool IDs to Agent Runtime without putting endpoints in agent plugins.
 
@@ -281,7 +261,7 @@ Creating a chat coordinates the installed seams:
 
 ```text
 chat.create()
-    -> authenticate the current caller
+    -> authenticate the application server and bind its trusted user context
     -> authorize chat creation
     -> resolve the caller's overall entitlement account
     -> select an agent through the installed routing policy
@@ -294,7 +274,7 @@ Sending a message restores and enforces that state:
 
 ```text
 chat.send({ chatId, message })
-    -> authenticate the current caller
+    -> authenticate the application server and bind its trusted user context
     -> load the chat
     -> authorize that caller against canonical chat ownership
     -> restore the selected agent and session state
@@ -397,9 +377,9 @@ flowchart LR
   Transport --> Runtime
 ```
 
-The endpoint selects the carrier without a second client-side mode setting: `http:` and `https:` use the HTTP connection, while `unix:` uses operating-system IPC. Static credentials, an asynchronous per-invocation credential resolver, or a per-call override provide the bearer token and trusted tenant route. The SDK resolves credentials independently for every call so a shared client does not retain one user's identity. An advanced connection contract leaves room for embedded or other protocols. Separately deployed processes on one Unix host should use IPC; network-separated deployments use HTTP. An in-process implementation remains deferred because it couples application and agent capacity and lifecycle.
+The endpoint selects the carrier without a second client-side mode setting: `http:` and `https:` use the HTTP connection, while `unix:` uses operating-system IPC. The SDK receives the client half of the selected server-authentication provider and a static or per-call trusted user-context resolver. It resolves user context independently for every call so a shared client does not retain one user's identity, then lets the authentication implementation protect the outgoing carrier request. An advanced connection contract leaves room for embedded or other protocols. Separately deployed processes on one Unix host should use IPC; network-separated deployments use HTTP. An in-process implementation remains deferred because it couples application and agent capacity and lifecycle.
 
-The current SDK sends either an agent ID to start a durable chat or an opaque chat ID to resume one. `@karaka/transport/http` accepts the protocol on a TCP listener; `@karaka/transport/ipc` accepts the same protocol on a permission-restricted Unix domain socket. Both authenticate bearer credentials plus an explicit tenant route and bind the verified principal for the complete turn. `chat.stream()` negotiates SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. The HTTP plugin additionally owns browser-origin policy. Deadlines, disconnect cancellation, backpressure, and server disposal are shared behavior.
+The current SDK sends either an agent ID to start a durable chat or an opaque chat ID to resume one. `@karaka/transport/http` accepts the protocol on a TCP listener; `@karaka/transport/ipc` accepts the same protocol on a permission-restricted Unix domain socket. Both authenticate the calling application server, validate its supplied user context, and bind that context for the complete turn. `chat.stream()` negotiates SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. The HTTP plugin additionally owns browser-origin policy. Deadlines, disconnect cancellation, backpressure, and server disposal are shared behavior.
 
 The SDK owns the public requests, results, stream events, error envelopes, media types, and client-side validation. The server Transport package consumes that contract and maps it to protocol-neutral Agent Runtime calls. Internal plugin refactors do not require SDK changes, and a replacement HTTP plugin remains compatible when it preserves the contract. A change to routes, headers, request or response bodies, streaming events, errors, or protocol version must update the Transport plugin and SDK together and must add a client-server compatibility test. A genuinely new wire protocol requires both an ordinary server-side Cordis Transport plugin and a corresponding SDK connection implementation.
 
@@ -506,7 +486,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 - Group MCP server, endpoint-discovery, MCP client, and policy implementations in the Tool plugin family; keep Tool as an Agent Runtime component rather than a top-level seam.
 - Configure MCP endpoint discovery rather than individual methods or source repositories; keep production application tools remote and reserve local execution for Karaka-owned controls, tests, and explicit embedded use.
 - Expose decorated application methods through one authenticated MCP endpoint per backend, not one route or setup entry per method.
-- Authenticate both the Karaka service and the short-lived delegated principal on every remote tool invocation; never accept authority from model arguments.
+- Authenticate the Karaka server on every remote MCP request; carry user context only over that authenticated channel and never accept authority from model arguments.
 - Keep tool registration separate from the application service or method a tool consumes.
 - Resolve subagent conversation, context, capability, credential, and authority inheritance in Agent Runtime, then run the child through the same Agent Runtime path as any other agent.
 - Treat agents and subagents as standing plugin compositions in a shared runtime, not as processes.

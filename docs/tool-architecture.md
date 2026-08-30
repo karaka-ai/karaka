@@ -31,7 +31,7 @@ Application backends import the inert method decorator from `@karaka/sdk`. It at
 
 The current `@karaka/tool/mcp-server` plugin receives the application's framework-managed service instances and a reversible mount callback for the application's existing backend server. It discovers decorated methods, binds them through the Tool Core registry, and exposes them through one MCP endpoint. Future framework-specific adapters provide the instance enumeration and mount callback automatically. Application setup identifies services once; it does not configure every function in YAML or start a separate tool deployment.
 
-Every SDK-decorated application tool has a permission. The MCP endpoint authenticates Karaka, resolves the delegated application principal, validates the request, asks application authorization about that permission, invokes the method, and validates the result. The business backend continues to own its services, data, transactions, and authorization.
+Every SDK-decorated application tool has a permission. The MCP endpoint authenticates Karaka, accepts user context only over that authenticated channel, validates the request, asks application authorization about that permission, invokes the method, and validates the result. The business backend continues to own its services, data, transactions, and authorization.
 
 ### MCP boundary
 
@@ -61,7 +61,7 @@ Tool behavior in the Karaka process belongs to a plugin family inside the Agent 
 - invocation and scheduling policy;
 - Karaka-native and optional local tools.
 
-The current MCP client plugin consumes trusted static HTTPS endpoints from setup, negotiates their capabilities, calls `tools/list`, verifies the protocol response, Karaka version metadata and schemas, and contributes logical tools to the registry. It obtains a bearer token for every request and forwards cancellation to `tools/call`. Tool Core independently compiles the advertised schemas and validates every invocation input and result. Removing the plugin reverses its registrations and closes its clients. The current static implementation rejects duplicate logical owners rather than depending on endpoint order; dynamic discovery, compatible-replica grouping and list-change refresh remain future plugins or extensions behind the same boundary.
+The current MCP client plugin consumes trusted static HTTPS endpoints from setup, negotiates their capabilities, calls `tools/list`, verifies the protocol response, Karaka version metadata and schemas, and contributes logical tools to the registry. Every request passes through the active `ctx.authentication` provider, and `tools/call` also forwards cancellation and the already-bound user context. Tool Core independently compiles the advertised schemas and validates every invocation input and result. Removing the plugin reverses its registrations and closes its clients. The current static implementation rejects duplicate logical owners rather than depending on endpoint order; dynamic discovery, compatible-replica grouping and list-change refresh remain future plugins or extensions behind the same boundary.
 
 Agent Runtime only uses the Tool registry. It neither discovers endpoints nor handles MCP or HTTP directly.
 
@@ -112,9 +112,9 @@ Explicit embedded and development plugins may contribute local tools directly. A
 
 ## Security
 
-MCP supplies protocol structure, not automatic trust. The remote boundary must use trusted discovery and encrypted transport. Karaka authenticates with a short-lived, audience-bound credential; the application validates it on every call and resolves the delegated principal. The application still enforces the decorator's permission locally.
+MCP supplies protocol structure, not automatic trust. The remote boundary must use trusted discovery and encrypted transport. The selected Authentication plugin protects both catalog and invocation requests. After authenticating Karaka, the application may trust the accompanying user context and still enforces the decorator's permission locally.
 
-Tool descriptions and results are untrusted model input. Karaka validates schemas on both sides, agents may use only allowlisted logical tools, and the model never chooses endpoint URLs. Mutating calls are not automatically retried unless the operation has an explicit idempotency contract. The final authentication and delegated-identity profile remains open.
+Tool descriptions and results are untrusted model input. Karaka validates schemas on both sides, agents may use only allowlisted logical tools, and the model never chooses endpoint URLs. Mutating calls are not automatically retried unless the operation has an explicit idempotency contract.
 
 ## Policy and lifecycle
 
@@ -126,7 +126,6 @@ All Karaka-side registrations belong to Cordis effects. A running turn binds a s
 
 - How long will Karaka support the pinned MCP `2026-07-28` revision before adding or moving a compatibility window?
 - What is the exact endpoint-discovery provider contract for replicas, health, updates, and conflicts?
-- What authentication and delegated-identity profile will Karaka require over MCP?
 - How will each supported application framework mount the MCP endpoint and supply request context?
 - What is persisted so a durable chat can replay tool calls and results after a restart?
 - How do scheduling-policy plugins combine, and how are parallel calls bounded and committed in order?

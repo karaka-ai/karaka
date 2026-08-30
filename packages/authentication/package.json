@@ -22,13 +22,9 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./authentication-jwks": {
-      "types": "./lib/types/authentication-jwks.d.ts",
-      "default": "./lib/authentication-jwks.js"
-    },
-    "./authentication-host": {
-      "types": "./lib/types/authentication-host.d.ts",
-      "default": "./lib/authentication-host.js"
+    "./oauth-client-credentials": {
+      "types": "./lib/types/oauth-client-credentials.d.ts",
+      "default": "./lib/oauth-client-credentials.js"
     },
     "./package.json": "./package.json"
   },

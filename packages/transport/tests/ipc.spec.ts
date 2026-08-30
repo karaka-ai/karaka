@@ -18,11 +18,13 @@ describe.skipIf(process.platform === 'win32')('IPC Transport', () => {
     const runtime = await createRuntime({ basePath: '/internal' })
     const userA = createKarakaClient({
       endpoint: unixEndpoint(runtime.socketPath, '/internal'),
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })
     const userB = createKarakaClient({
       endpoint: unixEndpoint(runtime.socketPath, '/internal'),
-      credentials: { tenantId: 'acme', token: 'user-b' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-b' },
     })
 
     try {
@@ -96,7 +98,8 @@ describe.skipIf(process.platform === 'win32')('IPC Transport', () => {
     })
     const client = createKarakaClient({
       endpoint: unixEndpoint(runtime.socketPath),
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })
 
     try {
@@ -116,15 +119,18 @@ describe.skipIf(process.platform === 'win32')('IPC Transport', () => {
   it('rejects ambiguous or relative IPC endpoints', () => {
     expect(() => createKarakaClient({
       endpoint: 'unix:relative.sock',
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })).toThrow('absolute socket path')
     expect(() => createKarakaClient({
       endpoint: 'unix:///tmp/karaka.sock?unknown=true',
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })).toThrow('unsupported Karaka IPC endpoint option')
     expect(() => createKarakaClient({
       endpoint: 'unix:///tmp/karaka.sock?basePath=/v1&basePath=/v2',
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })).toThrow('at most one basePath')
   })
 })
@@ -142,19 +148,21 @@ async function createRuntime(options: RuntimeOptions = {}) {
   try {
     await ctx.plugin(Authentication)
     await ctx.plugin({
-      name: 'test-token-authentication',
+      name: 'test-server-authentication',
       inject: ['authentication'],
       apply(pluginContext) {
         pluginContext.authentication.register({
-          name: 'test-token',
-          tenantIds: ['acme'],
           async authenticate(request) {
+            if (request.headers.get('authorization') !== 'Bearer application-server') throw new Error('untrusted server')
             return {
-              tenantId: request.tenantId,
-              subject: request.token,
-              provider: 'test-token',
+              id: 'application-server',
+              provider: 'test-server',
               claims: {},
             }
+          },
+          name: 'test-server',
+          request(_target, request, dispatch) {
+            return dispatch(request)
           },
         })
       },
@@ -186,6 +194,14 @@ async function createRuntime(options: RuntimeOptions = {}) {
     await rm(directory, { recursive: true, force: true })
     throw error
   }
+}
+
+const authentication = {
+  async request(_target: { audience: string }, request: Request, dispatch: (request: Request) => Promise<Response>) {
+    const headers = new Headers(request.headers)
+    headers.set('authorization', 'Bearer application-server')
+    return dispatch(new Request(request, { headers }))
+  },
 }
 
 const agentPlugin = {

@@ -38,6 +38,7 @@
   ],
   "license": "MIT",
   "peerDependencies": {
+    "@karaka/authentication": "workspace:^",
     "@karaka/cordis": "workspace:^"
   },
   "dependencies": {

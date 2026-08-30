@@ -22,11 +22,13 @@ describe('HTTP Transport', () => {
     const runtime = await createRuntime()
     const userA = createKarakaClient({
       endpoint: `${runtime.endpoint}/v1`,
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })
     const userB = createKarakaClient({
       endpoint: `${runtime.endpoint}/v1`,
-      credentials: { tenantId: 'acme', token: 'user-b' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-b' },
     })
 
     try {
@@ -70,7 +72,8 @@ describe('HTTP Transport', () => {
     const runtime = await createRuntime()
     const client = createKarakaClient({
       endpoint: `${runtime.endpoint}/v1`,
-      credentials: { tenantId: 'acme', token: 'sdk-user' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'sdk-user' },
     })
 
     try {
@@ -94,12 +97,15 @@ describe('HTTP Transport', () => {
         method: 'POST',
         headers: {
           accept: EVENT_STREAM_MEDIA_TYPE,
-          authorization: 'Bearer browser-user',
+          authorization: 'Bearer application-server',
           'content-type': 'application/json',
           origin,
-          'x-karaka-tenant': 'acme',
         },
-        body: JSON.stringify({ agentId: 'support', message: 'Hello' }),
+        body: JSON.stringify({
+          agentId: 'support',
+          message: 'Hello',
+          user: { tenantId: 'acme', userId: 'browser-user' },
+        }),
       })
 
       expect(response.status).toBe(200)
@@ -129,23 +135,30 @@ describe('HTTP Transport', () => {
     try {
       const unauthenticated = await fetch(`${runtime.endpoint}/v1/chats`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-karaka-tenant': 'acme' },
-        body: JSON.stringify({ agentId: 'support', message: 'Hello' }),
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          agentId: 'support',
+          message: 'Hello',
+          user: { tenantId: 'acme', userId: 'user-a' },
+        }),
       })
       expect(unauthenticated.status).toBe(401)
       await expect(unauthenticated.json()).resolves.toEqual({
-        error: { code: 'INVALID_REQUEST', message: 'authentication failed' },
+        error: { code: 'INVALID_CREDENTIAL', message: 'authentication failed' },
       })
 
       const forbidden = await fetch(`${runtime.endpoint}/v1/chats`, {
         method: 'POST',
         headers: {
-          authorization: 'Bearer user-a',
+          authorization: 'Bearer application-server',
           'content-type': 'application/json',
           origin: 'https://evil.example.test',
-          'x-karaka-tenant': 'acme',
         },
-        body: JSON.stringify({ agentId: 'support', message: 'Hello' }),
+        body: JSON.stringify({
+          agentId: 'support',
+          message: 'Hello',
+          user: { tenantId: 'acme', userId: 'user-a' },
+        }),
       })
       expect(forbidden.status).toBe(403)
       await expect(forbidden.json()).resolves.toEqual({
@@ -183,7 +196,8 @@ describe('HTTP Transport', () => {
     })
     const client = createKarakaClient({
       endpoint: `${runtime.endpoint}/v1`,
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })
 
     try {
@@ -235,11 +249,14 @@ describe('HTTP Transport', () => {
         method: 'POST',
         headers: {
           accept: EVENT_STREAM_MEDIA_TYPE,
-          authorization: 'Bearer user-a',
+          authorization: 'Bearer application-server',
           'content-type': 'application/json',
-          'x-karaka-tenant': 'acme',
         },
-        body: JSON.stringify({ agentId: 'support', message: 'Large' }),
+        body: JSON.stringify({
+          agentId: 'support',
+          message: 'Large',
+          user: { tenantId: 'acme', userId: 'user-a' },
+        }),
         signal: controller.signal,
       })
       expect(response.status).toBe(200)
@@ -265,19 +282,21 @@ async function createRuntime(options: RuntimeOptions = {}) {
   try {
     await ctx.plugin(Authentication)
     await ctx.plugin({
-      name: 'test-token-authentication',
+      name: 'test-server-authentication',
       inject: ['authentication'],
       apply(pluginContext) {
         pluginContext.authentication.register({
-          name: 'test-token',
-          tenantIds: ['acme'],
           async authenticate(request) {
+            if (request.headers.get('authorization') !== 'Bearer application-server') throw new Error('untrusted server')
             return {
-              tenantId: request.tenantId,
-              subject: request.token,
-              provider: 'test-token',
+              id: 'application-server',
+              provider: 'test-server',
               claims: {},
             }
+          },
+          name: 'test-server',
+          request(_target, request, dispatch) {
+            return dispatch(request)
           },
         })
       },
@@ -308,6 +327,14 @@ async function createRuntime(options: RuntimeOptions = {}) {
     await rm(directory, { recursive: true, force: true })
     throw error
   }
+}
+
+const authentication = {
+  async request(_target: { audience: string }, request: Request, dispatch: (request: Request) => Promise<Response>) {
+    const headers = new Headers(request.headers)
+    headers.set('authorization', 'Bearer application-server')
+    return dispatch(new Request(request, { headers }))
+  },
 }
 
 const agentPlugin = {

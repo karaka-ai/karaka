@@ -7,7 +7,8 @@ import {
 } from '@karaka/agent-runtime'
 import {
   AuthenticationError,
-  type AuthenticatedIdentity,
+  type AuthenticatedServer,
+  type TrustedUserContext,
 } from '@karaka/authentication'
 import type { Context } from '@karaka/cordis'
 import Schema from '@karaka/schemastery'
@@ -27,7 +28,6 @@ import {
   type ServerResponse,
 } from 'node:http'
 
-const TENANT_HEADER = 'x-karaka-tenant'
 const agentErrorStatuses: Partial<Record<AgentRuntimeErrorCode, number>> = {
   ABORTED: 499,
   CHAT_NOT_FOUND: 404,
@@ -128,7 +128,7 @@ class HttpTransport {
       if (request.method === 'OPTIONS') {
         response.writeHead(204, {
           ...cors,
-          'access-control-allow-headers': `authorization, content-type, ${TENANT_HEADER}`,
+          'access-control-allow-headers': 'authorization, content-type',
           'access-control-allow-methods': 'POST, OPTIONS',
           'access-control-max-age': '600',
         })
@@ -136,12 +136,12 @@ class HttpTransport {
         return
       }
 
-      const runtimeRequest = await this.readRuntimeRequest(request)
-      const principal = await this.authenticate(request.headers)
+      const server = await this.authenticate(request)
+      const invocation = await this.readRuntimeRequest(request)
       if (acceptsEventStream(request.headers.accept)) {
-        await this.stream(response, cors, principal, runtimeRequest)
+        await this.stream(response, cors, server, invocation.user, invocation.request)
       } else {
-        await this.send(response, cors, principal, runtimeRequest)
+        await this.send(response, cors, server, invocation.user, invocation.request)
       }
     } catch (error) {
       this.writeJsonError(response, error, cors)
@@ -151,12 +151,13 @@ class HttpTransport {
   private async send(
     response: ServerResponse,
     headers: OutgoingHttpHeaders,
-    principal: AuthenticatedIdentity,
+    server: AuthenticatedServer,
+    user: TrustedUserContext,
     request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
   ): Promise<void> {
     const invocation = this.trackInvocation(response)
     try {
-      const result = await this.ctx.authentication.withPrincipal(principal, () => {
+      const result = await this.ctx.authentication.withUser(user, server, () => {
         return this.ctx.agentRuntime.run(request, { signal: invocation.controller.signal })
       })
       if (!response.destroyed) writeJson(response, 200, toChatResult(result), headers)
@@ -168,7 +169,8 @@ class HttpTransport {
   private async stream(
     response: ServerResponse,
     headers: OutgoingHttpHeaders,
-    principal: AuthenticatedIdentity,
+    server: AuthenticatedServer,
+    user: TrustedUserContext,
     request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
   ): Promise<void> {
     const invocation = this.trackInvocation(response)
@@ -183,7 +185,7 @@ class HttpTransport {
     response.flushHeaders()
 
     try {
-      const result = await this.ctx.authentication.withPrincipal(principal, () => {
+      const result = await this.ctx.authentication.withUser(user, server, () => {
         return this.ctx.agentRuntime.stream(
           request,
           event => writeEvent(response, event, controller.signal),
@@ -221,34 +223,43 @@ class HttpTransport {
     }
   }
 
-  private async authenticate(headers: IncomingHttpHeaders): Promise<AuthenticatedIdentity> {
-    const tenantId = requireHeader(headers[TENANT_HEADER], TENANT_HEADER)
-    const authorization = requireHeader(headers.authorization, 'authorization')
-    const match = /^Bearer\s+(\S+)$/i.exec(authorization)
-    if (!match) throw new AuthenticationError('INVALID_REQUEST', 'authentication failed')
-    return this.ctx.authentication.authenticate({ tenantId, token: match[1]! })
+  private authenticate(request: IncomingMessage): Promise<AuthenticatedServer> {
+    const headers = new Headers()
+    for (let index = 0; index < request.rawHeaders.length; index += 2) {
+      headers.append(request.rawHeaders[index]!, request.rawHeaders[index + 1]!)
+    }
+    return this.ctx.authentication.authenticate(new Request(
+      new URL(request.url ?? '/', 'http://karaka.local'),
+      { method: request.method ?? 'GET', headers },
+    ))
   }
 
   private async readRuntimeRequest(
     request: IncomingMessage,
-  ): Promise<Readonly<AgentChatStartRequest | AgentChatResumeRequest>> {
+  ): Promise<{
+    readonly user: TrustedUserContext
+    readonly request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>
+  }> {
     if (request.method !== 'POST') throw new HttpTransportError(405, 'METHOD_NOT_ALLOWED', 'method not allowed')
     const url = new URL(request.url ?? '/', 'http://karaka.local')
     if (url.search) throw new HttpTransportError(400, 'INVALID_REQUEST', 'query parameters are not supported')
     const body = await readJson(request, this.config.maxBodyBytes)
     if (url.pathname === `${this.config.basePath}/chats`) {
-      requireKeys(body, ['agentId', 'message'])
+      requireKeys(body, ['agentId', 'message', 'user'])
       return Object.freeze({
-        agentId: requireBodyText(body.agentId, 'agentId'),
-        message: requireBodyText(body.message, 'message'),
-        persist: true,
+        user: requireUser(body.user),
+        request: Object.freeze({
+          agentId: requireBodyText(body.agentId, 'agentId'),
+          message: requireBodyText(body.message, 'message'),
+          persist: true,
+        }),
       })
     }
 
     const prefix = `${this.config.basePath}/chats/`
     const suffix = '/messages'
     if (url.pathname.startsWith(prefix) && url.pathname.endsWith(suffix)) {
-      requireKeys(body, ['message'])
+      requireKeys(body, ['message', 'user'])
       const encoded = url.pathname.slice(prefix.length, -suffix.length)
       let chatId: string
       try {
@@ -257,7 +268,10 @@ class HttpTransport {
         throw new HttpTransportError(400, 'INVALID_REQUEST', 'chat ID is invalid', { cause })
       }
       if (!chatId) throw new HttpTransportError(400, 'INVALID_REQUEST', 'chat ID is invalid')
-      return Object.freeze({ chatId, message: requireBodyText(body.message, 'message') })
+      return Object.freeze({
+        user: requireUser(body.user),
+        request: Object.freeze({ chatId, message: requireBodyText(body.message, 'message') }),
+      })
     }
     throw new HttpTransportError(404, 'NOT_FOUND', 'route not found')
   }
@@ -409,10 +423,21 @@ function requireBodyText(value: unknown, name: string): string {
   }
 }
 
-function requireHeader(value: string | string[] | undefined, name: string): string {
-  if (typeof value === 'string' && value.trim()) return value
-  throw new AuthenticationError('INVALID_REQUEST', 'authentication failed', {
-    cause: new TypeError(`${name} header is required`),
+function requireUser(value: unknown): TrustedUserContext {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpTransportError(400, 'INVALID_REQUEST', 'user must be an object')
+  }
+  const user = value as Record<string, unknown>
+  const allowed = user.claims === undefined ? ['tenantId', 'userId'] : ['tenantId', 'userId', 'claims']
+  requireKeys(user, allowed)
+  const claims = user.claims ?? {}
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) {
+    throw new HttpTransportError(400, 'INVALID_REQUEST', 'user claims must be an object')
+  }
+  return Object.freeze({
+    tenantId: requireBodyText(user.tenantId, 'tenantId'),
+    userId: requireBodyText(user.userId, 'userId'),
+    claims: Object.freeze({ ...(claims as Record<string, unknown>) }),
   })
 }
 

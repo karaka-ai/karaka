@@ -1,354 +1,282 @@
-import { createServer, type Server } from 'node:http'
-import { AddressInfo } from 'node:net'
-import { AsyncLocalStorage } from 'node:async_hooks'
-import { AuthenticationError, AuthenticationService, type AuthenticationProvider } from '@karaka/authentication'
-import AuthenticationHost, {
-  authenticationHost,
-  type HostPrincipal,
-} from '@karaka/authentication/authentication-host'
-import AuthenticationJwks, {
-  JwksAuthenticationProvider,
-  type JwksAlgorithm,
-  type JwksTenantConfig,
-} from '@karaka/authentication/authentication-jwks'
+import { AuthenticationService, type AuthenticationProvider } from '@karaka/authentication'
+import OAuthClientCredentials, { OAuthClientCredentialsProvider } from '@karaka/authentication/oauth-client-credentials'
 import { Context } from '@karaka/cordis'
-import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose'
+import { exportJWK, exportPKCS8, generateKeyPair, jwtVerify, SignJWT, type JWK } from 'jose'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { createServer, type IncomingMessage, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-const issuer = 'https://issuer.example.test/'
-const audience = 'karaka-api'
-const keyId = 'test-key'
-
-let server: Server
-let jwksUri: string
+let authorizationServer: Server
+let issuer: string
 let privateKey: CryptoKey
+let publicKey: CryptoKey
 let publicJwk: JWK
-let jwksRequests = 0
+let privateKeyPath: string
+let keyDirectory: string
+let tokenRequests = 0
+const secretEnvironment = 'KARAKA_TEST_OAUTH_SECRET'
 
 beforeAll(async () => {
-  const pair = await generateKeyPair('RS256')
+  const pair = await generateKeyPair('RS256', { extractable: true })
   privateKey = pair.privateKey
-  publicJwk = {
-    ...await exportJWK(pair.publicKey),
-    alg: 'RS256',
-    kid: keyId,
-    use: 'sig',
-  }
-  server = createServer((_request, response) => {
-    jwksRequests++
+  publicKey = pair.publicKey
+  keyDirectory = await mkdtemp(join(tmpdir(), 'karaka-oauth-'))
+  privateKeyPath = join(keyDirectory, 'client-key.pem')
+  await writeFile(privateKeyPath, await exportPKCS8(privateKey), { mode: 0o600 })
+  publicJwk = { ...await exportJWK(pair.publicKey), alg: 'RS256', kid: 'test-key', use: 'sig' }
+  authorizationServer = createServer(async (request, response) => {
+    if (request.url === '/jwks') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ keys: [publicJwk] }))
+      return
+    }
+    if (request.url !== '/token' || request.method !== 'POST') {
+      response.writeHead(404).end()
+      return
+    }
+    tokenRequests++
+    const body = new URLSearchParams(await readBody(request))
+    const expected = `Basic ${Buffer.from('application-backend:test-secret').toString('base64')}`
+    if (request.headers.authorization !== expected) {
+      const assertion = body.get('client_assertion')
+      if (!assertion) {
+        response.writeHead(401).end()
+        return
+      }
+      try {
+        await jwtVerify(assertion, publicKey, {
+          issuer: 'application-backend',
+          subject: 'application-backend',
+          audience: `${issuer}token`,
+          algorithms: ['RS256'],
+          requiredClaims: ['iss', 'sub', 'aud', 'exp', 'jti'],
+        })
+      } catch {
+        response.writeHead(401).end()
+        return
+      }
+    }
+    const audience = body.get('resource')
+    if (!audience || body.get('grant_type') !== 'client_credentials') {
+      response.writeHead(400).end()
+      return
+    }
+    const token = await signServerToken('application-backend', audience)
     response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ keys: [publicJwk] }))
+    response.end(JSON.stringify({ access_token: token, token_type: 'Bearer', expires_in: 300 }))
   })
   await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
+    authorizationServer.once('error', reject)
+    authorizationServer.listen(0, '127.0.0.1', resolve)
   })
-  const address = server.address() as AddressInfo
-  jwksUri = `http://127.0.0.1:${address.port}/jwks`
+  issuer = `http://127.0.0.1:${(authorizationServer.address() as AddressInfo).port}/`
+  process.env[secretEnvironment] = 'test-secret'
 })
 
 afterAll(async () => {
+  delete process.env[secretEnvironment]
+  if (keyDirectory) await rm(keyDirectory, { recursive: true, force: true })
+  if (!authorizationServer) return
   await new Promise<void>((resolve, reject) => {
-    server.close(error => error ? reject(error) : resolve())
+    authorizationServer.close(error => error ? reject(error) : resolve())
   })
 })
 
 describe('Authentication seam', () => {
-  it('binds verified principals to concurrent asynchronous invocations', async () => {
-    const ctx = new Context()
-
-    try {
-      await ctx.plugin(AuthenticationService)
-      const current = async (tenantId: string, subject: string) => {
-        return ctx.authentication.withPrincipal({
-          tenantId,
-          subject,
-          provider: 'test',
-          claims: {},
-        }, async () => {
-          await Promise.resolve()
-          return ctx.authentication.currentPrincipal()
-        })
-      }
-
-      const [acme, beta] = await Promise.all([
-        current('acme', 'user-acme'),
-        current('beta', 'user-beta'),
-      ])
-
-      expect(acme).toMatchObject({ tenantId: 'acme', subject: 'user-acme', provider: 'test' })
-      expect(beta).toMatchObject({ tenantId: 'beta', subject: 'user-beta', provider: 'test' })
-      await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
-    } finally {
-      await ctx.fiber.dispose()
-    }
-  })
-
-  it('resolves one static trusted host principal from YAML-compatible config', async () => {
-    const ctx = new Context()
-
-    await ctx.plugin(AuthenticationService)
-    const host = ctx.plugin(AuthenticationHost, {
-      tenantId: 'acme',
-      subject: 'user-acme',
-      claims: { role: 'developer' },
-    })
-    await host
-
-    await expect(ctx.authentication.currentPrincipal()).resolves.toEqual({
-      tenantId: 'acme',
-      subject: 'user-acme',
-      provider: 'host',
-      claims: { role: 'developer' },
-    })
-
-    await host.dispose()
-    await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
-    await ctx.fiber.dispose()
-  })
-
-  it('uses one mounted resolver for concurrent request-local principals', async () => {
-    const ctx = new Context()
-    const principals = new AsyncLocalStorage<HostPrincipal>()
-
-    try {
-      await ctx.plugin(AuthenticationService)
-      await ctx.plugin(authenticationHost({
-        async currentPrincipal() {
-          await Promise.resolve()
-          return principals.getStore()
-        },
-      }))
-
-      const [acme, beta] = await Promise.all([
-        principals.run(
-          { tenantId: 'acme', subject: 'user-acme', claims: { role: 'developer' } },
-          () => ctx.authentication.currentPrincipal(),
-        ),
-        principals.run(
-          { tenantId: 'beta', subject: 'user-beta' },
-          () => ctx.authentication.currentPrincipal(),
-        ),
-      ])
-
-      expect(acme).toMatchObject({ tenantId: 'acme', subject: 'user-acme', provider: 'host' })
-      expect(beta).toMatchObject({ tenantId: 'beta', subject: 'user-beta', provider: 'host' })
-      await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
-    } finally {
-      await ctx.fiber.dispose()
-    }
-  })
-
-  it('rejects empty trusted host identity fields', async () => {
+  it('owns one provider through its contributing Cordis plugin', async () => {
     const ctx = new Context()
     await ctx.plugin(AuthenticationService)
-    const host = ctx.plugin(AuthenticationHost, {
-      tenantId: ' ',
-      subject: 'developer',
+    const mounted = ctx.plugin(testAuthenticationPlugin)
+    await mounted
+
+    expect(ctx.authentication.currentProvider()).toEqual({ name: 'test-server-auth' })
+    await expect(ctx.authentication.authenticate(requestWithToken('trusted-server'))).resolves.toEqual({
+      id: 'trusted-server',
+      provider: 'test-server-auth',
+      claims: {},
     })
+    await expect(ctx.plugin(testAuthenticationPlugin)).rejects.toThrow('already registered')
 
-    await expect(host).rejects.toThrow('tenant ID must be a non-empty string')
-    await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
-    await ctx.fiber.dispose()
-  })
-
-  it('drains an in-flight resolver while replacement serves new invocations', async () => {
-    const ctx = new Context()
-    const started = deferred<void>()
-    const finish = deferred<void>()
-
-    try {
-      await ctx.plugin(AuthenticationService)
-      const original = ctx.plugin(authenticationHost({
-        async currentPrincipal() {
-          started.resolve()
-          await finish.promise
-          return { tenantId: 'original', subject: 'user-original' }
-        },
-      }))
-      await original
-
-      const current = ctx.authentication.currentPrincipal()
-      await started.promise
-      let disposed = false
-      const disposal = original.dispose().then(() => {
-        disposed = true
-      })
-
-      await expect.poll(async () => {
-        try {
-          await ctx.authentication.currentPrincipal()
-          return 'AVAILABLE'
-        } catch (error) {
-          return (error as { code?: string }).code
-        }
-      }).toBe('NO_CURRENT_PRINCIPAL')
-      expect(disposed).toBe(false)
-
-      await ctx.plugin(authenticationHost({
-        currentPrincipal: () => ({ tenantId: 'replacement', subject: 'user-replacement' }),
-      }))
-      await expect(ctx.authentication.currentPrincipal()).resolves.toMatchObject({
-        tenantId: 'replacement',
-        subject: 'user-replacement',
-      })
-
-      finish.resolve()
-      await expect(current).resolves.toMatchObject({ tenantId: 'original', subject: 'user-original' })
-      await disposal
-      expect(disposed).toBe(true)
-    } finally {
-      finish.resolve()
-      await ctx.fiber.dispose()
-    }
-  })
-
-  it('owns custom provider registrations through the contributing Cordis plugin', async () => {
-    const ctx = new Context()
-    const authentication = ctx.plugin(AuthenticationService)
-    await authentication
-
-    const provider: AuthenticationProvider = {
-      name: 'company',
-      tenantIds: ['private'],
-      async authenticate(request) {
-        return {
-          tenantId: request.tenantId,
-          subject: 'user-1',
-          provider: 'company',
-          claims: { source: 'private-sso' },
-        }
-      },
-    }
-    const custom = ctx.plugin({
-      name: 'company-authentication',
-      inject: ['authentication'],
-      apply(pluginContext) {
-        pluginContext.authentication.register(provider)
-      },
-    })
-    await custom
-
-    await expect(ctx.authentication.authenticate({ tenantId: 'private', token: 'opaque' })).resolves.toMatchObject({
-      tenantId: 'private',
-      subject: 'user-1',
-      provider: 'company',
-    })
-    expect(ctx.authentication.list()).toEqual([{ name: 'company', tenantIds: ['private'] }])
-
-    await custom.dispose()
-    await expect(ctx.authentication.authenticate({ tenantId: 'private', token: 'opaque' })).rejects.toMatchObject({
-      code: 'UNKNOWN_TENANT',
-    })
-    expect(ctx.authentication.list()).toEqual([])
-    await ctx.fiber.dispose()
-  })
-
-  it('verifies shared-issuer tenants against distinct verified tenant claims', async () => {
-    const ctx = new Context()
-    await ctx.plugin(AuthenticationService)
-    const jwksProvider = ctx.plugin(AuthenticationJwks, {
-      name: 'customer-jwks',
-      tenants: {
-        acme: tenantConfig('org_id', 'org_acme'),
-        beta: tenantConfig('org_id', 'org_beta'),
-      },
-    })
-    await jwksProvider
-
-    const acmeToken = await signToken('user-acme', 'org_acme')
-    const betaToken = await signToken('user-beta', 'org_beta')
-
-    await expect(ctx.authentication.authenticate({ tenantId: 'acme', token: acmeToken })).resolves.toMatchObject({
-      tenantId: 'acme',
-      subject: 'user-acme',
-      provider: 'customer-jwks',
-      claims: { org_id: 'org_acme' },
-    })
-    await expect(ctx.authentication.authenticate({ tenantId: 'beta', token: betaToken })).resolves.toMatchObject({
-      tenantId: 'beta',
-      subject: 'user-beta',
-      provider: 'customer-jwks',
-      claims: { org_id: 'org_beta' },
-    })
-    await expect(ctx.authentication.authenticate({ tenantId: 'beta', token: acmeToken })).rejects.toMatchObject({
-      code: 'INVALID_TOKEN',
-    })
-    await expect(ctx.authentication.authenticate({
-      tenantId: 'acme',
-      token: await signToken('wrong-audience', 'org_acme', { tokenAudience: 'another-api' }),
-    })).rejects.toMatchObject({ code: 'INVALID_TOKEN' })
-    await expect(ctx.authentication.authenticate({
-      tenantId: 'acme',
-      token: await signToken('no-expiration', 'org_acme', { expires: false }),
-    })).rejects.toMatchObject({ code: 'INVALID_TOKEN' })
-
-    await jwksProvider.dispose()
-    await expect(ctx.authentication.authenticate({ tenantId: 'acme', token: acmeToken })).rejects.toMatchObject({
-      code: 'UNKNOWN_TENANT',
+    await mounted.dispose()
+    expect(ctx.authentication.currentProvider()).toBeUndefined()
+    await expect(ctx.authentication.authenticate(requestWithToken('trusted-server'))).rejects.toMatchObject({
+      code: 'NO_PROVIDER',
     })
     await ctx.fiber.dispose()
   })
 
-  it('rejects ambiguous tenant configuration before registering the provider', () => {
-    expect(() => new JwksAuthenticationProvider({
-      tenants: {
-        acme: tenantConfig(),
-        beta: tenantConfig(),
-      },
-    })).toThrow('share issuer and audience')
-  })
-
-  it('does not contact JWKS endpoints for unknown tenants or malformed requests', async () => {
+  it('binds authenticated-server user context to concurrent invocations', async () => {
     const ctx = new Context()
     await ctx.plugin(AuthenticationService)
-    const before = jwksRequests
+    await ctx.plugin(testAuthenticationPlugin)
+    const server = await ctx.authentication.authenticate(requestWithToken('application'))
 
-    await expect(ctx.authentication.authenticate({ tenantId: 'missing', token: 'anything' })).rejects.toEqual(
-      expect.objectContaining<Partial<AuthenticationError>>({ code: 'UNKNOWN_TENANT' }),
+    const current = (tenantId: string, userId: string) => ctx.authentication.withUser(
+      { tenantId, userId },
+      server,
+      async () => {
+        await Promise.resolve()
+        return ctx.authentication.currentPrincipal()
+      },
     )
-    await expect(ctx.authentication.authenticate({ tenantId: '', token: 'anything' })).rejects.toMatchObject({
-      code: 'INVALID_REQUEST',
-    })
-    expect(jwksRequests).toBe(before)
+    const [acme, beta] = await Promise.all([
+      current('acme', 'user-acme'),
+      current('beta', 'user-beta'),
+    ])
+
+    expect(acme).toMatchObject({ tenantId: 'acme', subject: 'user-acme', provider: 'test-server-auth:application' })
+    expect(beta).toMatchObject({ tenantId: 'beta', subject: 'user-beta', provider: 'test-server-auth:application' })
+    await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
     await ctx.fiber.dispose()
+  })
+
+  it('lets provider plugins implement arbitrary outgoing authentication', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AuthenticationService)
+    await ctx.plugin(testAuthenticationPlugin)
+
+    const response = await ctx.authentication.request(
+      { audience: 'inventory-service' },
+      new Request('https://inventory.example.test/items'),
+      async request => Response.json({
+        server: request.headers.get('x-test-server'),
+        audience: request.headers.get('x-test-audience'),
+      }),
+    )
+    await expect(response.json()).resolves.toEqual({ server: 'application', audience: 'inventory-service' })
+    await ctx.fiber.dispose()
+  })
+
+  it('uses OAuth Client Credentials for incoming and outgoing server authentication', async () => {
+    const audience = 'https://karaka.example.test'
+    const provider = oauthProvider(audience)
+    const before = tokenRequests
+    let authenticatedRequest: Request | undefined
+
+    await provider.request(
+      { audience },
+      new Request(`${audience}/v1/chats`, { method: 'POST', body: '{}' }),
+      async request => {
+        authenticatedRequest = request
+        return new Response(null, { status: 204 })
+      },
+    )
+    await provider.request(
+      { audience },
+      new Request(`${audience}/v1/chats`, { method: 'POST', body: '{}' }),
+      async () => new Response(null, { status: 204 }),
+    )
+
+    expect(tokenRequests).toBe(before + 1)
+    const server = await provider.authenticate(authenticatedRequest!)
+    expect(server).toMatchObject({ id: 'application-backend', provider: 'oauth-client-credentials' })
+    expect(server.claims.aud).toBe(audience)
+  })
+
+  it('mounts the contract and provider from one OAuth plugin row', async () => {
+    const ctx = new Context()
+    const mounted = ctx.plugin(OAuthClientCredentials, oauthConfig('https://karaka.example.test'))
+    await mounted
+
+    expect(ctx.authentication.currentProvider()).toEqual({ name: 'oauth-client-credentials' })
+    await mounted.dispose()
+    expect(ctx.authentication).toBeUndefined()
+    await ctx.fiber.dispose()
+  })
+
+  it('supports asymmetric private_key_jwt client authentication', async () => {
+    const { clientSecretEnv: _clientSecretEnv, ...config } = oauthConfig('https://tools.example.test')
+    const provider = new OAuthClientCredentialsProvider({
+      ...config,
+      privateKeyPath,
+      privateKeyAlgorithm: 'RS256',
+      privateKeyId: 'test-key',
+    })
+    const response = await provider.request(
+      { audience: 'https://tools.example.test' },
+      new Request('https://tools.example.test/mcp'),
+      async request => new Response(request.headers.get('authorization')),
+    )
+    expect(await response.text()).toMatch(/^Bearer\s+\S+$/)
+  })
+
+  it('fails closed on invalid OAuth credentials, audiences, and provider configuration', async () => {
+    const provider = oauthProvider('https://karaka.example.test')
+    await expect(provider.authenticate(new Request('https://karaka.example.test'))).rejects.toMatchObject({
+      code: 'INVALID_CREDENTIAL',
+    })
+    await expect(provider.authenticate(new Request('https://karaka.example.test', {
+      headers: { authorization: `Bearer ${await signServerToken('application-backend', 'wrong-audience')}` },
+    }))).rejects.toMatchObject({ code: 'INVALID_CREDENTIAL' })
+    expect(() => new OAuthClientCredentialsProvider({
+      ...oauthConfig('https://karaka.example.test'),
+      privateKeyPath: '/private/key.pem',
+    })).toThrow('exactly one')
+    const config = oauthConfig('https://karaka.example.test')
+    delete (config as { clientSecretEnv?: string }).clientSecretEnv
+    expect(() => new OAuthClientCredentialsProvider(config)).toThrow('exactly one')
   })
 })
 
-function tenantConfig(tenantClaim?: string, tenantValue?: string): JwksTenantConfig {
-  const config: JwksTenantConfig = {
+const testProvider: AuthenticationProvider = {
+  name: 'test-server-auth',
+  async authenticate(request) {
+    const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+    if (!token) throw new Error('missing credential')
+    return { id: token, provider: 'test-server-auth', claims: {} }
+  },
+  async request(target, request, dispatch) {
+    const headers = new Headers(request.headers)
+    headers.set('x-test-server', 'application')
+    headers.set('x-test-audience', target.audience)
+    return dispatch(new Request(request, { headers }))
+  },
+}
+
+const testAuthenticationPlugin = {
+  name: 'test-server-authentication',
+  inject: ['authentication'],
+  apply(ctx: Context) {
+    ctx.authentication.register(testProvider)
+  },
+}
+
+function oauthProvider(audience: string) {
+  return new OAuthClientCredentialsProvider(oauthConfig(audience))
+}
+
+function oauthConfig(audience: string) {
+  return {
     issuer,
     audience,
-    jwksUri,
-    algorithms: ['RS256'] satisfies JwksAlgorithm[],
+    tokenEndpoint: `${issuer}token`,
+    jwksUri: `${issuer}jwks`,
+    clientId: 'application-backend',
+    clientSecretEnv: secretEnvironment,
+    algorithms: ['RS256'] as Array<'RS256'>,
   }
-  if (tenantClaim !== undefined && tenantValue !== undefined) {
-    config.tenantClaim = tenantClaim
-    config.tenantValue = tenantValue
-  }
-  return config
 }
 
-interface SignTokenOptions {
-  tokenAudience?: string
-  expires?: boolean
+function requestWithToken(token: string) {
+  return new Request('https://karaka.example.test', { headers: { authorization: `Bearer ${token}` } })
 }
 
-function signToken(subject: string, organization: string, options: SignTokenOptions = {}) {
-  const token = new SignJWT({ org_id: organization })
-    .setProtectedHeader({ alg: 'RS256', kid: keyId })
+function signServerToken(subject: string, audience: string) {
+  return new SignJWT({ client_id: subject })
+    .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
     .setIssuer(issuer)
-    .setAudience(options.tokenAudience ?? audience)
+    .setAudience(audience)
     .setSubject(subject)
     .setIssuedAt()
-  if (options.expires !== false) token.setExpirationTime('5m')
-  return token.sign(privateKey)
+    .setExpirationTime('5m')
+    .sign(privateKey)
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>(complete => {
-    resolve = complete
-  })
-  return { promise, resolve }
+async function readBody(request: IncomingMessage) {
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  return Buffer.concat(chunks).toString('utf8')
 }

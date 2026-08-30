@@ -1,4 +1,5 @@
 import { Context } from '@karaka/cordis'
+import Authentication, { type AuthenticationProvider } from '@karaka/authentication'
 import { createMcpHandler, fromJsonSchema, McpServer, type JsonSchemaType } from '@modelcontextprotocol/server'
 import { getToolMetadata, tool, type ToolInvocationContext } from '@karaka/sdk'
 import ToolCore from '@karaka/tool/core'
@@ -30,19 +31,17 @@ describe('Tool MCP client', () => {
       }
     }()
     decorate(service, 'multiply', 'math.multiply', 'math.use')
-    const endpoint = await mountApplication(application, service)
-    let tokenCalls = 0
+    const users: string[] = []
+    const endpoint = await mountApplication(application, service, users)
+    let authenticationCalls = 0
 
     try {
+      await mountAuthentication(karaka, () => authenticationCalls++)
       await karaka.plugin(ToolCore)
       const client = karaka.plugin(ToolMcpClient, {
         endpoints: [{
           id: 'calculator',
           url: 'https://tools.example/mcp',
-          token: async () => {
-            tokenCalls++
-            return 'service-token'
-          },
           fetch: endpointFetch(endpoint),
         }],
       })
@@ -55,11 +54,16 @@ describe('Tool MCP client', () => {
         input: inputSchema,
         output: outputSchema,
       }])
-      await expect(karaka.tools.bind(['math.multiply']).invoke({
-        id: 'math.multiply',
-        input: { value: 4 },
-      })).resolves.toEqual({ result: 12 })
-      expect(tokenCalls).toBeGreaterThanOrEqual(3)
+      await expect(karaka.authentication.withUser(
+        { tenantId: 'acme', userId: 'user-42' },
+        { id: 'application', provider: 'test-server-auth', claims: {} },
+        () => karaka.tools.bind(['math.multiply']).invoke({
+          id: 'math.multiply',
+          input: { value: 4 },
+        }),
+      )).resolves.toEqual({ result: 12 })
+      expect(users).toEqual(['acme:user-42'])
+      expect(authenticationCalls).toBeGreaterThanOrEqual(3)
 
       await client.dispose()
       expect(karaka.tools.list()).toEqual([])
@@ -116,12 +120,12 @@ describe('Tool MCP client', () => {
     const controller = new AbortController()
 
     try {
+      await mountAuthentication(karaka)
       await karaka.plugin(ToolCore)
       await karaka.plugin(ToolMcpClient, {
         endpoints: [{
           id: 'jobs',
           url: 'https://tools.example/mcp',
-          token: 'service-token',
           fetch: endpointFetch(endpoint),
         }],
       })
@@ -145,6 +149,7 @@ describe('Tool MCP client', () => {
     const ctx = new Context()
 
     try {
+      await mountAuthentication(ctx)
       await ctx.plugin(ToolCore)
       await expect(ctx.plugin(ToolMcpClient, {
         endpoints: [
@@ -163,17 +168,18 @@ describe('Tool MCP client', () => {
   it('requires secure, uniquely named, authenticated static endpoints', async () => {
     const ctx = new Context()
     try {
+      await mountAuthentication(ctx)
       await ctx.plugin(ToolCore)
       await expect(ctx.plugin(ToolMcpClient, {
-        endpoints: [{ id: 'insecure', url: 'http://tools.example/mcp', token: 'token' }],
+        endpoints: [{ id: 'insecure', url: 'http://tools.example/mcp' }],
       })).rejects.toThrow('must use HTTPS')
       await expect(ctx.plugin(ToolMcpClient, {
-        endpoints: [{ id: 'missing-token', url: 'https://tools.example/mcp', token: '' }],
-      })).rejects.toThrow('token must be a non-empty string')
+        endpoints: [{ id: 'missing-audience', url: 'https://tools.example/mcp', audience: '' }],
+      })).rejects.toThrow('audience must be a non-empty string')
       await expect(ctx.plugin(ToolMcpClient, {
         endpoints: [
-          { id: 'duplicate', url: 'https://one.example/mcp', token: 'token' },
-          { id: 'duplicate', url: 'https://two.example/mcp', token: 'token' },
+          { id: 'duplicate', url: 'https://one.example/mcp' },
+          { id: 'duplicate', url: 'https://two.example/mcp' },
         ],
       })).rejects.toThrow('appears more than once')
     } finally {
@@ -182,8 +188,9 @@ describe('Tool MCP client', () => {
   })
 })
 
-async function mountApplication(ctx: Context, service: object): Promise<ToolMcpEndpoint> {
+async function mountApplication(ctx: Context, service: object, users?: string[]): Promise<ToolMcpEndpoint> {
   let endpoint: ToolMcpEndpoint | undefined
+  await mountAuthentication(ctx)
   await ctx.plugin(ToolCore)
   await ctx.plugin(ToolMcpServer, {
     services: [service],
@@ -192,21 +199,9 @@ async function mountApplication(ctx: Context, service: object): Promise<ToolMcpE
       endpoint = value
       return () => undefined
     },
-    security: {
-      authenticate(request) {
-        if (request.headers.get('authorization') !== 'Bearer service-token') {
-          return new Response('unauthorized', { status: 401 })
-        }
-        return {
-          token: 'service-token',
-          clientId: 'karaka:test',
-          scopes: ['tools'],
-          expiresAt: Math.floor(Date.now() / 1_000) + 60,
-        }
-      },
-      authorize(_request, invoke) {
-        return invoke()
-      },
+    authorize(request, invoke) {
+      if (request.user) users?.push(`${request.user.tenantId}:${request.user.subject}`)
+      return invoke()
     },
   })
   return endpoint!
@@ -306,12 +301,13 @@ function validTool(name: string): FakeTool {
 }
 
 function endpointConfig(id: string, url: string, endpoint: ReturnType<typeof fakeEndpoint>) {
-  return { id, url, token: 'service-token', fetch: endpoint.fetch }
+  return { id, url, fetch: endpoint.fetch }
 }
 
 async function expectRejectedCatalog(endpoint: ReturnType<typeof fakeEndpoint>, message: string) {
   const ctx = new Context()
   try {
+    await mountAuthentication(ctx)
     await ctx.plugin(ToolCore)
     await expect(ctx.plugin(ToolMcpClient, {
       endpoints: [endpointConfig('invalid-catalog', 'https://invalid.example/mcp', endpoint)],
@@ -321,4 +317,28 @@ async function expectRejectedCatalog(endpoint: ReturnType<typeof fakeEndpoint>, 
     await ctx.fiber.dispose()
     await endpoint.close()
   }
+}
+
+async function mountAuthentication(ctx: Context, onRequest?: () => void) {
+  await ctx.plugin(Authentication)
+  const provider: AuthenticationProvider = {
+    name: 'test-server-auth',
+    async authenticate(request) {
+      if (request.headers.get('authorization') !== 'Bearer service-token') throw new Error('untrusted server')
+      return { id: 'karaka:test', provider: 'test-server-auth', claims: {} }
+    },
+    request(_target, request, dispatch) {
+      onRequest?.()
+      const headers = new Headers(request.headers)
+      headers.set('authorization', 'Bearer service-token')
+      return dispatch(new Request(request, { headers }))
+    },
+  }
+  await ctx.plugin({
+    name: 'test-server-authentication',
+    inject: ['authentication'],
+    apply(pluginContext) {
+      pluginContext.authentication.register(provider)
+    },
+  })
 }

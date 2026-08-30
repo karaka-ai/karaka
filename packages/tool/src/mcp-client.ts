@@ -1,5 +1,10 @@
 import type { Context } from '@karaka/cordis'
 import {
+  AuthenticationError,
+  encodeTrustedUserContext,
+  TRUSTED_USER_CONTEXT_HEADER,
+} from '@karaka/authentication'
+import {
   defineTool,
   type JsonValue,
   type ToolDescriptor,
@@ -17,12 +22,10 @@ const protocolVersion = '2026-07-28'
 const toolVersionMetaKey = 'ai.karaka/toolVersion'
 const endpointIdPattern = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/
 
-export type ToolMcpTokenSource = string | (() => string | Promise<string>)
-
 export interface ToolMcpClientEndpoint {
   readonly id: string
   readonly url: string
-  readonly token: ToolMcpTokenSource
+  readonly audience?: string
   readonly timeoutMs?: number
   /** Advanced test or host integration hook. Normal deployments use global fetch. */
   readonly fetch?: FetchLike
@@ -37,10 +40,10 @@ export interface Config {
 /** Discover and invoke remote application tools through pinned modern MCP endpoints. */
 export const plugin = {
   name: 'tool-mcp-client',
-  inject: ['tools'],
+  inject: ['authentication', 'tools'],
   async apply(ctx: Context, config: Config) {
     const resolved = resolveConfig(config)
-    const connections = await openEndpoints(resolved)
+    const connections = await openEndpoints(ctx, resolved)
 
     try {
       registerRemoteTools(ctx, connections)
@@ -52,8 +55,9 @@ export const plugin = {
   },
 }
 
-interface ResolvedEndpoint extends Omit<ToolMcpClientEndpoint, 'url' | 'timeoutMs'> {
+interface ResolvedEndpoint extends Omit<ToolMcpClientEndpoint, 'url' | 'audience' | 'timeoutMs'> {
   readonly url: URL
+  readonly audience: string
   readonly timeoutMs: number | undefined
 }
 
@@ -88,15 +92,11 @@ function resolveConfig(config: Config): ResolvedConfig {
     if (ids.has(id)) throw new TypeError(`MCP endpoint "${id}" appears more than once`)
     ids.add(id)
 
-    const token = endpoint.token
-    if (typeof token === 'string') requireText(token, `MCP endpoint "${id}" token`)
-    else if (typeof token !== 'function') throw new TypeError(`MCP endpoint "${id}" requires a token source`)
-
     return Object.freeze<ResolvedEndpoint>({
       ...endpoint,
       id,
       url: requireEndpointUrl(endpoint.url),
-      token,
+      audience: requireText(endpoint.audience ?? endpoint.url, `MCP endpoint "${id}" audience`),
       timeoutMs: optionalPositiveInteger(endpoint.timeoutMs, `MCP endpoint "${id}" timeout`),
     })
   })
@@ -108,8 +108,8 @@ function resolveConfig(config: Config): ResolvedConfig {
   })
 }
 
-async function openEndpoints(config: ResolvedConfig): Promise<readonly Connection[]> {
-  const settled = await Promise.allSettled(config.endpoints.map(endpoint => openEndpoint(config, endpoint)))
+async function openEndpoints(ctx: Context, config: ResolvedConfig): Promise<readonly Connection[]> {
+  const settled = await Promise.allSettled(config.endpoints.map(endpoint => openEndpoint(ctx, config, endpoint)))
   const connections = settled.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
   const errors = settled.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
   if (!errors.length) return Object.freeze(connections)
@@ -118,17 +118,13 @@ async function openEndpoints(config: ResolvedConfig): Promise<readonly Connectio
   return closeConnections(connections, failure)
 }
 
-async function openEndpoint(config: ResolvedConfig, endpoint: ResolvedEndpoint): Promise<Connection> {
+async function openEndpoint(ctx: Context, config: ResolvedConfig, endpoint: ResolvedEndpoint): Promise<Connection> {
   const client = new Client({ name: `${config.name}:${endpoint.id}`, version: config.version }, {
     enforceStrictCapabilities: true,
     versionNegotiation: { mode: { pin: protocolVersion } },
   })
   const transport = new StreamableHTTPClientTransport(endpoint.url, {
-    authProvider: {
-      token: async () => requireText(await resolveToken(endpoint.token), `MCP endpoint "${endpoint.id}" token`),
-    },
-    ...(endpoint.fetch ? { fetch: endpoint.fetch } : {}),
-    onInsufficientScope: 'throw',
+    fetch: authenticatedFetch(ctx, endpoint),
   })
 
   try {
@@ -233,8 +229,23 @@ function requestOptions(endpoint: ResolvedEndpoint) {
   return endpoint.timeoutMs === undefined ? {} : { timeout: endpoint.timeoutMs }
 }
 
-async function resolveToken(source: ToolMcpTokenSource) {
-  return typeof source === 'function' ? source() : source
+function authenticatedFetch(ctx: Context, endpoint: ResolvedEndpoint): FetchLike {
+  const dispatch: FetchLike = endpoint.fetch ?? globalThis.fetch
+  return async (input, init) => {
+    const source = input instanceof Request ? new Request(input, init) : new Request(input, init)
+    const headers = new Headers(source.headers)
+    try {
+      headers.set(TRUSTED_USER_CONTEXT_HEADER, encodeTrustedUserContext(await ctx.authentication.currentUser()))
+    } catch (error) {
+      if (!(error instanceof AuthenticationError) || error.code !== 'NO_CURRENT_PRINCIPAL') throw error
+    }
+    const request = new Request(source, { headers })
+    return ctx.authentication.request(
+      { audience: endpoint.audience },
+      request,
+      authenticated => dispatch(authenticated.url, authenticated),
+    )
+  }
 }
 
 function requireEndpointUrl(value: unknown): URL {

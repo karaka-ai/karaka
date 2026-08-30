@@ -8,41 +8,38 @@ import type { AddressInfo } from 'node:net'
 import { describe, expect, it, vi } from 'vitest'
 
 describe('Karaka SDK', () => {
-  it('sends new and resumed chats with invocation-scoped credentials', async () => {
-    const requests: Array<{ url: string, authorization: string | undefined, tenant: string | undefined, body: unknown }> = []
+  it('sends authenticated chats with invocation-scoped trusted user context', async () => {
+    const requests: Array<{ url: string, authorization: string | undefined, body: unknown }> = []
     const server = await openServer(async (request, response) => {
       requests.push({
         url: request.url ?? '',
         authorization: request.headers.authorization,
-        tenant: textHeader(request.headers['x-karaka-tenant']),
         body: await readBody(request),
       })
       writeJson(response, chatResult('chat/one', requests.length === 1 ? 'Hello' : 'Again'))
     })
-    const credentials = vi.fn(async () => ({ tenantId: 'acme', token: 'default-user' }))
-    const client = createKarakaClient({ endpoint: `${server.endpoint}/v1`, credentials })
+    const user = vi.fn(async () => ({ tenantId: 'acme', userId: 'default-user' }))
+    const client = createKarakaClient({ endpoint: `${server.endpoint}/v1`, authentication, user })
 
     try {
       const started = await client.chat.send({ agentId: 'support', message: 'Hello' })
       const resumed = await client.chat.send(
         { chatId: started.chatId, message: 'Again' },
-        { credentials: { tenantId: 'beta', token: 'override-user' } },
+        { user: { tenantId: 'beta', userId: 'override-user' } },
       )
 
       expect(resumed.chatId).toBe('chat/one')
-      expect(credentials).toHaveBeenCalledTimes(1)
+      expect(user).toHaveBeenCalledTimes(1)
       expect(requests).toEqual([
         {
           url: '/v1/chats',
-          authorization: 'Bearer default-user',
-          tenant: 'acme',
-          body: { agentId: 'support', message: 'Hello' },
+          authorization: 'Bearer application-server',
+          body: { agentId: 'support', message: 'Hello', user: { tenantId: 'acme', userId: 'default-user', claims: {} } },
         },
         {
           url: '/v1/chats/chat%2Fone/messages',
-          authorization: 'Bearer override-user',
-          tenant: 'beta',
-          body: { message: 'Again' },
+          authorization: 'Bearer application-server',
+          body: { message: 'Again', user: { tenantId: 'beta', userId: 'override-user', claims: {} } },
         },
       ])
     } finally {
@@ -61,7 +58,8 @@ describe('Karaka SDK', () => {
     })
     const client = createKarakaClient({
       endpoint: `${server.endpoint}/v1`,
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })
 
     try {
@@ -93,7 +91,8 @@ describe('Karaka SDK', () => {
     })
     const client = createKarakaClient({
       endpoint: `${server.endpoint}/v1`,
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })
 
     try {
@@ -124,30 +123,39 @@ describe('Karaka SDK', () => {
     }
     const client = createKarakaClient({
       connection,
-      credentials: { tenantId: 'local', token: 'trusted-host' },
+      authentication,
+      user: { tenantId: 'local', userId: 'trusted-user' },
     })
 
     await expect(client.chat.send({ agentId: 'support', message: 'Local' })).resolves.toEqual(result)
     expect(send).toHaveBeenCalledWith(
       { agentId: 'support', message: 'Local' },
-      { credentials: { tenantId: 'local', token: 'trusted-host' } },
+      expect.objectContaining({
+        authentication,
+        user: { tenantId: 'local', userId: 'trusted-user', claims: {} },
+      }),
     )
   })
 
   it('rejects invalid configuration and responses before exposing them', async () => {
     expect(() => createKarakaClient({
       endpoint: 'file:///tmp/karaka.sock',
-      credentials: { tenantId: 'acme', token: 'user-a' },
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
     })).toThrow('must use HTTP or HTTPS')
 
     const server = await openServer((_request, response) => {
       writeJson(response, { chatId: 'chat-1', agentId: 'support', model: 'test', message: { role: 'user', content: 'bad' } })
     })
-    const client = createKarakaClient({ endpoint: `${server.endpoint}/v1` })
+    const client = createKarakaClient({
+      endpoint: `${server.endpoint}/v1`,
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
+    })
     try {
       await expect(client.chat.send(
         { agentId: 'support', message: 'Hello' },
-        { credentials: async () => ({ tenantId: 'acme', token: 'user-a' }) },
+        { user: async () => ({ tenantId: 'acme', userId: 'user-a' }) },
       )).rejects.toEqual(expect.objectContaining({ code: 'INVALID_RESPONSE' }))
     } finally {
       await server.close()
@@ -199,6 +207,10 @@ function writeJson(response: ServerResponse, value: unknown, status = 200) {
   response.end(JSON.stringify(value))
 }
 
-function textHeader(value: string | string[] | undefined): string | undefined {
-  return typeof value === 'string' ? value : undefined
+const authentication = {
+  async request(_target: { audience: string }, request: Request, dispatch: (request: Request) => Promise<Response>) {
+    const headers = new Headers(request.headers)
+    headers.set('authorization', 'Bearer application-server')
+    return dispatch(new Request(request, { headers }))
+  },
 }
