@@ -42,4 +42,14 @@ export default defineConfig([
     workspace: ['packages/agent-runtime'],
     entry: ['lib/types/index.js', 'lib/types/model-echo.js', 'lib/types/session-storage.js'],
   },
+  {
+    ...shared,
+    workspace: ['packages/sdk'],
+    entry: ['lib/types/index.js'],
+  },
+  {
+    ...shared,
+    workspace: ['packages/transport'],
+    entry: ['lib/types/index.js', 'lib/types/http.js'],
+  },
 ])

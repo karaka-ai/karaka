@@ -8,6 +8,78 @@ import Loader from '@karaka/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
 
 describe('Agent Runtime', () => {
+  it('forwards cancellation to non-streaming model calls', async () => {
+    const ctx = new Context()
+    const started = Promise.withResolvers<void>()
+    let observedSignal: AbortSignal | undefined
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(createAgentPlugin('cancel-agent', 'cancel-model'))
+      await ctx.plugin({
+        name: 'cancellable-model',
+        inject: ['agentModels'],
+        apply(pluginContext) {
+          pluginContext.agentModels.register({
+            id: 'cancel-model',
+            async generate(request) {
+              observedSignal = request.signal
+              started.resolve()
+              return new Promise<never>((_resolve, reject) => {
+                request.signal?.addEventListener('abort', () => reject(request.signal?.reason), { once: true })
+              })
+            },
+          })
+        },
+      })
+
+      const controller = new AbortController()
+      const run = ctx.agentRuntime.run(
+        { agentId: 'cancel-agent', message: 'Wait' },
+        { signal: controller.signal },
+      )
+      await started.promise
+      controller.abort(new Error('caller disconnected'))
+
+      await expect(run).rejects.toMatchObject({ code: 'ABORTED' })
+      expect(observedSignal).toBe(controller.signal)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('emits provider-neutral incremental text while returning the completed turn', async () => {
+    const ctx = new Context()
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(EchoModel, { id: 'stream-model', prefix: 'Received: ' })
+      await ctx.plugin(createAgentPlugin('stream-agent', 'stream-model'))
+      const events: Array<{ type: 'text-delta', delta: string }> = []
+
+      const result = await ctx.agentRuntime.stream({
+        agentId: 'stream-agent',
+        message: 'Hello',
+      }, event => {
+        events.push(event)
+      })
+
+      expect(events).toEqual([
+        { type: 'text-delta', delta: 'Received: ' },
+        { type: 'text-delta', delta: 'Hello' },
+      ])
+      expect(result).toEqual({
+        agentId: 'stream-agent',
+        model: 'stream-model',
+        message: { role: 'assistant', content: 'Received: Hello' },
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('loads an agent plugin from setup YAML and runs one turn', async () => {
     const ctx = new Context()
     ctx.baseUrl = new URL('./fixtures/', import.meta.url).href

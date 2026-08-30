@@ -54,6 +54,36 @@ afterAll(async () => {
 })
 
 describe('Authentication seam', () => {
+  it('binds verified principals to concurrent asynchronous invocations', async () => {
+    const ctx = new Context()
+
+    try {
+      await ctx.plugin(AuthenticationService)
+      const current = async (tenantId: string, subject: string) => {
+        return ctx.authentication.withPrincipal({
+          tenantId,
+          subject,
+          provider: 'test',
+          claims: {},
+        }, async () => {
+          await Promise.resolve()
+          return ctx.authentication.currentPrincipal()
+        })
+      }
+
+      const [acme, beta] = await Promise.all([
+        current('acme', 'user-acme'),
+        current('beta', 'user-beta'),
+      ])
+
+      expect(acme).toMatchObject({ tenantId: 'acme', subject: 'user-acme', provider: 'test' })
+      expect(beta).toMatchObject({ tenantId: 'beta', subject: 'user-beta', provider: 'test' })
+      await expect(ctx.authentication.currentPrincipal()).rejects.toMatchObject({ code: 'NO_CURRENT_PRINCIPAL' })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('resolves one static trusted host principal from YAML-compatible config', async () => {
     const ctx = new Context()
 

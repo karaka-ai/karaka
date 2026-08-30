@@ -32,6 +32,22 @@ export class EchoModelProvider implements ModelProvider {
       },
     }
   }
+
+  async *stream(request: Readonly<ModelRequest>) {
+    const message = request.messages.findLast(item => item.role === 'user')
+    const content = message?.content ?? ''
+    yield { type: 'text-delta' as const, delta: this.prefix }
+    if (content) yield { type: 'text-delta' as const, delta: content }
+    yield {
+      type: 'completed' as const,
+      generation: {
+        message: {
+          role: 'assistant' as const,
+          content: `${this.prefix}${content}`,
+        },
+      },
+    }
+  }
 }
 
 /** Contribute one deterministic echo model. */
