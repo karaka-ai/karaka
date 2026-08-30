@@ -137,6 +137,17 @@ writeFileSync('authentication.yml', [
   '  config:',
   '    id: smoke-model',
   "    prefix: 'Packed: '",
+  "- name: '@karaka/model-openai'",
+  '  config:',
+  '    id: packed-openai',
+  '    model: gpt-test',
+  '    serviceTier: default',
+  '    apiKey: packed-test-key',
+  '    pricing:',
+  '      unit: USD_MICRO',
+  "      inputPerMillion: '1'",
+  "      cachedInputPerMillion: '1'",
+  "      outputPerMillion: '1'",
   "- name: './smoke-agent.mjs'",
   '',
 ].join('\\n'))
@@ -150,6 +161,7 @@ await ctx.loader.await()
 if (ctx.get('authentication')?.list()[0]?.name !== 'jwks') throw new Error('Loader did not compose the JWKS authentication subpath')
 if ((await ctx.authentication.currentPrincipal()).subject !== 'embedded-developer') throw new Error('Loader did not compose the host authentication subpath')
 if ((await ctx.entitlement.status('smoke')).limit !== 1000000n) throw new Error('Loader did not compose the local entitlement subpath')
+if (!ctx.agentModels.list().includes('packed-openai')) throw new Error('Loader did not compose the OpenAI model package')
 const result = await ctx.agentRuntime.run({ agentId: 'smoke-agent', message: 'Hello' })
 if (result.message.content !== 'Packed: Hello') throw new Error('Loader did not compose the Agent Runtime subpaths')
 await ctx.fiber.dispose()

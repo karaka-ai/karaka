@@ -6,16 +6,6 @@ This is Karaka's canonical pile of concrete unresolved defects and architectural
 
 An issue belongs to the current pull request when it can be corrected within the package or API introduced by that pull request. It belongs to the architectural backlog when a correct fix requires changing an existing cross-package contract or execution guarantee.
 
-## PR #80: OpenAI model provider
-
-These issues are owned by PR #80 and should be resolved before it is described as production-ready:
-
-| ID | Status | Issue | Resolution condition |
-| --- | --- | --- | --- |
-| KARAKA-001 | Open | The streaming provider ignores explicit OpenAI `response.error`, `response.failed`, and `response.incomplete` events and loses useful diagnostics. | Translate and test these terminal events without reporting a successful generation. |
-| KARAKA-002 | Open | Fixed configured token rates are described as exact provider spend even though service tier, conditional pricing, and per-call integer rounding can differ from an invoice. | Define and enforce the supported pricing assumptions, pass an explicit tier where needed, and describe the result as configured metering unless invoice equivalence is guaranteed. |
-| KARAKA-003 | Open | Provider/package hardening is incomplete: setup-YAML mounting is not smoke-tested, important malformed-usage and rounding boundaries lack tests, and the new LICENSE year is inconsistent with the repository. | Add focused coverage and correct the package metadata. |
-
 ## Cross-seam backlog exposed by PR #80
 
 These are real Karaka issues, but a provider-only patch cannot solve them safely:

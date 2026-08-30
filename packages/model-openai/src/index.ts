@@ -8,9 +8,10 @@ import type {
   ResponseCreateParamsStreaming,
   ResponseStreamEvent,
   ResponseUsage,
+  ServiceTier,
 } from 'openai/resources/responses/responses'
 
-/** Exact rates expressed as spend-unit atoms per one million tokens. */
+/** Configured rates expressed as spend-unit atoms per one million tokens. */
 export interface PricingConfig {
   unit?: string
   inputPerMillion: string
@@ -24,6 +25,8 @@ export interface PricingConfig {
 export interface Config {
   id: string
   model: string
+  /** Explicit OpenAI processing tier. Defaults to standard processing. */
+  serviceTier?: Exclude<ServiceTier, null>
   apiKey?: string
   baseURL?: string
   organization?: string
@@ -42,9 +45,22 @@ const PricingConfig: Schema<PricingConfig> = Schema.object({
   outputPerMillion: Schema.string().required(),
 })
 
+const serviceTiers = [
+  'auto',
+  'default',
+  'flex',
+  'scale',
+  'priority',
+  'fast',
+  'ultrafast',
+] as const satisfies readonly Exclude<ServiceTier, null>[]
+
+const ServiceTierConfig: Schema<Exclude<ServiceTier, null>> = Schema.union([...serviceTiers]).default('default')
+
 export const Config: Schema<Config> = Schema.object({
   id: Schema.string().required(),
   model: Schema.string().required(),
+  serviceTier: ServiceTierConfig,
   apiKey: Schema.string(),
   baseURL: Schema.string(),
   organization: Schema.string(),
@@ -81,6 +97,7 @@ export class OpenAIModelProvider implements ModelProvider {
   readonly spendUnit: string
 
   private readonly model: string
+  private readonly serviceTier: Exclude<ServiceTier, null>
   private readonly maxOutputTokens: number | undefined
   private readonly pricing: ParsedPricing
   private readonly client: OpenAIResponsesClient
@@ -88,6 +105,7 @@ export class OpenAIModelProvider implements ModelProvider {
   constructor(config: Config, client?: OpenAIResponsesClient) {
     this.id = requireText(config.id, 'model ID')
     this.model = requireText(config.model, 'OpenAI model')
+    this.serviceTier = serviceTier(config.serviceTier)
     this.maxOutputTokens = optionalPositiveInteger(config.maxOutputTokens, 'maximum output tokens')
     this.pricing = parsePricing(config.pricing)
     this.spendUnit = this.pricing.unit
@@ -107,6 +125,7 @@ export class OpenAIModelProvider implements ModelProvider {
     const response = await this.client.create({
       model: this.model,
       input: modelInput(request),
+      service_tier: this.serviceTier,
       store: false,
       stream: false,
       ...(this.maxOutputTokens === undefined ? {} : { max_output_tokens: this.maxOutputTokens }),
@@ -119,6 +138,7 @@ export class OpenAIModelProvider implements ModelProvider {
     const events = await this.client.create({
       model: this.model,
       input: modelInput(request),
+      service_tier: this.serviceTier,
       store: false,
       stream: true,
       ...(this.maxOutputTokens === undefined ? {} : { max_output_tokens: this.maxOutputTokens }),
@@ -133,6 +153,12 @@ export class OpenAIModelProvider implements ModelProvider {
       } else if (event.type === 'response.completed') {
         if (completed) throw new Error('OpenAI streamed more than one completed response')
         completed = event.response
+      } else if (event.type === 'error') {
+        throw streamError(event.code, event.message, event.param)
+      } else if (event.type === 'response.failed') {
+        throw failedResponseError(event.response)
+      } else if (event.type === 'response.incomplete') {
+        throw incompleteResponseError(event.response)
       }
     }
 
@@ -181,6 +207,8 @@ function responseContent(response: Response) {
 }
 
 function generation(content: string, response: Response, pricing: ParsedPricing): ModelGeneration {
+  if (response.status === 'failed') throw failedResponseError(response)
+  if (response.status === 'incomplete') throw incompleteResponseError(response)
   if (response.status !== 'completed') {
     throw new Error(`OpenAI response did not complete${response.status ? ` (${response.status})` : ''}`)
   }
@@ -196,11 +224,16 @@ function generation(content: string, response: Response, pricing: ParsedPricing)
 function calculateSpend(usage: ResponseUsage, pricing: ParsedPricing) {
   const input = tokenCount(usage.input_tokens, 'input tokens')
   const output = tokenCount(usage.output_tokens, 'output tokens')
+  const total = tokenCount(usage.total_tokens, 'total tokens')
   const cached = tokenCount(usage.input_tokens_details?.cached_tokens, 'cached input tokens')
-  const cacheWrite = tokenCount(usage.input_tokens_details?.cache_write_tokens ?? 0, 'cache-write input tokens')
+  const cacheWrite = tokenCount(usage.input_tokens_details?.cache_write_tokens, 'cache-write input tokens')
+  const reasoning = tokenCount(usage.output_tokens_details?.reasoning_tokens, 'reasoning output tokens')
+  if (total !== input + output) throw new Error('OpenAI response contained inconsistent total-token usage')
+  if (cached + cacheWrite > input) throw new Error('OpenAI response contained inconsistent input-token usage')
+  if (reasoning > output) throw new Error('OpenAI response contained inconsistent output-token usage')
+
   const separatelyPricedCacheWrite = pricing.cacheWritePerMillion === undefined ? 0n : cacheWrite
   const ordinaryInput = input - cached - separatelyPricedCacheWrite
-  if (ordinaryInput < 0n) throw new Error('OpenAI response contained inconsistent input-token usage')
 
   const numerator = ordinaryInput * pricing.inputPerMillion
     + cached * pricing.cachedInputPerMillion
@@ -223,8 +256,10 @@ function parsePricing(config: PricingConfig): ParsedPricing {
   })
 }
 
-function amount(value: string, label: string) {
-  if (!/^\d+$/.test(value)) throw new TypeError(`${label} must be a non-negative integer string`)
+function amount(value: unknown, label: string) {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new TypeError(`${label} must be a non-negative integer string`)
+  }
   return BigInt(value)
 }
 
@@ -237,6 +272,53 @@ function tokenCount(value: unknown, label: string) {
 
 function divideRoundingUp(numerator: bigint, denominator: bigint) {
   return numerator === 0n ? 0n : (numerator + denominator - 1n) / denominator
+}
+
+function streamError(code: string | null, message: string, parameter: string | null) {
+  const safeParameter = diagnostic(parameter)
+  const details = [
+    diagnostic(code),
+    safeParameter ? `parameter ${safeParameter}` : '',
+  ].filter(Boolean).join(', ')
+  return new Error(`OpenAI response stream failed${details ? ` (${details})` : ''}: ${diagnostic(message)}`)
+}
+
+function failedResponseError(response: Response) {
+  const code = diagnostic(response.error?.code)
+  const message = diagnostic(response.error?.message)
+  return new Error(`OpenAI response failed${code ? ` (${code})` : ''}${message ? `: ${message}` : ''}`)
+}
+
+function incompleteResponseError(response: Response) {
+  const reason = diagnostic(response.incomplete_details?.reason)
+  return new Error(`OpenAI response incomplete${reason ? ` (${reason})` : ''}`)
+}
+
+function diagnostic(value: unknown) {
+  if (typeof value !== 'string') return ''
+  const text = Array.from(value, character => {
+    const code = character.codePointAt(0)!
+    return isDiagnosticControl(code) ? ' ' : character
+  }).join('').trim()
+  return text.length > 500 ? `${text.slice(0, 497)}...` : text
+}
+
+function isDiagnosticControl(code: number) {
+  return code <= 31
+    || (code >= 127 && code <= 159)
+    || code === 0x061c
+    || code === 0x200e
+    || code === 0x200f
+    || code === 0x2028
+    || code === 0x2029
+    || (code >= 0x202a && code <= 0x202e)
+    || (code >= 0x2066 && code <= 0x2069)
+}
+
+function serviceTier(value: Config['serviceTier']) {
+  const selected = value ?? 'default'
+  if (serviceTiers.includes(selected)) return selected
+  throw new TypeError('OpenAI service tier is invalid')
 }
 
 function requireText(value: unknown, label: string): string {

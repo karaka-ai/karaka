@@ -38,7 +38,7 @@ const request: ModelRequest = {
 }
 
 describe('OpenAI model provider', () => {
-  it('maps Karaka messages to a stateless Responses API call and reports exact spend', async () => {
+  it('maps Karaka messages to a stateless Responses API call and reports configured spend', async () => {
     let received: ResponseCreateParamsNonStreaming | undefined
     const client = clientWith({
       async generate(body) {
@@ -60,6 +60,7 @@ describe('OpenAI model provider', () => {
     })
     expect(received).toMatchObject({
       model: 'gpt-test',
+      service_tier: 'default',
       store: false,
       stream: false,
       input: request.messages,
@@ -94,6 +95,26 @@ describe('OpenAI model provider', () => {
         },
       },
     ])
+  })
+
+  it('passes the configured service tier to completed and streamed calls', async () => {
+    const bodies: Array<ResponseCreateParamsNonStreaming | ResponseCreateParamsStreaming> = []
+    const client = clientWith({
+      async generate(body) {
+        bodies.push(body)
+        return response('completed')
+      },
+      async *stream(body) {
+        bodies.push(body)
+        yield event({ type: 'response.completed', response: response('') })
+      },
+    })
+    const provider = new OpenAIModelProvider({ ...config, serviceTier: 'flex' }, client)
+
+    await provider.generate(request)
+    for await (const _event of provider.stream!(request)) void _event
+
+    expect(bodies.map(body => body.service_tier)).toEqual(['flex', 'flex'])
   })
 
   it('preserves refusal content in completed and streamed generations', async () => {
@@ -146,14 +167,36 @@ describe('OpenAI model provider', () => {
     }).rejects.toThrow('did not match its completed output')
   })
 
-  it('rejects incomplete responses and streams without a completion event', async () => {
-    const incomplete = new OpenAIModelProvider(config, clientWith({
+  it('preserves bounded diagnostics for failed and incomplete responses', async () => {
+    const failed = new OpenAIModelProvider(config, clientWith({
       async generate() {
-        return { ...response('partial'), status: 'incomplete' }
+        return {
+          ...response(''),
+          status: 'failed',
+          error: {
+            code: 'server_error',
+            message: `Provider\u0085unavailable\u2028detail\u2029next\u202Ehidden\u2066isolate\u061Cend${'!'.repeat(600)}`,
+          },
+        }
       },
     }))
-    await expect(incomplete.generate(request)).rejects.toThrow('did not complete (incomplete)')
+    await expect(failed.generate(request)).rejects.toThrow(
+      `OpenAI response failed (server_error): Provider unavailable detail next hidden isolate end${'!'.repeat(446)}...`,
+    )
 
+    const incomplete = new OpenAIModelProvider(config, clientWith({
+      async generate() {
+        return {
+          ...response('partial'),
+          status: 'incomplete',
+          incomplete_details: { reason: 'content_filter' },
+        }
+      },
+    }))
+    await expect(incomplete.generate(request)).rejects.toThrow('OpenAI response incomplete (content_filter)')
+  })
+
+  it('rejects streams without a completion event', async () => {
     const truncated = new OpenAIModelProvider(config, clientWith({
       async *stream() {
         yield event({ type: 'response.output_text.delta', delta: 'partial' })
@@ -162,6 +205,176 @@ describe('OpenAI model provider', () => {
     await expect(async () => {
       for await (const _event of truncated.stream!(request)) void _event
     }).rejects.toThrow('ended without completion')
+  })
+
+  it('rejects non-string configured rates during direct construction', () => {
+    const invalid = {
+      ...config,
+      pricing: { ...config.pricing, inputPerMillion: 1000000 },
+    } as unknown as Config
+
+    expect(() => new OpenAIModelProvider(invalid, clientWith({}))).toThrow(
+      'input price must be a non-negative integer string',
+    )
+  })
+
+  it.each([
+    {
+      name: 'error',
+      events: [event({
+        type: 'error',
+        code: 'invalid_request',
+        message: 'Bad\u200Erequest\u0085detail',
+        param: 'input',
+      })],
+      message: 'OpenAI response stream failed (invalid_request, parameter input): Bad request detail',
+    },
+    {
+      name: 'failed',
+      events: [event({
+        type: 'response.failed',
+        response: {
+          ...response(''),
+          status: 'failed',
+          error: { code: 'server_error', message: 'Provider unavailable' },
+        },
+      })],
+      message: 'OpenAI response failed (server_error): Provider unavailable',
+    },
+    {
+      name: 'incomplete',
+      events: [event({
+        type: 'response.incomplete',
+        response: {
+          ...response('partial'),
+          status: 'incomplete',
+          incomplete_details: { reason: 'max_output_tokens' },
+        },
+      })],
+      message: 'OpenAI response incomplete (max_output_tokens)',
+    },
+  ])('rejects the OpenAI $name terminal stream event with diagnostics', async ({ events, message }) => {
+    const provider = new OpenAIModelProvider(config, clientWith({
+      async *stream() {
+        yield* events
+      },
+    }))
+
+    await expect(collect(provider.stream!(request))).rejects.toThrow(message)
+  })
+
+  it('propagates streaming cancellation without reporting completion', async () => {
+    const controller = new AbortController()
+    const provider = new OpenAIModelProvider(config, clientWith({
+      async *stream(_body, signal) {
+        yield event({ type: 'response.output_text.delta', delta: 'partial' })
+        controller.abort()
+        signal?.throwIfAborted()
+      },
+    }))
+
+    await expect(collect(provider.stream!({ ...request, signal: controller.signal }))).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+  })
+
+  it.each([
+    {
+      name: 'negative token count',
+      usage: usage({ input_tokens: -1, total_tokens: 0 }),
+      message: 'invalid input tokens',
+    },
+    {
+      name: 'unsafe token count',
+      usage: usage({ input_tokens: Number.MAX_SAFE_INTEGER + 1, total_tokens: Number.MAX_SAFE_INTEGER + 2 }),
+      message: 'invalid input tokens',
+    },
+    {
+      name: 'missing input breakdown',
+      usage: usage({ input_tokens_details: undefined } as unknown as Partial<NonNullable<Response['usage']>>),
+      message: 'invalid cached input tokens',
+    },
+    {
+      name: 'inconsistent total',
+      usage: usage({ total_tokens: 3 }),
+      message: 'inconsistent total-token usage',
+    },
+    {
+      name: 'inconsistent input breakdown',
+      usage: usage({
+        input_tokens_details: { cached_tokens: 1, cache_write_tokens: 1 },
+      }),
+      message: 'inconsistent input-token usage',
+    },
+    {
+      name: 'inconsistent output breakdown',
+      usage: usage({
+        output_tokens_details: { reasoning_tokens: 2 },
+      }),
+      message: 'inconsistent output-token usage',
+    },
+  ])('rejects $name in OpenAI usage', async ({ usage, message }) => {
+    const provider = new OpenAIModelProvider(config, clientWith({
+      async generate() {
+        return response('invalid', usage)
+      },
+    }))
+
+    await expect(provider.generate(request)).rejects.toThrow(message)
+  })
+
+  it('rounds the aggregate configured charge up once per completed call', async () => {
+    const roundingConfig: Config = {
+      ...config,
+      pricing: {
+        unit: 'CREDIT_ATOM',
+        inputPerMillion: '1',
+        cachedInputPerMillion: '0',
+        outputPerMillion: '0',
+      },
+    }
+    const exact = new OpenAIModelProvider(roundingConfig, clientWith({
+      async generate() {
+        return response('', usage({ input_tokens: 1_000_000, output_tokens: 0, total_tokens: 1_000_000 }))
+      },
+    }))
+    const rounded = new OpenAIModelProvider(roundingConfig, clientWith({
+      async generate() {
+        return response('', usage({ input_tokens: 1_000_001, output_tokens: 0, total_tokens: 1_000_001 }))
+      },
+    }))
+
+    await expect(exact.generate(request)).resolves.toMatchObject({
+      spend: { unit: 'CREDIT_ATOM', amount: 1n },
+    })
+    await expect(rounded.generate(request)).resolves.toMatchObject({
+      spend: { unit: 'CREDIT_ATOM', amount: 2n },
+    })
+  })
+
+  it('charges cache writes at the ordinary input rate when their rate is omitted', async () => {
+    const provider = new OpenAIModelProvider({
+      ...config,
+      pricing: {
+        unit: 'USD_MICRO',
+        inputPerMillion: '1000000',
+        cachedInputPerMillion: '100000',
+        outputPerMillion: '0',
+      },
+    }, clientWith({
+      async generate() {
+        return response('', usage({
+          input_tokens: 100,
+          input_tokens_details: { cached_tokens: 20, cache_write_tokens: 10 },
+          output_tokens: 0,
+          total_tokens: 100,
+        }))
+      },
+    }))
+
+    await expect(provider.generate(request)).resolves.toMatchObject({
+      spend: { unit: 'USD_MICRO', amount: 82n },
+    })
   })
 
   it('registers and removes the provider through Cordis effects', async () => {
@@ -297,4 +510,21 @@ function responseWithContent(
 
 function event(value: Partial<ResponseStreamEvent> & { type: ResponseStreamEvent['type'] }) {
   return value as ResponseStreamEvent
+}
+
+function usage(overrides: Partial<NonNullable<Response['usage']>>): NonNullable<Response['usage']> {
+  return {
+    input_tokens: 1,
+    input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+    output_tokens: 1,
+    output_tokens_details: { reasoning_tokens: 0 },
+    total_tokens: 2,
+    ...overrides,
+  } as NonNullable<Response['usage']>
+}
+
+async function collect(stream: AsyncIterable<unknown>) {
+  const events = []
+  for await (const event of stream) events.push(event)
+  return events
 }
