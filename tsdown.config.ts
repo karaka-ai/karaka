@@ -50,7 +50,7 @@ export default defineConfig([
   {
     ...shared,
     workspace: ['packages/tool'],
-    entry: ['lib/types/core.js', 'lib/types/mcp-server.js'],
+    entry: ['lib/types/core.js', 'lib/types/mcp-client.js', 'lib/types/mcp-server.js'],
   },
   {
     ...shared,

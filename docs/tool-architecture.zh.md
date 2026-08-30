@@ -49,7 +49,7 @@ MCP 不负责定位应用端点。端点发现与协议发现彼此独立：
 
 静态配置是最小提供方。DNS、Kubernetes、Consul、Cloud Map 或私有注册中心可以实现同一个 Cordis 发现契约。任何基础设施专用提供方都不享有特权。
 
-当前的应用 MCP 服务器固定使用现代 MCP `2026-07-28` 修订版，并拒绝旧版协议流量。未来的客户端桥接最初也应固定使用同一修订版；任何兼容期都必须在以后明确决定。协议参考是 [MCP 2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28)、其 [Streamable HTTP 传输](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)以及[工具契约](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)。
+当前的应用 MCP 服务器和 Karaka MCP 客户端都固定使用现代 MCP `2026-07-28` 修订版，并拒绝旧版协议流量。任何兼容期都必须在以后明确决定。协议参考是 [MCP 2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28)、其 [Streamable HTTP 传输](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)以及[工具契约](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)。
 
 ### Karaka 工具插件
 
@@ -61,7 +61,7 @@ Karaka 进程中的工具行为属于智能体运行时接缝内的一个插件�
 - 调用和调度策略；
 - Karaka 原生工具和可选本地工具。
 
-MCP 客户端桥接使用已发现的端点、协商其能力、调用 `tools/list`、验证描述符，并向注册表贡献逻辑工具。它使用 `tools/call` 进行远程调用。移除或替换桥接或发现提供方，会撤销它们的注册。重复的逻辑所有者或不兼容的副本 schema 会关闭失败，而不依赖发现顺序。
+当前的 MCP 客户端插件从设置接收可信静态 HTTPS 端点、协商其能力、调用 `tools/list`、验证协议响应、Karaka 版本元数据和 schema，并向注册表贡献逻辑工具。它为每个请求获取 bearer token，并把取消信号转发给 `tools/call`。工具核心会独立编译公布的 schema，并验证每次调用的输入和结果。移除该插件会撤销注册并关闭客户端。当前静态实现拒绝重复逻辑所有者，不依赖端点顺序；动态发现、兼容副本归组和列表变更刷新仍是位于同一边界之后的未来插件或扩展。
 
 智能体运行时只使用工具注册表。它既不发现端点，也不直接处理 MCP 或 HTTP。
 

@@ -49,7 +49,7 @@ MCP does not locate application endpoints. Endpoint discovery and protocol disco
 
 Static configuration is the minimum provider. DNS, Kubernetes, Consul, Cloud Map, or private registries may implement the same Cordis discovery contract. No infrastructure-specific provider is privileged.
 
-The current application MCP server pins the modern MCP `2026-07-28` revision and rejects legacy protocol traffic. The future client bridge should initially pin the same revision; any compatibility window must be an explicit later decision. The protocol references are the [MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28), its [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports), and its [tools contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
+The current application MCP server and Karaka MCP client pin the modern MCP `2026-07-28` revision and reject legacy protocol traffic. Any compatibility window must be an explicit later decision. The protocol references are the [MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28), its [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports), and its [tools contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
 
 ### Karaka Tool plugins
 
@@ -61,7 +61,7 @@ Tool behavior in the Karaka process belongs to a plugin family inside the Agent 
 - invocation and scheduling policy;
 - Karaka-native and optional local tools.
 
-The MCP client bridge consumes discovered endpoints, negotiates their capabilities, calls `tools/list`, verifies descriptors, and contributes logical tools to the registry. It uses `tools/call` for remote invocation. Removing or replacing the bridge or discovery provider reverses its registrations. Duplicate logical owners or incompatible replica schemas fail closed rather than depending on discovery order.
+The current MCP client plugin consumes trusted static HTTPS endpoints from setup, negotiates their capabilities, calls `tools/list`, verifies the protocol response, Karaka version metadata and schemas, and contributes logical tools to the registry. It obtains a bearer token for every request and forwards cancellation to `tools/call`. Tool Core independently compiles the advertised schemas and validates every invocation input and result. Removing the plugin reverses its registrations and closes its clients. The current static implementation rejects duplicate logical owners rather than depending on endpoint order; dynamic discovery, compatible-replica grouping and list-change refresh remain future plugins or extensions behind the same boundary.
 
 Agent Runtime only uses the Tool registry. It neither discovers endpoints nor handles MCP or HTTP directly.
 

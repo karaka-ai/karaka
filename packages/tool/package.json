@@ -24,6 +24,10 @@
       "types": "./lib/types/mcp-server.d.ts",
       "default": "./lib/mcp-server.js"
     },
+    "./mcp-client": {
+      "types": "./lib/types/mcp-client.d.ts",
+      "default": "./lib/mcp-client.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -38,10 +42,8 @@
   },
   "dependencies": {
     "@karaka/sdk": "workspace:^",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
     "ajv": "^8.20.0"
-  },
-  "devDependencies": {
-    "@modelcontextprotocol/client": "^2.0.0"
   }
 }

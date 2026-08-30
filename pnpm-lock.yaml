@@ -162,16 +162,15 @@ importers:
       '@karaka/sdk':
         specifier: workspace:^
         version: link:../sdk
+      '@modelcontextprotocol/client':
+        specifier: ^2.0.0
+        version: 2.0.0
       '@modelcontextprotocol/server':
         specifier: ^2.0.0
         version: 2.0.0
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
-    devDependencies:
-      '@modelcontextprotocol/client':
-        specifier: ^2.0.0
-        version: 2.0.0
 
   packages/transport:
     dependencies:
