@@ -1,6 +1,7 @@
 import type {
   ModelConversationItem,
   ModelGeneration,
+  ModelProviderData,
   ModelProvider,
   ModelRequest,
   ModelToolCall,
@@ -16,10 +17,13 @@ import type {
   ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
   ResponseInputItem,
+  ResponseOutputMessage,
   ResponseStreamEvent,
   ResponseUsage,
   ServiceTier,
 } from 'openai/resources/responses/responses'
+
+const OPENAI_RESPONSES_PROVIDER = 'openai.responses'
 
 /** Configured rates expressed as spend-unit atoms per one million tokens. */
 export interface PricingConfig {
@@ -147,6 +151,7 @@ export class OpenAIModelProvider implements ModelProvider {
       model: this.model,
       input: modelInput(request),
       service_tier: this.serviceTier,
+      include: ['reasoning.encrypted_content'],
       store: false,
       stream: false,
       ...(tools.definitions.length ? { tools: tools.definitions, parallel_tool_calls: false } : {}),
@@ -162,6 +167,7 @@ export class OpenAIModelProvider implements ModelProvider {
       model: this.model,
       input: modelInput(request),
       service_tier: this.serviceTier,
+      include: ['reasoning.encrypted_content'],
       store: false,
       stream: true,
       ...(tools.definitions.length ? { tools: tools.definitions, parallel_tool_calls: false } : {}),
@@ -220,10 +226,24 @@ function modelInput(request: Readonly<ModelRequest>): ResponseInputItem[] {
   if (!Array.isArray(request.messages) || !request.messages.length) {
     throw new TypeError('model messages must be a non-empty array')
   }
-  return request.messages.map(modelInputItem)
+  return request.messages.flatMap(item => {
+    const mapped = modelInputItem(item)
+    return mapped ? [mapped] : []
+  })
 }
 
-function modelInputItem(item: ModelConversationItem): ResponseInputItem {
+function modelInputItem(item: ModelConversationItem): ResponseInputItem | undefined {
+  if ('type' in item && item.type === 'provider-item') {
+    return item.providerData.provider === OPENAI_RESPONSES_PROVIDER
+      ? providerInputItem(item.providerData)
+      : undefined
+  }
+  if (
+    'providerData' in item
+    && item.providerData?.provider === OPENAI_RESPONSES_PROVIDER
+  ) {
+    return providerInputItem(item.providerData)
+  }
   if (!('type' in item)) return { role: item.role, content: item.content }
   const name = openAIToolName(item.toolId)
   if (item.type === 'tool-call') {
@@ -240,6 +260,13 @@ function modelInputItem(item: ModelConversationItem): ResponseInputItem {
     name,
     output: JSON.stringify(item.output),
   }
+}
+
+function providerInputItem(data: ModelProviderData): ResponseInputItem {
+  if (!data.value || typeof data.value !== 'object' || Array.isArray(data.value)) {
+    throw new TypeError('OpenAI replay item must be an object')
+  }
+  return data.value as unknown as ResponseInputItem
 }
 
 function responseContent(response: Response) {
@@ -271,10 +298,11 @@ function generation(
   if (typeof content !== 'string') throw new Error('OpenAI response contained no text output')
   if (!response.usage) throw new Error('OpenAI response contained no token usage')
 
-  const toolCalls = responseToolCalls(response, logicalIds)
+  const output = responseReplay(response, logicalIds)
   return Object.freeze({
     message: Object.freeze({ role: 'assistant' as const, content }),
-    ...(toolCalls.length ? { toolCalls } : {}),
+    ...(output.toolCalls.length ? { toolCalls: output.toolCalls } : {}),
+    replay: output.replay,
     spend: Object.freeze({ unit: pricing.unit, amount: calculateSpend(response.usage, pricing) }),
   })
 }
@@ -312,9 +340,28 @@ function openAIToolName(id: string) {
   return `k_${readable}_${digest}`
 }
 
-function responseToolCalls(response: Response, logicalIds: ReadonlyMap<string, string>): readonly ModelToolCall[] {
-  const calls = response.output.flatMap(item => {
-    if (item.type !== 'function_call') return []
+function responseReplay(response: Response, logicalIds: ReadonlyMap<string, string>) {
+  const replay = []
+  const toolCalls: ModelToolCall[] = []
+  for (const item of response.output) {
+    if (item.type === 'message') {
+      replay.push(Object.freeze({
+        role: 'assistant' as const,
+        content: responseMessageContent(item),
+        providerData: responseItemData(item),
+      }))
+      continue
+    }
+    if (item.type === 'reasoning') {
+      replay.push(Object.freeze({
+        type: 'provider-item' as const,
+        providerData: responseItemData(item),
+      }))
+      continue
+    }
+    if (item.type !== 'function_call') {
+      throw new Error(`OpenAI returned unsupported output item "${diagnostic(item.type)}"`)
+    }
     if (item.status !== undefined && item.status !== 'completed') {
       throw new Error(`OpenAI tool call "${diagnostic(item.call_id)}" did not complete`)
     }
@@ -326,14 +373,28 @@ function responseToolCalls(response: Response, logicalIds: ReadonlyMap<string, s
     } catch (cause) {
       throw new Error(`OpenAI tool "${toolId}" returned invalid JSON arguments`, { cause })
     }
-    return [Object.freeze({
+    const call = Object.freeze({
       type: 'tool-call' as const,
       callId: requireText(item.call_id, 'OpenAI tool call ID'),
       toolId,
       input: input as JsonValue,
-    })]
+      providerData: responseItemData(item),
+    })
+    toolCalls.push(call)
+    replay.push(call)
+  }
+  return Object.freeze({ replay: Object.freeze(replay), toolCalls: Object.freeze(toolCalls) })
+}
+
+function responseMessageContent(message: ResponseOutputMessage) {
+  return message.content.map(part => part.type === 'output_text' ? part.text : part.refusal).join('')
+}
+
+function responseItemData(item: Response['output'][number]): ModelProviderData {
+  return Object.freeze({
+    provider: OPENAI_RESPONSES_PROVIDER,
+    value: JSON.parse(JSON.stringify(item)) as JsonValue,
   })
-  return Object.freeze(calls)
 }
 
 function isObjectSchema(value: ToolDescriptor['input']): value is { readonly [key: string]: JsonValue } {

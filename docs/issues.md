@@ -13,7 +13,6 @@ These are real Karaka issues, but a provider-only patch cannot solve them safely
 | ID | Status | Owner | Issue | Required design |
 | --- | --- | --- | --- | --- |
 | KARAKA-004 | Deferred | Agent Runtime + Entitlement | A cancelled, failed, or incomplete upstream call may be billable but records no spend because spend currently travels only on a successful `ModelGeneration`. | Idempotent reservation and settlement, including retry and unknown-outcome semantics. |
-| KARAKA-005 | Deferred | Agent Runtime + Storage | Sessions now preserve provider-neutral tool calls and results, but provider-native replay state such as reasoning items and phases still cannot survive a durable multi-turn chat. | Extend the versioned provider-neutral turn-state contract with explicit replay rules for provider-native state. |
 | KARAKA-006 | Deferred | Configuration foundation | Provider credentials are ordinary schema strings. Environment fallback avoids writing a key in YAML, but Loader and schema tooling have no shared secret/redaction contract. | A secret-aware configuration and diagnostic-redaction convention usable by every provider. |
 
 ## Cross-seam backlog exposed by the tool loop

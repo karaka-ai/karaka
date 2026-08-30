@@ -55,13 +55,14 @@ describe('OpenAI model provider', () => {
     })
     const provider = new OpenAIModelProvider(config, client)
 
-    await expect(provider.generate(request)).resolves.toEqual({
+    await expect(provider.generate(request)).resolves.toMatchObject({
       message: { role: 'assistant', content: 'Hello back' },
       spend: { unit: 'USD_MICRO', amount: 112n },
     })
     expect(received).toMatchObject({
       model: 'gpt-test',
       service_tier: 'default',
+      include: ['reasoning.encrypted_content'],
       store: false,
       stream: false,
       input: request.messages,
@@ -74,7 +75,7 @@ describe('OpenAI model provider', () => {
       async generate(body) {
         bodies.push(body)
         return bodies.length === 1
-          ? responseWithToolCall(
+          ? responseWithReasoningAndToolCall(
               'call-1',
               functionToolName(body),
               '{"invoiceId":"inv-1"}',
@@ -127,7 +128,7 @@ describe('OpenAI model provider', () => {
       tools: [tool],
       messages: [
         ...request.messages,
-        first.toolCalls![0]!,
+        ...first.replay!,
         {
           type: 'tool-result',
           callId: 'call-1',
@@ -139,10 +140,18 @@ describe('OpenAI model provider', () => {
     expect(bodies[1]?.input).toEqual([
       ...request.messages,
       {
+        id: 'reasoning-test',
+        type: 'reasoning',
+        summary: [],
+        encrypted_content: 'encrypted-reasoning',
+        status: 'completed',
+      },
+      {
         type: 'function_call',
         call_id: 'call-1',
         name: providerName,
         arguments: '{"invoiceId":"inv-1"}',
+        status: 'completed',
       },
       {
         type: 'function_call_output',
@@ -154,6 +163,43 @@ describe('OpenAI model provider', () => {
 
     expect(() => provider.validateTools([{ ...tool, input: true }]))
       .toThrow('requires an object input schema')
+  })
+
+  it('preserves OpenAI assistant phases and ignores foreign provider-only state', async () => {
+    const bodies: ResponseCreateParamsNonStreaming[] = []
+    const client = clientWith({
+      async generate(body) {
+        bodies.push(body)
+        return bodies.length === 1 ? responseWithPhase('First answer') : response('Second answer')
+      },
+    })
+    const provider = new OpenAIModelProvider(config, client)
+    const first = await provider.generate(request)
+
+    await provider.generate({
+      ...request,
+      messages: [
+        ...request.messages,
+        ...first.replay!,
+        {
+          type: 'provider-item',
+          providerData: { provider: 'another.provider', value: { opaque: true } },
+        },
+        {
+          role: 'assistant',
+          content: 'Portable fallback',
+          providerData: { provider: 'another.provider', value: { native: true } },
+        },
+        { role: 'user', content: 'Continue' },
+      ],
+    })
+
+    expect(bodies[1]?.input).toEqual([
+      ...request.messages,
+      expect.objectContaining({ type: 'message', phase: 'final_answer' }),
+      { role: 'assistant', content: 'Portable fallback' },
+      { role: 'user', content: 'Continue' },
+    ])
   })
 
   it('forwards cancellation and converts OpenAI text events to Agent Runtime streaming', async () => {
@@ -173,7 +219,7 @@ describe('OpenAI model provider', () => {
     for await (const item of provider.stream!({ ...request, signal: controller.signal })) events.push(item)
 
     expect(observedSignal).toBe(controller.signal)
-    expect(events).toEqual([
+    expect(events).toMatchObject([
       { type: 'text-delta', delta: 'Hello ' },
       { type: 'text-delta', delta: 'back' },
       {
@@ -230,7 +276,7 @@ describe('OpenAI model provider', () => {
 
     const events = []
     for await (const item of streamed.stream!(request)) events.push(item)
-    expect(events).toEqual([
+    expect(events).toMatchObject([
       { type: 'text-delta', delta: 'I cannot ' },
       { type: 'text-delta', delta: 'help with that.' },
       {
@@ -607,6 +653,38 @@ function responseWithToolCall(callId: string, name: string, args: string): Respo
       arguments: args,
       status: 'completed',
     }],
+  }
+}
+
+function responseWithReasoningAndToolCall(callId: string, name: string, args: string): Response {
+  return {
+    ...responseWithToolCall(callId, name, args),
+    output: [
+      {
+        id: 'reasoning-test',
+        type: 'reasoning',
+        summary: [],
+        encrypted_content: 'encrypted-reasoning',
+        status: 'completed',
+      },
+      {
+        type: 'function_call',
+        call_id: callId,
+        name,
+        arguments: args,
+        status: 'completed',
+      },
+    ],
+  }
+}
+
+function responseWithPhase(outputText: string): Response {
+  const base = response(outputText)
+  return {
+    ...base,
+    output: base.output.map(item => item.type === 'message'
+      ? { ...item, phase: 'final_answer' as const }
+      : item),
   }
 }
 

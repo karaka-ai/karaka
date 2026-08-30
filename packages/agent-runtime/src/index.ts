@@ -29,6 +29,14 @@ export interface AgentDescriptor {
 export interface ModelMessage {
   readonly role: 'system' | 'user' | 'assistant'
   readonly content: string
+  /** Optional provider-owned representation used for exact stateless replay. */
+  readonly providerData?: ModelProviderData
+}
+
+/** JSON-safe provider state carried opaquely by Agent Runtime and Storage. */
+export interface ModelProviderData {
+  readonly provider: string
+  readonly value: JsonValue
 }
 
 /** One validated tool request returned by a model provider. */
@@ -37,6 +45,8 @@ export interface ModelToolCall {
   readonly callId: string
   readonly toolId: string
   readonly input: JsonValue
+  /** Optional provider-owned representation used for exact stateless replay. */
+  readonly providerData?: ModelProviderData
 }
 
 /** One validated tool result supplied to the next model generation. */
@@ -47,8 +57,17 @@ export interface ModelToolResult {
   readonly output: JsonValue
 }
 
+/** A provider-owned conversation item with no provider-neutral equivalent. */
+export interface ModelProviderItem {
+  readonly type: 'provider-item'
+  readonly providerData: ModelProviderData
+}
+
 /** Durable, provider-neutral conversation state. */
-export type ModelConversationItem = ModelMessage | ModelToolCall | ModelToolResult
+export type ModelConversationItem = ModelMessage | ModelToolCall | ModelToolResult | ModelProviderItem
+
+/** Ordered model output that can be supplied to a later stateless generation. */
+export type ModelReplayItem = ModelMessage | ModelToolCall | ModelProviderItem
 
 /** Provider-neutral input for one model generation. */
 export interface ModelRequest {
@@ -74,6 +93,8 @@ export interface ModelProvider {
 export interface ModelGeneration {
   readonly message: ModelMessage
   readonly toolCalls?: readonly ModelToolCall[]
+  /** Exact ordered output for stateless replay; defaults to message then tool calls. */
+  readonly replay?: readonly ModelReplayItem[]
   readonly spend?: SpendAmount
 }
 
@@ -546,6 +567,7 @@ export class AgentRuntimeService extends Service {
       ...conversationItems(history),
       Object.freeze({ role: 'user' as const, content: message }),
     ]
+    const usedCallIds = new Set(messages.flatMap(item => isToolCall(item) ? [item.callId] : []))
 
     const run = async (entitlement?: EntitlementAccount) => {
       try {
@@ -562,10 +584,10 @@ export class AgentRuntimeService extends Service {
           const spend = validateModelSpend(agent.model, response?.spend)
           if (spend) await entitlement!.recordSpend(spend)
           assertNotAborted(options.signal)
-          const generation = validateModelGeneration(agent.model, response)
+          const generation = validateModelGeneration(agent.model, response, usedCallIds)
 
           if (!generation.toolCalls.length) {
-            messages.push(generation.message)
+            messages.push(...generation.replay)
             return Object.freeze({
               result: Object.freeze({
                 agentId,
@@ -581,8 +603,7 @@ export class AgentRuntimeService extends Service {
               `agent "${agentId}" exceeded ${agent.maxToolRounds} tool rounds`,
             )
           }
-          if (generation.message.content) messages.push(generation.message)
-          messages.push(...generation.toolCalls)
+          messages.push(...generation.replay)
           const results: ModelToolResult[] = []
           for (const call of generation.toolCalls) {
             results.push(Object.freeze({
@@ -729,7 +750,7 @@ export class AgentRuntimeService extends Service {
         definition: registration.definition,
         model: model.provider,
         tools,
-        descriptors: tools.descriptors,
+        descriptors: compiled.descriptors,
         maxToolRounds: compiled.maxToolRounds,
         release: () => {
           if (!active) return
@@ -905,25 +926,36 @@ function sameMessages(left: readonly ModelConversationItem[], right: readonly Mo
     const expected = right[index]
     if (!expected || isModelMessage(message) !== isModelMessage(expected)) return false
     if (isModelMessage(message) && isModelMessage(expected)) {
-      return message.role === expected.role && message.content === expected.content
+      return message.role === expected.role
+        && message.content === expected.content
+        && sameProviderData(message.providerData, expected.providerData)
     }
     if (isToolCall(message) && isToolCall(expected)) {
       return message.callId === expected.callId
         && message.toolId === expected.toolId
         && sameJson(message.input, expected.input)
+        && sameProviderData(message.providerData, expected.providerData)
     }
     if (isToolResult(message) && isToolResult(expected)) {
       return message.callId === expected.callId
         && message.toolId === expected.toolId
         && sameJson(message.output, expected.output)
     }
+    if (isProviderItem(message) && isProviderItem(expected)) {
+      return sameProviderData(message.providerData, expected.providerData)
+    }
     return false
   })
 }
 
-function validateModelGeneration(model: ModelProvider, response: ModelGeneration): {
+function validateModelGeneration(
+  model: ModelProvider,
+  response: ModelGeneration,
+  usedCallIds: Set<string>,
+): {
   readonly message: ModelMessage
   readonly toolCalls: readonly ModelToolCall[]
+  readonly replay: readonly ModelReplayItem[]
 } {
   if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
     throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned an invalid response`)
@@ -937,13 +969,18 @@ function validateModelGeneration(model: ModelProvider, response: ModelGeneration
       if (call?.type !== 'tool-call') throw new TypeError('tool call type is invalid')
       const callId = requireText(call.callId, 'tool call ID')
       const toolId = requireText(call.toolId, 'tool ID')
-      if (callIds.has(callId)) throw new TypeError(`tool call ID "${callId}" is duplicated`)
+      if (callIds.has(callId) || usedCallIds.has(callId)) {
+        throw new TypeError(`tool call ID "${callId}" is duplicated`)
+      }
       callIds.add(callId)
       return Object.freeze({
         type: 'tool-call' as const,
         callId,
         toolId,
         input: freezeModelJson(call.input, 'tool input'),
+        ...(call.providerData === undefined
+          ? {}
+          : { providerData: freezeProviderData(call.providerData, 'tool call provider data') }),
       })
     } catch (error) {
       throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned an invalid tool call`, {
@@ -951,10 +988,100 @@ function validateModelGeneration(model: ModelProvider, response: ModelGeneration
       })
     }
   }))
-  return Object.freeze({
-    message: Object.freeze({ role: 'assistant' as const, content: response.message.content }),
-    toolCalls,
+  const message = Object.freeze({
+    role: 'assistant' as const,
+    content: response.message.content,
+    ...(response.message.providerData === undefined
+      ? {}
+      : { providerData: freezeProviderData(response.message.providerData, 'message provider data') }),
   })
+  const replay = response.replay === undefined
+    ? Object.freeze([
+        ...(message.content || !toolCalls.length ? [message] : []),
+        ...toolCalls,
+      ])
+    : validateModelReplay(model, response.replay, message, toolCalls)
+  for (const callId of callIds) usedCallIds.add(callId)
+  return Object.freeze({
+    message,
+    toolCalls,
+    replay,
+  })
+}
+
+function validateModelReplay(
+  model: ModelProvider,
+  replay: readonly ModelReplayItem[],
+  message: ModelMessage,
+  toolCalls: readonly ModelToolCall[],
+): readonly ModelReplayItem[] {
+  if (!Array.isArray(replay)) {
+    throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned invalid replay state`)
+  }
+  const replayCalls: ModelToolCall[] = []
+  const replayCallIds = new Set<string>()
+  const content: string[] = []
+  const items = replay.map(item => {
+    try {
+      if (isModelMessage(item)) {
+        if (item.role !== 'assistant' || typeof item.content !== 'string') {
+          throw new TypeError('replay message is invalid')
+        }
+        content.push(item.content)
+        return Object.freeze({
+          role: 'assistant' as const,
+          content: item.content,
+          ...(item.providerData === undefined
+            ? {}
+            : { providerData: freezeProviderData(item.providerData, 'replay message provider data') }),
+        })
+      }
+      if (isToolCall(item)) {
+        const callId = requireText(item.callId, 'replay tool call ID')
+        const toolId = requireText(item.toolId, 'replay tool ID')
+        if (replayCallIds.has(callId)) throw new TypeError(`replay tool call ID "${callId}" is duplicated`)
+        const call = Object.freeze({
+          type: 'tool-call' as const,
+          callId,
+          toolId,
+          input: freezeModelJson(item.input, 'replay tool input'),
+          ...(item.providerData === undefined
+            ? {}
+            : { providerData: freezeProviderData(item.providerData, 'replay tool call provider data') }),
+        })
+        replayCallIds.add(callId)
+        replayCalls.push(call)
+        return call
+      }
+      if (isProviderItem(item)) {
+        return Object.freeze({
+          type: 'provider-item' as const,
+          providerData: freezeProviderData(item.providerData, 'replay provider data'),
+        })
+      }
+      throw new TypeError('replay item is invalid')
+    } catch (error) {
+      throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned invalid replay state`, {
+        cause: error,
+      })
+    }
+  })
+  if (content.join('') !== message.content || replayCalls.length !== toolCalls.length) {
+    throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned inconsistent replay state`)
+  }
+  for (const [index, expected] of toolCalls.entries()) {
+    const actual = replayCalls[index]
+    if (
+      !actual
+      || actual.callId !== expected.callId
+      || actual.toolId !== expected.toolId
+      || !sameJson(actual.input, expected.input)
+      || !sameProviderData(actual.providerData, expected.providerData)
+    ) {
+      throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned inconsistent replay state`)
+    }
+  }
+  return Object.freeze(items)
 }
 
 function validateConversationItems(value: unknown, label: string): readonly ModelConversationItem[] {
@@ -967,7 +1094,13 @@ function validateConversationItems(value: unknown, label: string): readonly Mode
         throw new TypeError(`${label} contains an invalid model message`)
       }
       if (item.role === 'system' && index !== 0) throw new TypeError(`${label} contains a misplaced system message`)
-      return Object.freeze({ role: item.role, content: item.content })
+      return Object.freeze({
+        role: item.role,
+        content: item.content,
+        ...(item.providerData === undefined
+          ? {}
+          : { providerData: freezeProviderData(item.providerData, `${label} message provider data`) }),
+      })
     }
     if (isToolCall(item)) {
       const callId = requireText(item.callId, 'tool call ID')
@@ -979,6 +1112,9 @@ function validateConversationItems(value: unknown, label: string): readonly Mode
         callId,
         toolId,
         input: freezeModelJson(item.input, 'tool input'),
+        ...(item.providerData === undefined
+          ? {}
+          : { providerData: freezeProviderData(item.providerData, `${label} tool call provider data`) }),
       })
     }
     if (isToolResult(item)) {
@@ -993,6 +1129,12 @@ function validateConversationItems(value: unknown, label: string): readonly Mode
         callId,
         toolId,
         output: freezeModelJson(item.output, 'tool output'),
+      })
+    }
+    if (isProviderItem(item)) {
+      return Object.freeze({
+        type: 'provider-item' as const,
+        providerData: freezeProviderData(item.providerData, `${label} provider data`),
       })
     }
     throw new TypeError(`${label} contains an invalid conversation item`)
@@ -1011,6 +1153,23 @@ function isToolCall(value: unknown): value is ModelToolCall {
 
 function isToolResult(value: unknown): value is ModelToolResult {
   return !!value && typeof value === 'object' && (value as { type?: unknown }).type === 'tool-result'
+}
+
+function isProviderItem(value: unknown): value is ModelProviderItem {
+  return !!value && typeof value === 'object' && (value as { type?: unknown }).type === 'provider-item'
+}
+
+function freezeProviderData(value: ModelProviderData, label: string): ModelProviderData {
+  if (!value || typeof value !== 'object') throw new TypeError(`${label} must be an object`)
+  return Object.freeze({
+    provider: requireText(value.provider, `${label} provider`),
+    value: freezeModelJson(value.value, `${label} value`),
+  })
+}
+
+function sameProviderData(left: ModelProviderData | undefined, right: ModelProviderData | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right
+  return left.provider === right.provider && sameJson(left.value, right.value)
 }
 
 function freezeModelJson(value: unknown, label: string, ancestors = new Set<object>()): JsonValue {

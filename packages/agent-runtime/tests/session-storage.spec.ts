@@ -91,6 +91,55 @@ describe('Agent Runtime storage sessions', () => {
     }
   })
 
+  it.each([
+    {
+      schema: 1,
+      messages: [
+        { role: 'user', content: 'Legacy question' },
+        { role: 'assistant', content: 'Legacy answer' },
+      ],
+    },
+    {
+      schema: 2,
+      messages: [
+        { role: 'user', content: 'Legacy tool question' },
+        { type: 'tool-call', callId: 'legacy-call', toolId: 'legacy.tool', input: {} },
+        { type: 'tool-result', callId: 'legacy-call', toolId: 'legacy.tool', output: {} },
+        { role: 'assistant', content: 'Legacy tool answer' },
+      ],
+    },
+  ])('reads and upgrades session schema $schema', async ({ schema, messages }) => {
+    const directory = mkdtempSync(join(tmpdir(), `karaka-session-v${schema}-`))
+    directories.push(directory)
+    const runtime = await createRuntime(
+      join(directory, 'storage.sqlite'),
+      () => ({ tenantId: 'tenant-a', userId: 'user-a' }),
+      'Current prompt',
+      'current-model',
+    )
+    const chatId = `legacy-v${schema}`
+
+    try {
+      await runtime.ctx.storage.create({
+        namespace: 'agent-runtime.sessions',
+        key: chatId,
+        value: {
+          schema,
+          owner: { tenantId: 'tenant-a', subject: 'user-a' },
+          agentId: 'support',
+          entitlementAccount: '["tenant-a","user-a"]',
+          messages,
+        },
+      })
+
+      await expect(runtime.run({ chatId, message: 'Continue' })).resolves.toMatchObject({ chatId })
+      await expect(runtime.ctx.storage.read({ namespace: 'agent-runtime.sessions', key: chatId }))
+        .resolves.toMatchObject({ value: { schema: 3 } })
+    } finally {
+      await runtime.ctx.fiber.dispose()
+    }
+  })
+
   it('keeps an in-flight durable turn bound to its original Storage provider', async () => {
     const ctx = new Context()
     const generationStarted = deferred<void>()
@@ -178,11 +227,21 @@ describe('Agent Runtime storage sessions', () => {
       chatId = result.chatId
       const stored = await first.ctx.storage.read({ namespace: 'agent-runtime.sessions', key: chatId })
       expect(stored?.value).toMatchObject({
-        schema: 2,
+        schema: 3,
         messages: [
           { role: 'system', content: 'Tool prompt' },
           { role: 'user', content: 'Double four' },
-          { type: 'tool-call', callId: 'call-1', toolId: 'math.double', input: { value: 4 } },
+          {
+            type: 'provider-item',
+            providerData: { provider: 'test.provider', value: { reasoning: 'opaque' } },
+          },
+          {
+            type: 'tool-call',
+            callId: 'call-1',
+            toolId: 'math.double',
+            input: { value: 4 },
+            providerData: { provider: 'test.provider', value: { nativeCall: 'call-1' } },
+          },
           { type: 'tool-result', callId: 'call-1', toolId: 'math.double', output: { doubled: 8 } },
           { role: 'assistant', content: 'Eight.' },
         ],
@@ -199,11 +258,32 @@ describe('Agent Runtime storage sessions', () => {
       expect(second.requests[0]?.messages).toEqual([
         { role: 'system', content: 'Tool prompt' },
         { role: 'user', content: 'Double four' },
-        { type: 'tool-call', callId: 'call-1', toolId: 'math.double', input: { value: 4 } },
+        {
+          type: 'provider-item',
+          providerData: { provider: 'test.provider', value: { reasoning: 'opaque' } },
+        },
+        {
+          type: 'tool-call',
+          callId: 'call-1',
+          toolId: 'math.double',
+          input: { value: 4 },
+          providerData: { provider: 'test.provider', value: { nativeCall: 'call-1' } },
+        },
         { type: 'tool-result', callId: 'call-1', toolId: 'math.double', output: { doubled: 8 } },
         { role: 'assistant', content: 'Eight.' },
         { role: 'user', content: 'What happened?' },
       ])
+
+      const before = await second.ctx.storage.read({ namespace: 'agent-runtime.sessions', key: chatId })
+      const invocations = second.invocations()
+      await expect(second.run({ chatId, message: 'Repeat tool' }))
+        .rejects.toMatchObject({ code: 'INVALID_MODEL_RESPONSE' })
+      expect(second.invocations()).toBe(invocations)
+      await expect(second.ctx.storage.read({ namespace: 'agent-runtime.sessions', key: chatId }))
+        .resolves.toEqual(before)
+      await expect(second.run({ chatId, message: 'Still readable?' })).resolves.toMatchObject({
+        message: { content: 'Eight.' },
+      })
     } finally {
       await second.ctx.fiber.dispose()
     }
@@ -269,6 +349,7 @@ function createModelPlugin(id: string, requests: ModelRequest[]) {
 async function createToolRuntime(path: string) {
   const ctx = new Context()
   const requests: ModelRequest[] = []
+  let invocations = 0
   await ctx.plugin(Authentication)
   await ctx.plugin(Entitlement)
   await ctx.plugin(Storage)
@@ -298,6 +379,7 @@ async function createToolRuntime(path: string) {
           },
         },
         invoke(input) {
+          invocations++
           return { doubled: (input as { readonly value: number }).value * 2 }
         },
       })
@@ -312,16 +394,40 @@ async function createToolRuntime(path: string) {
         validateTools() {},
         async generate(request) {
           requests.push(request)
-          const hasResult = request.messages.some(item => 'type' in item && item.type === 'tool-result')
-          if (!hasResult) {
+          const lastUser = request.messages.findLast(item => !('type' in item) && item.role === 'user')
+          if (lastUser && !('type' in lastUser) && lastUser.content === 'Repeat tool') {
             return {
               message: { role: 'assistant', content: '' },
               toolCalls: [{
                 type: 'tool-call',
                 callId: 'call-1',
                 toolId: 'math.double',
-                input: { value: 4 },
+                input: { value: 5 },
               }],
+            }
+          }
+          const hasResult = request.messages.some(item => 'type' in item && item.type === 'tool-result')
+          if (!hasResult) {
+            const call = {
+              type: 'tool-call' as const,
+              callId: 'call-1',
+              toolId: 'math.double',
+              input: { value: 4 },
+              providerData: {
+                provider: 'test.provider',
+                value: { nativeCall: 'call-1' },
+              },
+            }
+            return {
+              message: { role: 'assistant', content: '' },
+              toolCalls: [call],
+              replay: [{
+                type: 'provider-item' as const,
+                providerData: {
+                  provider: 'test.provider',
+                  value: { reasoning: 'opaque' },
+                },
+              }, call],
             }
           }
           return { message: { role: 'assistant', content: 'Eight.' } }
@@ -348,7 +454,7 @@ async function createToolRuntime(path: string) {
       () => ctx.agentRuntime.run(request),
     )
   }
-  return { ctx, requests, run }
+  return { ctx, requests, run, invocations: () => invocations }
 }
 
 class TrackingStorageProvider implements StorageProvider {

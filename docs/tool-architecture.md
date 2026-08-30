@@ -71,7 +71,7 @@ An agent plugin names the logical tool IDs it may use. Discovery makes a tool av
 
 For a model call, Agent Runtime uses the compiled allowlist and adds each selected tool's name, description, and input schema to a structured provider-neutral model request. The Tool family does not construct the system prompt. A model-provider plugin translates the structured definitions into its provider's native function-calling format.
 
-When the model returns a structured tool call, Agent Runtime asks its leased Tool-registry view to invoke it. The registry validates the arguments, selects the already-bound implementation, validates its result, and returns structured JSON. Agent Runtime records both items in the versioned durable conversation, adds them to the next model request, and continues until the model returns final text or the agent's tool-round limit is reached.
+When the model returns a structured tool call, Agent Runtime asks its leased Tool-registry view to invoke it. The registry validates the arguments, selects the already-bound implementation, validates its result, and returns structured JSON. Agent Runtime records both items and any ordered JSON-safe provider replay state in the versioned durable conversation, adds them to the next model request, and continues until the model returns final text or the agent's tool-round limit is reached. Provider replay state remains opaque to Agent Runtime.
 
 ## End-to-end flow
 

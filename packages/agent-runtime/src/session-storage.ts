@@ -17,6 +17,7 @@ import {
   type AgentSessionProvider,
   type ModelConversationItem,
   type ModelMessage,
+  type ModelProviderData,
 } from './index.ts'
 
 /** YAML-serializable namespace for Agent Runtime session records. */
@@ -29,7 +30,7 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 interface StoredSession {
-  readonly schema: 2
+  readonly schema: 3
   readonly owner: AgentSessionOwner
   readonly agentId: string
   readonly entitlementAccount: string
@@ -74,7 +75,7 @@ class StorageSessionProvider implements AgentSessionProvider {
   private async create(storage: StorageLease, principal: AuthenticatedIdentity, agentId: string) {
     const owner = ownerOf(principal)
     const session: StoredSession = {
-      schema: 2,
+      schema: 3,
       owner,
       agentId,
       entitlementAccount: entitlementAccountOf(owner),
@@ -103,7 +104,7 @@ class StorageSessionProvider implements AgentSessionProvider {
         key: session.id,
         expectedVersion: session.version,
         value: encode({
-          schema: 2,
+          schema: 3,
           owner: session.owner,
           agentId: session.agentId,
           entitlementAccount: session.entitlementAccount,
@@ -138,7 +139,7 @@ function encode(session: StoredSession): StorageValue {
     owner: { tenantId: session.owner.tenantId, subject: session.owner.subject },
     agentId: session.agentId,
     entitlementAccount: session.entitlementAccount,
-    messages: session.messages.map(encodeConversationItem),
+    messages: encodeMessages(session.messages),
   }
 }
 
@@ -148,7 +149,9 @@ function decode(record: StorageRecord): AgentSession {
       throw new TypeError('session value must be an object')
     }
     const value = record.value as Record<string, StorageValue>
-    if (value.schema !== 1 && value.schema !== 2) throw new TypeError('unsupported session schema')
+    if (value.schema !== 1 && value.schema !== 2 && value.schema !== 3) {
+      throw new TypeError('unsupported session schema')
+    }
     if (!value.owner || typeof value.owner !== 'object' || Array.isArray(value.owner)) {
       throw new TypeError('session owner must be an object')
     }
@@ -157,7 +160,7 @@ function decode(record: StorageRecord): AgentSession {
       tenantId: requireText(ownerValue.tenantId, 'session tenant ID'),
       subject: requireText(ownerValue.subject, 'session subject'),
     })
-    const messages = decodeMessages(value.messages, value.schema === 2)
+    const messages = decodeMessages(value.messages, value.schema)
     return Object.freeze({
       id: record.key,
       owner,
@@ -172,7 +175,7 @@ function decode(record: StorageRecord): AgentSession {
   }
 }
 
-function decodeMessages(value: StorageValue | undefined, allowTools: boolean): readonly ModelConversationItem[] {
+function decodeMessages(value: StorageValue | undefined, schema: StorageValue): readonly ModelConversationItem[] {
   if (!Array.isArray(value)) throw new TypeError('session messages must be an array')
   const calls = new Map<string, string>()
   const results = new Set<string>()
@@ -189,15 +192,29 @@ function decodeMessages(value: StorageValue | undefined, allowTools: boolean): r
       ) {
         throw new TypeError('session message is invalid')
       }
-      return Object.freeze({ role: item.role as ModelMessage['role'], content: item.content })
+      return Object.freeze({
+        role: item.role as ModelMessage['role'],
+        content: item.content,
+        ...(item.providerData === undefined
+          ? {}
+          : { providerData: decodeProviderData(item.providerData, schema) }),
+      })
     }
-    if (!allowTools) throw new TypeError('legacy session contains a tool item')
+    if (schema === 1) throw new TypeError('legacy session contains a non-message item')
     if (item.type === 'tool-call') {
       const callId = requireText(item.callId, 'tool call ID')
       const toolId = requireText(item.toolId, 'tool ID')
       if (calls.has(callId) || item.input === undefined) throw new TypeError('session tool call is invalid')
       calls.set(callId, toolId)
-      return Object.freeze({ type: 'tool-call' as const, callId, toolId, input: item.input })
+      return Object.freeze({
+        type: 'tool-call' as const,
+        callId,
+        toolId,
+        input: item.input,
+        ...(item.providerData === undefined
+          ? {}
+          : { providerData: decodeProviderData(item.providerData, schema) }),
+      })
     }
     if (item.type === 'tool-result') {
       const callId = requireText(item.callId, 'tool result call ID')
@@ -208,18 +225,74 @@ function decodeMessages(value: StorageValue | undefined, allowTools: boolean): r
       results.add(callId)
       return Object.freeze({ type: 'tool-result' as const, callId, toolId, output: item.output })
     }
+    if (item.type === 'provider-item') {
+      return Object.freeze({
+        type: 'provider-item' as const,
+        providerData: decodeProviderData(item.providerData, schema),
+      })
+    }
     throw new TypeError('session conversation item is invalid')
   })
   if (calls.size !== results.size) throw new TypeError('session contains a tool call without a result')
   return Object.freeze(messages)
 }
 
-function encodeConversationItem(item: ModelConversationItem): StorageValue {
-  if (!('type' in item)) return { role: item.role, content: item.content }
-  if (item.type === 'tool-call') {
-    return { type: item.type, callId: item.callId, toolId: item.toolId, input: item.input }
+function encodeMessages(messages: readonly ModelConversationItem[]): StorageValue[] {
+  const calls = new Map<string, string>()
+  const results = new Set<string>()
+  const encoded = messages.map(item => encodeConversationItem(item, calls, results))
+  if (calls.size !== results.size) throw new TypeError('session contains a tool call without a result')
+  return encoded
+}
+
+function encodeConversationItem(
+  item: ModelConversationItem,
+  calls: Map<string, string>,
+  results: Set<string>,
+): StorageValue {
+  if (!('type' in item)) {
+    return {
+      role: item.role,
+      content: item.content,
+      ...(item.providerData === undefined ? {} : { providerData: encodeProviderData(item.providerData) }),
+    }
   }
-  return { type: item.type, callId: item.callId, toolId: item.toolId, output: item.output }
+  if (item.type === 'tool-call') {
+    if (calls.has(item.callId)) throw new TypeError(`tool call ID "${item.callId}" is duplicated`)
+    calls.set(item.callId, item.toolId)
+    return {
+      type: item.type,
+      callId: item.callId,
+      toolId: item.toolId,
+      input: item.input,
+      ...(item.providerData === undefined ? {} : { providerData: encodeProviderData(item.providerData) }),
+    }
+  }
+  if (item.type === 'tool-result') {
+    if (calls.get(item.callId) !== item.toolId || results.has(item.callId)) {
+      throw new TypeError(`tool result "${item.callId}" is unmatched`)
+    }
+    results.add(item.callId)
+    return { type: item.type, callId: item.callId, toolId: item.toolId, output: item.output }
+  }
+  return { type: item.type, providerData: encodeProviderData(item.providerData) }
+}
+
+function encodeProviderData(data: ModelProviderData): StorageValue {
+  return { provider: data.provider, value: data.value }
+}
+
+function decodeProviderData(value: StorageValue | undefined, schema: StorageValue): ModelProviderData {
+  if (schema !== 3) throw new TypeError('legacy session contains provider data')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('session provider data must be an object')
+  }
+  const data = value as Record<string, StorageValue>
+  if (data.value === undefined) throw new TypeError('session provider data value is missing')
+  return Object.freeze({
+    provider: requireText(data.provider, 'session provider data provider'),
+    value: data.value,
+  })
 }
 
 function assertOwner(owner: AgentSessionOwner, principal: AuthenticatedIdentity) {

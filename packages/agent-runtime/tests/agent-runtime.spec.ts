@@ -254,6 +254,74 @@ describe('Agent Runtime', () => {
     }
   })
 
+  it.each(['reordered calls', 'changed provider data'] as const)(
+    'rejects replay with %s before invoking tools',
+    async mismatch => {
+      const ctx = new Context()
+      let invocations = 0
+      const first = {
+        type: 'tool-call' as const,
+        callId: 'call-1',
+        toolId: 'math.first',
+        input: { value: 1 },
+        providerData: { provider: 'test.provider', value: { native: 1 } },
+      }
+      const second = {
+        type: 'tool-call' as const,
+        callId: 'call-2',
+        toolId: 'math.second',
+        input: { value: 2 },
+      }
+
+      try {
+        await ctx.plugin(Entitlement)
+        await ctx.plugin(AgentRuntime)
+        await ctx.plugin(ToolCore)
+        await ctx.plugin(createToolPlugin('math.first', () => {
+          invocations++
+          return { doubled: 2 }
+        }))
+        await ctx.plugin(createToolPlugin('math.second', () => {
+          invocations++
+          return { doubled: 4 }
+        }))
+        await ctx.plugin({
+          name: 'invalid-replay-model',
+          inject: ['agentModels'],
+          apply(pluginContext) {
+            pluginContext.agentModels.register({
+              id: 'invalid-replay-model',
+              validateTools() {},
+              async generate() {
+                return {
+                  message: { role: 'assistant' as const, content: '' },
+                  toolCalls: mismatch === 'reordered calls' ? [first, second] : [first],
+                  replay: mismatch === 'reordered calls'
+                    ? [second, first]
+                    : [{
+                        ...first,
+                        providerData: { provider: 'test.provider', value: { native: 2 } },
+                      }],
+                }
+              },
+            })
+          },
+        })
+        await ctx.plugin(createAgentPlugin(
+          'invalid-replay-agent',
+          'invalid-replay-model',
+          ['math.first', 'math.second'],
+        ))
+
+        await expect(ctx.agentRuntime.run({ agentId: 'invalid-replay-agent', message: 'Run tools' }))
+          .rejects.toMatchObject({ code: 'INVALID_MODEL_RESPONSE' })
+        expect(invocations).toBe(0)
+      } finally {
+        await ctx.fiber.dispose()
+      }
+    },
+  )
+
   it('continues a streamed turn after a model tool call', async () => {
     const ctx = new Context()
     let generations = 0
