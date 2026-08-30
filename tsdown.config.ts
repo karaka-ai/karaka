@@ -55,6 +55,6 @@ export default defineConfig([
   {
     ...shared,
     workspace: ['packages/transport'],
-    entry: ['lib/types/index.js', 'lib/types/http.js'],
+    entry: ['lib/types/index.js', 'lib/types/http.js', 'lib/types/ipc.js'],
   },
 ])

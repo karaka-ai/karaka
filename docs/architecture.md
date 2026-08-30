@@ -4,7 +4,7 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, an OpenAI Responses model provider, setup-YAML process bootstrap, an authenticated HTTP Transport, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, an OpenAI Responses model provider, setup-YAML process bootstrap, authenticated HTTP and IPC Transports, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
 
 Concrete unresolved defects and architectural gaps are tracked in [Open Issues](issues.md).
 
@@ -119,7 +119,7 @@ Karaka has seven top-level application seams. A seam is an architectural boundar
 | Authorization | Decide whether a principal may perform an action on a resource | Contract, policy engines, role or relationship providers, enforcement plugins |
 | Entitlement | Track and enforce an account's overall accumulated model spend | Contract, in-memory development provider, durable ledger providers |
 | Storage | Store application data independently of a backend | Contract, local SQLite provider, PostgreSQL/S3/GCS providers, private storage providers, storage policy |
-| Transport | Expose Karaka's application API without binding it to a wire protocol | Contract, in-process and HTTP adapters, streaming and cancellation plugins |
+| Transport | Expose Karaka's application API without binding it to a carrier | Contract, in-process, IPC, and HTTP adapters, streaming and cancellation plugins |
 | Observability | Record operational and audit information | Contract, OpenTelemetry/Datadog exporters, audit and usage plugins |
 | Agent Runtime | Run and coordinate model-driven work | Model adapters, sessions, tool registry and tools, skills, agent loop, agent registry, subagent registry and providers |
 
@@ -383,19 +383,19 @@ Agent Runtime owns chats, agents, sessions, and orchestration. The standalone `@
 flowchart LR
   Application["Application backend"]
   SDK["@karaka/sdk<br/>chat.send / chat.stream"]
-  HTTP["Authenticated HTTP<br/>JSON or SSE"]
-  Transport["HTTP Transport<br/>Cordis plugin"]
+  Carrier["Unix socket or HTTP<br/>JSON or SSE"]
+  Transport["IPC or HTTP Transport<br/>Cordis plugin"]
   Runtime["Agent Runtime"]
 
   Application --> SDK
-  SDK --> HTTP
-  HTTP --> Transport
+  SDK --> Carrier
+  Carrier --> Transport
   Transport --> Runtime
 ```
 
-Supplying an endpoint makes the SDK use its HTTP implementation; there is no second client-side mode setting to coordinate with setup YAML. Static credentials, an asynchronous per-invocation credential resolver, or a per-call override provide the bearer token and trusted tenant route. The SDK resolves credentials independently for every call so a shared client does not retain one user's identity. An advanced connection contract leaves room for embedded or other protocols, but the production path is a separately deployed Karaka process reached over HTTP. An in-process implementation is deliberately deferred because it couples application and agent capacity and lifecycle.
+The endpoint selects the carrier without a second client-side mode setting: `http:` and `https:` use the HTTP connection, while `unix:` uses operating-system IPC. Static credentials, an asynchronous per-invocation credential resolver, or a per-call override provide the bearer token and trusted tenant route. The SDK resolves credentials independently for every call so a shared client does not retain one user's identity. An advanced connection contract leaves room for embedded or other protocols. Separately deployed processes on one Unix host should use IPC; network-separated deployments use HTTP. An in-process implementation remains deferred because it couples application and agent capacity and lifecycle.
 
-The current SDK sends either an agent ID to start a durable chat or an opaque chat ID to resume one. The current `@karaka/transport/http` plugin accepts those requests using bearer authentication plus an explicit tenant-routing header, binds the verified principal for the complete turn, and returns JSON by default. `chat.stream()` negotiates SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. Browser access is disabled unless the setup explicitly allowlists its origin. Deadlines, disconnect cancellation, backpressure, and server disposal belong to the HTTP plugin.
+The current SDK sends either an agent ID to start a durable chat or an opaque chat ID to resume one. `@karaka/transport/http` accepts the protocol on a TCP listener; `@karaka/transport/ipc` accepts the same protocol on a permission-restricted Unix domain socket. Both authenticate bearer credentials plus an explicit tenant route and bind the verified principal for the complete turn. `chat.stream()` negotiates SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. The HTTP plugin additionally owns browser-origin policy. Deadlines, disconnect cancellation, backpressure, and server disposal are shared behavior.
 
 The SDK owns the public requests, results, stream events, error envelopes, media types, and client-side validation. The server Transport package consumes that contract and maps it to protocol-neutral Agent Runtime calls. Internal plugin refactors do not require SDK changes, and a replacement HTTP plugin remains compatible when it preserves the contract. A change to routes, headers, request or response bodies, streaming events, errors, or protocol version must update the Transport plugin and SDK together and must add a client-server compatibility test. A genuinely new wire protocol requires both an ordinary server-side Cordis Transport plugin and a corresponding SDK connection implementation.
 

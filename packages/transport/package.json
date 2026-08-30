@@ -26,6 +26,10 @@
       "types": "./lib/types/http.d.ts",
       "default": "./lib/http.js"
     },
+    "./ipc": {
+      "types": "./lib/types/ipc.d.ts",
+      "default": "./lib/ipc.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -45,7 +45,8 @@
       "@karaka/model-openai": ["./packages/model-openai/src/index.ts"],
       "@karaka/sdk": ["./packages/sdk/src/index.ts"],
       "@karaka/transport": ["./packages/transport/src/index.ts"],
-      "@karaka/transport/http": ["./packages/transport/src/http.ts"]
+      "@karaka/transport/http": ["./packages/transport/src/http.ts"],
+      "@karaka/transport/ipc": ["./packages/transport/src/ipc.ts"]
     }
   }
 }
