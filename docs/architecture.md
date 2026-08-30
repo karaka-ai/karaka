@@ -6,6 +6,8 @@ Karaka is a configurable, Cordis-based foundation for composing agentic SaaS run
 
 The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, an OpenAI Responses model provider, setup-YAML process bootstrap, an authenticated HTTP Transport, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
 
+Concrete unresolved defects and architectural gaps are tracked in [Open Issues](issues.md).
+
 ## Foundation boundary
 
 `@karaka/cosmokit` supplies small utilities. `@karaka/schemastery` supplies configuration schemas. `@karaka/cordis` owns contexts, services, events, fibers, effects, and dependency tracking.
@@ -304,7 +306,7 @@ A chat ID is a locator, never proof of authority. Karaka must authenticate and a
 
 Agent Runtime is one top-level seam composed from model, session, tool, skill, agent, and subagent components. Provider and integration plugins may expose internal Cordis services so these components remain replaceable without becoming top-level Karaka seams.
 
-`@karaka/model-openai` is the first production model-provider plugin. It maps Agent Runtime text history to the OpenAI Responses API, supports completed and streamed text generations, forwards cancellation, and reports provider spend from returned token usage. Setup selects the model, credentials, and explicit integer per-million-token rates; the package deliberately does not freeze changing OpenAI prices into Karaka releases.
+`@karaka/model-openai` is the first real text model-provider plugin. It maps Agent Runtime text history to the OpenAI Responses API, supports completed and streamed text generations, forwards cancellation, and reports configured metered spend from returned token usage for completed responses. Setup selects the model, credentials, and explicit integer per-million-token rates; the package deliberately neither freezes changing OpenAI prices into Karaka releases nor claims invoice reconciliation.
 
 ### Agent plugins and contributions
 
