@@ -150,6 +150,7 @@ if (Schema.string()('packed') !== 'packed') throw new Error('the CommonJS Schema
   run(process.execPath, [resolve(root, 'node_modules/typescript/bin/tsc'), '-p', resolve(consumer, 'tsconfig.json')], consumer)
   run(process.execPath, [resolve(consumer, 'smoke.mts')], consumer)
   run(process.execPath, [resolve(consumer, 'smoke.cjs')], consumer)
+  run(process.execPath, [resolve(consumer, 'node_modules/@karaka/cli/lib/bin.js'), '--help'], consumer)
 } finally {
   rmSync(consumer, { recursive: true, force: true })
 }

@@ -4,13 +4,13 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, and an initial Agent Runtime with durable sessions exist today. The setup-YAML contract, agent plugin model, tool authoring and hosting APIs, Chat API, subagent coordination, and Execution seam described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions, and setup-YAML process bootstrap exist today. The agent plugin model, tool authoring and hosting APIs, Chat API, subagent coordination, and Execution seam described below are target architecture unless stated otherwise.
 
 ## Foundation boundary
 
 `@karaka/cosmokit` supplies small utilities. `@karaka/schemastery` supplies configuration schemas. `@karaka/cordis` owns contexts, services, events, fibers, effects, and dependency tracking.
 
-The composition plugins build on that kernel: Loader imports configured plugins; Include reads YAML or JSON entry lists; Group nests entries; Timer owns disposable scheduling; HMR reloads modules and exact configuration paths; Logger Console renders Cordis logs. Include technically supports JSON, but the target normal Karaka contract exposes one setup YAML. JSON and direct Cordis composition are low-level facilities for internals and advanced plugin authors.
+The composition plugins build on that kernel: Loader imports configured plugins; Include reads YAML or JSON entry lists; Group nests entries; Timer owns disposable scheduling; HMR reloads modules and exact configuration paths; Logger Console renders Cordis logs. Include technically supports JSON, but the normal Karaka contract exposes one setup YAML. JSON and direct Cordis composition are low-level facilities for internals and advanced plugin authors.
 
 Infrastructure capabilities belong above this foundation in first-party, third-party, or private plugins. Karaka may publish contracts, standard agent behavior, and useful providers, but a first-party implementation has no privileged runtime path. Application-owned methods can use Karaka's tool decorator and remain ordinary backend code. The `vendor/` packages remain independent of any particular application, provider, deployment target, or SaaS SDK.
 
@@ -43,21 +43,20 @@ Setup and agent modules use one composition model: plugins and effect-owned cont
 The following illustrative partial setup fragment selects providers, discovers remote tool hosts, and mounts agent plugins. Provider names and configuration shapes are planned, not current API:
 
 ```yaml
-plugins:
-  - name: '@karaka/authentication'
-  - name: '@karaka/authentication/authentication-jwks'
-  - name: '@karaka/entitlement'
-  - name: '@company/entitlement-ledger'
-  - name: '@karaka/storage-postgres'
-  - name: '@karaka/execution/remote'
-  - name: '@karaka/tool/discovery-kubernetes'
-    config:
-      selector:
-        karaka.ai/tool-host: 'true'
-  - name: '@karaka/agent-runtime'
-  - name: './plugins/company-authentication-policy'
-  - name: './agents/support-agent.js'
-  - name: './agents/billing-agent.js'
+- name: '@karaka/authentication'
+- name: '@karaka/authentication/authentication-jwks'
+- name: '@karaka/entitlement'
+- name: '@company/entitlement-ledger'
+- name: '@karaka/storage-postgres'
+- name: '@karaka/execution/remote'
+- name: '@karaka/tool/discovery-kubernetes'
+  config:
+    selector:
+      karaka.ai/tool-host: 'true'
+- name: '@karaka/agent-runtime'
+- name: './plugins/company-authentication-policy'
+- name: './agents/support-agent.js'
+- name: './agents/billing-agent.js'
 ```
 
 Each agent module is a normal plugin whose registrations belong to that plugin's lifecycle:
@@ -382,7 +381,7 @@ Deployment placement also does not imply authorization. Authentication, authoriz
 
 ### Running Karaka and scaling agents
 
-The target server deployment starts one persistent Karaka process from the setup YAML. A future executable entrypoint, conceptually `karaka start --config karaka.yaml`, will create the root Cordis context, load configured plugins, mount the Chat API and selected providers, and keep the process alive. This name is illustrative, not current API.
+`karaka start --config karaka.yaml` starts one persistent Karaka process from a top-level Loader entry list. The thin `@karaka/cli` process host creates the root Cordis context, mounts Loader and Include from the composition kernel, waits for the configured plugin graph to settle, and disposes the graph on `SIGINT` or `SIGTERM`. It does not own application behavior: setup-selected plugins provide the future Chat API, transports, seams, providers, and agents.
 
 One process mounts many standing agent plugins. An agent plugin is not a process, so adding support, billing, research, or reporting does not require another server. Each chat resolves one active plugin descriptor and carries separate principal, session, history, and execution state. A subagent is another agent plugin and initially runs through the same runtime unless Execution policy places it in an isolated or remote worker.
 

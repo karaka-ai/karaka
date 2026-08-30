@@ -103,6 +103,18 @@ importers:
         specifier: ^6.2.5
         version: 6.2.10
 
+  packages/cli:
+    dependencies:
+      '@karaka/cordis':
+        specifier: workspace:^
+        version: link:../../vendor/cordis
+      '@karaka/cordis-plugin-include':
+        specifier: workspace:^
+        version: link:../../vendor/include
+      '@karaka/cordis-plugin-loader':
+        specifier: workspace:^
+        version: link:../../vendor/loader
+
   packages/entitlement:
     dependencies:
       '@karaka/cordis':

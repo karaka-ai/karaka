@@ -11,6 +11,7 @@
     { "path": "./vendor/timer" },
     { "path": "./vendor/hmr" },
     { "path": "./vendor/logger-console" },
+    { "path": "./packages/cli" },
     { "path": "./packages/authentication" },
     { "path": "./packages/entitlement" },
     { "path": "./packages/storage" },

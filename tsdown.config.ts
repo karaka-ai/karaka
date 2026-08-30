@@ -19,6 +19,11 @@ export default defineConfig([
   },
   {
     ...shared,
+    workspace: ['packages/cli'],
+    entry: ['lib/types/bin.js'],
+  },
+  {
+    ...shared,
     workspace: ['packages/authentication'],
     entry: ['lib/types/index.js', 'lib/types/authentication-jwks.js', 'lib/types/authentication-host.js'],
   },
