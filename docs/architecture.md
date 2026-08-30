@@ -46,7 +46,7 @@ flowchart TB
 
 Setup and agent modules use one composition model: plugins and effect-owned contributions. Each process owns its own Cordis context and graph. An embedded deployment may mount the application MCP server plugin and Agent Runtime in one graph. Independently deployed backends bootstrap their own small MCP server graphs from a framework-specific plugin and application configuration; they do not need to share Karaka's setup YAML or repository. MCP connects those graphs after a setup-selected discovery plugin supplies trusted endpoints.
 
-The following illustrative partial setup fragment selects providers, discovers remote MCP endpoints, and mounts agent plugins. Provider names and configuration shapes are planned, not current API:
+The following partial setup fragment mixes current packages with illustrative future providers. The OAuth, Entitlement contract, HTTP Transport, Agent Runtime, and agent-module rows use current composition APIs; the private ledger, PostgreSQL Storage, and Kubernetes discovery rows illustrate planned or external plugins:
 
 ```yaml
 - name: '@karaka/authentication/oauth-client-credentials'
@@ -55,7 +55,7 @@ The following illustrative partial setup fragment selects providers, discovers r
     audience: https://karaka.internal
     tokenEndpoint: https://identity.example.com/oauth/token
     jwksUri: https://identity.example.com/.well-known/jwks.json
-    clientId: application-backend
+    clientId: karaka-server
     clientSecretEnv: KARAKA_OAUTH_CLIENT_SECRET
 - name: '@karaka/entitlement'
 - name: '@company/entitlement-ledger'
@@ -125,7 +125,7 @@ Karaka has seven top-level application seams. A seam is an architectural boundar
 
 | Top-level seam | Responsibility | Example plugin families |
 | --- | --- | --- |
-| Authentication | Authenticate server-to-server requests and carry trusted user context through an invocation | OAuth Client Credentials, mTLS, signed-request, and private authentication providers |
+| Authentication | Authenticate server-to-server requests and carry trusted user context through an invocation | OAuth Client Credentials, header credentials, and private authentication providers |
 | Authorization | Decide whether a principal may perform an action on a resource | Contract, policy engines, role or relationship providers, enforcement plugins |
 | Entitlement | Track and enforce an account's overall accumulated model spend | Contract, in-memory development provider, durable ledger providers |
 | Storage | Store application data independently of a backend | Contract, local SQLite provider, PostgreSQL/S3/GCS providers, private storage providers, storage policy |
@@ -155,9 +155,9 @@ The current low-level transient Agent Runtime request names the overall entitlem
 
 ## Authentication and invocation identity
 
-`ctx.authentication` has one active server-authentication provider. Its stable contract verifies incoming requests and performs outgoing authenticated requests. OAuth, mTLS, signed requests, or a private mechanism can therefore be selected as an ordinary Cordis plugin without changing Transport, MCP, or Agent Runtime. Provider registration is effect-owned and exactly one provider is active in a process graph.
+`ctx.authentication` has one active server-authentication provider. Its stable contract verifies incoming Web Request metadata and performs outgoing authenticated requests. OAuth, header credentials, or a private request-metadata mechanism can therefore be selected as an ordinary Cordis plugin without changing Transport, MCP, or Agent Runtime. Provider registration is effect-owned and exactly one provider is active in a process graph. Carrier or body-bound mechanisms such as mTLS and body signatures are not part of the current contract; they require a future extension carrying verified peer-certificate or bounded-body evidence rather than pretending that evidence already exists.
 
-Karaka's default provider is `@karaka/authentication/oauth-client-credentials`. It obtains short-lived, resource-specific OAuth access tokens for outgoing requests and verifies incoming JWT access tokens against configured issuer, audience, algorithms, and JWKS policy. Setup references a client-secret environment variable or a private-key file; secrets are not embedded in agent plugins or request payloads. `private_key_jwt` is preferred when the authorization server supports it. Static bearer credentials are not a production Authentication contract.
+Karaka's default provider is `@karaka/authentication/oauth-client-credentials`. It obtains short-lived, resource-specific OAuth access tokens for outgoing requests and verifies incoming JWT access tokens against configured issuer, audience, algorithms, and JWKS policy. Setup references a client-secret environment variable or a private-key file; secrets are not embedded in agent plugins or request payloads. `private_key_jwt` is preferred when the authorization server supports it. Static bearer credentials are not a production Authentication contract. OAuth bearer credentials and trusted user context require HTTPS for remote hosts; plain HTTP is accepted only for loopback development. For the Chat API, the canonical OAuth resource is the endpoint origin—scheme, host, and port—without the `/v1` base path. The SDK derives that origin automatically; `audience` is overridden only when a deployment deliberately uses another resource identifier.
 
 The application backend remains responsible for authenticating its own users. After Karaka authenticates that backend, Transport accepts the backend-supplied `tenantId`, `userId`, and optional claims as trusted request data. `ctx.authentication.withUser(...)` binds that context to the complete synchronous or asynchronous invocation, while `currentPrincipal()` exposes the same immutable internal identity to sessions, Entitlement, Authorization, Agent Runtime, and tools. Concurrent calls remain isolated through request-local asynchronous state.
 
@@ -379,7 +379,7 @@ flowchart LR
 
 The endpoint selects the carrier without a second client-side mode setting: `http:` and `https:` use the HTTP connection, while `unix:` uses operating-system IPC. The SDK receives the client half of the selected server-authentication provider and a static or per-call trusted user-context resolver. It resolves user context independently for every call so a shared client does not retain one user's identity, then lets the authentication implementation protect the outgoing carrier request. An advanced connection contract leaves room for embedded or other protocols. Separately deployed processes on one Unix host should use IPC; network-separated deployments use HTTP. An in-process implementation remains deferred because it couples application and agent capacity and lifecycle.
 
-The current SDK sends either an agent ID to start a durable chat or an opaque chat ID to resume one. `@karaka/transport/http` accepts the protocol on a TCP listener; `@karaka/transport/ipc` accepts the same protocol on a permission-restricted Unix domain socket. Both authenticate the calling application server, validate its supplied user context, and bind that context for the complete turn. `chat.stream()` negotiates SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. The HTTP plugin additionally owns browser-origin policy. Deadlines, disconnect cancellation, backpressure, and server disposal are shared behavior.
+The current SDK sends either an agent ID to start a durable chat or an opaque chat ID to resume one. `@karaka/transport/http` accepts the protocol on a TCP listener; `@karaka/transport/ipc` accepts the same protocol on a permission-restricted Unix domain socket. Both authenticate the calling application server, validate its supplied user context, and bind that context for the complete turn. `chat.stream()` negotiates SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. The HTTP endpoint is server-to-server and intentionally exposes no CORS surface: browsers call the application backend, and server credentials never enter browser code. Deadlines, disconnect cancellation, backpressure, and server disposal are shared behavior.
 
 The SDK owns the public requests, results, stream events, error envelopes, media types, and client-side validation. The server Transport package consumes that contract and maps it to protocol-neutral Agent Runtime calls. Internal plugin refactors do not require SDK changes, and a replacement HTTP plugin remains compatible when it preserves the contract. A change to routes, headers, request or response bodies, streaming events, errors, or protocol version must update the Transport plugin and SDK together and must add a client-server compatibility test. A genuinely new wire protocol requires both an ordinary server-side Cordis Transport plugin and a corresponding SDK connection implementation.
 
@@ -470,7 +470,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 - Keep service contracts independent of providers and consumers.
 - Keep models, sessions, tools, skills, agents, and subagents inside the Agent Runtime seam.
 - Export inert Tool authoring contracts from `@karaka/sdk`; publish Cordis-owned Tool runtime behavior through plugin subpaths of the separate `@karaka/tool` package.
-- Let applications create chats and send messages without constructing identities, sessions, agents, or invocation contexts.
+- Let applications create chats and send messages by supplying trusted user context, without constructing Karaka principals, sessions, agents, or invocation contexts.
 - Treat a chat ID as an opaque locator and authenticate and authorize every chat operation.
 - Keep the SDK and server Transport on one explicit public protocol; update both sides and their compatibility tests whenever that protocol changes.
 - Let each agent plugin own its descriptor, child plugins, and contributions through one reversible Cordis lifecycle.

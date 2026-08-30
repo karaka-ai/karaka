@@ -43,6 +43,8 @@ export const TRUSTED_USER_CONTEXT_HEADER = 'x-karaka-user-context'
 /** One server-authentication implementation contributed by a Cordis plugin. */
 export interface AuthenticationProvider {
   readonly name: string
+  /** HTTP authentication challenge advertised after invalid incoming credentials. */
+  readonly challenge?: string
   authenticate(request: Request): Promise<AuthenticatedServer>
   request(
     target: Readonly<AuthenticationTarget>,
@@ -58,6 +60,7 @@ export type AuthenticationErrorCode =
   | 'NO_CURRENT_PRINCIPAL'
   | 'INVALID_CREDENTIAL'
   | 'INVALID_IDENTITY'
+  | 'REQUEST_FAILED'
   | 'TOKEN_REQUEST_FAILED'
 
 /** Provider-neutral authentication failure. */
@@ -120,7 +123,7 @@ export class AuthenticationService extends Service {
     if (!(request instanceof Request)) throw new AuthenticationError('INVALID_REQUEST', 'authentication failed')
     const provider = this.requireProvider()
     try {
-      return normalizeServer(await provider.implementation.authenticate(request), provider.name)
+      return normalizeServer(await provider.implementation.authenticate(request.clone()), provider.name)
     } catch (error) {
       if (error instanceof AuthenticationError) throw error
       throw new AuthenticationError('INVALID_CREDENTIAL', 'authentication failed', { cause: error })
@@ -144,7 +147,7 @@ export class AuthenticationService extends Service {
       return response
     } catch (error) {
       if (error instanceof AuthenticationError) throw error
-      throw new AuthenticationError('TOKEN_REQUEST_FAILED', 'authenticated request failed', { cause: error })
+      throw new AuthenticationError('REQUEST_FAILED', 'authenticated request failed', { cause: error })
     }
   }
 
@@ -180,6 +183,14 @@ export class AuthenticationService extends Service {
   /** Describe the active provider without exposing its implementation. */
   currentProvider(): AuthenticationProviderDescriptor | undefined {
     return this.provider ? Object.freeze({ name: this.provider.name }) : undefined
+  }
+
+  /** Return the active provider's HTTP challenge for invalid credentials. */
+  challenge(error: unknown): string | undefined {
+    if (!(error instanceof AuthenticationError) || error.code !== 'INVALID_CREDENTIAL') return
+    const challenge = this.provider?.implementation.challenge
+    if (typeof challenge !== 'string' || !challenge.trim() || /[\r\n]/.test(challenge)) return
+    return challenge
   }
 
   private requireProvider(): RegisteredProvider {

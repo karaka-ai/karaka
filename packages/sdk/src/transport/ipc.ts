@@ -21,7 +21,7 @@ export class IpcConnection implements KarakaConnection {
   constructor(endpoint: string | URL, audience?: string) {
     const resolved = resolveEndpoint(endpoint)
     this.connection = new HttpConnection(
-      `http://karaka.local${resolved.basePath}`,
+      `http://localhost${resolved.basePath}`,
       createDispatcher(resolved.socketPath),
       audience ?? `unix://${resolved.socketPath}`,
     )

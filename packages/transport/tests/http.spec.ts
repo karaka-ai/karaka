@@ -1,21 +1,21 @@
 import AgentRuntime from '@karaka/agent-runtime'
 import EchoModel from '@karaka/agent-runtime/model-echo'
 import SessionStorage from '@karaka/agent-runtime/session-storage'
-import Authentication from '@karaka/authentication'
+import Authentication, { type AuthenticationProvider } from '@karaka/authentication'
+import { OAuthClientCredentialsProvider } from '@karaka/authentication/oauth-client-credentials'
 import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Entitlement from '@karaka/entitlement'
-import { createKarakaClient, EVENT_STREAM_MEDIA_TYPE, type TransportStreamEvent } from '@karaka/sdk'
+import { createKarakaClient, EVENT_STREAM_MEDIA_TYPE } from '@karaka/sdk'
 import Storage from '@karaka/storage'
 import StorageLocal from '@karaka/storage/local'
 import HttpTransport from '@karaka/transport/http'
+import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-
-const origin = 'https://app.example.test'
 
 describe('HTTP Transport', () => {
   it('authenticates JSON chat turns and preserves durable ownership', async () => {
@@ -68,7 +68,7 @@ describe('HTTP Transport', () => {
     }
   })
 
-  it('negotiates SSE and streams incremental text directly to an allowed browser origin', async () => {
+  it('negotiates SSE and streams incremental text through the SDK', async () => {
     const runtime = await createRuntime()
     const client = createKarakaClient({
       endpoint: `${runtime.endpoint}/v1`,
@@ -92,44 +92,12 @@ describe('HTTP Transport', () => {
           },
         },
       ])
-
-      const response = await fetch(`${runtime.endpoint}/v1/chats`, {
-        method: 'POST',
-        headers: {
-          accept: EVENT_STREAM_MEDIA_TYPE,
-          authorization: 'Bearer application-server',
-          'content-type': 'application/json',
-          origin,
-        },
-        body: JSON.stringify({
-          agentId: 'support',
-          message: 'Hello',
-          user: { tenantId: 'acme', userId: 'browser-user' },
-        }),
-      })
-
-      expect(response.status).toBe(200)
-      expect(response.headers.get('content-type')).toContain(EVENT_STREAM_MEDIA_TYPE)
-      expect(response.headers.get('access-control-allow-origin')).toBe(origin)
-      expect(parseEvents(await response.text())).toEqual([
-        { type: 'text-delta', delta: 'Received: ' },
-        { type: 'text-delta', delta: 'Hello' },
-        {
-          type: 'completed',
-          result: {
-            chatId: expect.any(String),
-            agentId: 'support',
-            model: 'support-model',
-            message: { role: 'assistant', content: 'Received: Hello' },
-          },
-        },
-      ])
     } finally {
       await runtime.close()
     }
   })
 
-  it('rejects missing credentials and unconfigured browser origins', async () => {
+  it('rejects missing server credentials', async () => {
     const runtime = await createRuntime()
 
     try {
@@ -143,29 +111,67 @@ describe('HTTP Transport', () => {
         }),
       })
       expect(unauthenticated.status).toBe(401)
+      expect(unauthenticated.headers.get('www-authenticate')).toBe('Bearer')
       await expect(unauthenticated.json()).resolves.toEqual({
         error: { code: 'INVALID_CREDENTIAL', message: 'authentication failed' },
       })
 
-      const forbidden = await fetch(`${runtime.endpoint}/v1/chats`, {
+      const invalidUnauthenticated = await fetch(`${runtime.endpoint}/v1/chats`, {
         method: 'POST',
-        headers: {
-          authorization: 'Bearer application-server',
-          'content-type': 'application/json',
-          origin: 'https://evil.example.test',
-        },
-        body: JSON.stringify({
-          agentId: 'support',
-          message: 'Hello',
-          user: { tenantId: 'acme', userId: 'user-a' },
-        }),
+        headers: { 'content-type': 'application/json' },
+        body: '{not-json',
       })
-      expect(forbidden.status).toBe(403)
-      await expect(forbidden.json()).resolves.toEqual({
-        error: { code: 'ORIGIN_NOT_ALLOWED', message: 'origin not allowed' },
+      expect(invalidUnauthenticated.status).toBe(401)
+      expect(invalidUnauthenticated.headers.get('www-authenticate')).toBe('Bearer')
+
+      const preflight = await fetch(`${runtime.endpoint}/v1/chats`, {
+        method: 'OPTIONS',
+        headers: { origin: 'https://browser.example.test' },
       })
+      expect(preflight.status).toBe(405)
+      expect(preflight.headers.get('access-control-allow-origin')).toBeNull()
     } finally {
       await runtime.close()
+    }
+  })
+
+  it('composes the SDK default audience with OAuth and HTTP Transport', async () => {
+    const authority = await createOAuthAuthority()
+    const secretEnvironment = 'KARAKA_TRANSPORT_OAUTH_SECRET'
+    process.env[secretEnvironment] = 'transport-secret'
+    const shared = {
+      issuer: authority.issuer,
+      tokenEndpoint: `${authority.issuer}token`,
+      jwksUri: `${authority.issuer}jwks`,
+      clientSecretEnv: secretEnvironment,
+      algorithms: ['RS256'] as Array<'RS256'>,
+    }
+    const runtime = await createRuntime({
+      authenticationProvider: audience => new OAuthClientCredentialsProvider({
+        ...shared,
+        audience,
+        clientId: 'karaka-server',
+      }),
+    })
+    const client = createKarakaClient({
+      endpoint: `${runtime.endpoint}/v1`,
+      authentication: new OAuthClientCredentialsProvider({
+        ...shared,
+        audience: 'https://application.example.test',
+        clientId: 'application-backend',
+      }),
+      user: { tenantId: 'acme', userId: 'oauth-user' },
+    })
+
+    try {
+      await expect(client.chat.send({ agentId: 'support', message: 'OAuth' })).resolves.toMatchObject({
+        message: { content: 'Received: OAuth' },
+      })
+      expect(authority.resources).toEqual([runtime.endpoint])
+    } finally {
+      delete process.env[secretEnvironment]
+      await runtime.close()
+      await authority.close()
     }
   })
 
@@ -271,12 +277,14 @@ describe('HTTP Transport', () => {
 })
 
 interface RuntimeOptions {
+  authenticationProvider?(audience: string): AuthenticationProvider
   installModel?(ctx: CordisContext): Promise<void>
 }
 
 async function createRuntime(options: RuntimeOptions = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'karaka-transport-'))
   const port = await availablePort()
+  const endpoint = `http://127.0.0.1:${port}`
   const ctx = new Context()
 
   try {
@@ -285,7 +293,8 @@ async function createRuntime(options: RuntimeOptions = {}) {
       name: 'test-server-authentication',
       inject: ['authentication'],
       apply(pluginContext) {
-        pluginContext.authentication.register({
+        pluginContext.authentication.register(options.authenticationProvider?.(endpoint) ?? {
+          challenge: 'Bearer',
           async authenticate(request) {
             if (request.headers.get('authorization') !== 'Bearer application-server') throw new Error('untrusted server')
             return {
@@ -312,11 +321,10 @@ async function createRuntime(options: RuntimeOptions = {}) {
     await ctx.plugin(HttpTransport, {
       host: '127.0.0.1',
       port,
-      corsOrigins: [origin],
     })
 
     return {
-      endpoint: `http://127.0.0.1:${port}`,
+      endpoint,
       async close() {
         await ctx.fiber.dispose()
         await rm(directory, { recursive: true, force: true })
@@ -327,6 +335,69 @@ async function createRuntime(options: RuntimeOptions = {}) {
     await rm(directory, { recursive: true, force: true })
     throw error
   }
+}
+
+async function createOAuthAuthority() {
+  const { privateKey, publicKey } = await generateKeyPair('RS256', { extractable: true })
+  const publicJwk = { ...await exportJWK(publicKey), alg: 'RS256', kid: 'transport-key', use: 'sig' }
+  const resources: string[] = []
+  let issuer = ''
+  const server = createServer(async (request, response) => {
+    if (request.url === '/jwks') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ keys: [publicJwk] }))
+      return
+    }
+    if (request.url !== '/token' || request.method !== 'POST') {
+      response.writeHead(404).end()
+      return
+    }
+    const authorization = request.headers.authorization ?? ''
+    const decoded = authorization.startsWith('Basic ')
+      ? Buffer.from(authorization.slice('Basic '.length), 'base64').toString('utf8')
+      : ''
+    const separator = decoded.indexOf(':')
+    const clientId = decoded.slice(0, separator)
+    const secret = decoded.slice(separator + 1)
+    const body = new URLSearchParams(await readText(request))
+    const resource = body.get('resource')
+    if (!clientId || secret !== 'transport-secret' || body.get('grant_type') !== 'client_credentials' || !resource) {
+      response.writeHead(401).end()
+      return
+    }
+    resources.push(resource)
+    const token = await new SignJWT({ client_id: clientId })
+      .setProtectedHeader({ alg: 'RS256', kid: 'transport-key' })
+      .setIssuer(issuer)
+      .setAudience(resource)
+      .setSubject(clientId)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey)
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ access_token: token, token_type: 'Bearer', expires_in: 300 }))
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  issuer = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+  return {
+    issuer,
+    resources,
+    async close() {
+      server.closeAllConnections()
+      await new Promise<void>((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve())
+      })
+    },
+  }
+}
+
+async function readText(request: IncomingMessage) {
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 const authentication = {
@@ -347,14 +418,6 @@ const agentPlugin = {
       model: 'support-model',
     }, ctx.agentModels)
   },
-}
-
-function parseEvents(body: string): TransportStreamEvent[] {
-  return body.trim().split('\n\n').map(block => {
-    const data = block.split('\n').find(line => line.startsWith('data: '))
-    if (!data) throw new TypeError('stream event has no data')
-    return JSON.parse(data.slice('data: '.length)) as TransportStreamEvent
-  })
 }
 
 async function availablePort() {

@@ -46,7 +46,7 @@ flowchart TB
 
 设置与智能体模块使用同一种组合模型：插件和由 effect 所有的贡献项。每个进程拥有自己的 Cordis context 和图。嵌入式部署可以在一张图中同时挂载应用 MCP 服务器插件和智能体运行时。独立部署的后端通过框架专属插件和应用配置启动自己的小型 MCP 服务器图；它们无需共享 Karaka 的设置 YAML 或仓库。设置选择的发现插件提供可信端点后，由 MCP 连接这些图。
 
-下面是说明性的部分设置片段，它选择提供方、发现远程 MCP 端点并挂载智能体插件。提供方名称和配置结构都属于规划中的 API，并非当前 API：
+下面的部分设置片段混合了当前包与说明性的未来提供方。OAuth、权益契约、HTTP 传输、智能体运行时和智能体模块行使用当前组合 API；私有账本、PostgreSQL 存储和 Kubernetes 发现行表示规划中或外部插件：
 
 ```yaml
 - name: '@karaka/authentication/oauth-client-credentials'
@@ -55,7 +55,7 @@ flowchart TB
     audience: https://karaka.internal
     tokenEndpoint: https://identity.example.com/oauth/token
     jwksUri: https://identity.example.com/.well-known/jwks.json
-    clientId: application-backend
+    clientId: karaka-server
     clientSecretEnv: KARAKA_OAUTH_CLIENT_SECRET
 - name: '@karaka/entitlement'
 - name: '@company/entitlement-ledger'
@@ -125,7 +125,7 @@ Karaka 有七个顶层应用接缝。接缝是由多个 Cordis 插件组成的�
 
 | 顶层接缝 | 职责 | 插件系列示例 |
 | --- | --- | --- |
-| 认证 | 认证服务器间请求，并在一次调用中传递可信用户上下文 | OAuth Client Credentials、mTLS、请求签名与私有认证提供方 |
+| 认证 | 认证服务器间请求，并在一次调用中传递可信用户上下文 | OAuth Client Credentials、请求头凭据与私有认证提供方 |
 | 授权 | 判断某个主体能否对资源执行操作 | 契约、策略引擎、角色或关系提供方、强制执行插件 |
 | 权益 | 跟踪并强制执行账户累计的模型总支出 | 契约、内存开发提供方、持久账本提供方 |
 | 存储 | 独立于具体后端存储应用数据 | 契约、本地 SQLite 提供方、PostgreSQL/S3/GCS 提供方、私有存储提供方、存储策略 |
@@ -155,9 +155,9 @@ Karaka 有七个顶层应用接缝。接缝是由多个 Cordis 插件组成的�
 
 ## 认证与调用身份
 
-`ctx.authentication` 只有一个活动的服务器认证提供方。稳定契约负责验证传入请求，并发出经过认证的传出请求。因此，OAuth、mTLS、请求签名或私有机制都可以作为普通 Cordis 插件被选择，而无需修改传输、MCP 或智能体运行时。提供方注册由 effect 所有，每张进程图中只激活一个提供方。
+`ctx.authentication` 只有一个活动的服务器认证提供方。稳定契约负责验证传入 Web Request 元数据，并发出经过认证的传出请求。因此，OAuth、请求头凭据或私有请求元数据机制都可以作为普通 Cordis 插件被选择，而无需修改传输、MCP 或智能体运行时。提供方注册由 effect 所有，每张进程图中只激活一个提供方。mTLS 和请求体签名等载体或请求体绑定机制不属于当前契约；它们需要未来的扩展传递经过验证的对端证书或受限请求体证据，而不能假装这些证据已经存在。
 
-Karaka 的默认提供方是 `@karaka/authentication/oauth-client-credentials`。它为传出请求获取短期、资源专属的 OAuth access token，并根据已配置的 issuer、audience、算法和 JWKS 策略验证传入的 JWT access token。设置引用客户端密钥环境变量或私钥文件；密钥不会写入智能体插件或请求 payload。授权服务器支持时，优先使用 `private_key_jwt`。静态 bearer 凭据不是生产认证契约。
+Karaka 的默认提供方是 `@karaka/authentication/oauth-client-credentials`。它为传出请求获取短期、资源专属的 OAuth access token，并根据已配置的 issuer、audience、算法和 JWKS 策略验证传入的 JWT access token。设置引用客户端密钥环境变量或私钥文件；密钥不会写入智能体插件或请求 payload。授权服务器支持时，优先使用 `private_key_jwt`。静态 bearer 凭据不是生产认证契约。远程主机上的 OAuth bearer 凭据和可信用户上下文必须通过 HTTPS 传输；纯 HTTP 只允许用于回环地址开发。对于 Chat API，规范 OAuth resource 是端点的 origin（协议、主机和端口），不包含 `/v1` 基础路径。SDK 会自动派生该 origin；只有部署明确使用其他 resource identifier 时才覆盖 `audience`。
 
 应用后端仍负责认证自己的用户。Karaka 认证该后端后，传输层会把后端提供的 `tenantId`、`userId` 和可选 claims 作为可信请求数据。`ctx.authentication.withUser(...)` 将该上下文绑定到完整的同步或异步调用；`currentPrincipal()` 则向会话、权益、授权、智能体运行时和工具暴露同一份不可变内部身份。并发调用通过请求局部异步状态保持隔离。
 
@@ -379,7 +379,7 @@ flowchart LR
 
 端点会选择载体，而无需第二个客户端模式开关：`http:` 和 `https:` 使用 HTTP 连接，`unix:` 使用操作系统 IPC。SDK 接收所选服务器认证提供方的客户端实现，以及静态或单次调用解析的可信用户上下文。它为每次调用独立解析用户上下文，因此共享客户端不会保留某个用户的身份，再由认证实现保护传出的载体请求。高级连接契约为嵌入式部署或其他协议保留了空间。同一 Unix 主机上独立部署的进程应使用 IPC；跨网络部署使用 HTTP。进程内实现仍被推迟，因为它会把应用与智能体的容量和生命周期耦合在一起。
 
-当前 SDK 通过智能体 ID 启动持久聊天，或通过不透明聊天 ID 恢复聊天。`@karaka/transport/http` 在 TCP 监听器上接收协议；`@karaka/transport/ipc` 在受权限限制的 Unix 域套接字上接收同一协议。两者都会认证调用方应用服务器、验证其提供的用户上下文，并在完整轮次中绑定该上下文。`chat.stream()` 会协商 SSE 文本增量流，最后发送已完成结果；不支持增量生成的提供方仍可通过一个文本增量保持兼容。HTTP 插件还负责浏览器来源策略。截止时间、断线取消、背压和服务器释放属于共享行为。
+当前 SDK 通过智能体 ID 启动持久聊天，或通过不透明聊天 ID 恢复聊天。`@karaka/transport/http` 在 TCP 监听器上接收协议；`@karaka/transport/ipc` 在受权限限制的 Unix 域套接字上接收同一协议。两者都会认证调用方应用服务器、验证其提供的用户上下文，并在完整轮次中绑定该上下文。`chat.stream()` 会协商 SSE 文本增量流，最后发送已完成结果；不支持增量生成的提供方仍可通过一个文本增量保持兼容。HTTP 端点仅用于服务器间通信，并且有意不提供 CORS：浏览器调用应用后端，服务器凭据绝不会进入浏览器代码。截止时间、断线取消、背压和服务器释放属于共享行为。
 
 SDK 拥有公共请求、结果、流事件、错误信封、媒体类型和客户端验证。服务端传输包使用该契约，并把它映射到协议中立的智能体运行时调用。插件内部重构不要求修改 SDK；只要替代 HTTP 插件保持该契约，它也仍与 SDK 兼容。若路由、请求头、请求或响应正文、流事件、错误或协议版本发生变化，则必须同时更新传输插件与 SDK，并增加客户端—服务端兼容性测试。真正的新线路协议既需要一个普通的服务端 Cordis 传输插件，也需要对应的 SDK 连接实现。
 
@@ -470,7 +470,7 @@ Cordis 服务隔离应用于插件图组合，包括需要不同实现或注册�
 - 保持服务契约独立于提供方和消费者。
 - 将模型、会话、工具、技能、智能体和 subagent 保留在智能体运行时接缝内。
 - 从 `@karaka/sdk` 导出惰性的工具编写契约；通过独立 `@karaka/tool` 包的插件子路径发布由 Cordis 所有的工具运行时行为。
-- 让应用创建聊天和发送消息，而无需构造身份、会话、智能体或调用上下文。
+- 让应用通过提供可信用户上下文来创建聊天和发送消息，而无需构造 Karaka 主体、会话、智能体或调用上下文。
 - 将聊天 ID 视为不透明定位符，并对每次聊天操作执行认证和授权。
 - 让 SDK 与服务端传输使用一份明确的公共协议；该协议发生变化时，同时更新两端及其兼容性测试。
 - 让每个智能体插件通过一套可逆 Cordis 生命周期拥有自身描述符、子插件和贡献项。

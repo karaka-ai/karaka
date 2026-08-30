@@ -21,7 +21,6 @@ import {
 } from '@karaka/sdk'
 import {
   createServer,
-  type IncomingHttpHeaders,
   type IncomingMessage,
   type OutgoingHttpHeaders,
   type Server,
@@ -42,7 +41,6 @@ export interface Config {
   host?: string
   port?: number
   basePath?: string
-  corsOrigins?: string[]
   maxBodyBytes?: number
   requestTimeoutMs?: number
 }
@@ -50,7 +48,6 @@ export interface Config {
 /** Shared configuration for the Karaka chat protocol over a Node server. */
 export interface NodeTransportConfig {
   basePath?: string
-  corsOrigins?: string[]
   maxBodyBytes?: number
   requestTimeoutMs?: number
 }
@@ -59,14 +56,12 @@ export const Config: Schema<Config> = Schema.object({
   host: Schema.string().default('127.0.0.1'),
   port: Schema.natural().max(65_535).default(3_000),
   basePath: Schema.string().default('/v1'),
-  corsOrigins: Schema.array(Schema.string()).default([]),
   maxBodyBytes: Schema.natural().min(1).default(65_536),
   requestTimeoutMs: Schema.natural().min(1).default(120_000),
 })
 
 interface ResolvedNodeTransportConfig {
   readonly basePath: string
-  readonly corsOrigins: ReadonlySet<string>
   readonly maxBodyBytes: number
   readonly requestTimeoutMs: number
 }
@@ -122,35 +117,22 @@ class HttpTransport {
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    let cors: OutgoingHttpHeaders = {}
     try {
-      cors = this.resolveCors(request.headers)
-      if (request.method === 'OPTIONS') {
-        response.writeHead(204, {
-          ...cors,
-          'access-control-allow-headers': 'authorization, content-type',
-          'access-control-allow-methods': 'POST, OPTIONS',
-          'access-control-max-age': '600',
-        })
-        response.end()
-        return
-      }
-
+      if (request.method !== 'POST') throw new HttpTransportError(405, 'METHOD_NOT_ALLOWED', 'method not allowed')
       const server = await this.authenticate(request)
       const invocation = await this.readRuntimeRequest(request)
       if (acceptsEventStream(request.headers.accept)) {
-        await this.stream(response, cors, server, invocation.user, invocation.request)
+        await this.stream(response, server, invocation.user, invocation.request)
       } else {
-        await this.send(response, cors, server, invocation.user, invocation.request)
+        await this.send(response, server, invocation.user, invocation.request)
       }
     } catch (error) {
-      this.writeJsonError(response, error, cors)
+      this.writeJsonError(response, error)
     }
   }
 
   private async send(
     response: ServerResponse,
-    headers: OutgoingHttpHeaders,
     server: AuthenticatedServer,
     user: TrustedUserContext,
     request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
@@ -160,7 +142,7 @@ class HttpTransport {
       const result = await this.ctx.authentication.withUser(user, server, () => {
         return this.ctx.agentRuntime.run(request, { signal: invocation.controller.signal })
       })
-      if (!response.destroyed) writeJson(response, 200, toChatResult(result), headers)
+      if (!response.destroyed) writeJson(response, 200, toChatResult(result))
     } finally {
       invocation.dispose()
     }
@@ -168,7 +150,6 @@ class HttpTransport {
 
   private async stream(
     response: ServerResponse,
-    headers: OutgoingHttpHeaders,
     server: AuthenticatedServer,
     user: TrustedUserContext,
     request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
@@ -176,7 +157,6 @@ class HttpTransport {
     const invocation = this.trackInvocation(response)
     const { controller } = invocation
     response.writeHead(200, {
-      ...headers,
       'cache-control': 'no-cache, no-transform',
       connection: 'keep-alive',
       'content-type': `${EVENT_STREAM_MEDIA_TYPE}; charset=utf-8`,
@@ -228,10 +208,16 @@ class HttpTransport {
     for (let index = 0; index < request.rawHeaders.length; index += 2) {
       headers.append(request.rawHeaders[index]!, request.rawHeaders[index + 1]!)
     }
-    return this.ctx.authentication.authenticate(new Request(
-      new URL(request.url ?? '/', 'http://karaka.local'),
-      { method: request.method ?? 'GET', headers },
-    ))
+    let url: URL
+    try {
+      url = new URL(request.url ?? '/', `http://${headers.get('host') ?? 'karaka.local'}`)
+    } catch (cause) {
+      throw new AuthenticationError('INVALID_REQUEST', 'authentication request URL is invalid', { cause })
+    }
+    return this.ctx.authentication.authenticate(new Request(url, {
+      method: request.method ?? 'POST',
+      headers,
+    }))
   }
 
   private async readRuntimeRequest(
@@ -240,7 +226,6 @@ class HttpTransport {
     readonly user: TrustedUserContext
     readonly request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>
   }> {
-    if (request.method !== 'POST') throw new HttpTransportError(405, 'METHOD_NOT_ALLOWED', 'method not allowed')
     const url = new URL(request.url ?? '/', 'http://karaka.local')
     if (url.search) throw new HttpTransportError(400, 'INVALID_REQUEST', 'query parameters are not supported')
     const body = await readJson(request, this.config.maxBodyBytes)
@@ -276,25 +261,14 @@ class HttpTransport {
     throw new HttpTransportError(404, 'NOT_FOUND', 'route not found')
   }
 
-  private resolveCors(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
-    const origin = headers.origin
-    if (!origin) return {}
-    if (typeof origin !== 'string' || !this.config.corsOrigins.has(origin)) {
-      throw new HttpTransportError(403, 'ORIGIN_NOT_ALLOWED', 'origin not allowed')
-    }
-    return {
-      'access-control-allow-origin': origin,
-      vary: 'Origin',
-    }
-  }
-
-  private writeJsonError(response: ServerResponse, error: unknown, headers: OutgoingHttpHeaders) {
+  private writeJsonError(response: ServerResponse, error: unknown) {
     if (response.headersSent || response.destroyed) {
       if (!response.destroyed) response.end()
       return
     }
     const failure = toPublicError(error)
-    writeJson(response, failure.status, { error: failure.error }, headers)
+    const challenge = this.ctx.authentication.challenge(error)
+    writeJson(response, failure.status, { error: failure.error }, challenge ? { 'www-authenticate': challenge } : {})
   }
 }
 
@@ -318,8 +292,7 @@ function resolveConfig(config: NodeTransportConfig): ResolvedNodeTransportConfig
   if (!basePath.startsWith('/') || basePath.includes('?') || basePath.includes('#')) {
     throw new TypeError('transport base path must be an absolute URL path')
   }
-  const corsOrigins = new Set((config.corsOrigins ?? []).map(origin => requireOrigin(origin)))
-  return Object.freeze({ basePath, corsOrigins, maxBodyBytes, requestTimeoutMs })
+  return Object.freeze({ basePath, maxBodyBytes, requestTimeoutMs })
 }
 
 /** @internal Open the shared chat protocol on a caller-selected Node listener. */
@@ -439,15 +412,6 @@ function requireUser(value: unknown): TrustedUserContext {
     userId: requireBodyText(user.userId, 'userId'),
     claims: Object.freeze({ ...(claims as Record<string, unknown>) }),
   })
-}
-
-function requireOrigin(value: string): string {
-  const origin = requireText(value, 'CORS origin')
-  const url = new URL(origin)
-  if (url.origin !== origin || !['http:', 'https:'].includes(url.protocol)) {
-    throw new TypeError(`invalid CORS origin "${origin}"`)
-  }
-  return origin
 }
 
 function requireInteger(value: number, label: string, minimum: number, maximum = Number.MAX_SAFE_INTEGER) {

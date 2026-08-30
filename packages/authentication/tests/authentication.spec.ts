@@ -147,6 +147,11 @@ describe('Authentication seam', () => {
       }),
     )
     await expect(response.json()).resolves.toEqual({ server: 'application', audience: 'inventory-service' })
+    await expect(ctx.authentication.request(
+      { audience: 'inventory-service' },
+      new Request('https://inventory.example.test/items'),
+      async () => { throw new Error('network unavailable') },
+    )).rejects.toMatchObject({ code: 'REQUEST_FAILED' })
     await ctx.fiber.dispose()
   })
 
@@ -176,6 +181,17 @@ describe('Authentication seam', () => {
     expect(server.claims.aud).toBe(audience)
   })
 
+  it('preserves the configured OAuth issuer identifier exactly', async () => {
+    const audience = 'https://karaka.example.test'
+    const exactIssuer = issuer.slice(0, -1)
+    const provider = new OAuthClientCredentialsProvider({ ...oauthConfig(audience), issuer: exactIssuer })
+    const token = await signServerToken('application-backend', audience, exactIssuer)
+
+    await expect(provider.authenticate(new Request(`${audience}/v1/chats`, {
+      headers: { authorization: `Bearer ${token}` },
+    }))).resolves.toMatchObject({ id: 'application-backend' })
+  })
+
   it('mounts the contract and provider from one OAuth plugin row', async () => {
     const ctx = new Context()
     const mounted = ctx.plugin(OAuthClientCredentials, oauthConfig('https://karaka.example.test'))
@@ -203,8 +219,67 @@ describe('Authentication seam', () => {
     expect(await response.text()).toMatch(/^Bearer\s+\S+$/)
   })
 
+  it('form-encodes OAuth Basic client credentials', async () => {
+    const encodedSecretEnvironment = 'KARAKA_TEST_ENCODED_OAUTH_SECRET'
+    process.env[encodedSecretEnvironment] = 'secret value:%é'
+    let authorization: string | null = null
+    const provider = new OAuthClientCredentialsProvider({
+      ...oauthConfig('https://karaka.example.test'),
+      clientId: 'application backend:client',
+      clientSecretEnv: encodedSecretEnvironment,
+      fetch: async (_input, init) => {
+        expect(init?.redirect).toBe('error')
+        authorization = new Headers(init?.headers).get('authorization')
+        return Response.json({ access_token: 'encoded-token', token_type: 'Bearer', expires_in: 300 })
+      },
+    })
+    try {
+      await provider.request(
+        { audience: 'https://karaka.example.test' },
+        new Request('https://karaka.example.test/v1/chats'),
+        async () => new Response(),
+      )
+      const expected = Buffer.from('application+backend%3Aclient:secret+value%3A%25%C3%A9').toString('base64')
+      expect(authorization).toBe(`Basic ${expected}`)
+    } finally {
+      delete process.env[encodedSecretEnvironment]
+    }
+  })
+
+  it('cancels individual callers and bounds shared token acquisition', async () => {
+    const tokenTimedOut = Promise.withResolvers<void>()
+    const provider = new OAuthClientCredentialsProvider({
+      ...oauthConfig('https://karaka.example.test'),
+      tokenTimeoutMs: 20,
+      fetch: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal
+        if (!signal) return reject(new Error('missing token-request signal'))
+        signal.addEventListener('abort', () => {
+          tokenTimedOut.resolve()
+          reject(signal.reason)
+        }, { once: true })
+      }),
+    })
+    const controller = new AbortController()
+    const cancelled = new Error('chat cancelled')
+    const request = provider.request(
+      { audience: 'https://karaka.example.test' },
+      new Request('https://karaka.example.test/v1/chats', { signal: controller.signal }),
+      async () => new Response(),
+    )
+
+    controller.abort(cancelled)
+    await expect(request).rejects.toBe(cancelled)
+    await expect(tokenTimedOut.promise).resolves.toBeUndefined()
+  })
+
   it('fails closed on invalid OAuth credentials, audiences, and provider configuration', async () => {
     const provider = oauthProvider('https://karaka.example.test')
+    await expect(provider.request(
+      { audience: 'http://karaka.example.test' },
+      new Request('http://karaka.example.test/v1/chats'),
+      async () => new Response(),
+    )).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
     await expect(provider.authenticate(new Request('https://karaka.example.test'))).rejects.toMatchObject({
       code: 'INVALID_CREDENTIAL',
     })
@@ -264,10 +339,10 @@ function requestWithToken(token: string) {
   return new Request('https://karaka.example.test', { headers: { authorization: `Bearer ${token}` } })
 }
 
-function signServerToken(subject: string, audience: string) {
+function signServerToken(subject: string, audience: string, tokenIssuer = issuer) {
   return new SignJWT({ client_id: subject })
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
-    .setIssuer(issuer)
+    .setIssuer(tokenIssuer)
     .setAudience(audience)
     .setSubject(subject)
     .setIssuedAt()

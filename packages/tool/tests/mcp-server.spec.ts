@@ -82,6 +82,7 @@ describe('Tool MCP server', () => {
       expect(wrongOrigin.status).toBe(403)
       const unauthenticated = await mounted.endpoint.fetch(request({ authorization: '' }))
       expect(unauthenticated.status).toBe(401)
+      expect(unauthenticated.headers.get('www-authenticate')).toBe('Bearer')
       expect(authenticationCalls).toBe(1)
     } finally {
       await mounted.dispose()
@@ -357,6 +358,7 @@ function createClient(endpoint: ToolMcpEndpoint) {
 function authenticationPlugin(onAuthenticate?: () => void) {
   const provider: AuthenticationProvider = {
     name: 'test-server-auth',
+    challenge: 'Bearer',
     async authenticate(request) {
       onAuthenticate?.()
       if (request.headers.get('authorization') !== 'Bearer service-token') throw new Error('untrusted server')

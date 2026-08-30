@@ -199,6 +199,9 @@ importers:
       '@karaka/storage':
         specifier: workspace:^
         version: link:../storage
+      jose:
+        specifier: ^6.2.5
+        version: 6.2.10
 
   vendor/cordis:
     dependencies:

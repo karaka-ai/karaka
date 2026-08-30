@@ -234,11 +234,15 @@ async function fetchMcp(ctx: Context, handler: McpHttpHandler, request: Request,
     return user ? ctx.authentication.withUser(user, server, invoke) : invoke()
   } catch (error) {
     reportError(config, error)
+    const challenge = ctx.authentication.challenge(error)
     return Response.json({
       jsonrpc: '2.0',
       error: { code: -32_603, message: 'Authentication failed' },
       id: null,
-    }, { status: 401 })
+    }, {
+      status: 401,
+      ...(challenge ? { headers: { 'www-authenticate': challenge } } : {}),
+    })
   }
 }
 

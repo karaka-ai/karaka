@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 describe('Karaka SDK', () => {
   it('sends authenticated chats with invocation-scoped trusted user context', async () => {
+    const audiences: string[] = []
     const requests: Array<{ url: string, authorization: string | undefined, body: unknown }> = []
     const server = await openServer(async (request, response) => {
       requests.push({
@@ -19,7 +20,11 @@ describe('Karaka SDK', () => {
       writeJson(response, chatResult('chat/one', requests.length === 1 ? 'Hello' : 'Again'))
     })
     const user = vi.fn(async () => ({ tenantId: 'acme', userId: 'default-user' }))
-    const client = createKarakaClient({ endpoint: `${server.endpoint}/v1`, authentication, user })
+    const client = createKarakaClient({
+      endpoint: `${server.endpoint}/v1`,
+      authentication: recordAudience(audiences),
+      user,
+    })
 
     try {
       const started = await client.chat.send({ agentId: 'support', message: 'Hello' })
@@ -30,6 +35,7 @@ describe('Karaka SDK', () => {
 
       expect(resumed.chatId).toBe('chat/one')
       expect(user).toHaveBeenCalledTimes(1)
+      expect(audiences).toEqual([server.endpoint, server.endpoint])
       expect(requests).toEqual([
         {
           url: '/v1/chats',
@@ -139,6 +145,11 @@ describe('Karaka SDK', () => {
 
   it('rejects invalid configuration and responses before exposing them', async () => {
     expect(() => createKarakaClient({
+      endpoint: 'http://karaka.internal/v1',
+      authentication,
+      user: { tenantId: 'acme', userId: 'user-a' },
+    })).toThrow('must use HTTPS unless it is loopback')
+    expect(() => createKarakaClient({
       endpoint: 'file:///tmp/karaka.sock',
       authentication,
       user: { tenantId: 'acme', userId: 'user-a' },
@@ -213,4 +224,13 @@ const authentication = {
     headers.set('authorization', 'Bearer application-server')
     return dispatch(new Request(request, { headers }))
   },
+}
+
+function recordAudience(audiences: string[]) {
+  return {
+    async request(target: { audience: string }, request: Request, dispatch: (request: Request) => Promise<Response>) {
+      audiences.push(target.audience)
+      return authentication.request(target, request, dispatch)
+    },
+  }
 }

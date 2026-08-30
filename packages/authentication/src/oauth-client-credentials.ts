@@ -32,6 +32,7 @@ export interface Config {
   readonly clientId: string
   readonly scopes?: string[]
   readonly algorithms?: OAuthAlgorithm[]
+  readonly tokenTimeoutMs?: number
   readonly clientSecretEnv?: string
   readonly privateKeyPath?: string
   readonly privateKeyAlgorithm?: OAuthAlgorithm
@@ -49,6 +50,7 @@ export const Config: Schema<Config> = Schema.object({
   clientId: Schema.string().required(),
   scopes: Schema.array(Schema.string()).default([]),
   algorithms: Schema.array(Schema.union([...algorithms])).default(['RS256']),
+  tokenTimeoutMs: Schema.natural().min(1).default(10_000),
   clientSecretEnv: Schema.string(),
   privateKeyPath: Schema.string(),
   privateKeyAlgorithm: Schema.union([...algorithms]).default('RS256'),
@@ -63,6 +65,7 @@ interface AccessToken {
 /** OAuth Client Credentials implementation for both incoming and outgoing server authentication. */
 export class OAuthClientCredentialsProvider implements AuthenticationProvider {
   readonly name: string
+  readonly challenge = 'Bearer'
   private readonly issuer: string
   private readonly audience: string
   private readonly tokenEndpoint: string
@@ -70,6 +73,7 @@ export class OAuthClientCredentialsProvider implements AuthenticationProvider {
   private readonly algorithms: readonly OAuthAlgorithm[]
   private readonly clientId: string
   private readonly scopes: readonly string[]
+  private readonly tokenTimeoutMs: number
   private readonly fetch: typeof globalThis.fetch
   private readonly clientSecretEnv: string | undefined
   private readonly privateKeyPath: string | undefined
@@ -82,12 +86,14 @@ export class OAuthClientCredentialsProvider implements AuthenticationProvider {
   constructor(config: Config) {
     if (!config || typeof config !== 'object') throw new TypeError('OAuth authentication configuration must be an object')
     this.name = requireText(config.name ?? 'oauth-client-credentials', 'provider name')
-    this.issuer = requireUrl(config.issuer, 'OAuth issuer').href
+    this.issuer = requireText(config.issuer, 'OAuth issuer').trim()
+    requireUrl(this.issuer, 'OAuth issuer')
     this.audience = requireText(config.audience, 'OAuth audience')
     this.tokenEndpoint = requireHttpUrl(config.tokenEndpoint, 'OAuth token endpoint').href
     const jwksUri = requireHttpUrl(config.jwksUri, 'OAuth JWKS URI')
     this.clientId = requireText(config.clientId, 'OAuth client ID')
     this.scopes = Object.freeze(uniqueText(config.scopes ?? [], 'OAuth scope'))
+    this.tokenTimeoutMs = requirePositiveInteger(config.tokenTimeoutMs ?? 10_000, 'OAuth token timeout')
     this.algorithms = Object.freeze([...(config.algorithms ?? ['RS256'])])
     if (!this.algorithms.length || this.algorithms.some(value => !algorithms.includes(value))) {
       throw new TypeError('OAuth algorithms must contain supported asymmetric algorithms')
@@ -129,30 +135,33 @@ export class OAuthClientCredentialsProvider implements AuthenticationProvider {
     request: Request,
     dispatch: AuthenticationDispatch,
   ): Promise<Response> {
+    requireSecureRequest(request)
     if (request.headers.has('authorization')) {
       throw new AuthenticationError('INVALID_REQUEST', 'outgoing request already contains authorization')
     }
-    const token = await this.accessToken(requireText(target.audience, 'authentication audience'))
+    const token = await this.accessToken(requireText(target.audience, 'authentication audience'), request.signal)
     const headers = new Headers(request.headers)
     headers.set('authorization', `Bearer ${token}`)
     return dispatch(new Request(request, { headers }))
   }
 
-  private async accessToken(audience: string): Promise<string> {
+  private async accessToken(audience: string, signal: AbortSignal): Promise<string> {
+    signal.throwIfAborted()
     const current = this.tokens.get(audience)
     if (current && current.expiresAt - Date.now() > 30_000) return current.value
-    const active = this.tokenRequests.get(audience)
-    if (active) return (await active).value
-
-    const acquiring = this.acquireToken(audience)
-    this.tokenRequests.set(audience, acquiring)
-    try {
-      const token = await acquiring
-      this.tokens.set(audience, token)
-      return token.value
-    } finally {
-      if (this.tokenRequests.get(audience) === acquiring) this.tokenRequests.delete(audience)
+    let active = this.tokenRequests.get(audience)
+    if (!active) {
+      const acquiring = this.acquireToken(audience)
+      const tracked = acquiring.then(token => {
+        this.tokens.set(audience, token)
+        return token
+      }).finally(() => {
+        if (this.tokenRequests.get(audience) === tracked) this.tokenRequests.delete(audience)
+      })
+      active = tracked
+      this.tokenRequests.set(audience, active)
     }
+    return (await waitForSignal(active, signal)).value
   }
 
   private async acquireToken(audience: string): Promise<AccessToken> {
@@ -165,7 +174,8 @@ export class OAuthClientCredentialsProvider implements AuthenticationProvider {
 
     if (this.clientSecretEnv) {
       const secret = requireText(process.env[this.clientSecretEnv], `environment variable ${this.clientSecretEnv}`)
-      headers.set('authorization', `Basic ${Buffer.from(`${this.clientId}:${secret}`).toString('base64')}`)
+      const credentials = `${formComponent(this.clientId)}:${formComponent(secret)}`
+      headers.set('authorization', `Basic ${Buffer.from(credentials).toString('base64')}`)
     } else {
       body.set('client_id', this.clientId)
       body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer')
@@ -174,7 +184,13 @@ export class OAuthClientCredentialsProvider implements AuthenticationProvider {
 
     let response: Response
     try {
-      response = await this.fetch(this.tokenEndpoint, { method: 'POST', headers, body })
+      response = await this.fetch(this.tokenEndpoint, {
+        method: 'POST',
+        headers,
+        body,
+        redirect: 'error',
+        signal: AbortSignal.timeout(this.tokenTimeoutMs),
+      })
     } catch (cause) {
       throw new AuthenticationError('TOKEN_REQUEST_FAILED', 'OAuth token request failed', { cause })
     }
@@ -240,9 +256,49 @@ function bearerToken(value: string | null): string {
   return match[1]!
 }
 
+function requireSecureRequest(request: Request): void {
+  let url: URL
+  try {
+    url = new URL(request.url)
+  } catch (cause) {
+    throw new AuthenticationError('INVALID_REQUEST', 'authenticated request URL is invalid', { cause })
+  }
+  if (url.protocol === 'https:') return
+  if (url.protocol === 'http:' && ['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)) return
+  throw new AuthenticationError(
+    'INVALID_REQUEST',
+    'OAuth bearer credentials require HTTPS unless the endpoint is loopback',
+  )
+}
+
 function uniqueText(values: readonly string[], label: string) {
   if (!Array.isArray(values)) throw new TypeError(`${label}s must be an array`)
   return [...new Set(values.map(value => requireText(value, label)))]
+}
+
+function formComponent(value: string): string {
+  return new URLSearchParams({ value }).toString().slice('value='.length)
+}
+
+function requirePositiveInteger(value: unknown, label: string): number {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  throw new TypeError(`${label} must be a positive integer`)
+}
+
+function waitForSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const finish = (operation: () => void) => {
+      signal.removeEventListener('abort', onAbort)
+      operation()
+    }
+    const onAbort = () => finish(() => reject(signal.reason))
+    signal.addEventListener('abort', onAbort, { once: true })
+    void promise.then(
+      value => finish(() => resolve(value)),
+      error => finish(() => reject(error)),
+    )
+  })
 }
 
 function optionalText(value: unknown, label: string): string | undefined {
@@ -265,7 +321,7 @@ function requireHttpUrl(value: unknown, label: string): URL {
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) {
     throw new TypeError(`${label} must use HTTP or HTTPS without credentials`)
   }
-  if (url.protocol === 'http:' && !['127.0.0.1', '::1', 'localhost'].includes(url.hostname)) {
+  if (url.protocol === 'http:' && !['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)) {
     throw new TypeError(`${label} must use HTTPS unless it is a loopback test endpoint`)
   }
   return url

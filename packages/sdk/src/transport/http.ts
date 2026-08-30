@@ -25,7 +25,7 @@ export class HttpConnection implements KarakaConnection {
     audience?: string,
   ) {
     this.endpoint = normalizeEndpoint(endpoint)
-    this.audience = requireAudience(audience ?? this.endpoint)
+    this.audience = requireAudience(audience ?? new URL(this.endpoint).origin)
   }
 
   async send(request: Readonly<ChatRequest>, options: Readonly<KarakaInvocationOptions>): Promise<ChatResult> {
@@ -177,6 +177,9 @@ function normalizeEndpoint(endpoint: string | URL): string {
   if (!['http:', 'https:'].includes(url.protocol)) throw new TypeError('Karaka endpoint must use HTTP or HTTPS')
   if (url.username || url.password) throw new TypeError('Karaka endpoint must not contain credentials')
   if (url.search || url.hash) throw new TypeError('Karaka endpoint must not contain a query or fragment')
+  if (url.protocol === 'http:' && !['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)) {
+    throw new TypeError('Karaka endpoint must use HTTPS unless it is loopback')
+  }
   url.pathname = url.pathname.replace(/\/+$/, '')
   return url.toString().replace(/\/$/, '')
 }
