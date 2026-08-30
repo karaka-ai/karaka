@@ -26,6 +26,10 @@
       "types": "./lib/types/core.d.ts",
       "default": "./lib/core.js"
     },
+    "./mcp-server": {
+      "types": "./lib/types/mcp-server.d.ts",
+      "default": "./lib/mcp-server.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -44,6 +48,10 @@
     }
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
     "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0"
   }
 }

@@ -45,6 +45,7 @@
       "@karaka/model-openai": ["./packages/model-openai/src/index.ts"],
       "@karaka/tool": ["./packages/tool/src/index.ts"],
       "@karaka/tool/core": ["./packages/tool/src/core.ts"],
+      "@karaka/tool/mcp-server": ["./packages/tool/src/mcp-server.ts"],
       "@karaka/sdk": ["./packages/sdk/src/index.ts"],
       "@karaka/transport": ["./packages/transport/src/index.ts"],
       "@karaka/transport/http": ["./packages/transport/src/http.ts"],

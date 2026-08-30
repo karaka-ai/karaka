@@ -25,11 +25,11 @@ SDK 拥有面向开发者的 API。其内部客户端传输把这些操作映射
 
 ## Karaka 到应用工具
 
-### 应用 SDK
+### 应用工具 API
 
-公开发布的 Karaka SDK 在本仓库中实现，但由其他仓库中的应用后端使用。它提供惰性的方法装饰器，为方法附加稳定的工具 ID、描述、输入和输出 schema，以及必需的应用权限。导入经过装饰的服务不会注册全局行为，也不会启动服务器。
+公开发布的 `@karaka/tool` 包在本仓库中实现，但由其他仓库中的应用后端使用。其包根提供惰性的方法装饰器，为方法附加稳定的工具 ID、描述、输入和输出 schema，以及必需的应用权限。导入经过装饰的服务不会注册全局行为，也不会启动服务器。
 
-一个框架集成接收应用中由框架托管的服务实例，并在应用现有的后端服务器上挂载一个内部 MCP 端点。它发现经过装饰的方法，把方法绑定到其实例，并通过 MCP 暴露它们。应用设置只标识一次服务，而不在 YAML 中逐个配置函数，也不会启动独立的工具部署。
+当前的 `@karaka/tool/mcp-server` 插件接收应用中由框架托管的服务实例，以及用于应用现有后端服务器的可逆挂载回调。它发现经过装饰的方法，通过工具核心注册表绑定这些方法，并从一个 MCP 端点暴露它们。未来的框架专属适配器会自动提供实例枚举和挂载回调。应用设置只标识一次服务，而不在 YAML 中逐个配置函数，也不会启动独立的工具部署。
 
 每个由 SDK 装饰的应用工具都有权限。MCP 端点验证 Karaka、解析被委托的应用主体、验证请求、向应用授权检查该权限、调用方法并验证结果。业务后端继续拥有其服务、数据、事务和授权。
 
@@ -49,7 +49,7 @@ MCP 不负责定位应用端点。端点发现与协议发现彼此独立：
 
 静态配置是最小提供方。DNS、Kubernetes、Consul、Cloud Map 或私有注册中心可以实现同一个 Cordis 发现契约。任何基础设施专用提供方都不享有特权。
 
-在本草案成为规范之前，必须明确选定的 MCP 修订版、兼容期和可选能力处理方式。当前协议参考是 [MCP 2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28)、其 [Streamable HTTP 传输](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)以及[工具契约](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)。
+当前的应用 MCP 服务器固定使用现代 MCP `2026-07-28` 修订版，并拒绝旧版协议流量。未来的客户端桥接最初也应固定使用同一修订版；任何兼容期都必须在以后明确决定。协议参考是 [MCP 2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28)、其 [Streamable HTTP 传输](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)以及[工具契约](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)。
 
 ### Karaka 工具插件
 
@@ -124,7 +124,7 @@ Karaka 侧的所有注册都属于 Cordis effect。正在运行的一轮会绑�
 
 ## 未解决问题
 
-- Karaka 将支持哪个 MCP 修订版和兼容期？
+- Karaka 在增加或调整兼容期之前，将支持固定的 MCP `2026-07-28` 修订版多久？
 - 副本、健康状态、更新和冲突的端点发现提供方精确契约是什么？
 - Karaka 将要求什么样的 MCP 认证与身份委托规范？
 - 每个受支持的应用框架如何挂载 MCP 端点并提供请求上下文？

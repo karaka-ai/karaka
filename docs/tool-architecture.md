@@ -25,11 +25,11 @@ This API is not MCP. It represents Karaka concepts such as agents, chats, turns,
 
 ## Karaka to application tools
 
-### Application SDK
+### Application Tool API
 
-The published Karaka SDK is implemented in this repository but consumed by application backends in other repositories. It provides an inert method decorator that attaches a stable tool ID, description, input and output schemas, and a required application permission. Importing a decorated service does not register global behavior or start a server.
+The published `@karaka/tool` package is implemented in this repository but consumed by application backends in other repositories. Its root provides an inert method decorator that attaches a stable tool ID, description, input and output schemas, and a required application permission. Importing a decorated service does not register global behavior or start a server.
 
-One framework integration receives the application's framework-managed service instances and mounts one internal MCP endpoint on the application's existing backend server. It discovers decorated methods, binds them to their instances, and exposes them through MCP. Application setup identifies services once; it does not configure every function in YAML or start a separate tool deployment.
+The current `@karaka/tool/mcp-server` plugin receives the application's framework-managed service instances and a reversible mount callback for the application's existing backend server. It discovers decorated methods, binds them through the Tool Core registry, and exposes them through one MCP endpoint. Future framework-specific adapters provide the instance enumeration and mount callback automatically. Application setup identifies services once; it does not configure every function in YAML or start a separate tool deployment.
 
 Every SDK-decorated application tool has a permission. The MCP endpoint authenticates Karaka, resolves the delegated application principal, validates the request, asks application authorization about that permission, invokes the method, and validates the result. The business backend continues to own its services, data, transactions, and authorization.
 
@@ -49,7 +49,7 @@ MCP does not locate application endpoints. Endpoint discovery and protocol disco
 
 Static configuration is the minimum provider. DNS, Kubernetes, Consul, Cloud Map, or private registries may implement the same Cordis discovery contract. No infrastructure-specific provider is privileged.
 
-The selected MCP revision, compatibility window, and optional capability handling must be explicit before this draft becomes normative. The current protocol references are the [MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28), its [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports), and its [tools contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
+The current application MCP server pins the modern MCP `2026-07-28` revision and rejects legacy protocol traffic. The future client bridge should initially pin the same revision; any compatibility window must be an explicit later decision. The protocol references are the [MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28), its [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports), and its [tools contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
 
 ### Karaka Tool plugins
 
@@ -124,7 +124,7 @@ All Karaka-side registrations belong to Cordis effects. A running turn binds a s
 
 ## Open questions
 
-- Which MCP revision and compatibility window will Karaka support?
+- How long will Karaka support the pinned MCP `2026-07-28` revision before adding or moving a compatibility window?
 - What is the exact endpoint-discovery provider contract for replicas, health, updates, and conflicts?
 - What authentication and delegated-identity profile will Karaka require over MCP?
 - How will each supported application framework mount the MCP endpoint and supply request context?
