@@ -43,6 +43,8 @@
       "@karaka/agent-runtime/model-echo": ["./packages/agent-runtime/src/model-echo.ts"],
       "@karaka/agent-runtime/session-storage": ["./packages/agent-runtime/src/session-storage.ts"],
       "@karaka/model-openai": ["./packages/model-openai/src/index.ts"],
+      "@karaka/tool": ["./packages/tool/src/index.ts"],
+      "@karaka/tool/core": ["./packages/tool/src/core.ts"],
       "@karaka/sdk": ["./packages/sdk/src/index.ts"],
       "@karaka/transport": ["./packages/transport/src/index.ts"],
       "@karaka/transport/http": ["./packages/transport/src/http.ts"]

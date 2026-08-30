@@ -19,6 +19,7 @@ const expectedApplications = new Set([
   '@karaka/model-openai',
   '@karaka/sdk',
   '@karaka/storage',
+  '@karaka/tool',
   '@karaka/transport',
 ])
 
