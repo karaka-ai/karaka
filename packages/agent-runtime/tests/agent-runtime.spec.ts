@@ -8,6 +8,47 @@ import Loader from '@karaka/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
 
 describe('Agent Runtime', () => {
+  it('forwards cancellation to non-streaming model calls', async () => {
+    const ctx = new Context()
+    const started = Promise.withResolvers<void>()
+    let observedSignal: AbortSignal | undefined
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(createAgentPlugin('cancel-agent', 'cancel-model'))
+      await ctx.plugin({
+        name: 'cancellable-model',
+        inject: ['agentModels'],
+        apply(pluginContext) {
+          pluginContext.agentModels.register({
+            id: 'cancel-model',
+            async generate(request) {
+              observedSignal = request.signal
+              started.resolve()
+              return new Promise<never>((_resolve, reject) => {
+                request.signal?.addEventListener('abort', () => reject(request.signal?.reason), { once: true })
+              })
+            },
+          })
+        },
+      })
+
+      const controller = new AbortController()
+      const run = ctx.agentRuntime.run(
+        { agentId: 'cancel-agent', message: 'Wait' },
+        { signal: controller.signal },
+      )
+      await started.promise
+      controller.abort(new Error('caller disconnected'))
+
+      await expect(run).rejects.toMatchObject({ code: 'ABORTED' })
+      expect(observedSignal).toBe(controller.signal)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('emits provider-neutral incremental text while returning the completed turn', async () => {
     const ctx = new Context()
 

@@ -1,6 +1,7 @@
 import {
   AgentRuntimeError,
   type AgentChatResumeRequest,
+  type AgentChatRunResult,
   type AgentChatStartRequest,
   type AgentRuntimeErrorCode,
 } from '@karaka/agent-runtime'
@@ -11,6 +12,13 @@ import {
 import type { Context } from '@karaka/cordis'
 import Schema from '@karaka/schemastery'
 import {
+  EVENT_STREAM_MEDIA_TYPE,
+  JSON_MEDIA_TYPE,
+  type ChatErrorEvent,
+  type ChatResult,
+  type TransportStreamEvent,
+} from '@karaka/sdk'
+import {
   createServer,
   type IncomingHttpHeaders,
   type IncomingMessage,
@@ -18,13 +26,6 @@ import {
   type Server,
   type ServerResponse,
 } from 'node:http'
-import { once } from 'node:events'
-import {
-  EVENT_STREAM_MEDIA_TYPE,
-  JSON_MEDIA_TYPE,
-  type TransportErrorEvent,
-  type TransportStreamEvent,
-} from './index.ts'
 
 const TENANT_HEADER = 'x-karaka-tenant'
 const agentErrorStatuses: Partial<Record<AgentRuntimeErrorCode, number>> = {
@@ -77,7 +78,7 @@ export const plugin = {
 }
 
 class HttpTransport {
-  private readonly activeStreams = new Set<AbortController>()
+  private readonly activeInvocations = new Set<AbortController>()
   private readonly server: Server
 
   constructor(private readonly ctx: Context, private readonly config: ResolvedConfig) {
@@ -103,7 +104,7 @@ class HttpTransport {
   }
 
   async close(): Promise<void> {
-    for (const controller of this.activeStreams) controller.abort(new Error('transport disposed'))
+    for (const controller of this.activeInvocations) controller.abort(new Error('transport disposed'))
     await new Promise<void>((resolve, reject) => {
       this.server.close(error => error ? reject(error) : resolve())
       this.server.closeAllConnections()
@@ -130,14 +131,27 @@ class HttpTransport {
       if (acceptsEventStream(request.headers.accept)) {
         await this.stream(response, cors, principal, runtimeRequest)
       } else {
-        const result = await this.ctx.authentication.withPrincipal(
-          principal,
-          () => this.ctx.agentRuntime.run(runtimeRequest),
-        )
-        writeJson(response, 200, result, cors)
+        await this.send(response, cors, principal, runtimeRequest)
       }
     } catch (error) {
       this.writeJsonError(response, error, cors)
+    }
+  }
+
+  private async send(
+    response: ServerResponse,
+    headers: OutgoingHttpHeaders,
+    principal: AuthenticatedIdentity,
+    request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
+  ): Promise<void> {
+    const invocation = this.trackInvocation(response)
+    try {
+      const result = await this.ctx.authentication.withPrincipal(principal, () => {
+        return this.ctx.agentRuntime.run(request, { signal: invocation.controller.signal })
+      })
+      if (!response.destroyed) writeJson(response, 200, toChatResult(result), headers)
+    } finally {
+      invocation.dispose()
     }
   }
 
@@ -147,13 +161,8 @@ class HttpTransport {
     principal: AuthenticatedIdentity,
     request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
   ): Promise<void> {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(new Error('transport deadline exceeded')), this.config.requestTimeoutMs)
-    const abortClosedResponse = () => {
-      if (!response.writableEnded) controller.abort(new Error('transport connection closed'))
-    }
-    response.once('close', abortClosedResponse)
-    this.activeStreams.add(controller)
+    const invocation = this.trackInvocation(response)
+    const { controller } = invocation
     response.writeHead(200, {
       ...headers,
       'cache-control': 'no-cache, no-transform',
@@ -167,18 +176,38 @@ class HttpTransport {
       const result = await this.ctx.authentication.withPrincipal(principal, () => {
         return this.ctx.agentRuntime.stream(
           request,
-          event => writeEvent(response, event),
+          event => writeEvent(response, event, controller.signal),
           { signal: controller.signal },
         )
       })
-      await writeEvent(response, Object.freeze({ type: 'completed', result }))
+      await writeEvent(response, Object.freeze({ type: 'completed', result: toChatResult(result) }), controller.signal)
     } catch (error) {
-      if (!response.destroyed) await writeEvent(response, toTransportError(error))
+      if (!controller.signal.aborted && !response.destroyed) {
+        await writeEvent(response, toTransportError(error), controller.signal)
+      }
     } finally {
-      clearTimeout(timeout)
-      response.off('close', abortClosedResponse)
-      this.activeStreams.delete(controller)
+      invocation.dispose()
       if (!response.destroyed) response.end()
+    }
+  }
+
+  private trackInvocation(response: ServerResponse) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(new Error('transport deadline exceeded')), this.config.requestTimeoutMs)
+    const abortClosedResponse = () => {
+      if (!response.writableEnded) controller.abort(new Error('transport connection closed'))
+    }
+    response.once('close', abortClosedResponse)
+    this.activeInvocations.add(controller)
+    if (response.destroyed) abortClosedResponse()
+
+    return {
+      controller,
+      dispose: () => {
+        clearTimeout(timeout)
+        response.off('close', abortClosedResponse)
+        this.activeInvocations.delete(controller)
+      },
     }
   }
 
@@ -217,9 +246,7 @@ class HttpTransport {
       } catch (cause) {
         throw new HttpTransportError(400, 'INVALID_REQUEST', 'chat ID is invalid', { cause })
       }
-      if (!chatId || chatId.includes('/')) {
-        throw new HttpTransportError(400, 'INVALID_REQUEST', 'chat ID is invalid')
-      }
+      if (!chatId) throw new HttpTransportError(400, 'INVALID_REQUEST', 'chat ID is invalid')
       return Object.freeze({ chatId, message: requireBodyText(body.message, 'message') })
     }
     throw new HttpTransportError(404, 'NOT_FOUND', 'route not found')
@@ -298,10 +325,40 @@ async function readJson(request: IncomingMessage, maxBodyBytes: number): Promise
   }
 }
 
-async function writeEvent(response: ServerResponse, event: Readonly<TransportStreamEvent>): Promise<void> {
+async function writeEvent(
+  response: ServerResponse,
+  event: Readonly<TransportStreamEvent>,
+  signal: AbortSignal,
+): Promise<void> {
   if (response.destroyed) throw new Error('transport connection closed')
   const data = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
-  if (!response.write(data)) await once(response, 'drain')
+  if (!response.write(data)) await waitForDrain(response, signal)
+}
+
+async function waitForDrain(response: ServerResponse, signal: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      response.off('drain', onDrain)
+      response.off('close', onClose)
+      response.off('error', onError)
+      signal.removeEventListener('abort', onAbort)
+    }
+    const finish = (operation: () => void) => {
+      cleanup()
+      operation()
+    }
+    const onDrain = () => finish(resolve)
+    const onClose = () => finish(() => reject(new Error('transport connection closed')))
+    const onError = (error: Error) => finish(() => reject(error))
+    const onAbort = () => finish(() => reject(signal.reason ?? new Error('transport invocation aborted')))
+
+    response.once('drain', onDrain)
+    response.once('close', onClose)
+    response.once('error', onError)
+    signal.addEventListener('abort', onAbort, { once: true })
+    if (response.destroyed) onClose()
+    else if (signal.aborted) onAbort()
+  })
 }
 
 function writeJson(
@@ -361,7 +418,7 @@ function requireText(value: unknown, label: string): string {
   throw new TypeError(`${label} must be a non-empty string`)
 }
 
-function toTransportError(error: unknown): TransportErrorEvent {
+function toTransportError(error: unknown): ChatErrorEvent {
   return Object.freeze({ type: 'error', error: toPublicError(error).error })
 }
 
@@ -382,6 +439,16 @@ function toPublicError(error: unknown): {
 
 function publicFailure(status: number, code: string, message: string) {
   return Object.freeze({ status, error: Object.freeze({ code, message }) })
+}
+
+function toChatResult(result: Readonly<AgentChatRunResult>): ChatResult {
+  if (result.message.role !== 'assistant') throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', 'agent returned a non-assistant message')
+  return Object.freeze({
+    chatId: result.chatId,
+    agentId: result.agentId,
+    model: result.model,
+    message: Object.freeze({ role: 'assistant', content: result.message.content }),
+  })
 }
 
 function hasErrorCode(error: unknown, code: string): error is Error & { code: string } {

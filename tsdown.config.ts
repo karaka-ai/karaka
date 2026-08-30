@@ -44,6 +44,11 @@ export default defineConfig([
   },
   {
     ...shared,
+    workspace: ['packages/sdk'],
+    entry: ['lib/types/index.js'],
+  },
+  {
+    ...shared,
     workspace: ['packages/transport'],
     entry: ['lib/types/index.js', 'lib/types/http.js'],
   },

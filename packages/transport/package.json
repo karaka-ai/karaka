@@ -41,6 +41,7 @@
     "@karaka/cordis": "workspace:^"
   },
   "dependencies": {
+    "@karaka/sdk": "workspace:^",
     "@karaka/schemastery": "workspace:^"
   },
   "devDependencies": {

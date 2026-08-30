@@ -113,9 +113,11 @@ export interface AgentRuntimeTextDelta {
   readonly delta: string
 }
 
-export interface AgentRuntimeStreamOptions {
+export interface AgentRuntimeRunOptions {
   readonly signal?: AbortSignal
 }
+
+export type AgentRuntimeStreamOptions = AgentRuntimeRunOptions
 
 export type AgentRuntimeEventSink = (
   event: Readonly<AgentRuntimeTextDelta>,
@@ -265,13 +267,23 @@ export class AgentRuntimeService extends Service {
   }
 
   /** Resolve the current agent graph and execute one transient or durable text turn. */
-  run(request: Readonly<AgentRunRequest>): Promise<AgentRunResult>
-  run(request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>): Promise<AgentChatRunResult>
-  run(request: Readonly<AgentRuntimeRequest>): Promise<AgentRunResult | AgentChatRunResult>
-  async run(request: Readonly<AgentRuntimeRequest>): Promise<AgentRunResult | AgentChatRunResult> {
+  run(request: Readonly<AgentRunRequest>, options?: Readonly<AgentRuntimeRunOptions>): Promise<AgentRunResult>
+  run(
+    request: Readonly<AgentChatStartRequest | AgentChatResumeRequest>,
+    options?: Readonly<AgentRuntimeRunOptions>,
+  ): Promise<AgentChatRunResult>
+  run(
+    request: Readonly<AgentRuntimeRequest>,
+    options?: Readonly<AgentRuntimeRunOptions>,
+  ): Promise<AgentRunResult | AgentChatRunResult>
+  async run(
+    request: Readonly<AgentRuntimeRequest>,
+    options: Readonly<AgentRuntimeRunOptions> = {},
+  ): Promise<AgentRunResult | AgentChatRunResult> {
+    assertNotAborted(options.signal)
     return this.executeRequest(request, (agentId, message, entitlementAccount, history) => {
-      return this.generateTurn(agentId, message, entitlementAccount, history)
-    })
+      return this.generateTurn(agentId, message, entitlementAccount, history, options)
+    }, options.signal)
   }
 
   /** Execute one turn while emitting protocol-neutral incremental text. */
@@ -355,6 +367,7 @@ export class AgentRuntimeService extends Service {
     message: string,
     requestedEntitlementAccount: string | undefined,
     history: readonly ModelMessage[],
+    options: Readonly<AgentRuntimeRunOptions>,
   ) {
     const registration = this.resolveAgent(agentId)
     const agent = registration.definition
@@ -369,19 +382,31 @@ export class AgentRuntimeService extends Service {
       ...conversationMessages(history),
       Object.freeze({ role: 'user' as const, content: message }),
     ])
+    const request: Readonly<ModelRequest> = Object.freeze(options.signal
+      ? { agentId, messages, signal: options.signal }
+      : { agentId, messages })
     const generate = async (entitlement?: EntitlementAccount) => {
-      const response = await model.generate(Object.freeze({ agentId, messages }))
-      const spend = validateModelSpend(model, response?.spend)
-      if (spend) await entitlement!.recordSpend(spend)
-      if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
-        throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
-      }
+      try {
+        assertNotAborted(options.signal)
+        const response = await model.generate(request)
+        const spend = validateModelSpend(model, response?.spend)
+        if (spend) await entitlement!.recordSpend(spend)
+        assertNotAborted(options.signal)
+        if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
+          throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
+        }
 
-      const assistant = Object.freeze({ role: response.message.role, content: response.message.content })
-      return Object.freeze({
-        result: Object.freeze({ agentId, model: agent.model, message: assistant }),
-        messages: Object.freeze([...messages, assistant]),
-      })
+        const assistant = Object.freeze({ role: response.message.role, content: response.message.content })
+        return Object.freeze({
+          result: Object.freeze({ agentId, model: agent.model, message: assistant }),
+          messages: Object.freeze([...messages, assistant]),
+        })
+      } catch (error) {
+        if (options.signal?.aborted && !(error instanceof AgentRuntimeError && error.code === 'ABORTED')) {
+          throw aborted(error)
+        }
+        throw error
+      }
     }
 
     if (model.spendUnit === undefined) return generate()

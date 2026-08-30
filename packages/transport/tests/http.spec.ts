@@ -4,9 +4,9 @@ import SessionStorage from '@karaka/agent-runtime/session-storage'
 import Authentication from '@karaka/authentication'
 import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Entitlement from '@karaka/entitlement'
+import { createKarakaClient, EVENT_STREAM_MEDIA_TYPE, type TransportStreamEvent } from '@karaka/sdk'
 import Storage from '@karaka/storage'
 import StorageLocal from '@karaka/storage/local'
-import { EVENT_STREAM_MEDIA_TYPE, type TransportStreamEvent } from '@karaka/transport'
 import HttpTransport from '@karaka/transport/http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -20,31 +20,47 @@ const origin = 'https://app.example.test'
 describe('HTTP Transport', () => {
   it('authenticates JSON chat turns and preserves durable ownership', async () => {
     const runtime = await createRuntime()
+    const userA = createKarakaClient({
+      endpoint: `${runtime.endpoint}/v1`,
+      credentials: { tenantId: 'acme', token: 'user-a' },
+    })
+    const userB = createKarakaClient({
+      endpoint: `${runtime.endpoint}/v1`,
+      credentials: { tenantId: 'acme', token: 'user-b' },
+    })
 
     try {
-      const first = await sendJson(runtime.endpoint, '/v1/chats', 'user-a', {
+      const first = await userA.chat.send({
         agentId: 'support',
         message: 'Hello',
       })
-      expect(first.response.status).toBe(200)
-      expect(first.body).toMatchObject({
+      expect(first).toMatchObject({
         agentId: 'support',
         model: 'support-model',
         message: { role: 'assistant', content: 'Received: Hello' },
       })
-      const chatId = requireChatId(first.body)
+      const chatId = first.chatId
 
-      const resumed = await sendJson(runtime.endpoint, `/v1/chats/${chatId}/messages`, 'user-a', {
+      const resumed = await userA.chat.send({
+        chatId,
         message: 'Again',
       })
-      expect(resumed.response.status).toBe(200)
-      expect(resumed.body).toMatchObject({ chatId, message: { content: 'Received: Again' } })
+      expect(resumed).toMatchObject({ chatId, message: { content: 'Received: Again' } })
 
-      const stolen = await sendJson(runtime.endpoint, `/v1/chats/${chatId}/messages`, 'user-b', {
+      await expect(userB.chat.send({
+        chatId,
         message: 'Steal it',
+      })).rejects.toMatchObject({
+        name: 'KarakaClientError',
+        code: 'CHAT_NOT_FOUND',
+        message: 'chat is not available',
+        status: 404,
       })
-      expect(stolen.response.status).toBe(404)
-      expect(stolen.body).toEqual({ error: { code: 'CHAT_NOT_FOUND', message: 'chat is not available' } })
+
+      await expect(userA.chat.send({
+        chatId: 'opaque/chat',
+        message: 'Missing',
+      })).rejects.toMatchObject({ code: 'CHAT_NOT_FOUND', status: 404 })
     } finally {
       await runtime.close()
     }
@@ -52,8 +68,28 @@ describe('HTTP Transport', () => {
 
   it('negotiates SSE and streams incremental text directly to an allowed browser origin', async () => {
     const runtime = await createRuntime()
+    const client = createKarakaClient({
+      endpoint: `${runtime.endpoint}/v1`,
+      credentials: { tenantId: 'acme', token: 'sdk-user' },
+    })
 
     try {
+      const sdkEvents = []
+      for await (const event of client.chat.stream({ agentId: 'support', message: 'SDK' })) sdkEvents.push(event)
+      expect(sdkEvents).toEqual([
+        { type: 'text-delta', delta: 'Received: ' },
+        { type: 'text-delta', delta: 'SDK' },
+        {
+          type: 'completed',
+          result: {
+            chatId: expect.any(String),
+            agentId: 'support',
+            model: 'support-model',
+            message: { role: 'assistant', content: 'Received: SDK' },
+          },
+        },
+      ])
+
       const response = await fetch(`${runtime.endpoint}/v1/chats`, {
         method: 'POST',
         headers: {
@@ -119,9 +155,109 @@ describe('HTTP Transport', () => {
       await runtime.close()
     }
   })
+
+  it('cancels non-streaming Agent Runtime work when its client disconnects', async () => {
+    const generationStarted = Promise.withResolvers<void>()
+    const generationAborted = Promise.withResolvers<void>()
+    const runtime = await createRuntime({
+      async installModel(ctx) {
+        await ctx.plugin({
+          name: 'cancellable-model',
+          inject: ['agentModels'],
+          apply(pluginContext) {
+            pluginContext.agentModels.register({
+              id: 'support-model',
+              async generate(request) {
+                generationStarted.resolve()
+                return new Promise<never>((_resolve, reject) => {
+                  request.signal?.addEventListener('abort', () => {
+                    generationAborted.resolve()
+                    reject(request.signal?.reason)
+                  }, { once: true })
+                })
+              },
+            })
+          },
+        })
+      },
+    })
+    const client = createKarakaClient({
+      endpoint: `${runtime.endpoint}/v1`,
+      credentials: { tenantId: 'acme', token: 'user-a' },
+    })
+
+    try {
+      const controller = new AbortController()
+      const call = client.chat.send({ agentId: 'support', message: 'Wait' }, { signal: controller.signal })
+      await generationStarted.promise
+      controller.abort()
+
+      await expect(call).rejects.toMatchObject({ code: 'ABORTED' })
+      await expect(within(generationAborted.promise)).resolves.toBeUndefined()
+    } finally {
+      await runtime.close()
+    }
+  })
+
+  it('releases a backpressured stream when its client disconnects', async () => {
+    const streamStarted = Promise.withResolvers<void>()
+    const streamReleased = Promise.withResolvers<void>()
+    const content = 'x'.repeat(4 * 1024 * 1024)
+    const runtime = await createRuntime({
+      async installModel(ctx) {
+        await ctx.plugin({
+          name: 'backpressured-model',
+          inject: ['agentModels'],
+          apply(pluginContext) {
+            pluginContext.agentModels.register({
+              id: 'support-model',
+              async generate() {
+                return { message: { role: 'assistant', content } }
+              },
+              async *stream() {
+                try {
+                  streamStarted.resolve()
+                  yield { type: 'text-delta', delta: content } as const
+                  yield { type: 'completed', generation: { message: { role: 'assistant', content } } } as const
+                } finally {
+                  streamReleased.resolve()
+                }
+              },
+            })
+          },
+        })
+      },
+    })
+
+    try {
+      const controller = new AbortController()
+      const response = await fetch(`${runtime.endpoint}/v1/chats`, {
+        method: 'POST',
+        headers: {
+          accept: EVENT_STREAM_MEDIA_TYPE,
+          authorization: 'Bearer user-a',
+          'content-type': 'application/json',
+          'x-karaka-tenant': 'acme',
+        },
+        body: JSON.stringify({ agentId: 'support', message: 'Large' }),
+        signal: controller.signal,
+      })
+      expect(response.status).toBe(200)
+      await streamStarted.promise
+      controller.abort()
+
+      await expect(within(streamReleased.promise)).resolves.toBeUndefined()
+    } finally {
+      await runtime.close()
+    }
+  })
 })
 
-async function createRuntime() {
+interface RuntimeOptions {
+  installModel?(ctx: CordisContext): Promise<void>
+}
+
+async function createRuntime(options: RuntimeOptions = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'karaka-transport-'))
   const port = await availablePort()
   const ctx = new Context()
@@ -151,7 +287,8 @@ async function createRuntime() {
     await ctx.plugin(StorageLocal, { path: join(directory, 'storage.sqlite') })
     await ctx.plugin(AgentRuntime)
     await ctx.plugin(SessionStorage, {})
-    await ctx.plugin(EchoModel, { id: 'support-model', prefix: 'Received: ' })
+    if (options.installModel) await options.installModel(ctx)
+    else await ctx.plugin(EchoModel, { id: 'support-model', prefix: 'Received: ' })
     await ctx.plugin(agentPlugin)
     await ctx.plugin(HttpTransport, {
       host: '127.0.0.1',
@@ -185,24 +322,6 @@ const agentPlugin = {
   },
 }
 
-async function sendJson(endpoint: string, path: string, subject: string, body: unknown) {
-  const response = await fetch(`${endpoint}${path}`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${subject}`,
-      'content-type': 'application/json',
-      'x-karaka-tenant': 'acme',
-    },
-    body: JSON.stringify(body),
-  })
-  return { response, body: await response.json() as Record<string, unknown> }
-}
-
-function requireChatId(value: Record<string, unknown>) {
-  if (typeof value.chatId !== 'string') throw new TypeError('transport returned no chat ID')
-  return value.chatId
-}
-
 function parseEvents(body: string): TransportStreamEvent[] {
   return body.trim().split('\n\n').map(block => {
     const data = block.split('\n').find(line => line.startsWith('data: '))
@@ -222,4 +341,18 @@ async function availablePort() {
     server.close(error => error ? reject(error) : resolve())
   })
   return port
+}
+
+async function within<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('operation did not finish')), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
 }

@@ -16,6 +16,7 @@ const expectedApplications = new Set([
   '@karaka/authentication',
   '@karaka/cli',
   '@karaka/entitlement',
+  '@karaka/sdk',
   '@karaka/storage',
   '@karaka/transport',
 ])

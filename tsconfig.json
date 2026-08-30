@@ -16,6 +16,7 @@
     { "path": "./packages/entitlement" },
     { "path": "./packages/storage" },
     { "path": "./packages/agent-runtime" },
+    { "path": "./packages/sdk" },
     { "path": "./packages/transport" }
   ]
 }

@@ -4,7 +4,7 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, setup-YAML process bootstrap, and an authenticated HTTP Transport exist today. The agent plugin model, tool authoring and hosting APIs, richer Chat API, and subagent coordination described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, setup-YAML process bootstrap, an authenticated HTTP Transport, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
 
 ## Foundation boundary
 
@@ -256,7 +256,7 @@ Discovery makes a tool available to the runtime; it does not grant every agent a
 
 Karaka owns the agent, chat, session, model and tool orchestration. Ordinary application code supplies a message and, when continuing an existing chat across a stateless boundary, an opaque chat identifier. It does not construct an identity, invocation context, agent instance, session object, or conversation state.
 
-A future application-facing API should preserve this boundary. The names below are illustrative:
+The current SDK starts or resumes a durable chat through `chat.send()` and `chat.stream()`. A future richer handle API may preserve the same ownership boundary; the names below are illustrative and are not implemented today:
 
 ```ts
 const chat = await karaka.chat.create()
@@ -354,25 +354,29 @@ Control and reporting are explicit capabilities. Operations such as sending a fo
 
 Conversation inheritance, runtime composition, and authority are independent decisions owned by Agent Runtime and its delegation policy. The policy may fork the parent conversation or start with a fresh prompt. It constructs a child invocation containing only the context and capabilities explicitly granted to that child, then calls the same internal run path used for any agent. Transport is not involved in an in-process parent-to-child call.
 
-## Transport is below the application API
+## SDK and Transport form the application boundary
 
-Agent Runtime owns chats, agents, sessions, and orchestration. Transport exposes that application API without teaching Agent Runtime about HTTP or another wire protocol. A Transport plugin adapts authenticated requests, responses, streaming, cancellation, deadlines, and protocol errors to the internal Chat API. It does not define agents, run subagents differently, choose process counts, or own durable chat state.
+Agent Runtime owns chats, agents, sessions, and orchestration. The standalone `@karaka/sdk` package gives an application backend `chat.send()` and `chat.stream()` without exposing Cordis or Agent Runtime. A server-side Transport plugin receives the matching wire protocol, establishes the authenticated invocation boundary, and calls Agent Runtime. It does not define agents, run subagents differently, choose process counts, or own durable chat state.
 
 ```mermaid
 flowchart LR
   Application["Application backend"]
-  Transport["Transport plugin<br/>in-process or HTTP"]
-  Chat["Karaka Chat API"]
+  SDK["@karaka/sdk<br/>chat.send / chat.stream"]
+  HTTP["Authenticated HTTP<br/>JSON or SSE"]
+  Transport["HTTP Transport<br/>Cordis plugin"]
   Runtime["Agent Runtime"]
 
-  Application --> Transport
-  Transport --> Chat
-  Chat --> Runtime
+  Application --> SDK
+  SDK --> HTTP
+  HTTP --> Transport
+  Transport --> Runtime
 ```
 
-An in-process adapter can call the same Chat API directly for embedded deployments. An HTTP adapter opens the network server for a standalone Karaka process. Transport does not replace Authentication or Authorization: every adapter must establish the trusted invocation boundary before calling the Chat API.
+Supplying an endpoint makes the SDK use its HTTP implementation; there is no second client-side mode setting to coordinate with setup YAML. Static credentials, an asynchronous per-invocation credential resolver, or a per-call override provide the bearer token and trusted tenant route. The SDK resolves credentials independently for every call so a shared client does not retain one user's identity. An advanced connection contract leaves room for embedded or other protocols, but the production path is a separately deployed Karaka process reached over HTTP. An in-process implementation is deliberately deferred because it couples application and agent capacity and lifecycle.
 
-The current `@karaka/transport/http` plugin exposes durable chat start and resume routes. It accepts bearer authentication plus an explicit tenant-routing header, binds the verified principal for the complete turn, and returns JSON by default. `Accept: text/event-stream` selects SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. Browser access is disabled unless the setup explicitly allowlists its origin. Deadlines, disconnect cancellation, backpressure, and server disposal belong to the HTTP plugin. Another protocol can be implemented as an ordinary Transport plugin over the same Authentication and Agent Runtime contracts.
+The current SDK sends either an agent ID to start a durable chat or an opaque chat ID to resume one. The current `@karaka/transport/http` plugin accepts those requests using bearer authentication plus an explicit tenant-routing header, binds the verified principal for the complete turn, and returns JSON by default. `chat.stream()` negotiates SSE text deltas followed by a completed result; providers without incremental generation remain compatible by producing one text delta. Browser access is disabled unless the setup explicitly allowlists its origin. Deadlines, disconnect cancellation, backpressure, and server disposal belong to the HTTP plugin.
+
+The SDK owns the public requests, results, stream events, error envelopes, media types, and client-side validation. The server Transport package consumes that contract and maps it to protocol-neutral Agent Runtime calls. Internal plugin refactors do not require SDK changes, and a replacement HTTP plugin remains compatible when it preserves the contract. A change to routes, headers, request or response bodies, streaming events, errors, or protocol version must update the Transport plugin and SDK together and must add a client-server compatibility test. A genuinely new wire protocol requires both an ordinary server-side Cordis Transport plugin and a corresponding SDK connection implementation.
 
 ### Running Karaka and scaling agents
 
@@ -403,10 +407,10 @@ Additional worker roles are deferred until Karaka has a concrete need such as un
 
 ## Application and extension APIs
 
-A future Karaka code API has two deliberately different purposes:
+A Karaka code API has two deliberately different purposes:
 
-1. The application-facing Chat API provides simple imperative operations such as creating a chat and sending a message. Karaka performs the cross-seam orchestration behind that facade.
-2. The `@tool` decorator marks methods on backend-managed application services for that backend's installed tool host to register.
+1. The current `@karaka/sdk` package provides application-facing `chat.send()` and `chat.stream()` operations. Karaka performs cross-seam orchestration behind that facade.
+2. The future `@tool` decorator will mark methods on backend-managed application services for that backend's installed tool host to register.
 
 These APIs do not form another Karaka definition format. Setup remains in one setup YAML, and agents and subagents remain ordinary Cordis plugin modules loaded by it. A backend's framework bootstrap and ordinary deployment configuration install its tool host but do not define agents. Agent authors use normal plugin effects rather than a parallel `defineAgent` system.
 
@@ -462,6 +466,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 - Publish the first-party Tool family as the separate `@karaka/tool` package: keep inert authoring contracts at its root and expose runtime behavior as Cordis plugin subpaths.
 - Let applications create chats and send messages without constructing identities, sessions, agents, or invocation contexts.
 - Treat a chat ID as an opaque locator and authenticate and authorize every chat operation.
+- Keep the SDK and server Transport on one explicit public protocol; update both sides and their compatibility tests whenever that protocol changes.
 - Let each agent plugin own its descriptor, child plugins, and contributions through one reversible Cordis lifecycle.
 - Ship useful default agent behavior as replaceable first-party plugins and an inspectable standard bundle that is itself a plugin mounting child plugins; do not hard-code replaceable policy in the agent loop.
 - Treat subagent references as delegation rather than implicit definition, prompt, tool, session, or authority inheritance.
