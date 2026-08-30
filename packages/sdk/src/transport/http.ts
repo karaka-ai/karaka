@@ -14,16 +14,22 @@ import {
 
 const TENANT_HEADER = 'x-karaka-tenant'
 
+export type HttpDispatcher = (
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal | undefined,
+) => Promise<Response>
+
 /** HTTP client connection paired with the server-side HTTP Transport plugin. */
 export class HttpConnection implements KarakaConnection {
   private readonly endpoint: string
 
-  constructor(endpoint: string | URL) {
+  constructor(endpoint: string | URL, private readonly dispatch: HttpDispatcher = performFetch) {
     this.endpoint = normalizeEndpoint(endpoint)
   }
 
   async send(request: Readonly<ChatRequest>, options: Readonly<KarakaInvocationOptions>): Promise<ChatResult> {
-    const response = await performFetch(this.url(request), this.init(request, options, JSON_MEDIA_TYPE), options.signal)
+    const response = await this.request(this.url(request), this.init(request, options, JSON_MEDIA_TYPE), options.signal)
     if (!response.ok) throw await readHttpError(response)
     return validateChatResult(await readJson(response))
   }
@@ -32,7 +38,7 @@ export class HttpConnection implements KarakaConnection {
     request: Readonly<ChatRequest>,
     options: Readonly<KarakaInvocationOptions>,
   ): AsyncIterable<ChatStreamEvent> {
-    const response = await performFetch(this.url(request), this.init(request, options, EVENT_STREAM_MEDIA_TYPE), options.signal)
+    const response = await this.request(this.url(request), this.init(request, options, EVENT_STREAM_MEDIA_TYPE), options.signal)
     if (!response.ok) throw await readHttpError(response)
     if (mediaType(response) !== EVENT_STREAM_MEDIA_TYPE || !response.body) {
       throw new KarakaClientError('INVALID_RESPONSE', `Karaka stream must use ${EVENT_STREAM_MEDIA_TYPE}`, response.status)
@@ -81,15 +87,19 @@ export class HttpConnection implements KarakaConnection {
     if (options.signal !== undefined) init.signal = options.signal
     return init
   }
+
+  private async request(url: string, init: RequestInit, signal: AbortSignal | undefined): Promise<Response> {
+    try {
+      return await this.dispatch(url, init, signal)
+    } catch (cause) {
+      if (signal?.aborted) throw aborted(cause)
+      throw new KarakaClientError('TRANSPORT_ERROR', 'Karaka request failed', undefined, { cause })
+    }
+  }
 }
 
-async function performFetch(url: string, init: RequestInit, signal: AbortSignal | undefined): Promise<Response> {
-  try {
-    return await fetch(url, init)
-  } catch (cause) {
-    if (signal?.aborted) throw aborted(cause)
-    throw new KarakaClientError('TRANSPORT_ERROR', 'Karaka request failed', undefined, { cause })
-  }
+async function performFetch(url: string, init: RequestInit, _signal: AbortSignal | undefined): Promise<Response> {
+  return fetch(url, init)
 }
 
 async function readHttpError(response: Response): Promise<KarakaClientError> {
