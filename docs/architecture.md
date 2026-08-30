@@ -4,7 +4,7 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, setup-YAML process bootstrap, an authenticated HTTP Transport, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, an OpenAI Responses model provider, setup-YAML process bootstrap, an authenticated HTTP Transport, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
 
 ## Foundation boundary
 
@@ -303,6 +303,8 @@ A chat ID is a locator, never proof of authority. Karaka must authenticate and a
 ## Agent Runtime internals
 
 Agent Runtime is one top-level seam composed from model, session, tool, skill, agent, and subagent components. Provider and integration plugins may expose internal Cordis services so these components remain replaceable without becoming top-level Karaka seams.
+
+`@karaka/model-openai` is the first production model-provider plugin. It maps Agent Runtime text history to the OpenAI Responses API, supports completed and streamed text generations, forwards cancellation, and reports provider spend from returned token usage. Setup selects the model, credentials, and explicit integer per-million-token rates; the package deliberately does not freeze changing OpenAI prices into Karaka releases.
 
 ### Agent plugins and contributions
 

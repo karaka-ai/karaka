@@ -59,6 +59,7 @@ import AuthenticationHost from '@karaka/authentication/authentication-host'
 import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
+import OpenAIModel from '@karaka/model-openai'
 import Storage from '@karaka/storage'
 import StorageDefault from '@karaka/storage/default'
 import { createKarakaClient } from '@karaka/sdk'
@@ -74,6 +75,7 @@ if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpa
 if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
 if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
+if (typeof OpenAIModel.apply !== 'function') throw new Error('the OpenAI model package did not export a plugin')
 if (typeof StorageDefault.apply !== 'function') throw new Error('the default storage subpath did not export a plugin')
 if (typeof SessionStorage.apply !== 'function') throw new Error('the storage session subpath did not export a plugin')
 if (Transport.EVENT_STREAM_MEDIA_TYPE !== 'text/event-stream') throw new Error('the transport root did not export its contracts')
