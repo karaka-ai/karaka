@@ -15,6 +15,7 @@ import {
   type AgentSessionOpenRequest,
   type AgentSessionOwner,
   type AgentSessionProvider,
+  type ModelConversationItem,
   type ModelMessage,
 } from './index.ts'
 
@@ -28,11 +29,11 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 interface StoredSession {
-  readonly schema: 1
+  readonly schema: 2
   readonly owner: AgentSessionOwner
   readonly agentId: string
   readonly entitlementAccount: string
-  readonly messages: readonly ModelMessage[]
+  readonly messages: readonly ModelConversationItem[]
 }
 
 /** Durable session behavior backed by the provider-neutral Storage seam. */
@@ -54,7 +55,7 @@ class StorageSessionProvider implements AgentSessionProvider {
       let committed = false
       const lease: AgentSessionLease = Object.freeze({
         session,
-        commit: async (messages: readonly ModelMessage[]) => {
+        commit: async (messages: readonly ModelConversationItem[]) => {
           if (!active) throw new AgentRuntimeError('SESSION_UNAVAILABLE', 'agent session lease is no longer active')
           if (committed) throw new AgentRuntimeError('SESSION_CONFLICT', 'chat turn is already committed')
           committed = true
@@ -73,7 +74,7 @@ class StorageSessionProvider implements AgentSessionProvider {
   private async create(storage: StorageLease, principal: AuthenticatedIdentity, agentId: string) {
     const owner = ownerOf(principal)
     const session: StoredSession = {
-      schema: 1,
+      schema: 2,
       owner,
       agentId,
       entitlementAccount: entitlementAccountOf(owner),
@@ -95,14 +96,14 @@ class StorageSessionProvider implements AgentSessionProvider {
     return session
   }
 
-  private async update(storage: StorageLease, session: AgentSession, messages: readonly ModelMessage[]) {
+  private async update(storage: StorageLease, session: AgentSession, messages: readonly ModelConversationItem[]) {
     try {
       const updated = await storage.update({
         namespace: this.namespace,
         key: session.id,
         expectedVersion: session.version,
         value: encode({
-          schema: 1,
+          schema: 2,
           owner: session.owner,
           agentId: session.agentId,
           entitlementAccount: session.entitlementAccount,
@@ -137,7 +138,7 @@ function encode(session: StoredSession): StorageValue {
     owner: { tenantId: session.owner.tenantId, subject: session.owner.subject },
     agentId: session.agentId,
     entitlementAccount: session.entitlementAccount,
-    messages: session.messages.map(message => ({ role: message.role, content: message.content })),
+    messages: session.messages.map(encodeConversationItem),
   }
 }
 
@@ -147,7 +148,7 @@ function decode(record: StorageRecord): AgentSession {
       throw new TypeError('session value must be an object')
     }
     const value = record.value as Record<string, StorageValue>
-    if (value.schema !== 1) throw new TypeError('unsupported session schema')
+    if (value.schema !== 1 && value.schema !== 2) throw new TypeError('unsupported session schema')
     if (!value.owner || typeof value.owner !== 'object' || Array.isArray(value.owner)) {
       throw new TypeError('session owner must be an object')
     }
@@ -156,7 +157,7 @@ function decode(record: StorageRecord): AgentSession {
       tenantId: requireText(ownerValue.tenantId, 'session tenant ID'),
       subject: requireText(ownerValue.subject, 'session subject'),
     })
-    const messages = decodeMessages(value.messages)
+    const messages = decodeMessages(value.messages, value.schema === 2)
     return Object.freeze({
       id: record.key,
       owner,
@@ -171,22 +172,54 @@ function decode(record: StorageRecord): AgentSession {
   }
 }
 
-function decodeMessages(value: StorageValue | undefined): readonly ModelMessage[] {
+function decodeMessages(value: StorageValue | undefined, allowTools: boolean): readonly ModelConversationItem[] {
   if (!Array.isArray(value)) throw new TypeError('session messages must be an array')
-  return Object.freeze(value.map((message, index) => {
+  const calls = new Map<string, string>()
+  const results = new Set<string>()
+  const messages = value.map((message, index) => {
     if (!message || typeof message !== 'object' || Array.isArray(message)) {
       throw new TypeError('session message must be an object')
     }
     const item = message as Record<string, StorageValue>
-    if (
-      !['system', 'user', 'assistant'].includes(item.role as string)
-      || typeof item.content !== 'string'
-      || (item.role === 'system' && index !== 0)
-    ) {
-      throw new TypeError('session message is invalid')
+    if (item.type === undefined) {
+      if (
+        !['system', 'user', 'assistant'].includes(item.role as string)
+        || typeof item.content !== 'string'
+        || (item.role === 'system' && index !== 0)
+      ) {
+        throw new TypeError('session message is invalid')
+      }
+      return Object.freeze({ role: item.role as ModelMessage['role'], content: item.content })
     }
-    return Object.freeze({ role: item.role as ModelMessage['role'], content: item.content })
-  }))
+    if (!allowTools) throw new TypeError('legacy session contains a tool item')
+    if (item.type === 'tool-call') {
+      const callId = requireText(item.callId, 'tool call ID')
+      const toolId = requireText(item.toolId, 'tool ID')
+      if (calls.has(callId) || item.input === undefined) throw new TypeError('session tool call is invalid')
+      calls.set(callId, toolId)
+      return Object.freeze({ type: 'tool-call' as const, callId, toolId, input: item.input })
+    }
+    if (item.type === 'tool-result') {
+      const callId = requireText(item.callId, 'tool result call ID')
+      const toolId = requireText(item.toolId, 'tool ID')
+      if (calls.get(callId) !== toolId || results.has(callId) || item.output === undefined) {
+        throw new TypeError('session tool result is invalid')
+      }
+      results.add(callId)
+      return Object.freeze({ type: 'tool-result' as const, callId, toolId, output: item.output })
+    }
+    throw new TypeError('session conversation item is invalid')
+  })
+  if (calls.size !== results.size) throw new TypeError('session contains a tool call without a result')
+  return Object.freeze(messages)
+}
+
+function encodeConversationItem(item: ModelConversationItem): StorageValue {
+  if (!('type' in item)) return { role: item.role, content: item.content }
+  if (item.type === 'tool-call') {
+    return { type: item.type, callId: item.callId, toolId: item.toolId, input: item.input }
+  }
+  return { type: item.type, callId: item.callId, toolId: item.toolId, output: item.output }
 }
 
 function assertOwner(owner: AgentSessionOwner, principal: AuthenticatedIdentity) {

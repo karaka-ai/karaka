@@ -43,9 +43,11 @@
     "@karaka/authentication": "workspace:^",
     "@karaka/cordis": "workspace:^",
     "@karaka/entitlement": "workspace:^",
-    "@karaka/storage": "workspace:^"
+    "@karaka/storage": "workspace:^",
+    "@karaka/tool": "workspace:^"
   },
   "dependencies": {
-    "@karaka/schemastery": "workspace:^"
+    "@karaka/schemastery": "workspace:^",
+    "@karaka/sdk": "workspace:^"
   }
 }

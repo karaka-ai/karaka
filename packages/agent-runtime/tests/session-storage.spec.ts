@@ -15,6 +15,7 @@ import Storage, {
   type StorageRecord,
 } from '@karaka/storage'
 import StorageLocal from '@karaka/storage/local'
+import ToolCore from '@karaka/tool/core'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -106,7 +107,6 @@ describe('Agent Runtime storage sessions', () => {
       await originalPlugin
       await ctx.plugin(AgentRuntime)
       await ctx.plugin(SessionStorage)
-      await ctx.plugin(createAgentPlugin('Prompt', 'delayed-model'))
       await ctx.plugin({
         name: 'delayed-model',
         inject: ['agentModels'],
@@ -121,6 +121,7 @@ describe('Agent Runtime storage sessions', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('Prompt', 'delayed-model'))
 
       const runAsUser = (request: Parameters<typeof ctx.agentRuntime.run>[0]) => {
         principalCalls++
@@ -164,6 +165,49 @@ describe('Agent Runtime storage sessions', () => {
       await ctx.fiber.dispose()
     }
   })
+
+  it('persists tool calls and results for later turns and process restarts', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'karaka-tool-session-'))
+    directories.push(directory)
+    const path = join(directory, 'storage.sqlite')
+
+    const first = await createToolRuntime(path)
+    let chatId: string
+    try {
+      const result = await first.run({ agentId: 'support', message: 'Double four', persist: true })
+      chatId = result.chatId
+      const stored = await first.ctx.storage.read({ namespace: 'agent-runtime.sessions', key: chatId })
+      expect(stored?.value).toMatchObject({
+        schema: 2,
+        messages: [
+          { role: 'system', content: 'Tool prompt' },
+          { role: 'user', content: 'Double four' },
+          { type: 'tool-call', callId: 'call-1', toolId: 'math.double', input: { value: 4 } },
+          { type: 'tool-result', callId: 'call-1', toolId: 'math.double', output: { doubled: 8 } },
+          { role: 'assistant', content: 'Eight.' },
+        ],
+      })
+    } finally {
+      await first.ctx.fiber.dispose()
+    }
+
+    const second = await createToolRuntime(path)
+    try {
+      await expect(second.run({ chatId, message: 'What happened?' })).resolves.toMatchObject({
+        message: { content: 'Eight.' },
+      })
+      expect(second.requests[0]?.messages).toEqual([
+        { role: 'system', content: 'Tool prompt' },
+        { role: 'user', content: 'Double four' },
+        { type: 'tool-call', callId: 'call-1', toolId: 'math.double', input: { value: 4 } },
+        { type: 'tool-result', callId: 'call-1', toolId: 'math.double', output: { doubled: 8 } },
+        { role: 'assistant', content: 'Eight.' },
+        { role: 'user', content: 'What happened?' },
+      ])
+    } finally {
+      await second.ctx.fiber.dispose()
+    }
+  })
 })
 
 async function createRuntime(
@@ -182,8 +226,8 @@ async function createRuntime(
   await ctx.plugin(AgentRuntime)
   const sessions = ctx.plugin(SessionStorage)
   await sessions
-  await ctx.plugin(createAgentPlugin(prompt, model))
   await ctx.plugin(createModelPlugin(model, requests))
+  await ctx.plugin(createAgentPlugin(prompt, model))
   const run = (request: AgentChatStartRequest | AgentChatResumeRequest): Promise<AgentChatRunResult> => {
     return ctx.authentication.withUser(currentPrincipal(), testServer, () => ctx.agentRuntime.run(request))
   }
@@ -220,6 +264,91 @@ function createModelPlugin(id: string, requests: ModelRequest[]) {
       })
     },
   }
+}
+
+async function createToolRuntime(path: string) {
+  const ctx = new Context()
+  const requests: ModelRequest[] = []
+  await ctx.plugin(Authentication)
+  await ctx.plugin(Entitlement)
+  await ctx.plugin(Storage)
+  await ctx.plugin(StorageLocal, { path })
+  await ctx.plugin(AgentRuntime)
+  await ctx.plugin(SessionStorage)
+  await ctx.plugin(ToolCore)
+  await ctx.plugin({
+    name: 'math-double-tool',
+    inject: ['tools'],
+    apply(pluginContext) {
+      pluginContext.tools.register({
+        descriptor: {
+          id: 'math.double',
+          description: 'Double one integer.',
+          input: {
+            type: 'object',
+            properties: { value: { type: 'integer' } },
+            required: ['value'],
+            additionalProperties: false,
+          },
+          output: {
+            type: 'object',
+            properties: { doubled: { type: 'integer' } },
+            required: ['doubled'],
+            additionalProperties: false,
+          },
+        },
+        invoke(input) {
+          return { doubled: (input as { readonly value: number }).value * 2 }
+        },
+      })
+    },
+  })
+  await ctx.plugin({
+    name: 'tool-model',
+    inject: ['agentModels'],
+    apply(pluginContext) {
+      pluginContext.agentModels.register({
+        id: 'tool-model',
+        validateTools() {},
+        async generate(request) {
+          requests.push(request)
+          const hasResult = request.messages.some(item => 'type' in item && item.type === 'tool-result')
+          if (!hasResult) {
+            return {
+              message: { role: 'assistant', content: '' },
+              toolCalls: [{
+                type: 'tool-call',
+                callId: 'call-1',
+                toolId: 'math.double',
+                input: { value: 4 },
+              }],
+            }
+          }
+          return { message: { role: 'assistant', content: 'Eight.' } }
+        },
+      })
+    },
+  })
+  await ctx.plugin({
+    name: 'tool-agent',
+    inject: ['agentRuntime', 'agentModels', 'tools'],
+    apply(pluginContext) {
+      pluginContext.agentRuntime.registerAgent({
+        id: 'support',
+        prompt: 'Tool prompt',
+        model: 'tool-model',
+        tools: ['math.double'],
+      }, pluginContext.agentModels, pluginContext.tools)
+    },
+  })
+  const run = (request: AgentChatStartRequest | AgentChatResumeRequest): Promise<AgentChatRunResult> => {
+    return ctx.authentication.withUser(
+      { tenantId: 'tenant-a', userId: 'user-a' },
+      testServer,
+      () => ctx.agentRuntime.run(request),
+    )
+  }
+  return { ctx, requests, run }
 }
 
 class TrackingStorageProvider implements StorageProvider {

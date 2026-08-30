@@ -1,6 +1,6 @@
 import type { Context } from '@karaka/cordis'
 import Schema from '@karaka/schemastery'
-import type { ModelProvider, ModelRequest } from './index.ts'
+import type { ModelConversationItem, ModelMessage, ModelProvider, ModelRequest } from './index.ts'
 
 /** YAML-serializable echo model configuration. */
 export interface Config {
@@ -24,7 +24,7 @@ export class EchoModelProvider implements ModelProvider {
   }
 
   async generate(request: Readonly<ModelRequest>) {
-    const message = request.messages.findLast(item => item.role === 'user')
+    const message = request.messages.findLast(isUserMessage)
     return {
       message: {
         role: 'assistant' as const,
@@ -34,7 +34,7 @@ export class EchoModelProvider implements ModelProvider {
   }
 
   async *stream(request: Readonly<ModelRequest>) {
-    const message = request.messages.findLast(item => item.role === 'user')
+    const message = request.messages.findLast(isUserMessage)
     const content = message?.content ?? ''
     yield { type: 'text-delta' as const, delta: this.prefix }
     if (content) yield { type: 'text-delta' as const, delta: content }
@@ -58,6 +58,10 @@ export const plugin = {
   apply(ctx: Context, config: Config) {
     ctx.agentModels.register(new EchoModelProvider(config))
   },
+}
+
+function isUserMessage(item: ModelConversationItem): item is ModelMessage & { readonly role: 'user' } {
+  return !('type' in item) && item.role === 'user'
 }
 
 export default plugin

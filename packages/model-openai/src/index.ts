@@ -1,11 +1,21 @@
-import type { ModelGeneration, ModelProvider, ModelRequest } from '@karaka/agent-runtime'
+import type {
+  ModelConversationItem,
+  ModelGeneration,
+  ModelProvider,
+  ModelRequest,
+  ModelToolCall,
+} from '@karaka/agent-runtime'
 import type { Context } from '@karaka/cordis'
 import Schema from '@karaka/schemastery'
+import type { JsonValue, ToolDescriptor } from '@karaka/sdk/tool'
 import OpenAI from 'openai'
+import { createHash } from 'node:crypto'
 import type {
+  FunctionTool,
   Response,
   ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
+  ResponseInputItem,
   ResponseStreamEvent,
   ResponseUsage,
   ServiceTier,
@@ -91,6 +101,11 @@ interface ParsedPricing {
   readonly outputPerMillion: bigint
 }
 
+interface OpenAIToolSet {
+  readonly definitions: FunctionTool[]
+  readonly logicalIds: ReadonlyMap<string, string>
+}
+
 /** OpenAI Responses API model implementation. */
 export class OpenAIModelProvider implements ModelProvider {
   readonly id: string
@@ -101,6 +116,7 @@ export class OpenAIModelProvider implements ModelProvider {
   private readonly maxOutputTokens: number | undefined
   private readonly pricing: ParsedPricing
   private readonly client: OpenAIResponsesClient
+  private readonly toolSets = new WeakMap<readonly ToolDescriptor[], OpenAIToolSet>()
 
   constructor(config: Config, client?: OpenAIResponsesClient) {
     this.id = requireText(config.id, 'model ID')
@@ -121,26 +137,34 @@ export class OpenAIModelProvider implements ModelProvider {
     }).responses
   }
 
+  validateTools(tools: readonly ToolDescriptor[]): void {
+    this.toolSet(tools)
+  }
+
   async generate(request: Readonly<ModelRequest>): Promise<ModelGeneration> {
+    const tools = this.toolSet(request.tools)
     const response = await this.client.create({
       model: this.model,
       input: modelInput(request),
       service_tier: this.serviceTier,
       store: false,
       stream: false,
+      ...(tools.definitions.length ? { tools: tools.definitions, parallel_tool_calls: false } : {}),
       ...(this.maxOutputTokens === undefined ? {} : { max_output_tokens: this.maxOutputTokens }),
     }, request.signal ? { signal: request.signal } : undefined)
 
-    return generation(responseContent(response), response, this.pricing)
+    return generation(responseContent(response), response, this.pricing, tools.logicalIds)
   }
 
   async *stream(request: Readonly<ModelRequest>) {
+    const tools = this.toolSet(request.tools)
     const events = await this.client.create({
       model: this.model,
       input: modelInput(request),
       service_tier: this.serviceTier,
       store: false,
       stream: true,
+      ...(tools.definitions.length ? { tools: tools.definitions, parallel_tool_calls: false } : {}),
       ...(this.maxOutputTokens === undefined ? {} : { max_output_tokens: this.maxOutputTokens }),
     }, request.signal ? { signal: request.signal } : undefined)
 
@@ -167,7 +191,18 @@ export class OpenAIModelProvider implements ModelProvider {
     if (content !== completedContent) {
       throw new Error('OpenAI response stream did not match its completed output')
     }
-    yield { type: 'completed' as const, generation: generation(completedContent, completed, this.pricing) }
+    yield {
+      type: 'completed' as const,
+      generation: generation(completedContent, completed, this.pricing, tools.logicalIds),
+    }
+  }
+
+  private toolSet(tools: readonly ToolDescriptor[]): OpenAIToolSet {
+    const existing = this.toolSets.get(tools)
+    if (existing) return existing
+    const prepared = openAITools(tools)
+    this.toolSets.set(tools, prepared)
+    return prepared
   }
 }
 
@@ -181,14 +216,30 @@ export const plugin = {
   },
 }
 
-function modelInput(request: Readonly<ModelRequest>) {
+function modelInput(request: Readonly<ModelRequest>): ResponseInputItem[] {
   if (!Array.isArray(request.messages) || !request.messages.length) {
     throw new TypeError('model messages must be a non-empty array')
   }
-  return request.messages.map(message => ({
-    role: message.role,
-    content: message.content,
-  }))
+  return request.messages.map(modelInputItem)
+}
+
+function modelInputItem(item: ModelConversationItem): ResponseInputItem {
+  if (!('type' in item)) return { role: item.role, content: item.content }
+  const name = openAIToolName(item.toolId)
+  if (item.type === 'tool-call') {
+    return {
+      type: 'function_call',
+      call_id: item.callId,
+      name,
+      arguments: JSON.stringify(item.input),
+    }
+  }
+  return {
+    type: 'function_call_output',
+    call_id: item.callId,
+    name,
+    output: JSON.stringify(item.output),
+  }
 }
 
 function responseContent(response: Response) {
@@ -206,7 +257,12 @@ function responseContent(response: Response) {
   return foundContent ? content.join('') : response.output_text
 }
 
-function generation(content: string, response: Response, pricing: ParsedPricing): ModelGeneration {
+function generation(
+  content: string,
+  response: Response,
+  pricing: ParsedPricing,
+  logicalIds: ReadonlyMap<string, string>,
+): ModelGeneration {
   if (response.status === 'failed') throw failedResponseError(response)
   if (response.status === 'incomplete') throw incompleteResponseError(response)
   if (response.status !== 'completed') {
@@ -215,10 +271,76 @@ function generation(content: string, response: Response, pricing: ParsedPricing)
   if (typeof content !== 'string') throw new Error('OpenAI response contained no text output')
   if (!response.usage) throw new Error('OpenAI response contained no token usage')
 
+  const toolCalls = responseToolCalls(response, logicalIds)
   return Object.freeze({
     message: Object.freeze({ role: 'assistant' as const, content }),
+    ...(toolCalls.length ? { toolCalls } : {}),
     spend: Object.freeze({ unit: pricing.unit, amount: calculateSpend(response.usage, pricing) }),
   })
+}
+
+function openAITools(tools: readonly ToolDescriptor[]): OpenAIToolSet {
+  if (!Array.isArray(tools)) throw new TypeError('model tools must be an array')
+  const logicalIds = new Map<string, string>()
+  const definitions: FunctionTool[] = tools.map(tool => {
+    if (!tool || typeof tool !== 'object' || typeof tool.id !== 'string') {
+      throw new TypeError('model tool descriptor is invalid')
+    }
+    if (!isObjectSchema(tool.input)) {
+      throw new TypeError(`OpenAI tool "${tool.id}" requires an object input schema`)
+    }
+    const name = openAIToolName(tool.id)
+    if (logicalIds.has(name)) throw new TypeError(`OpenAI tool name collision for "${tool.id}"`)
+    logicalIds.set(name, tool.id)
+    return Object.freeze({
+      type: 'function' as const,
+      name,
+      description: `[${tool.id}] ${tool.description}`,
+      parameters: tool.input,
+      strict: false,
+    })
+  })
+  return Object.freeze({
+    definitions,
+    logicalIds,
+  })
+}
+
+function openAIToolName(id: string) {
+  const readable = id.replaceAll('.', '_').slice(0, 18)
+  const digest = createHash('sha256').update(id).digest('base64url')
+  return `k_${readable}_${digest}`
+}
+
+function responseToolCalls(response: Response, logicalIds: ReadonlyMap<string, string>): readonly ModelToolCall[] {
+  const calls = response.output.flatMap(item => {
+    if (item.type !== 'function_call') return []
+    if (item.status !== undefined && item.status !== 'completed') {
+      throw new Error(`OpenAI tool call "${diagnostic(item.call_id)}" did not complete`)
+    }
+    const toolId = logicalIds.get(item.name)
+    if (!toolId) throw new Error(`OpenAI requested unknown tool "${diagnostic(item.name)}"`)
+    let input: unknown
+    try {
+      input = JSON.parse(item.arguments)
+    } catch (cause) {
+      throw new Error(`OpenAI tool "${toolId}" returned invalid JSON arguments`, { cause })
+    }
+    return [Object.freeze({
+      type: 'tool-call' as const,
+      callId: requireText(item.call_id, 'OpenAI tool call ID'),
+      toolId,
+      input: input as JsonValue,
+    })]
+  })
+  return Object.freeze(calls)
+}
+
+function isObjectSchema(value: ToolDescriptor['input']): value is { readonly [key: string]: JsonValue } {
+  return !!value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && value.type === 'object'
 }
 
 function calculateSpend(usage: ResponseUsage, pricing: ParsedPricing) {

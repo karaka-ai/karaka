@@ -87,9 +87,15 @@ importers:
       '@karaka/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
+      '@karaka/sdk':
+        specifier: workspace:^
+        version: link:../sdk
       '@karaka/storage':
         specifier: workspace:^
         version: link:../storage
+      '@karaka/tool':
+        specifier: workspace:^
+        version: link:../tool
 
   packages/authentication:
     dependencies:
@@ -135,6 +141,9 @@ importers:
       '@karaka/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
+      '@karaka/sdk':
+        specifier: workspace:^
+        version: link:../sdk
       openai:
         specifier: ^7.8.0
         version: 7.8.0(undici@7.28.0)(zod@4.5.4)

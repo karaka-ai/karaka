@@ -1,10 +1,16 @@
-import AgentRuntime, { AgentModelsService, AgentRuntimeError } from '@karaka/agent-runtime'
+import AgentRuntime, {
+  AgentModelsService,
+  AgentRuntimeError,
+  type ModelRequest,
+} from '@karaka/agent-runtime'
 import EchoModel from '@karaka/agent-runtime/model-echo'
 import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
 import Include from '@karaka/cordis-plugin-include'
 import Loader from '@karaka/cordis-plugin-loader'
+import type { ToolDescriptor } from '@karaka/sdk'
+import ToolCore, { type ToolContribution } from '@karaka/tool/core'
 import { describe, expect, it } from 'vitest'
 
 describe('Agent Runtime', () => {
@@ -16,7 +22,6 @@ describe('Agent Runtime', () => {
     try {
       await ctx.plugin(Entitlement)
       await ctx.plugin(AgentRuntime)
-      await ctx.plugin(createAgentPlugin('cancel-agent', 'cancel-model'))
       await ctx.plugin({
         name: 'cancellable-model',
         inject: ['agentModels'],
@@ -33,6 +38,7 @@ describe('Agent Runtime', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('cancel-agent', 'cancel-model'))
 
       const controller = new AbortController()
       const run = ctx.agentRuntime.run(
@@ -92,6 +98,7 @@ describe('Agent Runtime', () => {
         config: { path: new URL('cordis.yml', ctx.baseUrl).href },
       })
       await ctx.loader.await()
+      await ctx.serial('karaka/ready')
 
       await expect(ctx.agentRuntime.run({
         agentId: 'support',
@@ -106,6 +113,279 @@ describe('Agent Runtime', () => {
     }
   })
 
+  it('validates model and tool dependencies while an agent activates', async () => {
+    const ctx = new Context()
+    let validated = 0
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(ToolCore)
+
+      const missingModel = ctx.plugin(createAgentPlugin('missing-model-agent', 'missing-model'))
+      await missingModel
+      expect(() => ctx.agentRuntime.assertReady()).toThrow(expect.objectContaining({ code: 'INVALID_AGENT' }))
+      await missingModel.dispose()
+
+      await ctx.plugin(createModelPlugin('tool-model', 'unused', tools => {
+        validated++
+        expect(tools.map(tool => tool.id)).toEqual(['math.double'])
+      }))
+      const missingTool = ctx.plugin(createAgentPlugin('missing-tool-agent', 'tool-model', ['math.double']))
+      await missingTool
+      expect(() => ctx.agentRuntime.assertReady()).toThrow(expect.objectContaining({ code: 'INVALID_AGENT' }))
+      await missingTool.dispose()
+
+      await ctx.plugin(createToolPlugin('math.double', input => ({
+        doubled: (input as { readonly value: number }).value * 2,
+      })))
+      await ctx.plugin(createAgentPlugin('ready-agent', 'tool-model', ['math.double']))
+
+      expect(validated).toBe(1)
+      expect(ctx.agentRuntime.listAgents()).toContainEqual({
+        id: 'ready-agent',
+        prompt: 'Test prompt',
+        model: 'tool-model',
+        tools: ['math.double'],
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('executes validated model tool calls and returns their results to the model', async () => {
+    const ctx = new Context()
+    const requests: ModelRequest[] = []
+    let invocations = 0
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(ToolCore)
+      await ctx.plugin(createToolPlugin('math.double', input => {
+        invocations++
+        return { doubled: (input as { readonly value: number }).value * 2 }
+      }))
+      await ctx.plugin({
+        name: 'tool-calling-model',
+        inject: ['agentModels'],
+        apply(pluginContext) {
+          pluginContext.agentModels.register({
+            id: 'tool-model',
+            validateTools() {},
+            async generate(request) {
+              requests.push(request)
+              if (requests.length === 1) {
+                return {
+                  message: { role: 'assistant', content: '' },
+                  toolCalls: [{
+                    type: 'tool-call',
+                    callId: 'call-1',
+                    toolId: 'math.double',
+                    input: { value: 4 },
+                  }],
+                }
+              }
+              return { message: { role: 'assistant', content: 'The answer is 8.' } }
+            },
+          })
+        },
+      })
+      await ctx.plugin(createAgentPlugin('tool-agent', 'tool-model', ['math.double']))
+
+      await expect(ctx.agentRuntime.run({ agentId: 'tool-agent', message: 'Double four' })).resolves.toEqual({
+        agentId: 'tool-agent',
+        model: 'tool-model',
+        message: { role: 'assistant', content: 'The answer is 8.' },
+      })
+      expect(invocations).toBe(1)
+      expect(requests[0]?.tools).toEqual([expect.objectContaining({ id: 'math.double' })])
+      expect(requests[1]?.messages).toEqual([
+        { role: 'system', content: 'Test prompt' },
+        { role: 'user', content: 'Double four' },
+        { type: 'tool-call', callId: 'call-1', toolId: 'math.double', input: { value: 4 } },
+        { type: 'tool-result', callId: 'call-1', toolId: 'math.double', output: { doubled: 8 } },
+      ])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects malformed model tool arguments before invoking application code', async () => {
+    const ctx = new Context()
+    let invoked = false
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(ToolCore)
+      await ctx.plugin(createToolPlugin('math.double', () => {
+        invoked = true
+        return { doubled: 0 }
+      }))
+      await ctx.plugin({
+        name: 'invalid-tool-input-model',
+        inject: ['agentModels'],
+        apply(pluginContext) {
+          pluginContext.agentModels.register({
+            id: 'invalid-tool-model',
+            validateTools() {},
+            async generate() {
+              return {
+                message: { role: 'assistant', content: '' },
+                toolCalls: [{
+                  type: 'tool-call',
+                  callId: 'call-1',
+                  toolId: 'math.double',
+                  input: { value: 'four' },
+                }],
+              }
+            },
+          })
+        },
+      })
+      await ctx.plugin(createAgentPlugin('invalid-tool-agent', 'invalid-tool-model', ['math.double']))
+
+      await expect(ctx.agentRuntime.run({ agentId: 'invalid-tool-agent', message: 'Double four' }))
+        .rejects.toMatchObject({ code: 'INVALID_INPUT' })
+      expect(invoked).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('continues a streamed turn after a model tool call', async () => {
+    const ctx = new Context()
+    let generations = 0
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(ToolCore)
+      await ctx.plugin(createToolPlugin('math.double', input => ({
+        doubled: (input as { readonly value: number }).value * 2,
+      })))
+      await ctx.plugin({
+        name: 'streaming-tool-model',
+        inject: ['agentModels'],
+        apply(pluginContext) {
+          pluginContext.agentModels.register({
+            id: 'streaming-tool-model',
+            validateTools() {},
+            async generate() {
+              throw new Error('stream path expected')
+            },
+            async *stream() {
+              generations++
+              if (generations === 1) {
+                yield {
+                  type: 'completed' as const,
+                  generation: {
+                    message: { role: 'assistant' as const, content: '' },
+                    toolCalls: [{
+                      type: 'tool-call' as const,
+                      callId: 'call-1',
+                      toolId: 'math.double',
+                      input: { value: 4 },
+                    }],
+                  },
+                }
+                return
+              }
+              yield { type: 'text-delta' as const, delta: 'Eight' }
+              yield { type: 'text-delta' as const, delta: '.' }
+              yield {
+                type: 'completed' as const,
+                generation: { message: { role: 'assistant' as const, content: 'Eight.' } },
+              }
+            },
+          })
+        },
+      })
+      await ctx.plugin(createAgentPlugin('streaming-tool-agent', 'streaming-tool-model', ['math.double']))
+      const events: Array<{ type: 'text-delta', delta: string }> = []
+
+      await expect(ctx.agentRuntime.stream(
+        { agentId: 'streaming-tool-agent', message: 'Double four' },
+        event => {
+          events.push(event)
+        },
+      )).resolves.toMatchObject({ message: { content: 'Eight.' } })
+      expect(events).toEqual([
+        { type: 'text-delta', delta: 'Eight' },
+        { type: 'text-delta', delta: '.' },
+      ])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('retains one immutable agent snapshot while its plugins unload', async () => {
+    const ctx = new Context()
+    const toolStarted = deferred<void>()
+    const finishTool = deferred<void>()
+    let generations = 0
+
+    try {
+      await ctx.plugin(Entitlement)
+      await ctx.plugin(AgentRuntime)
+      await ctx.plugin(ToolCore)
+      const tool = ctx.plugin(createToolPlugin('math.double', async input => {
+        toolStarted.resolve()
+        await finishTool.promise
+        return { doubled: (input as { readonly value: number }).value * 2 }
+      }))
+      await tool
+      const model = ctx.plugin({
+        name: 'leased-model',
+        inject: ['agentModels'],
+        apply(pluginContext) {
+          pluginContext.agentModels.register({
+            id: 'leased-model',
+            validateTools() {},
+            async generate() {
+              generations++
+              if (generations === 1) {
+                return {
+                  message: { role: 'assistant', content: '' },
+                  toolCalls: [{
+                    type: 'tool-call',
+                    callId: 'call-1',
+                    toolId: 'math.double',
+                    input: { value: 3 },
+                  }],
+                }
+              }
+              return { message: { role: 'assistant', content: 'Six.' } }
+            },
+          })
+        },
+      })
+      await model
+      const agent = ctx.plugin(createAgentPlugin('leased-agent', 'leased-model', ['math.double']))
+      await agent
+
+      const run = ctx.agentRuntime.run({ agentId: 'leased-agent', message: 'Double three' })
+      await toolStarted.promise
+      const disposals = [agent.dispose(), model.dispose(), tool.dispose()]
+      await expect.poll(() => ctx.agentRuntime.listAgents()).toEqual([])
+      await expect(ctx.agentRuntime.run({ agentId: 'leased-agent', message: 'New turn' }))
+        .rejects.toMatchObject({ code: 'UNKNOWN_AGENT' })
+      expect(await Promise.race([
+        Promise.all(disposals).then(() => 'disposed'),
+        Promise.resolve('retained'),
+      ])).toBe('retained')
+
+      finishTool.resolve()
+      await expect(run).resolves.toMatchObject({ message: { content: 'Six.' } })
+      await Promise.all(disposals)
+      expect(generations).toBe(2)
+    } finally {
+      finishTool.resolve()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('removes agent and model contributions with their plugins', async () => {
     const ctx = new Context()
 
@@ -113,8 +393,9 @@ describe('Agent Runtime', () => {
       await ctx.plugin(Entitlement)
       await ctx.plugin(AgentRuntime)
       const model = ctx.plugin(EchoModel, { id: 'test-model' })
+      await model
       const agent = ctx.plugin(createAgentPlugin('test-agent', 'test-model'))
-      await Promise.all([model, agent])
+      await agent
 
       expect(ctx.agentRuntime.listAgents()).toEqual([
         { id: 'test-agent', prompt: 'Test prompt', model: 'test-model' },
@@ -122,8 +403,17 @@ describe('Agent Runtime', () => {
       expect(ctx.agentRuntime.listModels()).toEqual(['test-model'])
 
       await model.dispose()
+      expect(ctx.agentRuntime.listAgents()).toEqual([])
       await expect(ctx.agentRuntime.run({ agentId: 'test-agent', message: 'Hello' }))
-        .rejects.toMatchObject({ code: 'UNKNOWN_MODEL' })
+        .rejects.toMatchObject({ code: 'INVALID_AGENT' })
+
+      const replacement = ctx.plugin(EchoModel, { id: 'test-model', prefix: 'New: ' })
+      await replacement
+      expect(ctx.agentRuntime.listAgents()).toEqual([
+        { id: 'test-agent', prompt: 'Test prompt', model: 'test-model' },
+      ])
+      await expect(ctx.agentRuntime.run({ agentId: 'test-agent', message: 'Hello' }))
+        .resolves.toMatchObject({ message: { content: 'New: Hello' } })
 
       await agent.dispose()
       expect(ctx.agentRuntime.listAgents()).toEqual([])
@@ -160,7 +450,7 @@ describe('Agent Runtime', () => {
 
       await supportModel.dispose()
       await expect(ctx.agentRuntime.run({ agentId: 'support', message: 'Again' }))
-        .rejects.toMatchObject({ code: 'UNKNOWN_MODEL' })
+        .rejects.toMatchObject({ code: 'INVALID_AGENT' })
       await expect(ctx.agentRuntime.run({ agentId: 'billing', message: 'Again' }))
         .resolves.toMatchObject({ message: { content: 'billing response' } })
 
@@ -184,7 +474,6 @@ describe('Agent Runtime', () => {
         expect.objectContaining<Partial<AgentRuntimeError>>({ code: 'INVALID_REQUEST' }),
       )
 
-      await ctx.plugin(createAgentPlugin('broken-agent', 'broken-model'))
       await ctx.plugin({
         name: 'broken-model',
         inject: ['agentModels'],
@@ -197,11 +486,11 @@ describe('Agent Runtime', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('broken-agent', 'broken-model'))
 
       await expect(ctx.agentRuntime.run({ agentId: 'broken-agent', message: 'Hello' }))
         .rejects.toMatchObject({ code: 'INVALID_MODEL_RESPONSE' })
 
-      await ctx.plugin(createAgentPlugin('hidden-spend-agent', 'hidden-spend-model'))
       await ctx.plugin({
         name: 'hidden-spend-model',
         inject: ['agentModels'],
@@ -217,6 +506,7 @@ describe('Agent Runtime', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('hidden-spend-agent', 'hidden-spend-model'))
 
       await expect(ctx.agentRuntime.run({ agentId: 'hidden-spend-agent', message: 'Hello' }))
         .rejects.toMatchObject({ code: 'INVALID_MODEL_RESPONSE' })
@@ -233,7 +523,6 @@ describe('Agent Runtime', () => {
       await ctx.plugin(Entitlement)
       await ctx.plugin(EntitlementLocal, { defaultLimit: '100' })
       await ctx.plugin(AgentRuntime)
-      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({
         name: 'paid-model',
         inject: ['agentModels'],
@@ -251,6 +540,7 @@ describe('Agent Runtime', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
 
       const request = { agentId: 'paid-agent', message: 'Hello', entitlementAccount: 'paid' }
       await expect(ctx.agentRuntime.run(request)).resolves.toMatchObject({ model: 'paid-model' })
@@ -270,7 +560,6 @@ describe('Agent Runtime', () => {
       await ctx.plugin(Entitlement)
       await ctx.plugin(EntitlementLocal, { defaultLimit: '100' })
       await ctx.plugin(AgentRuntime)
-      await ctx.plugin(createAgentPlugin('invalid-agent', 'invalid-model'))
       await ctx.plugin({
         name: 'invalid-metered-model',
         inject: ['agentModels'],
@@ -287,6 +576,7 @@ describe('Agent Runtime', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('invalid-agent', 'invalid-model'))
 
       await expect(ctx.agentRuntime.run({
         agentId: 'invalid-agent',
@@ -322,7 +612,6 @@ describe('Agent Runtime', () => {
       const originalPlugin = ctx.plugin(createEntitlementPlugin('original', original))
       await originalPlugin
       await ctx.plugin(AgentRuntime)
-      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({
         name: 'delayed-paid-model',
         inject: ['agentModels'],
@@ -341,6 +630,7 @@ describe('Agent Runtime', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
 
       const run = ctx.agentRuntime.run({
         agentId: 'paid-agent',
@@ -393,7 +683,6 @@ describe('Agent Runtime', () => {
       await ctx.plugin(Entitlement)
       await ctx.plugin(EntitlementLocal, { defaultLimit: '100' })
       await ctx.plugin(AgentRuntime)
-      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
       await ctx.plugin({
         name: 'paid-model',
         inject: ['agentModels'],
@@ -410,6 +699,7 @@ describe('Agent Runtime', () => {
           })
         },
       })
+      await ctx.plugin(createAgentPlugin('paid-agent', 'paid-model'))
 
       await expect(ctx.agentRuntime.run({ agentId: 'paid-agent', message: 'Hello' }))
         .rejects.toMatchObject({ code: 'INVALID_REQUEST' })
@@ -419,26 +709,63 @@ describe('Agent Runtime', () => {
   })
 })
 
-function createAgentPlugin(id: string, model: string) {
+function createAgentPlugin(id: string, model: string, tools?: readonly string[]) {
   return {
     name: `${id}-agent`,
-    inject: ['agentRuntime', 'agentModels'],
+    inject: tools?.length ? ['agentRuntime', 'agentModels', 'tools'] : ['agentRuntime', 'agentModels'],
     apply(ctx: CordisContext) {
-      ctx.agentRuntime.registerAgent({ id, prompt: 'Test prompt', model }, ctx.agentModels)
+      ctx.agentRuntime.registerAgent(
+        { id, prompt: 'Test prompt', model, ...(tools === undefined ? {} : { tools }) },
+        ctx.agentModels,
+        tools?.length ? ctx.tools : undefined,
+      )
     },
   }
 }
 
-function createModelPlugin(id: string, content: string) {
+function createModelPlugin(
+  id: string,
+  content: string,
+  validateTools?: (tools: readonly ToolDescriptor[]) => void,
+) {
   return {
     name: `${id}-model`,
     inject: ['agentModels'],
     apply(ctx: CordisContext) {
       ctx.agentModels.register({
         id,
+        ...(validateTools ? { validateTools } : {}),
         async generate() {
           return { message: { role: 'assistant' as const, content } }
         },
+      })
+    },
+  }
+}
+
+function createToolPlugin(id: string, invoke: ToolContribution['invoke']) {
+  return {
+    name: `${id}-tool`,
+    inject: ['tools'],
+    apply(ctx: CordisContext) {
+      ctx.tools.register({
+        descriptor: {
+          id,
+          description: 'Double one integer.',
+          input: {
+            type: 'object',
+            properties: { value: { type: 'integer' } },
+            required: ['value'],
+            additionalProperties: false,
+          },
+          output: {
+            type: 'object',
+            properties: { doubled: { type: 'integer' } },
+            required: ['doubled'],
+            additionalProperties: false,
+          },
+        },
+        invoke,
       })
     },
   }

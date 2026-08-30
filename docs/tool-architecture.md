@@ -2,7 +2,7 @@
 
 English | [中文](tool-architecture.zh.md)
 
-> Status: discussion draft. This document records the current direction and unresolved questions. It does not define an implemented API or a stable compatibility promise.
+> Status: working architecture. Sections explicitly marked as future remain unresolved; the core registry, MCP bridges, activation validation, model tool mapping, tool loop, and durable tool history described below exist today.
 
 ## Purpose
 
@@ -67,11 +67,11 @@ Agent Runtime only uses the Tool registry. It neither discovers endpoints nor ha
 
 ### Agent Runtime and models
 
-An agent plugin names the logical tool IDs it may use. Discovery makes a tool available; it does not grant every agent access.
+An agent plugin names the logical tool IDs it may use. Discovery makes a tool available; it does not grant every agent access. Agent activation resolves its model and exact allowlist and validates the selected descriptors with that model provider. Concurrent Loader entries may leave an agent pending temporarily, but the settled-graph readiness phase fails before normal startup returns if any required capability remains missing or incompatible.
 
-For a model call, Agent Runtime resolves the agent's allowlist and adds each selected tool's name, description, and input schema to a structured provider-neutral model request. The Tool family does not construct the system prompt. A model-provider plugin translates the structured definitions into its provider's native function-calling format.
+For a model call, Agent Runtime uses the compiled allowlist and adds each selected tool's name, description, and input schema to a structured provider-neutral model request. The Tool family does not construct the system prompt. A model-provider plugin translates the structured definitions into its provider's native function-calling format.
 
-When the model returns a structured tool call, Agent Runtime asks the Tool registry to invoke it. The registry validates the call, applies policy, selects the provider, and returns a structured result. Agent Runtime records the call and result, adds them to the next model request, and continues the turn.
+When the model returns a structured tool call, Agent Runtime asks its leased Tool-registry view to invoke it. The registry validates the arguments, selects the already-bound implementation, validates its result, and returns structured JSON. Agent Runtime records both items in the versioned durable conversation, adds them to the next model request, and continues until the model returns final text or the agent's tool-round limit is reached.
 
 ## End-to-end flow
 
@@ -120,14 +120,13 @@ Tool descriptions and results are untrusted model input. Karaka validates schema
 
 Tool-call concurrency is policy, not unconditional registry behavior. The safe default is sequential execution. A developer-installed policy plugin may permit bounded overlap based on the tool and validated arguments. Policy composition, ordering barriers, and result ordering still need a final contract.
 
-All Karaka-side registrations belong to Cordis effects. A running turn binds a stable capability view; later turns see the currently loaded plugins. Disposal prevents new calls and lets already-started calls reach a defined terminal state. Request principals, tool calls, and results are runtime data, not per-user plugins.
+All Karaka-side registrations belong to Cordis effects. Model and Tool registries expose revisions for activation refresh. A running turn leases one stable agent, model, and Tool-registry view; later turns see the currently loaded plugins. Disposal prevents new calls and waits for existing leases to finish. Request principals, tool calls, and results are runtime data, not per-user plugins.
 
 ## Open questions
 
 - How long will Karaka support the pinned MCP `2026-07-28` revision before adding or moving a compatibility window?
 - What is the exact endpoint-discovery provider contract for replicas, health, updates, and conflicts?
 - How will each supported application framework mount the MCP endpoint and supply request context?
-- What is persisted so a durable chat can replay tool calls and results after a restart?
 - How do scheduling-policy plugins combine, and how are parallel calls bounded and committed in order?
 - Which failures become model-visible tool results, and which terminate the agent turn?
 - What are the timeout, retry, idempotency, and unknown-outcome rules for remote side effects?

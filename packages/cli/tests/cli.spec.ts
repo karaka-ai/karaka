@@ -76,6 +76,20 @@ describe('Karaka CLI', () => {
     expect(readFileSync(join(deployment, 'disposed'), 'utf8')).toBe('yes')
   })
 
+  it('rejects a settled graph whose plugin readiness validation fails', async () => {
+    const root = temporaryRoot()
+    writeFileSync(join(root, 'invalid.mjs'), [
+      'export function apply(ctx) {',
+      "  ctx.on('karaka/ready', () => { throw new Error('invalid agent graph') })",
+      '}',
+      '',
+    ].join('\n'))
+    writeFileSync(join(root, 'karaka.yaml'), '- name: ./invalid.mjs\n')
+
+    await expect(bootKaraka({ config: 'karaka.yaml', cwd: root }))
+      .rejects.toThrow('invalid agent graph')
+  })
+
   it('stays active until a signal and then disposes the whole graph', async () => {
     const root = temporaryRoot()
     writeFileSync(join(root, 'probe.mjs'), [

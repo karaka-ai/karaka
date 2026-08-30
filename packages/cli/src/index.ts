@@ -4,6 +4,13 @@ import { Context } from '@karaka/cordis'
 import Include from '@karaka/cordis-plugin-include'
 import Loader from '@karaka/cordis-plugin-loader'
 
+declare module '@karaka/cordis' {
+  interface Events {
+    /** Validate the complete settled plugin graph before startup succeeds. */
+    'karaka/ready'(): void | Promise<void>
+  }
+}
+
 export const START_USAGE = 'Usage: karaka start --config <path>'
 
 export interface StartOptions {
@@ -62,6 +69,7 @@ export async function bootKaraka(options: StartOptions): Promise<Context> {
       config: { path: pathToFileURL(configPath).href },
     })
     await ctx.loader.await()
+    await ctx.serial('karaka/ready')
     return ctx
   } catch (cause) {
     await ctx.fiber.dispose()

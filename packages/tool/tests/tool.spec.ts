@@ -241,6 +241,37 @@ describe('Tool core', () => {
     }
   })
 
+  it('retains exact tool implementations for a complete leased turn', async () => {
+    const ctx = new Context()
+
+    try {
+      await ctx.plugin(ToolCore)
+      const provider = ctx.plugin(toolPlugin({
+        descriptor: definition('math.double'),
+        async invoke(input) {
+          return { doubled: (input as { readonly value: number }).value * 2 }
+        },
+      }))
+      await provider
+      const lease = ctx.tools.lease(['math.double'])
+
+      let disposed = false
+      const disposal = provider.dispose().then(() => {
+        disposed = true
+      })
+      await expect.poll(() => ctx.tools.list()).toEqual([])
+      expect(disposed).toBe(false)
+      await expect(lease.invoke({ id: 'math.double', input: { value: 5 } })).resolves.toEqual({ doubled: 10 })
+      expect(() => ctx.tools.bind(['math.double'])).toThrow(expect.objectContaining({ code: 'UNKNOWN_TOOL' }))
+
+      lease.release()
+      await disposal
+      expect(disposed).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('forwards cancellation and rejects non-JSON boundary values', async () => {
     const ctx = new Context()
 

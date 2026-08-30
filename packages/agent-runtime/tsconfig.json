@@ -22,6 +22,12 @@
     },
     {
       "path": "../storage"
+    },
+    {
+      "path": "../sdk"
+    },
+    {
+      "path": "../tool"
     }
   ]
 }

@@ -1,10 +1,16 @@
 import { Service, type Context } from '@karaka/cordis'
 import type { EntitlementAccount, SpendAmount } from '@karaka/entitlement'
+import type { JsonValue, ToolDescriptor } from '@karaka/sdk/tool'
+import type { ToolLease, ToolService } from '@karaka/tool/core'
 
 declare module '@karaka/cordis' {
   interface Context {
     agentRuntime: AgentRuntimeService
     agentModels: AgentModelsService
+  }
+
+  interface Events {
+    'karaka/ready'(): void | Promise<void>
   }
 }
 
@@ -13,6 +19,10 @@ export interface AgentDescriptor {
   readonly id: string
   readonly prompt: string
   readonly model: string
+  /** Exact logical tool IDs exposed to this agent. */
+  readonly tools?: readonly string[]
+  /** Maximum consecutive model responses containing tool calls. Defaults to 8. */
+  readonly maxToolRounds?: number
 }
 
 /** Text message exchanged with a model provider. */
@@ -21,10 +31,30 @@ export interface ModelMessage {
   readonly content: string
 }
 
+/** One validated tool request returned by a model provider. */
+export interface ModelToolCall {
+  readonly type: 'tool-call'
+  readonly callId: string
+  readonly toolId: string
+  readonly input: JsonValue
+}
+
+/** One validated tool result supplied to the next model generation. */
+export interface ModelToolResult {
+  readonly type: 'tool-result'
+  readonly callId: string
+  readonly toolId: string
+  readonly output: JsonValue
+}
+
+/** Durable, provider-neutral conversation state. */
+export type ModelConversationItem = ModelMessage | ModelToolCall | ModelToolResult
+
 /** Provider-neutral input for one model generation. */
 export interface ModelRequest {
   readonly agentId: string
-  readonly messages: readonly ModelMessage[]
+  readonly messages: readonly ModelConversationItem[]
+  readonly tools: readonly ToolDescriptor[]
   readonly signal?: AbortSignal
 }
 
@@ -33,6 +63,8 @@ export interface ModelProvider {
   readonly id: string
   /** Omit only when this provider never reports spend. */
   readonly spendUnit?: string
+  /** Validate a complete model-facing tool set while an agent activates. */
+  validateTools?(tools: readonly ToolDescriptor[]): void
   generate(request: Readonly<ModelRequest>): Promise<ModelGeneration>
   /** Optional incremental generation path used by streaming consumers. */
   stream?(request: Readonly<ModelRequest>): AsyncIterable<ModelStreamEvent>
@@ -41,6 +73,7 @@ export interface ModelProvider {
 /** Provider-neutral model output and optional provider-reported spend. */
 export interface ModelGeneration {
   readonly message: ModelMessage
+  readonly toolCalls?: readonly ModelToolCall[]
   readonly spend?: SpendAmount
 }
 
@@ -53,7 +86,8 @@ export type ModelStreamEvent =
 export class AgentModelsService extends Service {
   static readonly provide = 'agentModels'
 
-  private readonly providers = new Map<string, ModelProvider>()
+  private readonly providers = new Map<string, RegisteredModel>()
+  private _revision = 0
 
   constructor(ctx: Context) {
     super(ctx, AgentModelsService.provide)
@@ -64,23 +98,59 @@ export class AgentModelsService extends Service {
     const id = requireText(provider.id, 'model ID')
     if (provider.spendUnit !== undefined) requireText(provider.spendUnit, 'model spend unit')
 
+    const registration: RegisteredModel = {
+      provider,
+      leases: 0,
+      active: true,
+    }
+
     return this.ctx.effect(() => {
       if (this.providers.has(id)) throw new Error(`model "${id}" is already registered`)
-      this.providers.set(id, provider)
-      return () => {
-        if (this.providers.get(id) === provider) this.providers.delete(id)
+      this.providers.set(id, registration)
+      this._revision++
+      return async () => {
+        if (this.providers.get(id) === registration) this.providers.delete(id)
+        registration.active = false
+        this._revision++
+        if (registration.leases) {
+          await new Promise<void>(resolve => {
+            registration.resolveDrained = resolve
+          })
+        }
       }
     }, `agentModels.register(${JSON.stringify(id)})`)
   }
 
   /** Resolve one provider from this Cordis service scope. */
   resolve(id: string): ModelProvider | undefined {
-    return this.providers.get(id)
+    return this.providers.get(id)?.provider
   }
 
   /** List model IDs from this Cordis service scope. */
   list(): readonly string[] {
     return [...this.providers.keys()]
+  }
+
+  /** Monotonic provider version used to refresh compiled agent definitions. */
+  get revision(): number {
+    return this._revision
+  }
+
+  /** Retain one provider for a complete in-flight Agent Runtime turn. */
+  lease(id: string): ModelLease {
+    const registration = this.providers.get(id)
+    if (!registration) throw new AgentRuntimeError('UNKNOWN_MODEL', `model "${id}" is not registered`)
+    registration.leases++
+    let active = true
+    return Object.freeze({
+      provider: registration.provider,
+      release: () => {
+        if (!active) return
+        active = false
+        registration.leases--
+        if (!registration.active && !registration.leases) registration.resolveDrained?.()
+      },
+    })
   }
 }
 
@@ -147,7 +217,7 @@ export interface AgentSession {
   readonly owner: AgentSessionOwner
   readonly agentId: string
   readonly entitlementAccount: string
-  readonly messages: readonly ModelMessage[]
+  readonly messages: readonly ModelConversationItem[]
   readonly version: number
 }
 
@@ -159,7 +229,7 @@ export type AgentSessionOpenRequest =
 /** One session capability bound for the complete durable turn. */
 export interface AgentSessionLease {
   readonly session: AgentSession
-  commit(messages: readonly ModelMessage[]): Promise<AgentSession>
+  commit(messages: readonly ModelConversationItem[]): Promise<AgentSession>
 }
 
 /** Session behavior contributed by an ordinary Agent Runtime plugin. */
@@ -177,6 +247,8 @@ export type AgentRuntimeErrorCode =
   | 'ABORTED'
   | 'UNKNOWN_AGENT'
   | 'UNKNOWN_MODEL'
+  | 'INVALID_AGENT'
+  | 'TOOL_ROUND_LIMIT'
   | 'SESSION_UNAVAILABLE'
   | 'CHAT_NOT_FOUND'
   | 'SESSION_CONFLICT'
@@ -202,28 +274,59 @@ export class AgentRuntimeService extends Service {
   constructor(ctx: Context) {
     super(ctx, 'agentRuntime')
     new AgentModelsService(ctx)
+    ctx.on('karaka/ready', () => this.assertReady())
   }
 
   /** Register an agent descriptor until the contributing plugin unloads. */
-  registerAgent(definition: Readonly<AgentDescriptor>, models: AgentModelsService) {
+  registerAgent(
+    definition: Readonly<AgentDescriptor>,
+    models: AgentModelsService,
+    tools?: ToolService,
+  ) {
+    const allowedTools = definition.tools === undefined
+      ? undefined
+      : Object.freeze(requireToolIds(definition.tools))
+    const maxToolRounds = definition.maxToolRounds === undefined
+      ? undefined
+      : requirePositiveInteger(definition.maxToolRounds, 'maximum tool rounds')
     const agent = Object.freeze({
       id: requireText(definition.id, 'agent ID'),
       prompt: requireText(definition.prompt, 'agent prompt'),
       model: requireText(definition.model, 'agent model'),
+      ...(allowedTools === undefined ? {} : { tools: allowedTools }),
+      ...(maxToolRounds === undefined ? {} : { maxToolRounds }),
     })
     if (!models || typeof models.resolve !== 'function') {
       throw new TypeError('agent models service is required')
     }
-    const registration: RegisteredAgent = Object.freeze({
+    if (allowedTools?.length && (!tools || typeof tools.bind !== 'function')) {
+      throw new TypeError('tool service is required for an agent with tools')
+    }
+    const registration: RegisteredAgent = {
       definition: agent,
-      resolveModel: (id: string) => models.resolve(id),
-    })
+      models,
+      tools,
+      snapshot: undefined,
+      operations: 0,
+      active: true,
+    }
+    try {
+      this.compileAgent(registration)
+    } catch (error) {
+      if (!(error instanceof PendingAgentDependency)) throw error
+    }
 
     return this.ctx.effect(() => {
       if (this.agents.has(agent.id)) throw new Error(`agent "${agent.id}" is already registered`)
       this.agents.set(agent.id, registration)
-      return () => {
+      return async () => {
         if (this.agents.get(agent.id) === registration) this.agents.delete(agent.id)
+        registration.active = false
+        if (registration.operations) {
+          await new Promise<void>(resolve => {
+            registration.resolveDrained = resolve
+          })
+        }
       }
     }, `agentRuntime.registerAgent(${JSON.stringify(agent.id)})`)
   }
@@ -258,7 +361,30 @@ export class AgentRuntimeService extends Service {
 
   /** List globally addressable agent descriptors. */
   listAgents(): readonly AgentDescriptor[] {
-    return [...this.agents.values()].map(registration => registration.definition)
+    return [...this.agents.values()].flatMap(registration => {
+      try {
+        this.refreshAgent(registration)
+        return [registration.definition]
+      } catch {
+        return []
+      }
+    })
+  }
+
+  /** Reject normal process readiness while any registered agent cannot activate. */
+  assertReady(): void {
+    const errors = [...this.agents.values()].flatMap(registration => {
+      try {
+        this.refreshAgent(registration)
+        return []
+      } catch (error) {
+        return [invalidAgent(registration.definition, error)]
+      }
+    })
+    if (errors.length === 1) throw errors[0]
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `multiple agents failed activation: ${errors.map(error => error.message).join('; ')}`)
+    }
   }
 
   /** List model IDs from the caller's native Cordis model scope. */
@@ -366,128 +492,111 @@ export class AgentRuntimeService extends Service {
     agentId: string,
     message: string,
     requestedEntitlementAccount: string | undefined,
-    history: readonly ModelMessage[],
+    history: readonly ModelConversationItem[],
     options: Readonly<AgentRuntimeRunOptions>,
   ) {
-    const registration = this.resolveAgent(agentId)
-    const agent = registration.definition
-    const model = registration.resolveModel(agent.model)
-    if (!model) throw new AgentRuntimeError('UNKNOWN_MODEL', `model "${agent.model}" is not registered`)
-
-    const entitlementAccount = model.spendUnit === undefined
-      ? undefined
-      : requireRequestText(requestedEntitlementAccount, 'entitlement account')
-    const messages: readonly ModelMessage[] = Object.freeze([
-      Object.freeze({ role: 'system' as const, content: agent.prompt }),
-      ...conversationMessages(history),
-      Object.freeze({ role: 'user' as const, content: message }),
-    ])
-    const request: Readonly<ModelRequest> = Object.freeze(options.signal
-      ? { agentId, messages, signal: options.signal }
-      : { agentId, messages })
-    const generate = async (entitlement?: EntitlementAccount) => {
-      try {
-        assertNotAborted(options.signal)
-        const response = await model.generate(request)
-        const spend = validateModelSpend(model, response?.spend)
-        if (spend) await entitlement!.recordSpend(spend)
-        assertNotAborted(options.signal)
-        if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
-          throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
-        }
-
-        const assistant = Object.freeze({ role: response.message.role, content: response.message.content })
-        return Object.freeze({
-          result: Object.freeze({ agentId, model: agent.model, message: assistant }),
-          messages: Object.freeze([...messages, assistant]),
-        })
-      } catch (error) {
-        if (options.signal?.aborted && !(error instanceof AgentRuntimeError && error.code === 'ABORTED')) {
-          throw aborted(error)
-        }
-        throw error
-      }
-    }
-
-    if (model.spendUnit === undefined) return generate()
-    return this.ctx.entitlement.withAccount(entitlementAccount!, async (entitlement) => {
-      await entitlement.assertAvailable(model.spendUnit!)
-      return generate(entitlement)
-    })
+    return this.runToolLoop(
+      agentId,
+      message,
+      requestedEntitlementAccount,
+      history,
+      options,
+      request => request.agent.model.generate(request.request),
+    )
   }
 
   private async streamTurn(
     agentId: string,
     message: string,
     requestedEntitlementAccount: string | undefined,
-    history: readonly ModelMessage[],
+    history: readonly ModelConversationItem[],
     emit: AgentRuntimeEventSink,
     options: Readonly<AgentRuntimeStreamOptions>,
   ) {
-    const registration = this.resolveAgent(agentId)
-    const agent = registration.definition
-    const model = registration.resolveModel(agent.model)
-    if (!model) throw new AgentRuntimeError('UNKNOWN_MODEL', `model "${agent.model}" is not registered`)
+    return this.runToolLoop(
+      agentId,
+      message,
+      requestedEntitlementAccount,
+      history,
+      options,
+      request => this.streamModel(request, emit, options.signal),
+    )
+  }
 
-    const entitlementAccount = model.spendUnit === undefined
-      ? undefined
-      : requireRequestText(requestedEntitlementAccount, 'entitlement account')
-    const messages: readonly ModelMessage[] = Object.freeze([
-      Object.freeze({ role: 'system' as const, content: agent.prompt }),
-      ...conversationMessages(history),
-      Object.freeze({ role: 'user' as const, content: message }),
-    ])
-    const request: Readonly<ModelRequest> = Object.freeze(options.signal
-      ? { agentId, messages, signal: options.signal }
-      : { agentId, messages })
-    const complete = async (response: ModelGeneration, entitlement?: EntitlementAccount) => {
-      const spend = validateModelSpend(model, response?.spend)
-      if (spend) await entitlement!.recordSpend(spend)
-      if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
-        throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" returned an invalid response`)
-      }
-      const assistant = Object.freeze({ role: response.message.role, content: response.message.content })
-      return Object.freeze({
-        result: Object.freeze({ agentId, model: agent.model, message: assistant }),
-        messages: Object.freeze([...messages, assistant]),
-      })
+  private async runToolLoop(
+    agentId: string,
+    message: string,
+    requestedEntitlementAccount: string | undefined,
+    history: readonly ModelConversationItem[],
+    options: Readonly<AgentRuntimeRunOptions>,
+    generate: ModelStep,
+  ): Promise<GeneratedTurn> {
+    const agent = this.acquireAgent(agentId)
+    let entitlementAccount: string | undefined
+    try {
+      entitlementAccount = agent.model.spendUnit === undefined
+        ? undefined
+        : requireRequestText(requestedEntitlementAccount, 'entitlement account')
+    } catch (error) {
+      agent.release()
+      throw error
     }
-    const generate = async (entitlement?: EntitlementAccount) => {
-      try {
-        assertNotAborted(options.signal)
-        if (!model.stream) {
-          const turn = await complete(await model.generate(request), entitlement)
-          assertNotAborted(options.signal)
-          if (turn.result.message.content) {
-            await emit(Object.freeze({ type: 'text-delta', delta: turn.result.message.content }))
-          }
-          return turn
-        }
+    const messages: ModelConversationItem[] = [
+      Object.freeze({ role: 'system' as const, content: agent.definition.prompt }),
+      ...conversationItems(history),
+      Object.freeze({ role: 'user' as const, content: message }),
+    ]
 
-        let response: ModelGeneration | undefined
-        let content = ''
-        for await (const event of model.stream(request)) {
+    const run = async (entitlement?: EntitlementAccount) => {
+      try {
+        for (let toolRound = 0; ; toolRound++) {
           assertNotAborted(options.signal)
-          if (response) {
-            throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" streamed after completion`)
+          if (entitlement) await entitlement.assertAvailable(agent.model.spendUnit!)
+          const request: Readonly<ModelRequest> = Object.freeze({
+            agentId,
+            messages: Object.freeze([...messages]),
+            tools: agent.descriptors,
+            ...(options.signal ? { signal: options.signal } : {}),
+          })
+          const response = await generate(Object.freeze({ agent, request }))
+          const spend = validateModelSpend(agent.model, response?.spend)
+          if (spend) await entitlement!.recordSpend(spend)
+          assertNotAborted(options.signal)
+          const generation = validateModelGeneration(agent.model, response)
+
+          if (!generation.toolCalls.length) {
+            messages.push(generation.message)
+            return Object.freeze({
+              result: Object.freeze({
+                agentId,
+                model: agent.definition.model,
+                message: generation.message,
+              }),
+              messages: Object.freeze(messages),
+            })
           }
-          if (event?.type === 'text-delta' && typeof event.delta === 'string') {
-            content += event.delta
-            if (event.delta) await emit(Object.freeze({ type: 'text-delta', delta: event.delta }))
-          } else if (event?.type === 'completed' && event.generation) {
-            response = event.generation
-          } else {
-            throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" streamed an invalid event`)
+          if (toolRound >= agent.maxToolRounds) {
+            throw new AgentRuntimeError(
+              'TOOL_ROUND_LIMIT',
+              `agent "${agentId}" exceeded ${agent.maxToolRounds} tool rounds`,
+            )
           }
+          if (generation.message.content) messages.push(generation.message)
+          messages.push(...generation.toolCalls)
+          const results: ModelToolResult[] = []
+          for (const call of generation.toolCalls) {
+            results.push(Object.freeze({
+              type: 'tool-result',
+              callId: call.callId,
+              toolId: call.toolId,
+              output: await agent.tools.invoke(
+                { id: call.toolId, input: call.input },
+                options.signal ? { signal: options.signal } : undefined,
+              ),
+            }))
+          }
+          messages.push(...results)
         }
-        if (!response) {
-          throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" did not complete its stream`)
-        }
-        const turn = await complete(response, entitlement)
-        if (turn.result.message.content !== content) {
-          throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${agent.model}" streamed inconsistent text`)
-        }
-        return turn
       } catch (error) {
         if (options.signal?.aborted && !(error instanceof AgentRuntimeError && error.code === 'ABORTED')) {
           throw aborted(error)
@@ -496,17 +605,148 @@ export class AgentRuntimeService extends Service {
       }
     }
 
-    if (model.spendUnit === undefined) return generate()
-    return this.ctx.entitlement.withAccount(entitlementAccount!, async (entitlement) => {
-      await entitlement.assertAvailable(model.spendUnit!)
-      return generate(entitlement)
-    })
+    try {
+      if (agent.model.spendUnit === undefined) return await run()
+      return await this.ctx.entitlement.withAccount(entitlementAccount!, run)
+    } finally {
+      agent.release()
+    }
+  }
+
+  private async streamModel(
+    step: Readonly<ModelStepRequest>,
+    emit: AgentRuntimeEventSink,
+    signal?: AbortSignal,
+  ): Promise<ModelGeneration> {
+    const model = step.agent.model
+    if (!model.stream) {
+      const response = await model.generate(step.request)
+      if (response?.message?.content) {
+        await emit(Object.freeze({ type: 'text-delta', delta: response.message.content }))
+      }
+      return response
+    }
+
+    let response: ModelGeneration | undefined
+    let content = ''
+    for await (const event of model.stream(step.request)) {
+      assertNotAborted(signal)
+      if (response) {
+        throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" streamed after completion`)
+      }
+      if (event?.type === 'text-delta' && typeof event.delta === 'string') {
+        content += event.delta
+        if (event.delta) await emit(Object.freeze({ type: 'text-delta', delta: event.delta }))
+      } else if (event?.type === 'completed' && event.generation) {
+        response = event.generation
+      } else {
+        throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" streamed an invalid event`)
+      }
+    }
+    if (!response) {
+      throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" did not complete its stream`)
+    }
+    if (response.message?.content !== content) {
+      throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" streamed inconsistent text`)
+    }
+    return response
   }
 
   private resolveAgent(agentId: string) {
     const registration = this.agents.get(agentId)
     if (!registration) throw new AgentRuntimeError('UNKNOWN_AGENT', `agent "${agentId}" is not registered`)
     return registration
+  }
+
+  private compileAgent(registration: RegisteredAgent): CompiledAgent {
+    const definition = registration.definition
+    const model = registration.models.resolve(definition.model)
+    if (!model) {
+      throw new PendingAgentDependency(`model "${definition.model}" is not registered`)
+    }
+
+    const toolIds = definition.tools ?? []
+    let descriptors: readonly ToolDescriptor[] = Object.freeze([])
+    if (toolIds.length) {
+      try {
+        const available = new Set(registration.tools!.list().map(tool => tool.id))
+        const missing = toolIds.find(id => !available.has(id))
+        if (missing) throw new PendingAgentDependency(`tool "${missing}" is not registered`)
+        descriptors = registration.tools!.bind(toolIds).descriptors
+        if (!model.validateTools) {
+          throw new TypeError(`model "${model.id}" does not support tools`)
+        }
+        const validation: unknown = model.validateTools(descriptors)
+        if (validation && typeof validation === 'object' && 'then' in validation) {
+          throw new TypeError(`model "${model.id}" tool validation must be synchronous`)
+        }
+      } catch (error) {
+        if (error instanceof PendingAgentDependency) throw error
+        throw new AgentRuntimeError('INVALID_AGENT', `agent "${definition.id}" has an invalid tool set`, {
+          cause: error,
+        })
+      }
+    }
+
+    const snapshot: CompiledAgent = Object.freeze({
+      modelRevision: registration.models.revision,
+      toolRevision: registration.tools?.revision ?? -1,
+      descriptors,
+      maxToolRounds: definition.maxToolRounds ?? 8,
+    })
+    registration.snapshot = snapshot
+    return snapshot
+  }
+
+  private refreshAgent(registration: RegisteredAgent): CompiledAgent {
+    const snapshot = registration.snapshot
+    if (
+      !snapshot
+      || snapshot.modelRevision !== registration.models.revision
+      || snapshot.toolRevision !== (registration.tools?.revision ?? -1)
+    ) {
+      return this.compileAgent(registration)
+    }
+    return snapshot
+  }
+
+  private acquireAgent(agentId: string): ActiveAgent {
+    const registration = this.resolveAgent(agentId)
+    registration.operations++
+    let model: ModelLease | undefined
+    let tools: ToolLease | undefined
+    try {
+      let compiled: CompiledAgent
+      try {
+        compiled = this.refreshAgent(registration)
+      } catch (error) {
+        throw invalidAgent(registration.definition, error)
+      }
+      model = registration.models.lease(registration.definition.model)
+      tools = registration.tools?.lease(registration.definition.tools ?? []) ?? emptyToolLease()
+      let active = true
+      return Object.freeze({
+        definition: registration.definition,
+        model: model.provider,
+        tools,
+        descriptors: tools.descriptors,
+        maxToolRounds: compiled.maxToolRounds,
+        release: () => {
+          if (!active) return
+          active = false
+          tools!.release()
+          model!.release()
+          registration.operations--
+          if (!registration.active && !registration.operations) registration.resolveDrained?.()
+        },
+      })
+    } catch (error) {
+      tools?.release()
+      model?.release()
+      registration.operations--
+      if (!registration.active && !registration.operations) registration.resolveDrained?.()
+      throw error
+    }
   }
 
   private async withSessionProvider<T>(operation: (provider: AgentSessionProvider) => Promise<T>): Promise<T> {
@@ -532,21 +772,63 @@ interface RegisteredSessionProvider {
   resolveDrained?: () => void
 }
 
+class PendingAgentDependency extends Error {}
+
+interface RegisteredModel {
+  readonly provider: ModelProvider
+  leases: number
+  active: boolean
+  resolveDrained?: () => void
+}
+
+interface ModelLease {
+  readonly provider: ModelProvider
+  release(): void
+}
+
 interface RegisteredAgent {
   readonly definition: AgentDescriptor
-  readonly resolveModel: (id: string) => ModelProvider | undefined
+  readonly models: AgentModelsService
+  readonly tools: ToolService | undefined
+  snapshot: CompiledAgent | undefined
+  operations: number
+  active: boolean
+  resolveDrained?: () => void
 }
+
+interface CompiledAgent {
+  readonly modelRevision: number
+  readonly toolRevision: number
+  readonly descriptors: readonly ToolDescriptor[]
+  readonly maxToolRounds: number
+}
+
+interface ActiveAgent {
+  readonly definition: AgentDescriptor
+  readonly model: ModelProvider
+  readonly tools: ToolLease
+  readonly descriptors: readonly ToolDescriptor[]
+  readonly maxToolRounds: number
+  release(): void
+}
+
+interface ModelStepRequest {
+  readonly agent: ActiveAgent
+  readonly request: Readonly<ModelRequest>
+}
+
+type ModelStep = (request: Readonly<ModelStepRequest>) => Promise<ModelGeneration>
 
 interface GeneratedTurn {
   readonly result: AgentRunResult
-  readonly messages: readonly ModelMessage[]
+  readonly messages: readonly ModelConversationItem[]
 }
 
 type TurnGenerator = (
   agentId: string,
   message: string,
   entitlementAccount: string | undefined,
-  history: readonly ModelMessage[],
+  history: readonly ModelConversationItem[],
 ) => Promise<GeneratedTurn>
 
 interface ExpectedSession {
@@ -554,7 +836,7 @@ interface ExpectedSession {
   readonly owner?: AgentSessionOwner
   readonly agentId?: string
   readonly entitlementAccount?: string
-  readonly messages?: readonly ModelMessage[]
+  readonly messages?: readonly ModelConversationItem[]
   readonly version?: number
 }
 
@@ -590,18 +872,7 @@ function validateSession(session: AgentSession, expected: ExpectedSession): Agen
     if (!Number.isSafeInteger(session?.version) || session.version < 1) {
       throw new TypeError('session version must be a positive safe integer')
     }
-    if (!Array.isArray(session?.messages)) throw new TypeError('session messages must be an array')
-    const messages = Object.freeze(session.messages.map((message, index) => {
-      if (
-        !message
-        || !['system', 'user', 'assistant'].includes(message.role)
-        || typeof message.content !== 'string'
-        || (message.role === 'system' && index !== 0)
-      ) {
-        throw new TypeError('session contains an invalid model message')
-      }
-      return Object.freeze({ role: message.role, content: message.content })
-    }))
+    const messages = validateConversationItems(session?.messages, 'session')
     if (
       (expected.id !== undefined && id !== expected.id)
       || (expected.owner !== undefined && !sameOwner(owner, expected.owner))
@@ -619,20 +890,173 @@ function validateSession(session: AgentSession, expected: ExpectedSession): Agen
   }
 }
 
-function conversationMessages(history: readonly ModelMessage[]): readonly ModelMessage[] {
+function conversationItems(history: readonly ModelConversationItem[]): readonly ModelConversationItem[] {
   if (!history.length) return []
-  return history[0]?.role === 'system' ? history.slice(1) : history
+  const first = history[0]
+  return isModelMessage(first) && first.role === 'system' ? history.slice(1) : history
 }
 
 function sameOwner(left: AgentSessionOwner, right: AgentSessionOwner) {
   return left.tenantId === right.tenantId && left.subject === right.subject
 }
 
-function sameMessages(left: readonly ModelMessage[], right: readonly ModelMessage[]) {
+function sameMessages(left: readonly ModelConversationItem[], right: readonly ModelConversationItem[]) {
   return left.length === right.length && left.every((message, index) => {
     const expected = right[index]
-    return message.role === expected?.role && message.content === expected.content
+    if (!expected || isModelMessage(message) !== isModelMessage(expected)) return false
+    if (isModelMessage(message) && isModelMessage(expected)) {
+      return message.role === expected.role && message.content === expected.content
+    }
+    if (isToolCall(message) && isToolCall(expected)) {
+      return message.callId === expected.callId
+        && message.toolId === expected.toolId
+        && sameJson(message.input, expected.input)
+    }
+    if (isToolResult(message) && isToolResult(expected)) {
+      return message.callId === expected.callId
+        && message.toolId === expected.toolId
+        && sameJson(message.output, expected.output)
+    }
+    return false
   })
+}
+
+function validateModelGeneration(model: ModelProvider, response: ModelGeneration): {
+  readonly message: ModelMessage
+  readonly toolCalls: readonly ModelToolCall[]
+} {
+  if (response?.message?.role !== 'assistant' || typeof response.message.content !== 'string') {
+    throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned an invalid response`)
+  }
+  if (response.toolCalls !== undefined && !Array.isArray(response.toolCalls)) {
+    throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned invalid tool calls`)
+  }
+  const callIds = new Set<string>()
+  const toolCalls = Object.freeze((response.toolCalls ?? []).map(call => {
+    try {
+      if (call?.type !== 'tool-call') throw new TypeError('tool call type is invalid')
+      const callId = requireText(call.callId, 'tool call ID')
+      const toolId = requireText(call.toolId, 'tool ID')
+      if (callIds.has(callId)) throw new TypeError(`tool call ID "${callId}" is duplicated`)
+      callIds.add(callId)
+      return Object.freeze({
+        type: 'tool-call' as const,
+        callId,
+        toolId,
+        input: freezeModelJson(call.input, 'tool input'),
+      })
+    } catch (error) {
+      throw new AgentRuntimeError('INVALID_MODEL_RESPONSE', `model "${model.id}" returned an invalid tool call`, {
+        cause: error,
+      })
+    }
+  }))
+  return Object.freeze({
+    message: Object.freeze({ role: 'assistant' as const, content: response.message.content }),
+    toolCalls,
+  })
+}
+
+function validateConversationItems(value: unknown, label: string): readonly ModelConversationItem[] {
+  if (!Array.isArray(value)) throw new TypeError(`${label} messages must be an array`)
+  const calls = new Map<string, string>()
+  const results = new Set<string>()
+  const items = value.map((item, index) => {
+    if (isModelMessage(item)) {
+      if (!['system', 'user', 'assistant'].includes(item.role) || typeof item.content !== 'string') {
+        throw new TypeError(`${label} contains an invalid model message`)
+      }
+      if (item.role === 'system' && index !== 0) throw new TypeError(`${label} contains a misplaced system message`)
+      return Object.freeze({ role: item.role, content: item.content })
+    }
+    if (isToolCall(item)) {
+      const callId = requireText(item.callId, 'tool call ID')
+      const toolId = requireText(item.toolId, 'tool ID')
+      if (calls.has(callId)) throw new TypeError(`${label} contains a duplicate tool call ID`)
+      calls.set(callId, toolId)
+      return Object.freeze({
+        type: 'tool-call' as const,
+        callId,
+        toolId,
+        input: freezeModelJson(item.input, 'tool input'),
+      })
+    }
+    if (isToolResult(item)) {
+      const callId = requireText(item.callId, 'tool result call ID')
+      const toolId = requireText(item.toolId, 'tool ID')
+      if (calls.get(callId) !== toolId || results.has(callId)) {
+        throw new TypeError(`${label} contains an unmatched tool result`)
+      }
+      results.add(callId)
+      return Object.freeze({
+        type: 'tool-result' as const,
+        callId,
+        toolId,
+        output: freezeModelJson(item.output, 'tool output'),
+      })
+    }
+    throw new TypeError(`${label} contains an invalid conversation item`)
+  })
+  if (calls.size !== results.size) throw new TypeError(`${label} contains a tool call without a result`)
+  return Object.freeze(items)
+}
+
+function isModelMessage(value: unknown): value is ModelMessage {
+  return !!value && typeof value === 'object' && !Object.hasOwn(value, 'type')
+}
+
+function isToolCall(value: unknown): value is ModelToolCall {
+  return !!value && typeof value === 'object' && (value as { type?: unknown }).type === 'tool-call'
+}
+
+function isToolResult(value: unknown): value is ModelToolResult {
+  return !!value && typeof value === 'object' && (value as { type?: unknown }).type === 'tool-result'
+}
+
+function freezeModelJson(value: unknown, label: string, ancestors = new Set<object>()): JsonValue {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return value
+  if (typeof value === 'number') {
+    if (Number.isFinite(value)) return value
+    throw new TypeError(`${label} must contain only finite JSON numbers`)
+  }
+  if (!value || typeof value !== 'object') throw new TypeError(`${label} must be JSON-compatible`)
+  if (ancestors.has(value)) throw new TypeError(`${label} must not contain cycles`)
+  ancestors.add(value)
+  if (Array.isArray(value)) {
+    const result = value.map(item => freezeModelJson(item, label, ancestors))
+    ancestors.delete(value)
+    return Object.freeze(result)
+  }
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`${label} must contain only plain objects`)
+  }
+  const result: { [key: string]: JsonValue } = {}
+  for (const [key, item] of Object.entries(value)) {
+    Object.defineProperty(result, key, {
+      configurable: true,
+      enumerable: true,
+      value: freezeModelJson(item, label, ancestors),
+      writable: true,
+    })
+  }
+  ancestors.delete(value)
+  return Object.freeze(result)
+}
+
+function sameJson(left: JsonValue, right: JsonValue): boolean {
+  if (left === right) return true
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((item, index) => sameJson(item, right[index]!))
+  }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
+  if (Array.isArray(left) || Array.isArray(right)) return false
+  const leftObject = left as { readonly [key: string]: JsonValue }
+  const rightObject = right as { readonly [key: string]: JsonValue }
+  const leftKeys = Object.keys(leftObject)
+  const rightKeys = Object.keys(rightObject)
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every(key => Object.hasOwn(rightObject, key) && sameJson(leftObject[key]!, rightObject[key]!))
 }
 
 function validateModelSpend(model: ModelProvider, spend: SpendAmount | undefined): SpendAmount | undefined {
@@ -653,6 +1077,38 @@ function validateModelSpend(model: ModelProvider, spend: SpendAmount | undefined
 function requireText(value: unknown, label: string): string {
   if (typeof value === 'string' && value.trim()) return value
   throw new TypeError(`${label} must be a non-empty string`)
+}
+
+function invalidAgent(definition: AgentDescriptor, cause: unknown) {
+  if (cause instanceof AgentRuntimeError && cause.code === 'INVALID_AGENT') return cause
+  const detail = cause instanceof Error ? cause.message : String(cause)
+  return new AgentRuntimeError('INVALID_AGENT', `agent "${definition.id}" cannot activate: ${detail}`, { cause })
+}
+
+function requireToolIds(value: readonly string[]): string[] {
+  if (!Array.isArray(value)) throw new TypeError('agent tools must be an array')
+  const seen = new Set<string>()
+  return value.map(item => {
+    const id = requireText(item, 'tool ID')
+    if (seen.has(id)) throw new TypeError(`tool "${id}" appears more than once in the agent`)
+    seen.add(id)
+    return id
+  })
+}
+
+function requirePositiveInteger(value: unknown, label: string): number {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  throw new TypeError(`${label} must be a positive integer`)
+}
+
+function emptyToolLease(): ToolLease {
+  return Object.freeze({
+    descriptors: Object.freeze([]),
+    invoke: async () => {
+      throw new Error('an empty tool lease cannot invoke a tool')
+    },
+    release() {},
+  })
 }
 
 function requireRequestText(value: unknown, label: string): string {

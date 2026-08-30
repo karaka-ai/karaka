@@ -57,12 +57,18 @@ export interface ToolSet {
   ): Promise<JsonValue>
 }
 
+/** A bound tool set retained for one complete Agent Runtime turn. */
+export interface ToolLease extends ToolSet {
+  release(): void
+}
+
 interface RegisteredTool {
   readonly descriptor: ToolDescriptor
   readonly invoke: ToolHandler
   readonly validateInput: ValidateFunction
   readonly validateOutput: ValidateFunction
   invocations: number
+  leases: number
   active: boolean
   resolveDrained?: () => void
 }
@@ -72,6 +78,7 @@ export class ToolService extends Service {
   static readonly provide = 'tools'
 
   private readonly registrations = new Map<string, RegisteredTool>()
+  private _revision = 0
 
   constructor(ctx: Context) {
     super(ctx, ToolService.provide)
@@ -89,16 +96,19 @@ export class ToolService extends Service {
       validateInput: this.compile(descriptor.input, descriptor.id, 'input'),
       validateOutput: this.compile(descriptor.output, descriptor.id, 'output'),
       invocations: 0,
+      leases: 0,
       active: true,
     }
 
     return this.ctx.effect(() => {
       if (this.registrations.has(descriptor.id)) throw new Error(`tool "${descriptor.id}" is already registered`)
       this.registrations.set(descriptor.id, registration)
+      this._revision++
       return async () => {
         if (this.registrations.get(descriptor.id) === registration) this.registrations.delete(descriptor.id)
         registration.active = false
-        if (registration.invocations) {
+        this._revision++
+        if (registration.invocations || registration.leases) {
           await new Promise<void>(resolve => {
             registration.resolveDrained = resolve
           })
@@ -112,8 +122,47 @@ export class ToolService extends Service {
     return [...this.registrations.values()].map(registration => registration.descriptor)
   }
 
+  /** Monotonic catalogue version used to refresh compiled agent definitions. */
+  get revision(): number {
+    return this._revision
+  }
+
   /** Resolve and bind the exact allowlist for one agent activation or turn. */
   bind(allowedIds: readonly string[]): ToolSet {
+    const allowed = this.resolveAllowed(allowedIds)
+
+    return Object.freeze({
+      descriptors: Object.freeze([...allowed.values()].map(registration => registration.descriptor)),
+      invoke: (request: Readonly<ToolInvokeRequest>, context?: Readonly<ToolInvocationContext>) => {
+        return this.invokeBound(allowed, request, context, false)
+      },
+    })
+  }
+
+  /** Retain the exact implementations selected for one in-flight turn. */
+  lease(allowedIds: readonly string[]): ToolLease {
+    const allowed = this.resolveAllowed(allowedIds)
+    for (const registration of allowed.values()) registration.leases++
+    let active = true
+
+    return Object.freeze({
+      descriptors: Object.freeze([...allowed.values()].map(registration => registration.descriptor)),
+      invoke: (request: Readonly<ToolInvokeRequest>, context?: Readonly<ToolInvocationContext>) => {
+        if (!active) throw new ToolError('UNAVAILABLE', 'tool lease is no longer active')
+        return this.invokeBound(allowed, request, context, true)
+      },
+      release: () => {
+        if (!active) return
+        active = false
+        for (const registration of allowed.values()) {
+          registration.leases--
+          this.resolveDrain(registration)
+        }
+      },
+    })
+  }
+
+  private resolveAllowed(allowedIds: readonly string[]) {
     if (!Array.isArray(allowedIds)) throw requestError('tool allowlist must be an array')
     const allowed = new Map<string, RegisteredTool>()
     for (const value of allowedIds) {
@@ -123,24 +172,19 @@ export class ToolService extends Service {
       if (!registration) throw new ToolError('UNKNOWN_TOOL', `tool "${id}" is not registered`)
       allowed.set(id, registration)
     }
-
-    return Object.freeze({
-      descriptors: Object.freeze([...allowed.values()].map(registration => registration.descriptor)),
-      invoke: (request: Readonly<ToolInvokeRequest>, context?: Readonly<ToolInvocationContext>) => {
-        return this.invokeBound(allowed, request, context)
-      },
-    })
+    return allowed
   }
 
   private async invokeBound(
     allowed: ReadonlyMap<string, RegisteredTool>,
     request: Readonly<ToolInvokeRequest>,
     context: Readonly<ToolInvocationContext> = {},
+    leased: boolean,
   ): Promise<JsonValue> {
     const id = requestText(request?.id, 'tool ID')
     const registration = allowed.get(id)
     if (!registration) throw new ToolError('NOT_ALLOWED', `tool "${id}" is not allowed`)
-    if (!registration.active) throw new ToolError('UNAVAILABLE', `tool "${id}" is no longer available`)
+    if (!leased && !registration.active) throw new ToolError('UNAVAILABLE', `tool "${id}" is no longer available`)
     assertNotAborted(context.signal)
 
     const input = jsonBoundaryValue(request?.input, 'tool input', 'INVALID_INPUT')
@@ -166,7 +210,13 @@ export class ToolService extends Service {
       return result
     } finally {
       registration.invocations--
-      if (!registration.active && !registration.invocations) registration.resolveDrained?.()
+      this.resolveDrain(registration)
+    }
+  }
+
+  private resolveDrain(registration: RegisteredTool) {
+    if (!registration.active && !registration.invocations && !registration.leases) {
+      registration.resolveDrained?.()
     }
   }
 

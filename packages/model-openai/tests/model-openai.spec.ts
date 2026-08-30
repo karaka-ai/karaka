@@ -35,6 +35,7 @@ const request: ModelRequest = {
     { role: 'system', content: 'Be helpful.' },
     { role: 'user', content: 'Hello' },
   ],
+  tools: [],
 }
 
 describe('OpenAI model provider', () => {
@@ -65,6 +66,94 @@ describe('OpenAI model provider', () => {
       stream: false,
       input: request.messages,
     })
+  })
+
+  it('maps validated logical tools and function-call history in both directions', async () => {
+    const bodies: ResponseCreateParamsNonStreaming[] = []
+    const client = clientWith({
+      async generate(body) {
+        bodies.push(body)
+        return bodies.length === 1
+          ? responseWithToolCall(
+              'call-1',
+              functionToolName(body),
+              '{"invoiceId":"inv-1"}',
+            )
+          : response('Refunded.')
+      },
+    })
+    const provider = new OpenAIModelProvider(config, client)
+    const tool = {
+      id: 'invoices.refund',
+      version: '1',
+      description: 'Refund one invoice.',
+      input: {
+        type: 'object',
+        properties: { invoiceId: { type: 'string' } },
+        required: ['invoiceId'],
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: { refunded: { type: 'boolean' } },
+        required: ['refunded'],
+        additionalProperties: false,
+      },
+    } as const
+    provider.validateTools([tool])
+
+    const first = await provider.generate({ ...request, tools: [tool] })
+    expect(first).toMatchObject({
+      message: { role: 'assistant', content: '' },
+      toolCalls: [{
+        type: 'tool-call',
+        callId: 'call-1',
+        toolId: 'invoices.refund',
+        input: { invoiceId: 'inv-1' },
+      }],
+    })
+    expect(bodies[0]).toMatchObject({
+      parallel_tool_calls: false,
+      tools: [{
+        type: 'function',
+        name: expect.stringMatching(/^k_invoices_refund_/),
+        description: '[invoices.refund] Refund one invoice.',
+      }],
+    })
+    const providerName = functionToolName(bodies[0]!)
+
+    await provider.generate({
+      ...request,
+      tools: [tool],
+      messages: [
+        ...request.messages,
+        first.toolCalls![0]!,
+        {
+          type: 'tool-result',
+          callId: 'call-1',
+          toolId: 'invoices.refund',
+          output: { refunded: true },
+        },
+      ],
+    })
+    expect(bodies[1]?.input).toEqual([
+      ...request.messages,
+      {
+        type: 'function_call',
+        call_id: 'call-1',
+        name: providerName,
+        arguments: '{"invoiceId":"inv-1"}',
+      },
+      {
+        type: 'function_call_output',
+        call_id: 'call-1',
+        name: providerName,
+        output: '{"refunded":true}',
+      },
+    ])
+
+    expect(() => provider.validateTools([{ ...tool, input: true }]))
+      .toThrow('requires an object input schema')
   })
 
   it('forwards cancellation and converts OpenAI text events to Agent Runtime streaming', async () => {
@@ -506,6 +595,25 @@ function responseWithContent(
     top_p: null,
     usage,
   }
+}
+
+function responseWithToolCall(callId: string, name: string, args: string): Response {
+  return {
+    ...response(''),
+    output: [{
+      type: 'function_call',
+      call_id: callId,
+      name,
+      arguments: args,
+      status: 'completed',
+    }],
+  }
+}
+
+function functionToolName(body: ResponseCreateParamsNonStreaming) {
+  const tool = body.tools?.[0]
+  if (tool?.type !== 'function') throw new Error('expected one OpenAI function tool')
+  return tool.name
 }
 
 function event(value: Partial<ResponseStreamEvent> & { type: ResponseStreamEvent['type'] }) {
