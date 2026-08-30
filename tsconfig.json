@@ -17,6 +17,7 @@
     { "path": "./packages/storage" },
     { "path": "./packages/agent-runtime" },
     { "path": "./packages/model-openai" },
+    { "path": "./packages/tool" },
     { "path": "./packages/sdk" },
     { "path": "./packages/transport" }
   ]

@@ -49,6 +49,11 @@ export default defineConfig([
   },
   {
     ...shared,
+    workspace: ['packages/tool'],
+    entry: ['lib/types/index.js', 'lib/types/core.js'],
+  },
+  {
+    ...shared,
     workspace: ['packages/sdk'],
     entry: ['lib/types/index.js'],
   },
