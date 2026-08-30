@@ -1,5 +1,11 @@
 import type { Context } from '@karaka/cordis'
 import {
+  getToolMetadata,
+  type JsonValue,
+  type ToolDescriptor,
+  type ToolJsonSchema,
+} from '@karaka/sdk/tool'
+import {
   createMcpHandler,
   fromJsonSchema,
   hostHeaderValidationResponse,
@@ -8,12 +14,8 @@ import {
   type JsonSchemaType,
   type McpHttpHandler,
 } from '@modelcontextprotocol/server'
-import {
-  getToolMetadata,
-  type JsonValue,
-  type ToolDescriptor,
-  type ToolJsonSchema,
-} from './index.ts'
+
+const toolVersionMetaKey = 'ai.karaka/toolVersion'
 
 export interface ToolMcpAuthorizationRequest {
   readonly authInfo: Readonly<AuthInfo>
@@ -70,11 +72,14 @@ export const plugin = {
     }
 
     return async () => {
-      try {
-        await unmount()
-      } finally {
-        await handler.close()
+      const unmounting = (async () => unmount())()
+      const closing = (async () => handler.close())()
+      const [unmounted, closed] = await Promise.allSettled([unmounting, closing])
+      if (unmounted.status === 'rejected' && closed.status === 'rejected') {
+        throw new AggregateError([unmounted.reason, closed.reason], 'MCP endpoint disposal failed')
       }
+      if (unmounted.status === 'rejected') throw unmounted.reason
+      if (closed.status === 'rejected') throw closed.reason
     }
   },
 }
@@ -171,6 +176,7 @@ function createHandler(ctx: Context, toolIds: readonly string[], config: Resolve
         description: descriptor.description,
         inputSchema: fromJsonSchema(descriptor.input as JsonSchemaType),
         outputSchema: fromJsonSchema(objectSchema(descriptor.output)),
+        _meta: { [toolVersionMetaKey]: descriptor.version },
       }, async (input, requestContext) => {
         try {
           const output = await config.security.authorize({

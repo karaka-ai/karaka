@@ -60,12 +60,11 @@ import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
 import OpenAIModel from '@karaka/model-openai'
-import { defineTool, getToolMetadata, tool } from '@karaka/tool'
 import ToolCore from '@karaka/tool/core'
 import ToolMcpServer from '@karaka/tool/mcp-server'
 import Storage from '@karaka/storage'
 import StorageDefault from '@karaka/storage/default'
-import { createKarakaClient } from '@karaka/sdk'
+import { createKarakaClient, defineTool, getToolMetadata, tool } from '@karaka/sdk'
 import * as Transport from '@karaka/transport'
 import TransportHttp from '@karaka/transport/http'
 import TransportIpc from '@karaka/transport/ipc'
@@ -80,7 +79,7 @@ if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host au
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
 if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
 if (typeof OpenAIModel.apply !== 'function') throw new Error('the OpenAI model package did not export a plugin')
-if (![defineTool, getToolMetadata, tool].every(value => typeof value === 'function')) throw new Error('the Tool package did not export its authoring API')
+if (![defineTool, getToolMetadata, tool].every(value => typeof value === 'function')) throw new Error('the SDK did not export its Tool authoring API')
 if (typeof ToolCore !== 'function') throw new Error('the Tool core subpath did not export a plugin')
 if (typeof ToolMcpServer.apply !== 'function') throw new Error('the Tool MCP server subpath did not export a plugin')
 if (typeof StorageDefault.apply !== 'function') throw new Error('the default storage subpath did not export a plugin')

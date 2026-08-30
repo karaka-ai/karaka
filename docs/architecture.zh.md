@@ -193,9 +193,9 @@ await ctx.plugin(authenticationHost({
 
 ### 工具包边界
 
-第一方工具系列以可单独安装的 `@karaka/tool` 包发布。它是位于九包内核之上的应用能力包，不是新的顶层接缝。
+第一方工具运行时系列以可单独安装的 `@karaka/tool` 包发布。它是位于九包内核之上的应用能力包，不是新的顶层接缝。应用作者通过现有的 `@karaka/sdk` 包获得惰性装饰器及其 schema。
 
-包根导出只附加元数据的 `tool` 装饰器、不可变的 JSON Schema 2020-12 描述符和共享调用类型。这些导出是惰性的：导入 `@karaka/tool` 既不会挂载行为，也不会注册工具。当前的 `@karaka/tool/core` 子路径导出由 effect 所有的注册表插件，`@karaka/tool/mcp-server` 则导出应用侧 MCP 服务器插件。未来的第一方运行时行为会通过同一个包的插件子路径导出。目标命名包括框架专属的 `@karaka/tool/mcp-server-*`、`@karaka/tool/discovery-*`、`@karaka/tool/mcp-client` 和 `@karaka/tool/policy-*`。每个行为子路径都导出一个普通 Cordis 插件，其所有注册项都由可逆 effect 所有。具体列表会随实现增长，但第一方工具行为不得绕过该插件契约。
+`@karaka/sdk` 包导出只附加元数据的 `tool` 装饰器、不可变的 JSON Schema 2020-12 描述符和调用上下文类型。这些导出是惰性的：导入 SDK 既不会挂载行为，也不会注册工具。`@karaka/tool/core` 子路径导出由 effect 所有的注册表插件，`@karaka/tool/mcp-server` 则导出应用侧 MCP 服务器插件。未来的第一方运行时行为会通过工具包的插件子路径导出。目标命名包括框架专属的 `@karaka/tool/mcp-server-*`、`@karaka/tool/discovery-*`、`@karaka/tool/mcp-client` 和 `@karaka/tool/policy-*`。每个行为子路径都导出一个普通 Cordis 插件，其所有注册项都由可逆 effect 所有。具体列表会随实现增长，但第一方工具行为不得绕过该插件契约。
 
 第三方和私有工具系列插件可以使用自己的包名。它们通过相同的公共工具契约和 Cordis 生命周期集成；不会获得另一套注册表或扩展机制。本地处理器与远程 MCP 客户端都是位于同一逻辑调用契约之后的工具系列插件。
 
@@ -220,7 +220,7 @@ flowchart LR
 同一模式也适用于 SaaS 领域，但普通应用开发者不应为每个方法编写插件或设置项。当前的 `tool` 装饰器会标记后端框架已经创建的服务实例方法；当前的 MCP 服务器插件会一次性接收这些实例，并发现和绑定其中经过装饰的方法。编写 API 如下：
 
 ```ts
-import { tool } from '@karaka/tool'
+import { tool } from '@karaka/sdk'
 
 class InvoiceService {
   @tool({
@@ -489,7 +489,7 @@ Cordis 服务隔离应用于插件图组合，包括需要不同实现或注册�
 - 以能力而非厂商命名服务。
 - 保持服务契约独立于提供方和消费者。
 - 将模型、会话、工具、技能、智能体和 subagent 保留在智能体运行时接缝内。
-- 将第一方工具系列发布为独立的 `@karaka/tool` 包：惰性的编写契约保留在包根，运行时行为通过 Cordis 插件子路径导出。
+- 从 `@karaka/sdk` 导出惰性的工具编写契约；通过独立 `@karaka/tool` 包的插件子路径发布由 Cordis 所有的工具运行时行为。
 - 让应用创建聊天和发送消息，而无需构造身份、会话、智能体或调用上下文。
 - 将聊天 ID 视为不透明定位符，并对每次聊天操作执行认证和授权。
 - 让 SDK 与服务端传输使用一份明确的公共协议；该协议发生变化时，同时更新两端及其兼容性测试。

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { Context } from '@karaka/cordis'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
-import { getToolMetadata, tool, type ToolInvocationContext } from '@karaka/tool'
+import { getToolMetadata, tool, type ToolInvocationContext } from '@karaka/sdk'
 import ToolCore from '@karaka/tool/core'
 import ToolMcpServer, {
   type Config,
@@ -53,6 +53,7 @@ describe('Tool MCP server', () => {
           description: 'Run math.multiply.',
           inputSchema,
           outputSchema,
+          _meta: { 'ai.karaka/toolVersion': '1' },
         }),
       ])
 
@@ -173,7 +174,8 @@ describe('Tool MCP server', () => {
     const mounted = await mountServer({
       services: [service],
       mount() {
-        return () => {
+        return async () => {
+          await service.aborted.promise
           unmounted = true
         }
       },
@@ -211,13 +213,17 @@ function calculatorService(multiplier: number, principal: AsyncLocalStorage<stri
 class WaitingService {
   readonly started = Promise.withResolvers<void>()
   readonly finish = Promise.withResolvers<void>()
+  readonly aborted = Promise.withResolvers<void>()
 
   async wait(input: { value: number }, context?: ToolInvocationContext) {
     this.started.resolve()
     await Promise.race([
       this.finish.promise,
       new Promise<never>((_resolve, reject) => {
-        context?.signal?.addEventListener('abort', () => reject(context.signal?.reason), { once: true })
+        context?.signal?.addEventListener('abort', () => {
+          this.aborted.resolve()
+          reject(context.signal?.reason)
+        }, { once: true })
       }),
     ])
     return { result: input.value }

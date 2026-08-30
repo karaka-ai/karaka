@@ -159,6 +159,9 @@ importers:
       '@karaka/cordis':
         specifier: workspace:^
         version: link:../../vendor/cordis
+      '@karaka/sdk':
+        specifier: workspace:^
+        version: link:../sdk
       '@modelcontextprotocol/server':
         specifier: ^2.0.0
         version: 2.0.0

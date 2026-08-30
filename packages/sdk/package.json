@@ -22,6 +22,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./tool": {
+      "types": "./lib/types/tool.d.ts",
+      "default": "./lib/tool.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

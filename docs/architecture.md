@@ -193,9 +193,9 @@ A **tool** is an operation intentionally exposed to a model inside the Agent Run
 
 ### Tool package boundary
 
-The first-party Tool family is published as the separately installable `@karaka/tool` package. It is an application-capability package above the nine-package kernel, not a new top-level seam.
+The first-party Tool runtime family is published as the separately installable `@karaka/tool` package. It is an application-capability package above the nine-package kernel, not a new top-level seam. Application authors receive the inert decorator and its schemas through the existing `@karaka/sdk` package.
 
-The package root exports the metadata-only `tool` decorator, immutable JSON Schema 2020-12 descriptors, and shared invocation types. These exports are inert: importing `@karaka/tool` neither mounts behavior nor registers a tool. The current `@karaka/tool/core` subpath exports the effect-owned registry plugin, and `@karaka/tool/mcp-server` exports the application-side MCP server plugin. Future first-party runtime behavior will be exposed through plugin subpaths of the same package. Target naming includes framework-specific `@karaka/tool/mcp-server-*`, `@karaka/tool/discovery-*`, `@karaka/tool/mcp-client`, and `@karaka/tool/policy-*`. Each behavioral subpath exports an ordinary Cordis plugin, and every registration it makes is owned by a reversible effect. The exact list grows with implementations, but first-party Tool behavior must not escape this plugin contract.
+The `@karaka/sdk` package exports the metadata-only `tool` decorator, immutable JSON Schema 2020-12 descriptors, and invocation context types. These exports are inert: importing the SDK neither mounts behavior nor registers a tool. The `@karaka/tool/core` subpath exports the effect-owned registry plugin, and `@karaka/tool/mcp-server` exports the application-side MCP server plugin. Future first-party runtime behavior will be exposed through plugin subpaths of the Tool package. Target naming includes framework-specific `@karaka/tool/mcp-server-*`, `@karaka/tool/discovery-*`, `@karaka/tool/mcp-client`, and `@karaka/tool/policy-*`. Each behavioral subpath exports an ordinary Cordis plugin, and every registration it makes is owned by a reversible effect. The exact list grows with implementations, but first-party Tool behavior must not escape this plugin contract.
 
 Third-party and private Tool-family plugins may use their own package names. They integrate through the same public Tool contracts and Cordis lifecycle; they do not receive a separate registry or extension mechanism. Local handlers and remote MCP clients are Tool-family plugins behind the same logical invocation contract.
 
@@ -220,7 +220,7 @@ flowchart LR
 The same pattern applies to SaaS domains, but normal application developers should not write a plugin or setup entry for every method. The current `tool` decorator marks methods on services already created by the backend framework. The current MCP server plugin receives those instances once and discovers and binds their decorated methods. The authoring API is:
 
 ```ts
-import { tool } from '@karaka/tool'
+import { tool } from '@karaka/sdk'
 
 class InvoiceService {
   @tool({
@@ -489,7 +489,7 @@ The Loader and Include modifications recorded in [vendor/README.md](../vendor/RE
 - Name services after capabilities, not vendors.
 - Keep service contracts independent of providers and consumers.
 - Keep models, sessions, tools, skills, agents, and subagents inside the Agent Runtime seam.
-- Publish the first-party Tool family as the separate `@karaka/tool` package: keep inert authoring contracts at its root and expose runtime behavior as Cordis plugin subpaths.
+- Export inert Tool authoring contracts from `@karaka/sdk`; publish Cordis-owned Tool runtime behavior through plugin subpaths of the separate `@karaka/tool` package.
 - Let applications create chats and send messages without constructing identities, sessions, agents, or invocation contexts.
 - Treat a chat ID as an opaque locator and authenticate and authorize every chat operation.
 - Keep the SDK and server Transport on one explicit public protocol; update both sides and their compatibility tests whenever that protocol changes.

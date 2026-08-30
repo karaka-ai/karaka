@@ -1,13 +1,24 @@
 import { Service, type Context } from '@karaka/cordis'
-import Ajv2020, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js'
 import {
   defineTool,
   type JsonValue,
-  type ToolContribution,
+  type ToolDefinition,
   type ToolDescriptor,
-  type ToolHandler,
   type ToolInvocationContext,
-} from './index.ts'
+} from '@karaka/sdk/tool'
+import Ajv2020, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js'
+
+/** A local or remote implementation behind one logical tool descriptor. */
+export type ToolHandler = (
+  input: JsonValue,
+  context: Readonly<ToolInvocationContext>,
+) => unknown | Promise<unknown>
+
+/** Effect-owned contribution consumed by the Tool core registry. */
+export interface ToolContribution {
+  readonly descriptor: ToolDefinition | ToolDescriptor
+  readonly invoke: ToolHandler
+}
 
 declare module '@karaka/cordis' {
   interface Context {
