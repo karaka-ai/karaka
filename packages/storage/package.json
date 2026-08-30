@@ -26,6 +26,10 @@
       "types": "./lib/types/local.d.ts",
       "default": "./lib/local.js"
     },
+    "./default": {
+      "types": "./lib/types/default.d.ts",
+      "default": "./lib/default.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

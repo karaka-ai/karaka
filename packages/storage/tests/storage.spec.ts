@@ -1,9 +1,11 @@
 import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Storage, { type StorageProvider } from '@karaka/storage'
+import StorageDefault from '@karaka/storage/default'
 import StorageLocal from '@karaka/storage/local'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 
 describe('Storage', () => {
@@ -54,6 +56,32 @@ describe('Storage', () => {
         value: { answer: 42 },
         version: 2,
       })
+    } finally {
+      await second.fiber.dispose()
+    }
+  })
+
+  it('mounts persistent local SQLite as the ordinary default plugin', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'karaka-storage-default-'))
+    directories.push(directory)
+    const databasePath = join(directory, '.karaka', 'storage.sqlite')
+    const first = new Context()
+    first.baseUrl = pathToFileURL(`${directory}/`).href
+
+    try {
+      await first.plugin(StorageDefault)
+      await first.storage.create({ namespace: 'tests', key: 'default', value: 'persisted' })
+      expect(existsSync(databasePath)).toBe(true)
+    } finally {
+      await first.fiber.dispose()
+    }
+
+    const second = new Context()
+    second.baseUrl = pathToFileURL(`${directory}/`).href
+    try {
+      await second.plugin(StorageDefault)
+      await expect(second.storage.read({ namespace: 'tests', key: 'default' }))
+        .resolves.toMatchObject({ value: 'persisted' })
     } finally {
       await second.fiber.dispose()
     }

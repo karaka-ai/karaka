@@ -30,7 +30,7 @@ export default defineConfig([
   {
     ...shared,
     workspace: ['packages/storage'],
-    entry: ['lib/types/index.js', 'lib/types/local.js'],
+    entry: ['lib/types/index.js', 'lib/types/default.js', 'lib/types/local.js'],
   },
   {
     ...shared,
