@@ -1,110 +1,42 @@
-# 认证
+# @karaka/authentication
 
 [English](README.md) | 中文
 
-`@karaka/authentication` 是 Karaka 的认证接缝。包根路径提供与提供方无关的 `ctx.authentication` 服务、租户路由器、当前主体解析器和身份契约。两个内置插件子路径通过不同的信任模型建立身份：
+Karaka 认证服务器，而不是最终用户。应用后端负责认证自己的用户；Karaka 验证该后端后，接受它提供的可信 `tenantId` 和 `userId` 上下文。
 
-- `@karaka/authentication/authentication-jwks` 通过已配置的租户 JWKS 端点验证 bearer token。
-- `@karaka/authentication/authentication-host` 接受可信嵌入应用给出的身份断言。
+该包导出：
 
-认证只负责建立身份，不负责授权、权益或会话决策。
-
-## 可信宿主开发模式
-
-对于本地开发，以及宿主已经完成调用方认证的嵌入式应用，host 插件是最短路径：
+- `AuthenticationService`：与提供方无关的 Cordis 契约；
+- `@karaka/authentication/oauth-client-credentials`：默认的 OAuth 2.0 Client Credentials 提供方。
 
 ```yaml
-- name: '@karaka/authentication'
-- name: '@karaka/authentication/authentication-host'
+- name: '@karaka/authentication/oauth-client-credentials'
   config:
-    tenantId: local
-    subject: developer
-    claims:
-      role: developer
+    issuer: https://identity.example.com/
+    audience: https://karaka.internal
+    tokenEndpoint: https://identity.example.com/oauth/token
+    jwksUri: https://identity.example.com/.well-known/jwks.json
+    clientId: karaka-server
+    clientSecretEnv: KARAKA_OAUTH_CLIENT_SECRET
 ```
 
-此时，`await ctx.authentication.currentPrincipal()` 会返回配置的身份，并将 `provider` 固定为 `'host'`。这些配置是信任断言，不是 Karaka 自行验证的证据。它只能来自可信部署配置或可信宿主代码；绝不能直接取自模型输出、请求参数或其他不可信输入。
+若要通过 `private_key_jwt` 认证 OAuth 客户端，请使用 `privateKeyPath` 代替 `clientSecretEnv`。密钥应放在环境变量或挂载的密钥文件中，而不是直接写入 setup YAML。Token 获取会拒绝重定向，并默认使用 10 秒超时；`tokenTimeoutMs` 可以设置其他正数上限。
 
-静态 YAML 形式适用于单一本地身份。共享进程的宿主则挂载一个读取请求局部状态的适配器：
+## 提供方契约
+
+其他认证插件注册一个实现：
 
 ```ts
-import { authenticationHost } from '@karaka/authentication/authentication-host'
-
-await ctx.plugin(authenticationHost({
-  currentPrincipal: () => hostAuthentication.currentPrincipal(),
-}))
-```
-
-该回调可以使用异步局部存储或框架提供的同等机制；没有活动调用时返回 `null` 或 `undefined`。它绝不能读取一个可变的全局主体。并发调用方共享同一张 Cordis 图，而 `currentPrincipal()` 会分别解析各自的主体。释放适配器会拒绝新的解析，并等待已经开始的解析完成。
-
-## 通过 YAML 验证令牌
-
-两个配置项都是普通 Cordis 插件。包根路径拥有注册表，JWKS 子路径贡献验证器：
-
-```yaml
-- name: '@karaka/authentication'
-- name: '@karaka/authentication/authentication-jwks'
-  config:
-    name: customer-jwks
-    tenants:
-      acme:
-        issuer: https://identity.example.com/
-        audience: karaka-api
-        jwksUri: https://identity.example.com/.well-known/jwks.json
-        algorithms: [RS256]
-        tenantClaim: org_id
-        tenantValue: org_acme
-      beta:
-        issuer: https://identity.example.com/
-        audience: karaka-api
-        jwksUri: https://identity.example.com/.well-known/jwks.json
-        algorithms: [RS256]
-        tenantClaim: org_id
-        tenantValue: org_beta
-```
-
-提供方只根据调用方传入的 `tenantId` 路由。它会针对该租户配置的 JWKS URL、issuer、audience、算法白名单、过期时间、subject 和可选租户 claim 验证令牌。它绝不会从未验证的令牌中读取 JWKS URL。
-
-当多个租户共享 issuer 和任意 audience 时，每个租户都必须配置不同的已签名租户 claim。这样可以防止一个租户的有效令牌被当作另一个租户的令牌重放。
-
-## 验证令牌
-
-```ts
-const identity = await ctx.authentication.authenticate({
-  tenantId: 'acme',
-  token,
-})
-
-identity.tenantId
-identity.subject
-identity.provider
-identity.claims
-```
-
-调用方必须从可信路由上下文中取得 `tenantId`，例如已解析的工作区或租户主机名。下游授权必须使用返回的已验证身份，而不是未验证的令牌数据。
-
-## 添加提供方
-
-用户插件可以实现公共 `AuthenticationProvider` 契约，并通过与内置 JWKS 插件相同的 Cordis 服务进行注册：
-
-```ts
-import type { Context } from '@karaka/cordis'
-import type { AuthenticationProvider } from '@karaka/authentication'
-
-export const name = 'company-authentication'
-export const inject = ['authentication']
-
-export function apply(ctx: Context) {
-  const provider: AuthenticationProvider = {
-    name: 'company',
-    tenantIds: ['internal'],
-    async authenticate(request) {
-      return verifyCompanyToken(request)
-    },
-  }
-
-  ctx.authentication.register(provider)
+interface AuthenticationProvider {
+  name: string
+  challenge?: string
+  authenticate(request: Request): Promise<AuthenticatedServer>
+  request(target: { audience: string }, request: Request, dispatch: AuthenticationDispatch): Promise<Response>
 }
 ```
 
-该注册是由贡献插件拥有的 Cordis effect。卸载该插件会移除其提供方和租户路由。
+`authenticate()` 从 Web `Request` 元数据验证传入服务器；`request()` 发出经过认证的传出请求。因此，提供方可以使用 OAuth、请求头凭据或其他元数据机制，而无需修改 Transport 或 MCP。可选的 `challenge` 为无效传入凭据提供该提供方的 `WWW-Authenticate` 值。mTLS 或请求体签名等载体与请求体绑定认证需要未来的契约扩展传递经过验证的 TLS 或受限请求体证据。OAuth 插件会用一条普通 setup 配置同时挂载契约和提供方。一个 Cordis 图中只激活一个提供方，其注册会随插件卸载而移除。
+
+远程 Chat 端点必须使用 HTTPS；纯 HTTP 只允许回环地址。默认的 Chat OAuth audience 是端点 origin，例如 `https://karaka.internal`，不包含 `/v1`；SDK 会自动派生它。在上述设置中，`karaka-server` 是 Karaka 发出 MCP 请求时使用的 OAuth 客户端身份；应用后端在构造 SDK 认证提供方时使用自己的客户端身份。
+
+Transport 会在整个聊天调用期间绑定应用提供的可信用户上下文。MCP 会认证 `tools/list` 和 `tools/call`；工具调用还会在同一条已认证通道上传递已经绑定的用户上下文。用户上下文不是第二份凭据。

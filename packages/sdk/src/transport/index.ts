@@ -2,12 +2,28 @@
 export const JSON_MEDIA_TYPE = 'application/json'
 export const EVENT_STREAM_MEDIA_TYPE = 'text/event-stream'
 
-export interface KarakaCredentials {
+export interface KarakaUserContext {
   readonly tenantId: string
-  readonly token: string
+  readonly userId: string
+  readonly claims?: Readonly<Record<string, unknown>>
 }
 
-export type KarakaCredentialSource = Readonly<KarakaCredentials> | (() => Readonly<KarakaCredentials> | Promise<Readonly<KarakaCredentials>>)
+export type KarakaUserSource = Readonly<KarakaUserContext> | (() => Readonly<KarakaUserContext> | Promise<Readonly<KarakaUserContext>>)
+
+export interface KarakaAuthenticationTarget {
+  readonly audience: string
+}
+
+export type KarakaDispatch = (request: Request) => Promise<Response>
+
+/** Client half implemented by the selected server-authentication provider. */
+export interface KarakaServerAuthentication {
+  request(
+    target: Readonly<KarakaAuthenticationTarget>,
+    request: Request,
+    dispatch: KarakaDispatch,
+  ): Promise<Response>
+}
 
 export type ChatRequest =
   | { readonly agentId: string, readonly message: string, readonly chatId?: never }
@@ -53,7 +69,8 @@ export type ChatStreamEvent = ChatTextDeltaEvent | ChatCompletedEvent
 export type TransportStreamEvent = ChatStreamEvent | ChatErrorEvent
 
 export interface KarakaInvocationOptions {
-  readonly credentials: Readonly<KarakaCredentials>
+  readonly authentication: KarakaServerAuthentication
+  readonly user: Readonly<KarakaUserContext>
   readonly signal?: AbortSignal
 }
 
@@ -88,13 +105,16 @@ export function normalizeChatRequest(request: Readonly<ChatRequest>): ChatReques
   throw new TypeError('chat request must contain exactly one of agentId or chatId')
 }
 
-export async function resolveCredentials(source: KarakaCredentialSource | undefined): Promise<Readonly<KarakaCredentials>> {
-  if (source === undefined) throw new TypeError('Karaka credentials are required')
-  const credentials = typeof source === 'function' ? await source() : source
-  const tenantId = requireText(credentials?.tenantId, 'tenant ID')
-  const token = requireText(credentials?.token, 'access token')
-  if (/\s/.test(token)) throw new TypeError('access token must not contain whitespace')
-  return Object.freeze({ tenantId, token })
+export async function resolveUser(source: KarakaUserSource | undefined): Promise<Readonly<KarakaUserContext>> {
+  if (source === undefined) throw new TypeError('Karaka user context is required')
+  const user = typeof source === 'function' ? await source() : source
+  const claims = user?.claims ?? {}
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) throw new TypeError('user claims must be an object')
+  return Object.freeze({
+    tenantId: requireText(user?.tenantId, 'tenant ID'),
+    userId: requireText(user?.userId, 'user ID'),
+    claims: Object.freeze({ ...claims }),
+  })
 }
 
 export function validateChatResult(value: unknown): ChatResult {

@@ -1,7 +1,11 @@
-import AgentRuntime, { type ModelRequest } from '@karaka/agent-runtime'
+import AgentRuntime, {
+  type AgentChatResumeRequest,
+  type AgentChatRunResult,
+  type AgentChatStartRequest,
+  type ModelRequest,
+} from '@karaka/agent-runtime'
 import SessionStorage from '@karaka/agent-runtime/session-storage'
-import Authentication from '@karaka/authentication'
-import { authenticationHost, type HostPrincipal } from '@karaka/authentication/authentication-host'
+import Authentication, { type TrustedUserContext } from '@karaka/authentication'
 import { Context, type Context as CordisContext } from '@karaka/cordis'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
@@ -27,12 +31,12 @@ describe('Agent Runtime storage sessions', () => {
     const directory = mkdtempSync(join(tmpdir(), 'karaka-session-'))
     directories.push(directory)
     const path = join(directory, 'storage.sqlite')
-    let principal: HostPrincipal = { tenantId: 'tenant-a', subject: 'user-a' }
+    let principal: TrustedUserContext = { tenantId: 'tenant-a', userId: 'user-a' }
 
     const first = await createRuntime(path, () => principal, 'Prompt v1', 'model-v1')
     let chatId: string
     try {
-      const result = await first.ctx.agentRuntime.run({
+      const result = await first.run({
         agentId: 'support',
         message: 'Hello',
         persist: true,
@@ -60,12 +64,12 @@ describe('Agent Runtime storage sessions', () => {
 
     const second = await createRuntime(path, () => principal, 'Prompt v2', 'model-v2')
     try {
-      principal = { tenantId: 'tenant-a', subject: 'user-b' }
-      await expect(second.ctx.agentRuntime.run({ chatId, message: 'Steal it' }))
+      principal = { tenantId: 'tenant-a', userId: 'user-b' }
+      await expect(second.run({ chatId, message: 'Steal it' }))
         .rejects.toMatchObject({ code: 'CHAT_NOT_FOUND' })
 
-      principal = { tenantId: 'tenant-a', subject: 'user-a' }
-      await expect(second.ctx.agentRuntime.run({ chatId, message: 'Again' })).resolves.toMatchObject({
+      principal = { tenantId: 'tenant-a', userId: 'user-a' }
+      await expect(second.run({ chatId, message: 'Again' })).resolves.toMatchObject({
         chatId,
         agentId: 'support',
         model: 'model-v2',
@@ -79,7 +83,7 @@ describe('Agent Runtime storage sessions', () => {
       ])
 
       await second.sessions.dispose()
-      await expect(second.ctx.agentRuntime.run({ chatId, message: 'Unavailable' }))
+      await expect(second.run({ chatId, message: 'Unavailable' }))
         .rejects.toMatchObject({ code: 'SESSION_UNAVAILABLE' })
     } finally {
       await second.ctx.fiber.dispose()
@@ -96,12 +100,6 @@ describe('Agent Runtime storage sessions', () => {
 
     try {
       await ctx.plugin(Authentication)
-      await ctx.plugin(authenticationHost({
-        currentPrincipal() {
-          principalCalls++
-          return { tenantId: 'tenant-a', subject: 'user-a' }
-        },
-      }))
       await ctx.plugin(Entitlement)
       await ctx.plugin(Storage)
       const originalPlugin = ctx.plugin(createStoragePlugin(original))
@@ -124,7 +122,15 @@ describe('Agent Runtime storage sessions', () => {
         },
       })
 
-      const run = ctx.agentRuntime.run({ agentId: 'support', message: 'Hello', persist: true })
+      const runAsUser = (request: Parameters<typeof ctx.agentRuntime.run>[0]) => {
+        principalCalls++
+        return ctx.authentication.withUser(
+          { tenantId: 'tenant-a', userId: 'user-a' },
+          testServer,
+          () => ctx.agentRuntime.run(request),
+        )
+      }
+      const run = runAsUser({ agentId: 'support', message: 'Hello', persist: true })
       await generationStarted.promise
       expect(original.creates).toBe(1)
 
@@ -141,7 +147,7 @@ describe('Agent Runtime storage sessions', () => {
         }
       }).toBe('UNAVAILABLE')
       expect(disposalFinished).toBe(false)
-      await expect(ctx.agentRuntime.run({ agentId: 'support', message: 'New', persist: true }))
+      await expect(runAsUser({ agentId: 'support', message: 'New', persist: true }))
         .rejects.toMatchObject({ code: 'UNAVAILABLE' })
 
       await ctx.plugin(createStoragePlugin(replacement))
@@ -149,7 +155,7 @@ describe('Agent Runtime storage sessions', () => {
       await expect(run).resolves.toMatchObject({ message: { content: 'Finished' } })
       await disposal
 
-      expect(principalCalls).toBe(1)
+      expect(principalCalls).toBe(2)
       expect(original.updates).toBe(1)
       expect(replacement.creates).toBe(0)
       expect(replacement.updates).toBe(0)
@@ -162,14 +168,13 @@ describe('Agent Runtime storage sessions', () => {
 
 async function createRuntime(
   path: string,
-  currentPrincipal: () => HostPrincipal,
+  currentPrincipal: () => TrustedUserContext,
   prompt: string,
   model: string,
 ) {
   const ctx = new Context()
   const requests: ModelRequest[] = []
   await ctx.plugin(Authentication)
-  await ctx.plugin(authenticationHost({ currentPrincipal }))
   await ctx.plugin(Entitlement)
   await ctx.plugin(EntitlementLocal, { defaultLimit: '100' })
   await ctx.plugin(Storage)
@@ -179,8 +184,13 @@ async function createRuntime(
   await sessions
   await ctx.plugin(createAgentPlugin(prompt, model))
   await ctx.plugin(createModelPlugin(model, requests))
-  return { ctx, requests, sessions }
+  const run = (request: AgentChatStartRequest | AgentChatResumeRequest): Promise<AgentChatRunResult> => {
+    return ctx.authentication.withUser(currentPrincipal(), testServer, () => ctx.agentRuntime.run(request))
+  }
+  return { ctx, requests, sessions, run }
 }
+
+const testServer = Object.freeze({ id: 'test-application', provider: 'test', claims: Object.freeze({}) })
 
 function createAgentPlugin(prompt: string, model: string) {
   return {

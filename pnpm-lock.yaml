@@ -156,6 +156,9 @@ importers:
 
   packages/tool:
     dependencies:
+      '@karaka/authentication':
+        specifier: workspace:^
+        version: link:../authentication
       '@karaka/cordis':
         specifier: workspace:^
         version: link:../../vendor/cordis
@@ -196,6 +199,9 @@ importers:
       '@karaka/storage':
         specifier: workspace:^
         version: link:../storage
+      jose:
+        specifier: ^6.2.5
+        version: 6.2.10
 
   vendor/cordis:
     dependencies:

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import Authentication, { type AuthenticationProvider } from '@karaka/authentication'
 import { Context } from '@karaka/cordis'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { getToolMetadata, tool, type ToolInvocationContext } from '@karaka/sdk'
@@ -31,15 +32,9 @@ describe('Tool MCP server', () => {
     const authorizations: string[] = []
     const mounted = await mountServer({
       services: [service],
-      security: {
-        authenticate(request) {
-          expect(request.headers.get('authorization')).toBe('Bearer service-token')
-          return authInfo()
-        },
-        authorize(request, invoke) {
-          authorizations.push(`${request.authInfo.clientId}:${request.permission}`)
-          return principal.run('user-42', invoke)
-        },
+      authorize(request, invoke) {
+        authorizations.push(`${request.server.id}:${request.permission}`)
+        return principal.run('user-42', invoke)
       },
     })
     const client = createClient(mounted.endpoint)
@@ -75,19 +70,10 @@ describe('Tool MCP server', () => {
     let authenticationCalls = 0
     const mounted = await mountServer({
       services: [service],
-      security: {
-        authenticate(request) {
-          authenticationCalls++
-          if (request.headers.get('authorization') !== 'Bearer service-token') {
-            return new Response('unauthorized', { status: 401 })
-          }
-          return authInfo()
-        },
-        authorize(_request, invoke) {
-          return invoke()
-        },
+      authorize(_request, invoke) {
+        return invoke()
       },
-    })
+    }, () => authenticationCalls++)
 
     try {
       const wrongHost = await mounted.endpoint.fetch(request({ host: 'attacker.example' }))
@@ -96,6 +82,7 @@ describe('Tool MCP server', () => {
       expect(wrongOrigin.status).toBe(403)
       const unauthenticated = await mounted.endpoint.fetch(request({ authorization: '' }))
       expect(unauthenticated.status).toBe(401)
+      expect(unauthenticated.headers.get('www-authenticate')).toBe('Bearer')
       expect(authenticationCalls).toBe(1)
     } finally {
       await mounted.dispose()
@@ -109,11 +96,8 @@ describe('Tool MCP server', () => {
     const mounted = await mountServer({
       services: [service],
       onError: error => errors.push(error),
-      security: {
-        authenticate: () => authInfo(),
-        async authorize() {
-          throw new Error('private authorization details')
-        },
+      async authorize() {
+        throw new Error('private authorization details')
       },
     })
     const client = createClient(mounted.endpoint)
@@ -161,6 +145,8 @@ describe('Tool MCP server', () => {
     const ctx = new Context()
 
     try {
+      await ctx.plugin(Authentication)
+      await ctx.plugin(authenticationPlugin())
       await ctx.plugin(ToolCore)
       const undecorated = calculatorService(2, new AsyncLocalStorage())
       await expect(ctx.plugin(ToolMcpServer, config([undecorated], () => () => undefined)))
@@ -293,10 +279,15 @@ interface MountedServer {
   dispose(): Promise<void>
 }
 
-async function mountServer(overrides: Partial<Config> & Pick<Config, 'services'>): Promise<MountedServer> {
+async function mountServer(
+  overrides: Partial<Config> & Pick<Config, 'services'>,
+  onAuthenticate?: () => void,
+): Promise<MountedServer> {
   const ctx = new Context()
   let endpoint: ToolMcpEndpoint | undefined
   let unmount: () => void = () => undefined
+  await ctx.plugin(Authentication)
+  await ctx.plugin(authenticationPlugin(onAuthenticate))
   await ctx.plugin(ToolCore)
   const fiber = ctx.plugin(ToolMcpServer, config(overrides.services, value => {
     endpoint = value
@@ -329,22 +320,10 @@ function config(
   return {
     allowedHosts: ['tools.example'],
     allowedOrigins: ['https://app.example'],
-    security: {
-      authenticate: () => authInfo(),
-      authorize: (_request, invoke) => invoke(),
-    },
+    authorize: (_request, invoke) => invoke(),
     ...overrides,
     services,
     mount,
-  }
-}
-
-function authInfo() {
-  return {
-    token: 'service-token',
-    clientId: 'karaka:test',
-    scopes: ['tools'],
-    expiresAt: Math.floor(Date.now() / 1_000) + 60,
   }
 }
 
@@ -373,6 +352,28 @@ function createClient(endpoint: ToolMcpEndpoint) {
     client,
     connect: () => client.connect(transport),
     close: () => client.close(),
+  }
+}
+
+function authenticationPlugin(onAuthenticate?: () => void) {
+  const provider: AuthenticationProvider = {
+    name: 'test-server-auth',
+    challenge: 'Bearer',
+    async authenticate(request) {
+      onAuthenticate?.()
+      if (request.headers.get('authorization') !== 'Bearer service-token') throw new Error('untrusted server')
+      return { id: 'karaka:test', provider: 'test-server-auth', claims: {} }
+    },
+    request(_target, request, dispatch) {
+      return dispatch(request)
+    },
+  }
+  return {
+    name: 'test-server-authentication',
+    inject: ['authentication'],
+    apply(ctx: Context) {
+      ctx.authentication.register(provider)
+    },
   }
 }
 
