@@ -44,6 +44,11 @@ export default defineConfig([
   },
   {
     ...shared,
+    workspace: ['packages/model-openai'],
+    entry: ['lib/types/index.js'],
+  },
+  {
+    ...shared,
     workspace: ['packages/sdk'],
     entry: ['lib/types/index.js'],
   },

@@ -59,6 +59,7 @@ import AuthenticationHost from '@karaka/authentication/authentication-host'
 import AuthenticationJwks from '@karaka/authentication/authentication-jwks'
 import Entitlement from '@karaka/entitlement'
 import EntitlementLocal from '@karaka/entitlement/local'
+import OpenAIModel from '@karaka/model-openai'
 import Storage from '@karaka/storage'
 import StorageDefault from '@karaka/storage/default'
 import { createKarakaClient } from '@karaka/sdk'
@@ -74,6 +75,7 @@ if (typeof EchoModel.apply !== 'function') throw new Error('the echo model subpa
 if (typeof AuthenticationHost.apply !== 'function') throw new Error('the host authentication subpath did not export a plugin')
 if (typeof AuthenticationJwks.apply !== 'function') throw new Error('the JWKS authentication subpath did not export a plugin')
 if (typeof EntitlementLocal.apply !== 'function') throw new Error('the local entitlement subpath did not export a plugin')
+if (typeof OpenAIModel.apply !== 'function') throw new Error('the OpenAI model package did not export a plugin')
 if (typeof StorageDefault.apply !== 'function') throw new Error('the default storage subpath did not export a plugin')
 if (typeof SessionStorage.apply !== 'function') throw new Error('the storage session subpath did not export a plugin')
 if (Transport.EVENT_STREAM_MEDIA_TYPE !== 'text/event-stream') throw new Error('the transport root did not export its contracts')
@@ -135,6 +137,17 @@ writeFileSync('authentication.yml', [
   '  config:',
   '    id: smoke-model',
   "    prefix: 'Packed: '",
+  "- name: '@karaka/model-openai'",
+  '  config:',
+  '    id: packed-openai',
+  '    model: gpt-test',
+  '    serviceTier: default',
+  '    apiKey: packed-test-key',
+  '    pricing:',
+  '      unit: USD_MICRO',
+  "      inputPerMillion: '1'",
+  "      cachedInputPerMillion: '1'",
+  "      outputPerMillion: '1'",
   "- name: './smoke-agent.mjs'",
   '',
 ].join('\\n'))
@@ -148,6 +161,7 @@ await ctx.loader.await()
 if (ctx.get('authentication')?.list()[0]?.name !== 'jwks') throw new Error('Loader did not compose the JWKS authentication subpath')
 if ((await ctx.authentication.currentPrincipal()).subject !== 'embedded-developer') throw new Error('Loader did not compose the host authentication subpath')
 if ((await ctx.entitlement.status('smoke')).limit !== 1000000n) throw new Error('Loader did not compose the local entitlement subpath')
+if (!ctx.agentModels.list().includes('packed-openai')) throw new Error('Loader did not compose the OpenAI model package')
 const result = await ctx.agentRuntime.run({ agentId: 'smoke-agent', message: 'Hello' })
 if (result.message.content !== 'Packed: Hello') throw new Error('Loader did not compose the Agent Runtime subpaths')
 await ctx.fiber.dispose()

@@ -4,7 +4,9 @@ English | [中文](architecture.zh.md)
 
 Karaka is a configurable, Cordis-based foundation for composing agentic SaaS runtimes. Stable capability seams define what the runtime can do, provider plugins decide how and where infrastructure work is done, and application configuration selects the product that runs. A backend-mounted tool-host plugin can turn decorated methods on framework-managed services into agent tools without requiring developers to author one plugin per method.
 
-The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, setup-YAML process bootstrap, an authenticated HTTP Transport, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
+The repository publishes nine packages that form the composition kernel. Seam contracts, providers, and advanced extensions live in separately installable plugins built on that kernel. Authentication, an overall-spend Entitlement seam, provider-neutral Storage with a persistent local provider, an initial Agent Runtime with durable sessions and text streaming, an OpenAI Responses model provider, setup-YAML process bootstrap, an authenticated HTTP Transport, and a matching application SDK exist today. The agent plugin model, tool authoring and hosting APIs, richer chat operations, and subagent coordination described below are target architecture unless stated otherwise.
+
+Concrete unresolved defects and architectural gaps are tracked in [Open Issues](issues.md).
 
 ## Foundation boundary
 
@@ -125,9 +127,9 @@ Each deployment composes the plugins it needs within every seam. Karaka publishe
 
 ## Overall-spend entitlement
 
-Entitlement has one narrow meaning in Karaka: whether an overall spend account may continue consuming metered models. `ctx.entitlement` exposes the provider-neutral account status and actual-spend recording contract. It does not understand application plans, subscriptions, features, model-call counts, or per-call budgets.
+Entitlement has one narrow meaning in Karaka: whether an overall spend account may continue consuming metered models. `ctx.entitlement` exposes the provider-neutral account status and provider-reported-spend recording contract. It does not understand application plans, subscriptions, features, model-call counts, or per-call budgets.
 
-Amounts are non-negative integers in an explicit unit such as `USD_MICRO` or `CREDIT`; floating-point currency is never used. Model provider plugins own model-specific pricing and report the actual spend of a completed generation. Agent Runtime checks that the selected overall account is not already exhausted before calling a metered model, then records the provider-reported spend. Image, audio, video, cached-token, and text pricing therefore remain model-provider concerns rather than conversions invented by Entitlement.
+Amounts are non-negative integers in an explicit unit such as `USD_MICRO` or `CREDIT`; floating-point currency is never used. Model provider plugins own model-specific pricing and report their spend measurement for a completed generation. Agent Runtime checks that the selected overall account is not already exhausted before calling a metered model, then records the provider-reported spend. Image, audio, video, cached-token, and text pricing therefore remain model-provider concerns rather than conversions invented by Entitlement.
 
 The current low-level transient Agent Runtime request names the overall entitlement account but carries no amount or call budget. Durable sessions derive that account from trusted identity and stored chat state rather than model-visible input. Because this first slice deliberately has no reservation, one completed call may take accumulated spend past its limit; later calls are rejected. Atomic reservation and settlement may be added later without changing the meaning of entitlement into a per-call agent policy.
 
@@ -293,7 +295,7 @@ chat.send({ chatId, message })
     -> authorize that caller against canonical chat ownership
     -> restore the selected agent and session state
     -> resolve models, tools, skills and delegation policy
-    -> check overall spend before each metered model call and record actual spend afterward
+    -> check overall spend before each metered model call and record provider-reported spend afterward
     -> execute and persist the turn
     -> return the response
 ```
@@ -303,6 +305,25 @@ A chat ID is a locator, never proof of authority. Karaka must authenticate and a
 ## Agent Runtime internals
 
 Agent Runtime is one top-level seam composed from model, session, tool, skill, agent, and subagent components. Provider and integration plugins may expose internal Cordis services so these components remain replaceable without becoming top-level Karaka seams.
+
+`@karaka/model-openai` is the first real text model-provider plugin. It maps Agent Runtime text history to the OpenAI Responses API, supports completed and streamed text generations, forwards cancellation, and reports configured metered spend from returned token usage for completed responses. Setup selects the model, credentials, OpenAI `serviceTier`, and integer per-million-token rates. `serviceTier` is sent on every request and defaults predictably to `default`, not project-selected `auto`.
+
+Each rate is a non-negative integer string containing spend-unit atoms per one million tokens. The provider totals ordinary input, cached input, optional cache-write, and output charges, then rounds that aggregate up once per completed call. If `cacheWritePerMillion` is omitted, cache writes use `inputPerMillion`. These operator-configured rates must match the selected model and tier; they are deterministic Karaka metering, not a claim of OpenAI invoice reconciliation or automatic handling of conditional pricing.
+
+For example, an application-defined credit schedule remains entirely explicit and YAML-serializable:
+
+```yaml
+- name: '@karaka/model-openai'
+  config:
+    id: support-model
+    model: configured-openai-model
+    serviceTier: default
+    pricing:
+      unit: CREDIT_ATOM
+      inputPerMillion: '1000'
+      cachedInputPerMillion: '100'
+      outputPerMillion: '4000'
+```
 
 ### Agent plugins and contributions
 

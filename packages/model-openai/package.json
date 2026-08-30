@@ -1,0 +1,45 @@
+{
+  "name": "@karaka/model-openai",
+  "description": "OpenAI model provider plugin for Karaka Agent Runtime",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
+    "directory": "packages/model-openai"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@karaka/agent-runtime": "workspace:^",
+    "@karaka/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@karaka/schemastery": "workspace:^",
+    "openai": "^7.8.0"
+  },
+  "devDependencies": {
+    "@karaka/entitlement": "workspace:^"
+  }
+}

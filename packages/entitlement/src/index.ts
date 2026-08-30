@@ -6,7 +6,7 @@ declare module '@karaka/cordis' {
   }
 }
 
-/** An exact amount in an opaque spend unit such as `USD_MICRO` or `CREDIT`. */
+/** A provider-reported non-negative integer in an opaque spend unit such as `USD_MICRO` or `CREDIT`. */
 export interface SpendAmount {
   readonly unit: string
   readonly amount: bigint
@@ -105,7 +105,7 @@ export class EntitlementService extends Service {
     return this.withAccount(account, lease => lease.assertAvailable(unit))
   }
 
-  /** Add actual spend to an account's accumulated total. */
+  /** Add provider-reported spend to an account's accumulated total. */
   recordSpend(account: string, spend: Readonly<SpendAmount>): Promise<EntitlementStatus> {
     return this.withAccount(account, lease => lease.recordSpend(spend))
   }

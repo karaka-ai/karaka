@@ -38,7 +38,7 @@ export interface ModelProvider {
   stream?(request: Readonly<ModelRequest>): AsyncIterable<ModelStreamEvent>
 }
 
-/** Provider-neutral model output and optional actual spend. */
+/** Provider-neutral model output and optional provider-reported spend. */
 export interface ModelGeneration {
   readonly message: ModelMessage
   readonly spend?: SpendAmount
