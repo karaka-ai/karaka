@@ -14,6 +14,7 @@ const expectedFoundation = new Set([
 const expectedApplications = new Set([
   '@karaka/agent-runtime',
   '@karaka/authentication',
+  '@karaka/cli',
   '@karaka/entitlement',
   '@karaka/storage',
 ])

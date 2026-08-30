@@ -4,13 +4,13 @@
 
 Karaka 是基于 Cordis 的可配置基础层，用于组合智能体 SaaS 运行时。稳定的能力接缝定义运行时能做什么，提供方插件决定基础设施工作如何以及在何处完成，应用配置则选择实际运行的产品。后端中挂载的工具宿主插件可以把框架托管服务上经过装饰的方法转换为智能体工具，而无需开发者为每个方法编写一个插件。
 
-本仓库发布构成组合内核的九个包。接缝契约、提供方和高级扩展位于建立在该内核之上的可独立安装插件中。目前已经实现认证、总支出权益接缝、带持久本地提供方的提供方中立存储，以及带持久会话的初始智能体运行时。除非另有说明，下文的设置 YAML 契约、智能体插件模型、工具编写与宿主 API、聊天 API、subagent 协调和执行接缝都是目标架构。
+本仓库发布构成组合内核的九个包。接缝契约、提供方和高级扩展位于建立在该内核之上的可独立安装插件中。目前已经实现认证、总支出权益接缝、带持久本地提供方的提供方中立存储、带持久会话的初始智能体运行时，以及设置 YAML 进程启动。除非另有说明，下文的智能体插件模型、工具编写与宿主 API、聊天 API、subagent 协调和执行接缝都是目标架构。
 
 ## 基础层边界
 
 `@karaka/cosmokit` 提供小型工具；`@karaka/schemastery` 提供配置 schema；`@karaka/cordis` 管理上下文、服务、事件、fiber、effect 和依赖跟踪。
 
-组合插件建立在该内核之上：Loader 导入配置中的插件；Include 读取 YAML 或 JSON 配置项列表；Group 嵌套配置项；Timer 管理可释放的调度任务；HMR 重载模块和精确配置路径；Logger Console 输出 Cordis 日志。Include 在技术上支持 JSON，但 Karaka 面向普通开发者的目标契约只暴露一份设置 YAML。JSON 和直接 Cordis 组合是供内部代码与高级插件作者使用的底层能力。
+组合插件建立在该内核之上：Loader 导入配置中的插件；Include 读取 YAML 或 JSON 配置项列表；Group 嵌套配置项；Timer 管理可释放的调度任务；HMR 重载模块和精确配置路径；Logger Console 输出 Cordis 日志。Include 在技术上支持 JSON，但 Karaka 面向普通开发者的普通契约只暴露一份设置 YAML。JSON 和直接 Cordis 组合是供内部代码与高级插件作者使用的底层能力。
 
 基础设施能力应位于该基础层之上，并由第一方、第三方或私有插件提供。Karaka 可以发布契约、标准智能体行为和实用的提供方，但第一方实现没有特权运行路径。应用自有方法可以使用 Karaka 的工具装饰器，并继续作为普通后端代码。`vendor/` 包应与具体应用、提供方、部署目标或 SaaS SDK 保持独立。
 
@@ -43,21 +43,20 @@ flowchart TB
 下面是说明性的部分设置片段，它选择提供方、发现远程工具宿主并挂载智能体插件。提供方名称和配置结构都属于规划中的 API，并非当前 API：
 
 ```yaml
-plugins:
-  - name: '@karaka/authentication'
-  - name: '@karaka/authentication/authentication-jwks'
-  - name: '@karaka/entitlement'
-  - name: '@company/entitlement-ledger'
-  - name: '@karaka/storage-postgres'
-  - name: '@karaka/execution/remote'
-  - name: '@karaka/tool/discovery-kubernetes'
-    config:
-      selector:
-        karaka.ai/tool-host: 'true'
-  - name: '@karaka/agent-runtime'
-  - name: './plugins/company-authentication-policy'
-  - name: './agents/support-agent.js'
-  - name: './agents/billing-agent.js'
+- name: '@karaka/authentication'
+- name: '@karaka/authentication/authentication-jwks'
+- name: '@karaka/entitlement'
+- name: '@company/entitlement-ledger'
+- name: '@karaka/storage-postgres'
+- name: '@karaka/execution/remote'
+- name: '@karaka/tool/discovery-kubernetes'
+  config:
+    selector:
+      karaka.ai/tool-host: 'true'
+- name: '@karaka/agent-runtime'
+- name: './plugins/company-authentication-policy'
+- name: './agents/support-agent.js'
+- name: './agents/billing-agent.js'
 ```
 
 每个智能体模块都是普通插件，其注册项属于该插件的生命周期：
@@ -382,7 +381,7 @@ flowchart TB
 
 ### 运行 Karaka 与扩展智能体
 
-目标服务器部署会从设置 YAML 启动一个持久 Karaka 进程。未来的可执行入口可以概念性地表示为 `karaka start --config karaka.yaml`：它创建根 Cordis context，加载已配置插件，挂载聊天 API 和已选择的提供方，并保持进程运行。该名称仅用于说明，并非当前 API。
+`karaka start --config karaka.yaml` 从顶层 Loader 配置项列表启动一个持久 Karaka 进程。精简的 `@karaka/cli` 进程宿主创建根 Cordis context，在内部挂载组合内核中的 Loader 与 Include，等待已配置插件图稳定，并在 `SIGINT` 或 `SIGTERM` 时释放整张图。它不拥有应用行为：未来的聊天 API、传输、接缝、提供方和智能体均由设置选择的插件提供。
 
 一个进程会挂载多个常驻智能体插件。智能体插件不是进程；因此，新增支持、计费、研究或报告智能体不需要再启动一台服务器。每个聊天解析一份活动插件描述符，并携带独立的主体、会话、历史和执行状态。subagent 是另一个智能体插件，最初通过同一运行时执行，除非执行策略把它放入隔离或远程 worker。
 
