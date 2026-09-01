@@ -5,7 +5,7 @@ import { mkdir, open } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
 /** Current derived-index schema version. Incompatible versions reset in place. */
-export const SESSION_QUERY_SQLITE_SCHEMA_VERSION = 8
+export const SESSION_QUERY_SQLITE_SCHEMA_VERSION = 9
 
 /** SQLite application id protecting unrelated databases from derived resets. */
 export const SESSION_QUERY_SQLITE_APPLICATION_ID = 0x44534851
@@ -119,8 +119,15 @@ function ensurePersistentSchema(db: DatabaseSync): void {
       seed_length    INTEGER,
       delegation_depth INTEGER,
       agent_preset  TEXT,
+      application_id TEXT,
+      tenant_id      TEXT,
+      user_id        TEXT,
       revision       TEXT NOT NULL,
-      generation     INTEGER NOT NULL
+      generation     INTEGER NOT NULL,
+      CHECK (
+        (application_id IS NULL AND tenant_id IS NULL AND user_id IS NULL)
+        OR (length(application_id) > 0 AND length(tenant_id) > 0 AND length(user_id) > 0)
+      )
     ) STRICT
   `)
   db.exec(`
@@ -149,9 +156,16 @@ function ensureTemporarySchema(db: DatabaseSync): void {
       seed_length    INTEGER,
       delegation_depth INTEGER,
       agent_preset  TEXT,
+      application_id TEXT,
+      tenant_id      TEXT,
+      user_id        TEXT,
       fingerprint    TEXT NOT NULL,
       persisted      INTEGER NOT NULL CHECK (persisted IN (0, 1)),
-      generation     INTEGER NOT NULL
+      generation     INTEGER NOT NULL,
+      CHECK (
+        (application_id IS NULL AND tenant_id IS NULL AND user_id IS NULL)
+        OR (length(application_id) > 0 AND length(tenant_id) > 0 AND length(user_id) > 0)
+      )
     ) STRICT
   `)
   db.exec(`

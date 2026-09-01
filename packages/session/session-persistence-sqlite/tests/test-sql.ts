@@ -29,6 +29,7 @@ export type TestSqlName =
   | 'set-user-version-18'
   | 'set-user-version-19'
   | 'set-user-version-20'
+  | 'set-user-version-21'
   | 'update-invalid-session-metadata'
   | 'vacuum'
 

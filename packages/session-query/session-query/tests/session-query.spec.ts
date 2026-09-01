@@ -1,7 +1,13 @@
 import { createUserMessage, createMessage } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it, vi } from 'vitest'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
-import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, {
+  ApplicationId,
+  SESSION_FORMAT_VERSION,
+  SessionId,
+  TenantId,
+  UserId,
+} from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent, SessionHeader, SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
 import SessionPersistence, { SessionPersistenceCorruptionError, SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
@@ -1089,6 +1095,15 @@ describe('session-query exact reads', () => {
     sharedEntry.meta = { ...sharedEntry.meta, cwd: '/conflict' }
     await expect(ctx.sessionQuery.listSessions()).rejects.toThrow(expectCode('SESSION_QUERY_SOURCE_CONFLICT'))
     sharedEntry.meta = { ...sharedEntry.meta, cwd: '/same', delegationDepth: 1 }
+    await expect(ctx.sessionQuery.listSessions()).rejects.toThrow(expectCode('SESSION_QUERY_SOURCE_CONFLICT'))
+    sharedEntry.meta = {
+      ...shared,
+      applicationOwner: {
+        applicationId: ApplicationId('billing'),
+        tenantId: TenantId('tenant-1'),
+        userId: UserId('user-1'),
+      },
+    }
     await expect(ctx.sessionQuery.listSessions()).rejects.toThrow(expectCode('SESSION_QUERY_SOURCE_CONFLICT'))
     await persistence.dispose()
     await expect(ctx.sessionQuery.listSessions()).resolves.toEqual([

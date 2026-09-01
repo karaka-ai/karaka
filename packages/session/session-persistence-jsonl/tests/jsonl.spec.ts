@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { appendFile, mkdtemp, mkdir, rm, readFile, writeFile, readdir, stat, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { ApplicationId, SessionId, TenantId, UserId } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import {
@@ -960,6 +960,27 @@ describe('JsonlSessionPersistence: scanLog unit', () => {
     // The preset decides the resumed session's tools and prompt; dropping it
     // on disk would restore a composition the logged history contradicts.
     expect(scanLog(Buffer.from(log)).meta.agentPreset).toBe('minimal')
+  })
+
+  it('round-trips only complete application ownership', () => {
+    const applicationOwner = {
+      applicationId: ApplicationId('billing'),
+      tenantId: TenantId('tenant-1'),
+      userId: UserId('user-1'),
+    }
+    const line = toHeaderLine({
+      version: 0,
+      id: SessionId('application-owned'),
+      createdAt: 1,
+      delegationDepth: 0,
+      applicationOwner,
+    })
+
+    expect(scanLog(Buffer.from(`${JSON.stringify(line)}\n`)).meta.applicationOwner).toEqual(applicationOwner)
+    expect(() => scanLog(Buffer.from(JSON.stringify({
+      ...line,
+      applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1' },
+    }) + '\n'))).toThrow(/session header/)
   })
 
   it('rejects a session header whose agentPreset is not a string', () => {

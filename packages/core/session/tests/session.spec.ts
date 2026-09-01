@@ -2,12 +2,15 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, ToolCallId, createMessage, createToolResultMessage, MessageId, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import SessionStore, {
+  ApplicationId,
   adoptSessionEvent,
   SESSION_FORMAT_VERSION,
   Session,
   SessionEvent,
   SessionId,
   snapshotSessionEvent,
+  TenantId,
+  UserId,
 } from '@deepseek-ai/dsh-session'
 import type { CreateSessionOptions, SessionEventType, SessionHeader, SessionSurface } from '@deepseek-ai/dsh-session'
 
@@ -1057,6 +1060,34 @@ describe('Session', () => {
     }
   })
 
+  it('accepts only complete application ownership metadata', () => {
+    const base = {
+      version: SESSION_FORMAT_VERSION,
+      id: SessionId('application-owned'),
+      createdAt: 123,
+    }
+    const owner = {
+      applicationId: ApplicationId('billing'),
+      tenantId: TenantId('tenant-1'),
+      userId: UserId('user-1'),
+    }
+    const session = Session.create(base.id, undefined, { ...base, applicationOwner: owner })
+
+    expect(session.header.applicationOwner).toEqual(owner)
+    expect(Object.isFrozen(session.header.applicationOwner)).toBe(true)
+    for (const invalid of [
+      null,
+      { applicationId: 'billing', tenantId: 'tenant-1' },
+      { applicationId: '', tenantId: 'tenant-1', userId: 'user-1' },
+      { ...owner, extra: true },
+    ]) {
+      expect(() => Session.create(base.id, undefined, {
+        ...base,
+        applicationOwner: invalid,
+      } as unknown as SessionHeader)).toThrow(/applicationOwner/)
+    }
+  })
+
   it('rejects seed records with invalid fixed-envelope fields', () => {
     const base = {
       type: 'turn/start',
@@ -1132,6 +1163,22 @@ describe('SessionStore', () => {
     }), { surfaceOp: 'append' })
     const forked = ctx.sessions.create(SessionId('fork'), { seed: [...a.events] })
     expect(forked.deriveMessages()).toEqual(a.deriveMessages())
+  })
+
+  it('copies application ownership when forking', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const owner = {
+      applicationId: ApplicationId('billing'),
+      tenantId: TenantId('tenant-1'),
+      userId: UserId('user-1'),
+    }
+    const source = ctx.sessions.create(SessionId('owned-source'), { meta: { applicationOwner: owner } })
+
+    const fork = ctx.sessions.fork(source, undefined, SessionId('owned-fork'))
+
+    expect(fork.header.applicationOwner).toEqual(owner)
+    expect(fork.header.parentSession).toBe(source.id)
   })
 
   it('enter() rejects a stale prepared session whose id is already live (no overwrite)', async () => {
