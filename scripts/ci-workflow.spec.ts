@@ -600,7 +600,7 @@ describe('Issue lifecycle workflow', () => {
 describe('npm release workflows', () => {
   it('keeps publication dispatch-only and pack in the PR workflow', () => {
     // pack stays in the PR/master release workflows so a PR proves the set packs.
-    for (const file of ['release.yml', 'release-vendor.yml']) {
+    for (const file of ['release.yml', 'release-karaka.yml', 'release-vendor.yml']) {
       const workflow = loadWorkflow(`.github/workflows/${file}`)
       if (!isRecord(workflow.jobs)) throw new TypeError(`${file} must define jobs`)
       expect(Object.keys(workflow.jobs).sort()).toEqual(file === 'release.yml' ? ['dependencies', 'pack'] : ['pack'])
@@ -608,7 +608,7 @@ describe('npm release workflows', () => {
 
     // publication is workflow_dispatch-only (never a PR check) and keeps the
     // npm-publish environment plus the shared dist-tag group.
-    for (const file of ['release-publish.yml', 'release-vendor-publish.yml']) {
+    for (const file of ['release-publish.yml', 'release-karaka-publish.yml', 'release-vendor-publish.yml']) {
       const workflow = loadWorkflow(`.github/workflows/${file}`)
       if (!isRecord(workflow.on) || !isRecord(workflow.jobs)) throw new TypeError(`${file} must define on and jobs`)
       expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
@@ -617,6 +617,26 @@ describe('npm release workflows', () => {
       expect(publish.environment).toBe('npm-publish')
       expect(publish.concurrency).toMatchObject({ group: 'Release-publish' })
     }
+  })
+
+  it('rehearses the complete Karaka install but publishes only Karaka', () => {
+    const workflow = loadWorkflow('.github/workflows/release-karaka.yml')
+    const rehearsal = workflowJob(workflow, 'pack')
+    const publication = workflowJob(loadWorkflow('.github/workflows/release-karaka-publish.yml'), 'publish')
+    if (!Array.isArray(rehearsal.steps) || !Array.isArray(publication.steps)) {
+      throw new TypeError('Karaka release workflows must define pack and publish steps')
+    }
+    const rehearsalCommands = rehearsal.steps.flatMap(step =>
+      isRecord(step) && typeof step.run === 'string' ? [step.run] : [])
+    const publishCommands = publication.steps.flatMap(step =>
+      isRecord(step) && typeof step.run === 'string' ? [step.run] : [])
+
+    expect(rehearsalCommands).toContain('pnpm run release:verify --family karaka')
+    expect(rehearsalCommands.some(command => command.includes('--family karaka')
+      && command.includes('--from dist/npm-dsh'))).toBe(true)
+    expect(workflowEvent(workflow, 'push').branches).toEqual(['main'])
+    expect(publishCommands).toEqual(['pnpm install --frozen-lockfile --ignore-scripts',
+      'pnpm run release:publish --family karaka --from dist/npm-karaka'])
   })
 
   it('runs dependency policy and npm layout checks in the DSH release workflow', () => {

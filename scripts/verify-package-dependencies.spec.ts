@@ -84,6 +84,7 @@ function facts(manifest: PackageDependencyManifest): PackageDependencyFacts {
     peerRequiredHostDependencies: new Set(),
     configurationOnlyDevDependencies: new Set(),
     clientInject: new Set(),
+    cordisDevelopmentOnly: false,
   }
 }
 
@@ -116,6 +117,7 @@ function hostRuntimeFixture(): {
     peerRequiredHostDependencies: new Set(),
     configurationOnlyDevDependencies: new Set(),
     clientInject: new Set(),
+    cordisDevelopmentOnly: false,
   }
   return { provider, workspaceNames, consumerFacts }
 }
@@ -129,7 +131,9 @@ describe('package dependency scope', () => {
     expect(PACKAGE_DEPENDENCY_POLICY.hostPackages).toEqual([
       '@deepseek-ai/dsh-llm',
       '@deepseek-ai/dsh-session',
+      '@karaka/sdk',
     ])
+    expect(PACKAGE_DEPENDENCY_POLICY.cordisDevelopmentOnlyPackages).toEqual(['@karaka/sdk'])
     expect(PACKAGE_DEPENDENCY_POLICY.configurationOnlyDevDependencies).toEqual({
       '@deepseek-ai/dsh-client-locale': ['@deepseek-ai/dsh-api-remotes'],
       '@deepseek-ai/dsh-client-ui-conversation': [

@@ -261,7 +261,7 @@ const EXACT_EDITS: readonly ExactEdit[] = [
     id: 'root-agents-vendored-name-contract',
     file: 'AGENTS.md',
     find: 'vendored packages keep upstream names and are `private: true`. `cordis` is a peerDependency (+ dev) of every harness package.',
-    replace: 'vendored packages are rescoped ([mapping](docs/rescope.md)) and `private: true`. `@deepseek-ai/cordis` is a peerDependency (+ dev) of every harness package.',
+    replace: 'Vendored packages are rescoped ([mapping](docs/rescope.md)) and private. Cordis packages peer/dev-depend on `@deepseek-ai/cordis`.',
     expect: 1,
   },
   {

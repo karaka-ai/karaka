@@ -13,6 +13,7 @@ const CLIENT_FACE_EXCLUDE: readonly string[] = [
 const HOST_DEPENDENCY_PACKAGES: readonly string[] = [
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-session',
+  '@karaka/sdk',
 ]
 
 /** Development-only package relationships not represented by source imports. */
@@ -61,6 +62,8 @@ export interface PackageDependencyPolicy {
   readonly clientFaceInclude: readonly string[]
   readonly clientFaceExclude: readonly string[]
   readonly hostPackages: readonly string[]
+  /** Pure libraries whose invariant companion uses Cordis only as a development-time type surface. */
+  readonly cordisDevelopmentOnlyPackages?: readonly string[]
   readonly configurationOnlyDevDependencies: Readonly<Record<string, readonly string[]>>
   readonly duplicateSafePackages?: readonly string[]
   readonly safeHostDependencyExports: HostDependencyExports
@@ -72,6 +75,7 @@ export const PACKAGE_DEPENDENCY_POLICY: PackageDependencyPolicy = {
   clientFaceInclude: CLIENT_FACE_INCLUDE,
   clientFaceExclude: CLIENT_FACE_EXCLUDE,
   hostPackages: HOST_DEPENDENCY_PACKAGES,
+  cordisDevelopmentOnlyPackages: ['@karaka/sdk'],
   configurationOnlyDevDependencies: CONFIGURATION_ONLY_DEV_DEPENDENCIES,
   duplicateSafePackages: DUPLICATE_SAFE_PACKAGES,
   safeHostDependencyExports: SAFE_HOST_DEPENDENCY_EXPORTS,

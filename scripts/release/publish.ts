@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     allowPositionals: false,
   })
   if (values.family === undefined || values.from === undefined) {
-    throw new Error('usage: publish.ts --family <dsh|vendor> --from <packed directory>')
+    throw new Error('usage: publish.ts --family <dsh|karaka|vendor> --from <packed directory>')
   }
 
   const family = releaseFamily(values.family)

@@ -201,6 +201,11 @@ export function reachesPayload(member: ReleaseMember, path: string): boolean {
     matchesGlob(relative, pattern) || matchesGlob(relative, `${pattern}/**`) || relative === pattern)
 }
 
+/** Operator instruction emitted after a release bump commit. */
+export function postBumpTagInstruction(family: ReleaseFamily): string {
+  return `release bump: committed. After this merges to ${family.integrationBranch}, tag it:`
+}
+
 /**
  * The newest version a member tagged.
  * @param family - the member's family.
@@ -358,7 +363,7 @@ function main(): void {
     },
     allowPositionals: true,
   })
-  if (values.family === undefined) throw new Error('usage: bump.ts --family <dsh|vendor> [version]')
+  if (values.family === undefined) throw new Error('usage: bump.ts --family <dsh|karaka|vendor> [version]')
 
   const family = releaseFamily(values.family)
   const root = process.cwd()
@@ -406,7 +411,7 @@ function main(): void {
   }
   capture('git', ['add', 'pnpm-lock.yaml', ...planned.map(entry => entry.manifestPath)])
   capture('git', ['commit', '-m', `release(${family.id}): ${summary}`])
-  console.log('release bump: committed. After this merges to master, tag it:')
+  console.log(postBumpTagInstruction(family))
   for (const tag of [...new Set(planned.map(entry => entry.tag).filter(tag => tag !== undefined))]) {
     console.log(`  git tag ${tag} <merge commit> && git push origin ${tag}`)
   }

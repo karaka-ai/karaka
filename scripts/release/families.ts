@@ -1,7 +1,7 @@
 /**
- * The three independent publish sequences this repository releases from
- * (`packages/` + `apps/`, `vendor/`, and `native/`) and the two this module
- * owns: `dsh` and `vendor`. Each family carries its own version baseline, tag
+ * The four independent publish sequences this repository releases from
+ * (DSH, Karaka, vendor, and native); this module owns the first three.
+ * Each family carries its own version baseline, tag
  * naming, and publish set, so releasing one never republishes another
  * ([rationale](../../.agents/notes/implemented/process/2026-08-10-npm-release-sequences.md)).
  *
@@ -101,11 +101,17 @@ export abstract class ReleaseFamily {
   /** Workflow-facing `--family` identifier. */
   abstract readonly id: string
 
+  /** Branch whose merged commit receives this family's release tag. */
+  readonly integrationBranch: string = 'master'
+
   /** Repository-relative glob patterns selecting this family's manifests. */
   abstract readonly patterns: readonly string[]
 
   /** Git tag prefix this family publishes from. */
   abstract readonly tagPrefix: string
+
+  /** npm namespace accepted for members of this family. */
+  abstract readonly packagePrefix: string
 
   /**
    * Assert that built artifacts match this release family's required profile.
@@ -131,7 +137,9 @@ export abstract class ReleaseFamily {
       const name = requireString(manifest, 'name', normalized)
       const version = requireString(manifest, 'version', normalized)
       if (name === WORKSPACE_ROOT_PACKAGE) throw new Error(`${normalized} selected the workspace root`)
-      if (!name.startsWith('@deepseek-ai/')) throw new Error(`${normalized} must name an @deepseek-ai package`)
+      if (!name.startsWith(this.packagePrefix)) {
+        throw new Error(`${normalized} must name a ${this.packagePrefix} package`)
+      }
       if (seen.has(name)) throw new Error(`${name} appears twice in release family ${this.id}`)
       seen.add(name)
       members.push({
@@ -320,8 +328,9 @@ export abstract class ReleaseFamily {
 /** Release packages and apps: one shared version across the whole family. */
 class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
-  readonly patterns = ['packages/!(experimental)/*/package.json', 'apps/*/package.json'] as const
+  readonly patterns = ['packages/!(experimental|karaka)/*/package.json', 'apps/*/package.json'] as const
   readonly tagPrefix = 'dsh-v'
+  readonly packagePrefix = '@deepseek-ai/'
 
   /** Require current artifacts from a complete official client build. */
   override verifyBuildArtifacts(root: string): void {
@@ -368,11 +377,39 @@ class DshFamily extends ReleaseFamily {
   readonly installedEntry = { packageName: '@deepseek-ai/dsh', binPath: 'lib/bin.js' }
 }
 
+/** Karaka product packages: one shared version and independent release tag. */
+class KarakaFamily extends ReleaseFamily {
+  readonly id = 'karaka'
+  override readonly integrationBranch = 'main'
+  readonly patterns = ['packages/karaka/*/package.json'] as const
+  readonly tagPrefix = 'karaka-v'
+  readonly packagePrefix = '@karaka/'
+
+  verifyVersions(members: readonly ReleaseMember[]): void {
+    const versions = new Set(members.map(member => member.version))
+    if (versions.size !== 1) {
+      const detail = members.map(member => `${member.directory}: ${member.version}`).join('\n')
+      throw new Error(`karaka release members must share one version:\n${detail}`)
+    }
+  }
+
+  tagPrefixFor(): string {
+    return this.tagPrefix
+  }
+
+  validatePayload(member: ReleaseMember, files: readonly string[]): void {
+    validateTarballPayload(files, member.name)
+  }
+
+  readonly installedEntry = { packageName: '@karaka/cli', binPath: 'lib/bin.js' }
+}
+
 /** `vendor/*`: every package keeps its own version line, so every package has its own tag. */
 class VendorFamily extends ReleaseFamily {
   readonly id = 'vendor'
   readonly patterns = ['vendor/*/package.json'] as const
   readonly tagPrefix = 'vendor-'
+  readonly packagePrefix = '@deepseek-ai/'
 
   /**
    * Accept independent versions; only reject a version this repository cannot publish.
@@ -417,7 +454,7 @@ class VendorFamily extends ReleaseFamily {
 
 /** Every release family this module owns, in workflow order. */
 function releaseFamilies(): readonly ReleaseFamily[] {
-  return [new DshFamily(), new VendorFamily()]
+  return [new DshFamily(), new KarakaFamily(), new VendorFamily()]
 }
 
 /**
