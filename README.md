@@ -1,58 +1,40 @@
-# DeepSeek Harness
+# Karaka
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+Karaka is a persistent, multi-agent server for application backends. Each named agent is a DeepSeek Harness Agent Preset whose Cordis plugin composition supplies its prompt, tools, skills, model behavior, and other runtime capabilities.
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+An application backend uses `@karaka/sdk` to authenticate with Karaka, chat with an available agent, and expose application functions as authenticated MCP tools. Karaka runs separately, keeps durable chat state, and invokes only the application tools selected by that agent.
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+Karaka builds on the open-source [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) developed by [DeepSeek AI](https://deepseek.com). It retains the Harness **everything-is-a-plugin** architecture powered by [Cordis](https://github.com/cordiverse/cordis).
+
+## How it fits
+
+```text
+Application backend                         Karaka process
+@karaka/sdk chat client  -- HTTP / SSE -->  named Agent Preset
+@karaka/sdk MCP tools     <--    MCP    --  selected application tools
+```
+
+The application authenticates its users and sends trusted tenant and user identifiers. Karaka authenticates the application server, binds those identifiers to the durable chat, and forwards them when an agent invokes an application tool. Installing the SDK starts no process and opens no port.
+
+## Start here
+
+- [Application SDK](packages/karaka/sdk/README.md) — send chat requests and expose backend functions as tools.
+- [Karaka CLI](packages/karaka/cli/README.md) — create an agent workspace and start the persistent server.
+- [Karaka harness](packages/karaka/harness/README.md) — inspect the default server composition and security posture.
+- [Architecture](docs/architecture.md#karaka-application-runtime) — understand agent definitions, identity, persistence, and process ownership.
+- [Karaka packages](packages/karaka/README.md) — browse the complete package family.
 
 ## Developer preview
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
-
-Review the [safety notice](SAFETY.md) before running the project.
-
-## Run
-
-### Run from `npm`
-
-Install `Node.js`, then run:
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
-
-### Run from source
-
-To run from a repository checkout:
-
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
-pnpm run build
-pnpm dsh web
-```
-
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
-
-## Community and support
-
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Karaka and its inherited Harness runtime are in _developer preview_ and may make compatibility-breaking changes. Review the [safety notice](SAFETY.md) before running the project.
 
 ## Development
 
 Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change.
 
 For agents, follow [AGENTS.md](AGENTS.md).
 
