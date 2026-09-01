@@ -206,13 +206,24 @@ async function startKaraka(project: string): Promise<RunningKaraka> {
     timeout: 30_000,
     killSignal: 'SIGKILL',
   })
-  const port = await waitForPort(readyFile, child)
-  const endpoint = `http://127.0.0.1:${String(port)}`
-  await waitForApplicationApi(endpoint, child)
+  const endpoint = await waitForKarakaStartup(readyFile, child)
   return {
     child,
     endpoint,
     database: join(prepared.home, 'karaka-sessions.sqlite'),
+  }
+}
+
+async function waitForKarakaStartup(readyFile: string, child: ResultPromise): Promise<string> {
+  try {
+    const port = await waitForPort(readyFile, child)
+    const endpoint = `http://127.0.0.1:${String(port)}`
+    await waitForApplicationApi(endpoint, child)
+    return endpoint
+  } catch (error: unknown) {
+    if (child.exitCode === undefined) child.kill('SIGKILL')
+    await child
+    throw error
   }
 }
 
@@ -263,6 +274,25 @@ async function compareOrRefresh(actualLog: string): Promise<void> {
 }
 
 describe('Karaka recorded-session snapshot', () => {
+  it('reaps the Karaka child when startup readiness is invalid', async () => {
+    const project = await mkdtemp(join(tmpdir(), 'karaka-startup-failure-'))
+    const readyFile = join(project, 'karaka-ready')
+    await writeFile(readyFile, 'invalid\n')
+    const child = execa(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { reject: false })
+    let settled = false
+    try {
+      await expect(waitForKarakaStartup(readyFile, child)).rejects.toThrow('invalid port')
+      await expect(child).resolves.toMatchObject({ signal: 'SIGKILL' })
+      settled = true
+    } finally {
+      if (!settled) {
+        child.kill('SIGKILL')
+        await child
+      }
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
   it.skipIf(mode === 'record')('replays an authenticated application chat through dsh --profile karaka', async () => {
     const manifestPath = join(scenarioDir, 'snapshot.yml')
     const manifest = parseSnapshotManifest(await readFile(manifestPath, 'utf8'), manifestPath)
