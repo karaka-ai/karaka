@@ -108,7 +108,7 @@ describe('KarakaClient', () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(encoder.encode('data: {"type":"text-delta","cursor":1,"text":"one"}\r\n\r\n'))
-        controller.enqueue(encoder.encode('data: {"type":"text-delta","cursor":2,"text":"two"}\r'))
+        controller.enqueue(encoder.encode('event: message\r\ndata: {"type":"text-delta",\r\ndata: "cursor":2,"text":"two"}\r'))
         controller.enqueue(encoder.encode('\n\r\n'))
         controller.close()
       },

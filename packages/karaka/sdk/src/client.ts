@@ -201,21 +201,46 @@ async function responseError(response: Response): Promise<Error> {
   return error
 }
 
+function readEventStreamLine(
+  buffer: string,
+  endOfStream: boolean,
+): { readonly line: string; readonly consumed: number } | undefined {
+  for (let index = 0; index < buffer.length; index++) {
+    const character = buffer[index]
+    if (character === '\n') return { line: buffer.slice(0, index), consumed: index + 1 }
+    if (character !== '\r') continue
+    if (index + 1 === buffer.length && !endOfStream) return undefined
+    return {
+      line: buffer.slice(0, index),
+      consumed: index + (buffer[index + 1] === '\n' ? 2 : 1),
+    }
+  }
+  return endOfStream && buffer.length > 0
+    ? { line: buffer, consumed: buffer.length }
+    : undefined
+}
+
 async function* parseEventStream(stream: ReadableStream<Uint8Array>): AsyncIterable<ChatEvent> {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let frame: string[] = []
   let completed = false
   try {
     while (true) {
       const next = await reader.read()
       buffer += decoder.decode(next.done ? undefined : next.value, { stream: !next.done })
-      let boundary = /(?:\r\n|\r|\n){2}/.exec(buffer)
-      while (boundary !== null) {
-        const frame = buffer.slice(0, boundary.index)
-        buffer = buffer.slice(boundary.index + boundary[0].length)
-        boundary = /(?:\r\n|\r|\n){2}/.exec(buffer)
-        const data = frame.split(/\r\n|\r|\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
+      let parsed = readEventStreamLine(buffer, next.done)
+      while (parsed !== undefined) {
+        buffer = buffer.slice(parsed.consumed)
+        if (parsed.line.length > 0) {
+          frame.push(parsed.line)
+          parsed = readEventStreamLine(buffer, next.done)
+          continue
+        }
+        const data = frame.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
+        frame = []
+        parsed = readEventStreamLine(buffer, next.done)
         if (data.length === 0) continue
         const event = ApplicationChatEventSchema.parse(JSON.parse(data))
         if (event.type === 'error') {
