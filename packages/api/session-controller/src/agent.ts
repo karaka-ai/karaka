@@ -106,6 +106,11 @@ type ApplicationHandleEntry = {
   timer: NodeJS.Timeout | undefined
 }
 
+type ResumeEntry = {
+  readonly allowApplication: boolean
+  readonly promise: Promise<Agent>
+}
+
 /**
  * Test whether generic Session routing must leave an identity to subagent routing.
  * @param ctx - Host context carrying the Agent ownership registry.
@@ -186,7 +191,7 @@ export async function inspectApiSession(
 
 /** Owns every operation that may create, resume, or configure a Web Agent. */
 export class ApiSessionAgentController {
-  private readonly resumes = new Map<SessionId, Promise<Agent>>()
+  private readonly resumes = new Map<SessionId, ResumeEntry>()
   private readonly creations = new Map<SessionId, Promise<Agent>>()
   private readonly selections = new WeakMap<Agent, InstalledSelection>()
   private readonly imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
@@ -287,12 +292,21 @@ export class ApiSessionAgentController {
     }
 
     let resume = this.resumes.get(sessionId)
+    if (resume !== undefined && allowApplication && !resume.allowApplication) {
+      try { await resume.promise } catch { /* the authorized retry resolves the failure independently */ }
+      return this.resolve(sessionId, observation, true)
+    }
     if (resume === undefined) {
-      resume = this.resume(sessionId, observation, allowApplication).finally(() => { this.resumes.delete(sessionId) })
+      const promise = this.resume(sessionId, observation, allowApplication)
+      resume = { allowApplication, promise }
       this.resumes.set(sessionId, resume)
+      const release = (): void => {
+        if (this.resumes.get(sessionId) === resume) this.resumes.delete(sessionId)
+      }
+      void promise.then(release, release)
     }
     try {
-      const agent = await resume
+      const agent = await resume.promise
       if (!allowApplication && agent.session.header.applicationOwner !== undefined) {
         return { error: apiSessionApplicationOwnershipError(sessionId) }
       }

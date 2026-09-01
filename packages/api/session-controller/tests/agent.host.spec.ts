@@ -267,6 +267,43 @@ describe('ApiSession Agent lookup and recovery', () => {
     await expect(agents.resolveApplicationAgent(meta.id)).resolves.toEqual({ agent: live })
   })
 
+  it('retries an authorized cold resume after a concurrent generic ownership rejection', async () => {
+    const { ctx, agents } = await harness()
+    const meta = {
+      ...header('application-cold-race', null),
+      applicationOwner: {
+        applicationId: ApplicationId('billing'),
+        tenantId: TenantId('tenant-1'),
+        userId: UserId('user-1'),
+      },
+    }
+    let releaseInspection!: () => void
+    const inspectionGate = new Promise<void>((resolve) => { releaseInspection = resolve })
+    const inspect = vi.fn(async () => {
+      if (inspect.mock.calls.length === 1) await inspectionGate
+      return { meta, events: [] }
+    })
+    providePersistence(ctx, {
+      list: () => Promise.resolve([meta]),
+      inspect,
+    })
+    const resumed = unpublishedAgent(ctx, meta)
+    const resume = vi.spyOn(ctx.agents, 'resume').mockResolvedValue({
+      agent: resumed,
+      dispose: () => Promise.resolve(),
+    })
+
+    const generic = agents.resolveAgent(meta.id)
+    await vi.waitFor(() => { expect(inspect).toHaveBeenCalledOnce() })
+    const application = agents.resolveApplicationAgent(meta.id)
+    releaseInspection()
+
+    await expect(generic).resolves.toMatchObject({ error: { code: 'session/agent-busy' } })
+    await expect(application).resolves.toEqual({ agent: resumed })
+    expect(inspect).toHaveBeenCalledTimes(2)
+    expect(resume).toHaveBeenCalledOnce()
+  })
+
   it('resumes directly from a retained observation and rejects an invalid observed header', async () => {
     const { ctx, agents } = await harness()
     const meta = header('observed-resume')
