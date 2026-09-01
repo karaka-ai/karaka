@@ -86,6 +86,19 @@ const stdioConfig: Config = {
   failOnStartupError: false,
 }
 
+function fatalStdioConfig(): Config {
+  return {
+    transport: 'stdio',
+    serverName: 'srv',
+    command: 'echo',
+    args: [],
+    env: {},
+    cwd: '',
+    toolCallTimeoutMs: 60_000,
+    failOnStartupError: true,
+  }
+}
+
 // ---- Tests ----
 
 describe('mcp-client plugin module exports', () => {
@@ -267,11 +280,8 @@ describe('apply (plugin lifecycle)', () => {
   it('rejects activation and still closes the client when startup failure is configured as fatal', async () => {
     const cause = new Error('connection refused')
     mockConnect.mockRejectedValue(cause)
-    await expect(apply(ctx, {
-      ...stdioConfig,
-      failOnStartupError: true,
-    })).rejects.toMatchObject({
-      message: 'mcp-client(srv): initial connection or tool synchronization failed',
+    await expect(apply(ctx, fatalStdioConfig())).rejects.toMatchObject({
+      message: 'mcp-client(srv): initial connection or tool synchronization failed: connection refused',
       cause,
     })
 
@@ -293,10 +303,8 @@ describe('apply (plugin lifecycle)', () => {
       execute: async () => 'foreign',
     })
 
-    await expect(apply(ctx, {
-      ...stdioConfig,
-      failOnStartupError: true,
-    })).rejects.toThrow('initial connection or tool synchronization failed')
+    await expect(apply(ctx, fatalStdioConfig()))
+      .rejects.toThrow('initial connection or tool synchronization failed')
 
     expect(ctx.tools.get('mcp__srv__remote')).toBeDefined()
     await ctx.fiber.dispose()
@@ -319,10 +327,8 @@ describe('apply (plugin lifecycle)', () => {
       await handler()
     })
 
-    await expect(apply(ctx, {
-      ...stdioConfig,
-      failOnStartupError: true,
-    })).rejects.toThrow('initial connection or tool synchronization failed')
+    await expect(apply(ctx, fatalStdioConfig()))
+      .rejects.toThrow('initial connection or tool synchronization failed')
 
     expect(mockListTools).toHaveBeenCalledTimes(2)
     expect(ctx.tools.get('mcp__srv__remote')?.description).toBe('Foreign squatter')

@@ -44,11 +44,17 @@ export interface Config {
    * composed for nothing.
    */
   mode: ToolPresentationMode
+  /** Keep only these inherited host tools for Agents under this preset. */
+  allow?: string[]
+  /** Remove these inherited host tools for Agents under this preset. */
+  deny?: string[]
 }
 
 /** Runtime schema. */
 export const Config: z<Config> = z.object({
   mode: z.union(['native', 'ptc', 'both'] as const).required(),
+  allow: z.array(String).default(undefined as unknown as string[]),
+  deny: z.array(String).default(undefined as unknown as string[]),
 })
 
 /**
@@ -57,6 +63,12 @@ export const Config: z<Config> = z.object({
  * @param config - the selected presentation.
  */
 export function apply(ctx: Context, config: Config): void {
+  if (config.allow !== undefined || config.deny !== undefined) {
+    ctx.tools.restrict({
+      ...(config.allow === undefined ? {} : { allow: config.allow }),
+      ...(config.deny === undefined ? {} : { deny: config.deny }),
+    })
+  }
   // `presentAs` is itself the effect — it registers through the calling
   // context and hands back that exact disposer — so the declaration unwinds
   // with this row without a second wrapper owning it.

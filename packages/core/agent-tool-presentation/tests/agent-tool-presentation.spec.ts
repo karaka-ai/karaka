@@ -85,6 +85,34 @@ describe('the tool-presentation row', () => {
     expect(assembly.tools.map(tool => tool.name)).toEqual(['echo', RUN_CODE_NAME])
   })
 
+  it('selects inherited host tools only for its own agent scope', async () => {
+    const ctx = await host()
+    ctx.tools.register(defineTool({
+      name: 'private',
+      description: 'Second host tool.',
+      parameters: {},
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+      execute: () => Promise.resolve('ok'),
+    }))
+    const selected = await mount(ctx, { mode: 'native', allow: ['echo'] }, 'selected')
+    const plain = await mount(ctx, { mode: 'native' }, 'plain')
+
+    expect((await ctx.systemPrompt.assemble({ scope: selected.agent })).tools.map(tool => tool.name))
+      .toEqual(['echo'])
+    expect((await ctx.systemPrompt.assemble({ scope: plain.agent })).tools.map(tool => tool.name))
+      .toEqual(['echo', 'private'])
+
+    await selected.row.dispose()
+    expect((await ctx.systemPrompt.assemble({ scope: selected.agent })).tools.map(tool => tool.name))
+      .toEqual(['echo', 'private'])
+  })
+
+  it('fails when a preset names an undiscovered host tool', async () => {
+    const ctx = await host()
+    await expect(mount(ctx, { mode: 'native', allow: ['missing'] }))
+      .rejects.toThrow(/unknown global tool "missing"/)
+  })
+
   it('restores the deployment default when the agent unloads', async () => {
     const ctx = await host()
     const { agent, row } = await mount(ctx, { mode: 'ptc' })

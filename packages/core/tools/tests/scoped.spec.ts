@@ -84,6 +84,19 @@ describe('scoped tool registration', () => {
     expect(await run(ctx, 'mine')).toBe('Error: unknown tool "mine"')
   })
 
+  it('applies a definition-owned visibility policy to schemas and dispatch', async () => {
+    const ctx = await mount()
+    const allowed = { id: 'allowed' as SessionId } as Agent
+    const denied = { id: 'denied' as SessionId } as Agent
+    ctx.tools.register({ ...tool('private'), isVisible: visibility => visibility.scope === allowed })
+
+    expect(ctx.tools.schemas(allowed).map(schema => schema.name)).toEqual(['private'])
+    expect(ctx.tools.schemas(denied)).toEqual([])
+    expect(ctx.tools.schemas()).toEqual([])
+    expect(await run(ctx, 'private', allowed)).toBe('ran:private')
+    expect(await run(ctx, 'private', denied)).toBe('Error: unknown tool "private"')
+  })
+
   it('scoped shadows global on a name conflict, in either registration order', async () => {
     const ctx = await mount()
     const { scope, key } = await mintAgentScope(ctx, 'a')

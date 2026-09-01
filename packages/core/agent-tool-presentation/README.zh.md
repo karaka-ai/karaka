@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-[agent preset](../../preset/agent-presets/README.zh.md) 携带 `dsh-agent-tool-presentation`，用来声明「模型看到其工具的哪一种形态」：`native`（每个可见 schema）、`ptc`（只有 `run_code` 加一份生成的 SDK）或 `both`。工具注册表本身仍在宿主平面——这一行只声明挂载 agent 的呈现方式，因此一个 PTC mode 会话可以与多个 native 会话同进程并存，各自看到各自的目录。PTC 模式在挂载前会等待代码运行时，因此针对未组装运行时的部署选择 PTC mode 的 preset 会在挂载时失败，而不是在第一次请求时失败。`mode` 字段是必填的：不带这一行的 preset 本来就会拿到部署默认值。当 agent preset 需要固定其 agent 的模型所看到的工具形态时，请选择本包。
+[agent preset](../../preset/agent-presets/README.zh.md) 携带 `dsh-agent-tool-presentation`，用来选择模型看到的工具形态，并可选择保留哪些继承的宿主工具。`native` 呈现每个已选 schema，`ptc` 只呈现 `run_code` 和生成的 SDK，`both` 呈现两种形态。工具 registry 本身仍在宿主平面；这一行针对挂载 Agent scope 声明呈现和限制，因此不同配置的 Session 可在同一进程共存。PTC mode 会在挂载前等待代码运行时。`mode` 必填；`allow` 与 `deny` 可选。
 
 ## 目录
 
@@ -38,8 +38,10 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `mode` | 必填 | `native`——每个 schema；`ptc`——`run_code` 加生成 SDK；`both`——两种形态 |
+| `allow` | 所有继承工具 | 只保留这些继承的宿主工具名称 |
+| `deny` | 无 | 在 `allow` 之后移除这些继承的宿主工具名称 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-agent-tool-presentation)是每个受支持字段的穷尽式真源。`mode` 是必填而非有默认值，因为不带这一行的 preset 会继承部署默认值。
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-agent-tool-presentation)是每个受支持字段的穷尽式真源。未知名称会在 preset 挂载时失败。限制只影响继承的宿主工具，并随 preset scope 一起撤销。应用自有 MCP 工具默认拒绝暴露：Agent preset 必须在 `allow` 中逐项点名；仅匹配应用 owner 不会暴露工具。
 
 ### PTC 模式需要什么
 
