@@ -222,9 +222,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'serviceFor<K extends string & keyof Context>(agent: { ctx: Context }, name: K): Context[K] | undefined',
-        description: 'One agent\'s instance of a service its preset mounted.\n\nA preset publishes services behind `isolate` realms, which are invisible outside the group that declares them — including to the host. This is how a caller holding the agent reads one anyway: a request that is ABOUT a session but arrives from outside it, which is every browser RPC.\n\nRead addressing only. A host row that `inject`s a service cannot use this, because injection resolves before any session exists and has no agent to key by; such a service belongs on the host plane instead.',
-        parameters: [{ name: 'agent', description: 'the agent whose composition to look inside.' }, { name: 'name', description: 'the service name as the preset\'s rows resolve it.' }],
-        returns: 'the agent\'s instance, or undefined when its preset mounts none.',
+        description: 'The shared service instance mounted by an agent\'s preset generation.\n\nAgents joined to one standing generation resolve the same instance. Its `isolate` realm separates that generation from the root and other preset generations. The agent addresses the generation for callers such as browser RPC handlers; it does not imply a chat-local service instance.\n\nRead addressing only. A host row that `inject`s a service cannot use this, because injection has no agent to address through; such a service belongs on the host plane. Plugins keep chat-local mutable state on the Agent or Session, or key it by their identities.',
+        parameters: [{ name: 'agent', description: 'an agent joined to the preset generation to inspect.' }, { name: 'name', description: 'the service name as the preset\'s rows resolve it.' }],
+        returns: 'the generation\'s shared instance, or undefined when it mounts none.',
       },
       {
         signature: 'async recompose(agentCtx: Context, id: string): Promise<AgentPreset>',
@@ -1330,10 +1330,34 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'serverAuth',
+    summary: 'Replaceable authentication used for both inbound chat and outbound tool traffic.',
+    description: 'Replaceable authentication used for both inbound chat and outbound tool traffic.',
+    methods: [
+      {
+        signature: 'abstract authenticate( authorization: string | undefined, signal?: AbortSignal, ): Promise<AuthenticatedApplication | undefined>',
+        description: 'Verify an inbound authorization value.',
+        parameters: [{ name: 'authorization', description: 'complete inbound Authorization header.' }, { name: 'signal', description: 'caller lifetime; implementations must stop credential work when aborted.' }],
+        returns: 'the authenticated application, or undefined when verification fails.',
+      },
+      {
+        signature: 'abstract authorizeTools(applicationId: ApplicationId, signal?: AbortSignal): Promise<string>',
+        description: 'Build outbound authorization for one application\'s MCP endpoint.',
+        parameters: [{ name: 'applicationId', description: 'authenticated application identity.' }, { name: 'signal', description: 'outbound request lifetime.' }],
+        returns: 'complete outbound Authorization header.',
+      },
+    ],
+  },
+  {
     key: 'sessionController',
     summary: 'Host service backing the generated `ctx.remote.session` namespace.',
     description: 'Host service backing the generated `ctx.remote.session` namespace.',
     methods: [
+      {
+        signature: 'readonly application: ApplicationChatController',
+        description: 'Host-only application chat operations used by authenticated transports.',
+        parameters: [],
+      },
       {
         signature: 'resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>',
         description: 'Resolve or resume one ordinary Session for another Host API domain.',
@@ -3480,12 +3504,44 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ApiKeyRecord {\n    readonly kind: \'api-key\';\n    readonly key?: string;\n    readonly env?: Readonly<Record<string, string>>;\n}',
   },
   {
+    name: 'ApiSessionAgentController',
+    declaration: 'export class ApiSessionAgentController {\n    constructor(private readonly ctx: Context, private readonly applicationIdleMs = 300000);\n    async resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>;\n    async resolveObservedAgent(observation: SessionObservation): Promise<ApiSessionAgentResult>;\n    async resolveApplicationAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>;\n    async resolveObservedApplicationAgent(observation: SessionObservation): Promise<ApiSessionAgentResult>;\n    async ensureSession(sessionId: SessionId, cwd: string | undefined, checkPersistedIdentity: boolean, presetId?: string, applicationOwner?: ApplicationOwner): Promise<Agent>;\n    touchApplication(agent: Agent): void;\n    pinApplication(agent: Agent): () => void;\n    selectionFor(agent: Agent): InstalledSelection;\n    selectForNextRequest(agent: Agent, selection: AgentModelSelection): void;\n    consumeSelection(agent: Agent, provider: string, model: string, reasoningEffort: string | undefined): boolean;\n    presetForSession(session: Session): string | undefined;\n    serializeImageAdmission<Value>(agent: Agent, operation: () => Promise<Value>): Promise<Value>;\n    async composeAgent(presetId: string | undefined): Promise<{\n        readonly agentPreset?: string;\n        readonly setup: AgentSetup;\n    }>;\n    presetForObservation(observation: SessionObservation): string | undefined;\n}',
+  },
+  {
     name: 'ApiSessionAgentError',
     declaration: 'export type ApiSessionAgentError = RemoteError<\'session/not-found\' | \'session/agent-busy\' | \'gateway/internal\'>;',
   },
   {
     name: 'ApiSessionAgentResult',
     declaration: 'export type ApiSessionAgentResult = {\n    readonly agent: Agent;\n} | {\n    readonly error: ApiSessionAgentError;\n};',
+  },
+  {
+    name: 'ApplicationAgentRow',
+    declaration: 'export interface ApplicationAgentRow {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'ApplicationChatAddress',
+    declaration: 'export interface ApplicationChatAddress {\n    readonly chatId: SessionId;\n    readonly owner: ApplicationOwner;\n}',
+  },
+  {
+    name: 'ApplicationChatController',
+    declaration: 'export class ApplicationChatController {\n    constructor(private readonly ctx: Context, private readonly agents: ApiSessionAgentController, private readonly commands: SessionCommandController);\n    async listAgents(signal?: AbortSignal): Promise<readonly ApplicationAgentRow[]>;\n    async create(request: ApplicationChatCreate, signal?: AbortSignal): Promise<{\n        readonly chatId: SessionId;\n        readonly agentId: string;\n    }>;\n    async prompt(request: ApplicationChatPrompt, signal?: AbortSignal): Promise<{\n        readonly accepted: true;\n        readonly duplicate: boolean;\n    }>;\n    async cancel(request: ApplicationChatAddress, signal?: AbortSignal): Promise<{\n        readonly accepted: true;\n    }>;\n    async selectModel(request: ApplicationChatAddress & ModelSelection, signal?: AbortSignal): Promise<{\n        readonly selected: ModelSelection;\n    }>;\n    async events(request: ApplicationChatAddress, signal?: AbortSignal): Promise<readonly SessionEvent[]>;\n    async *follow(request: ApplicationChatAddress, signal: AbortSignal): AsyncIterable<SessionFollowFrame>;\n}',
+  },
+  {
+    name: 'ApplicationChatCreate',
+    declaration: 'export interface ApplicationChatCreate {\n    readonly chatId: SessionId;\n    readonly agentId: string;\n    readonly owner: ApplicationOwner;\n}',
+  },
+  {
+    name: 'ApplicationChatPrompt',
+    declaration: 'export interface ApplicationChatPrompt {\n    readonly chatId: SessionId;\n    readonly requestId: string;\n    readonly owner: ApplicationOwner;\n    readonly content: readonly PromptContentPart[];\n}',
+  },
+  {
+    name: 'ApplicationId',
+    declaration: 'export type ApplicationId = Branded<\'ApplicationId\'>;',
+  },
+  {
+    name: 'ApplicationOwner',
+    declaration: 'export interface ApplicationOwner {\n    readonly applicationId: ApplicationId;\n    readonly tenantId: TenantId;\n    readonly userId: UserId;\n}',
   },
   {
     name: 'ApprovalOutcome',
@@ -3554,6 +3610,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AttachmentId',
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
+  },
+  {
+    name: 'AuthenticatedApplication',
+    declaration: 'export interface AuthenticatedApplication {\n    readonly applicationId: ApplicationId;\n}',
   },
   {
     name: 'AuthorizationEntry',
@@ -3833,7 +3893,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateAgentOptions',
-    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n        readonly applicationOwner?: ApplicationOwner;\n    };\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
     name: 'CreateGoalRequest',
@@ -3845,7 +3905,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateSessionOptions',
-    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
+    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n        readonly applicationOwner?: ApplicationOwner;\n    };\n}',
   },
   {
     name: 'CreateTeamTaskRequest',
@@ -4840,6 +4900,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionChunkRun {\n    readonly type: \'chunks\';\n    readonly event: ChunkRowEvent;\n}',
   },
   {
+    name: 'SessionCommandController',
+    declaration: 'export class SessionCommandController {\n    constructor(private readonly ctx: Context, private readonly agents: ApiSessionAgentController, private readonly defaultCwd: string);\n    async create(request: SessionCreateRequest): Promise<SessionCreateValue>;\n    async selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>;\n    async selectApplicationModel(agent: Agent, request: SessionSelectModelRequest): Promise<SessionSelectModelValue>;\n    async rename(request: SessionRenameRequest): Promise<SessionRenameValue>;\n    async fork(request: SessionForkRequest): Promise<SessionForkValue>;\n    async prompt(request: SessionPromptRequest): Promise<SessionPromptValue>;\n    async promptApplication(agent: Agent, request: SessionPromptRequest): Promise<SessionPromptValue>;\n    async attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>;\n    updateQueue(request: SessionUpdateQueueRequest): SessionUpdateQueueValue;\n    cancel(request: SessionCancelRequest): SessionCancelValue;\n    cancelApplication(agent: Agent): SessionCancelValue;\n}',
+  },
+  {
     name: 'SessionControlBaseline',
     declaration: 'export interface SessionControlBaseline {\n    readonly queues: Readonly<Record<SessionId, readonly SessionQueuedItem[]>>;\n    readonly jobs: Readonly<Record<SessionId, readonly SessionJob[]>>;\n    readonly projections: Readonly<Record<SessionId, SessionProjectionBaseline>>;\n}',
   },
@@ -4945,7 +5009,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionHeader',
-    declaration: 'export interface SessionHeader {\n    readonly version: number;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly parentSession?: SessionId;\n    readonly seedLength?: number;\n    readonly origin?: \'subagent\';\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n}',
+    declaration: 'export interface SessionHeader {\n    readonly version: number;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly parentSession?: SessionId;\n    readonly seedLength?: number;\n    readonly origin?: \'subagent\';\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n    readonly applicationOwner?: ApplicationOwner;\n}',
   },
   {
     name: 'SessionHistoryRecord',
@@ -5632,6 +5696,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TeamWaitResult {\n    readonly timedOut: boolean;\n}',
   },
   {
+    name: 'TenantId',
+    declaration: 'export type TenantId = Branded<\'TenantId\'>;',
+  },
+  {
     name: 'TerminalBackend',
     declaration: 'export interface TerminalBackend {\n    readonly type: string;\n    spawn(spec: TerminalBackendSpawnSpec): Promise<TerminalBackendSession>;\n}',
   },
@@ -5737,7 +5805,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolDefinition',
-    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
+    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    isVisible?(visibility: Readonly<ToolVisibilityContext>): boolean;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
   },
   {
     name: 'ToolDispatchExecution',
@@ -5834,6 +5902,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ToolSchema',
     declaration: 'export interface ToolSchema {\n    name: string;\n    description: string;\n    parameters: Record<string, unknown>;\n}',
+  },
+  {
+    name: 'ToolVisibilityContext',
+    declaration: 'export interface ToolVisibilityContext {\n    readonly scope: ScopeKey | undefined;\n    readonly inherited: boolean;\n    readonly explicitlyAllowed: boolean;\n}',
   },
   {
     name: 'TurnEndCancelCause',
@@ -5946,6 +6018,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+  },
+  {
+    name: 'UserId',
+    declaration: 'export type UserId = Branded<\'UserId\'>;',
   },
   {
     name: 'UserMessage',

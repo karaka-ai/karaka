@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会话与 agent 循环、面向模型的工具、shell 与文件系统执行、Web 访问、subagent 等等。把本页当作顶层地图使用：先找到拥有某能力的组，再打开其 README 查看包列表。每个包都以 `@deepseek-ai/dsh-*` 为作用域、只属于一个组；每个组的 README 都是该能力系列的权威包映射。
+harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会话与 agent 循环、面向模型的工具、shell 与文件系统执行、Web 访问、subagent 等等。把本页当作顶层地图使用：先找到拥有某能力的组，再打开其 README 查看包列表。Harness 包使用 `@deepseek-ai/dsh-*`；面向应用的 Karaka 组使用 `@karaka/*`。每个包只属于一个组，该组的 README 是对应能力系列的权威包映射。
 
 ## 目录
 
@@ -28,6 +28,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 
 | 组 | 职责 |
 |---|---|
+| [`karaka/`](karaka/README.zh.md) | 应用 SDK、带认证的入口、持久服务器 bundle 与启动器 |
 | [`core/`](core/README.zh.md) | 产品 API 主干：会话、提示词、工具、agent 服务与具体循环 |
 | [`api/`](api/README.zh.md) | Remote BFF 装配与 Typert RPC 网关 |
 | [`typert/`](typert/README.zh.md) | 类型图生成、产物加载与运行时注册表 |
@@ -57,7 +58,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`spill/`](spill/README.zh.md) | spill 能力系列：存储 seam、本地实现、工具结果 spill 策略 |
 | [`todo/`](todo/README.zh.md) | 面向模型的 `todo_write` 工具 |
 | [`plan/`](plan/README.zh.md) | Plan 协作状态，提供直接进入命令与经评审的退出 |
-| [`preset/`](preset/README.zh.md) | 由 preset `cordis.yml` 按会话组装 agent |
+| [`preset/`](preset/README.zh.md) | 由 preset `cordis.yml` 提供带作用域视图的常驻 Agent 组合 |
 | [`guard/`](guard/README.zh.md) | 循环卫生守卫：建议性重复调用提醒 + `tools/execute` 截止时间强制执行器 |
 | [`bundle/`](bundle/README.zh.md) | 可安装的 `dsh --profile` 补丁层 |
 | [`extensions/`](extensions/README.zh.md) | agent 运行时自修改：实时插件/服务检查与模型所写挂载/卸载 |

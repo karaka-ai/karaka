@@ -269,6 +269,10 @@ export interface Config {
    * composed for nothing.
    */
   mode: ToolPresentationMode
+  /** Keep only these inherited host tools for Agents under this preset. */
+  allow?: string[]
+  /** Remove these inherited host tools for Agents under this preset. */
+  deny?: string[]
 }
 ```
 
@@ -305,10 +309,12 @@ export interface Config {
   readonly coldBlankProbeMaxBytes?: number
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /** Milliseconds an idle application Agent remains live before cold-resume eviction. */
+  readonly applicationIdleMs?: number
 }
 ```
 
-Source: [`packages/api/session-controller/src/index.ts:67`](../packages/api/session-controller/src/index.ts)
+Source: [`packages/api/session-controller/src/index.ts:70`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 
@@ -1509,7 +1515,7 @@ export interface ReconnectConfig {
 }
 ```
 
-Source: [`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+Source: [`packages/mcp/mcp-client/src/index.ts:100`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -3156,7 +3162,7 @@ export interface Config {
 export type ToolPresentationMode = 'native' | 'ptc' | 'both'
 ```
 
-Source: [`packages/core/tools/src/index.ts:647`](../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:665`](../packages/core/tools/src/index.ts)
 
 <a id="deepseek-aidsh-typert-loader"></a>
 
@@ -3405,6 +3411,80 @@ export interface Config {
 
 Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages/workflow/workflow-worker-thread/src/index.ts)
 
+<a id="karakamcp-application"></a>
+
+## `@karaka/mcp-application`
+
+Requires: `tools` · `serverAuth`
+
+```ts config-catalog
+/** One authenticated application MCP endpoint. */
+export interface Config {
+  /** Application allowed to receive calls through this endpoint. */
+  applicationId: string
+  /** Stable namespace for model-facing tool names. */
+  serverName: string
+  /** Streamable HTTP MCP endpoint URL. */
+  url: string
+  /** Static headers attached before dynamic authorization. */
+  headers: Record<string, string>
+  /** Per-tool-call timeout in milliseconds. */
+  toolCallTimeoutMs: number
+  /** Fail activation when initial connection or discovery fails. */
+  failOnStartupError: boolean
+  /** Automatic reconnect policy after a lost connection. */
+  reconnect?: McpClient.ReconnectConfig
+}
+```
+
+Depends on: [`McpClient`](../packages/mcp/mcp-client/src/index.ts)
+
+Source: [`packages/karaka/mcp-application/src/index.ts:18`](../packages/karaka/mcp-application/src/index.ts)
+
+<a id="karakaserver-auth"></a>
+
+## `@karaka/server-auth`
+
+Requires: `credentials`
+
+```ts config-catalog
+/** Shared-bearer provider configuration. */
+export interface Config {
+  /** Authenticated application servers and their directional credentials. */
+  readonly applications: ApplicationCredentialConfig[]
+}
+
+/** One application and its independently rotatable directional credentials. */
+export interface ApplicationCredentialConfig {
+  /** Stable application-server identity. */
+  readonly id: string
+  /** Credential reference accepted on inbound chat requests. */
+  readonly chatCredential: string
+  /** Credential reference sent to this application's MCP endpoint. */
+  readonly toolCredential: string
+}
+```
+
+Source: [`packages/karaka/server-auth/src/index.ts:57`](../packages/karaka/server-auth/src/index.ts)
+
+<a id="karakatransport-http"></a>
+
+## `@karaka/transport-http`
+
+Requires: `serverAuth` · `sessionController` · `webServer`
+
+```ts config-catalog
+/** HTTP transport configuration. */
+export interface Config {
+  /** Route prefix mounted on the shared Host web server. */
+  readonly path?: string
+  /** Maximum accepted JSON request body size in bytes. */
+  readonly maxBodyBytes?: number
+}
+```
+
+Source: [`packages/karaka/transport-http/src/index.ts:29`](../packages/karaka/transport-http/src/index.ts)
+
 ## Loadable plugins with no config
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
@@ -3554,3 +3634,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-util-values` ([`packages/util/values/src/index.ts`](../packages/util/values/src/index.ts))
 - `@deepseek-ai/dsh-util-workspace-path` ([`packages/util/workspace-path/src/index.ts`](../packages/util/workspace-path/src/index.ts))
 - `@deepseek-ai/dsh-win32-process` ([`packages/subprocess/win32-process/src/index.ts`](../packages/subprocess/win32-process/src/index.ts))
+- `@karaka/cli` ([`packages/karaka/cli/src/index.ts`](../packages/karaka/cli/src/index.ts))
+- `@karaka/harness` ([`packages/karaka/harness/src/index.ts`](../packages/karaka/harness/src/index.ts))
+- `@karaka/sdk` ([`packages/karaka/sdk/src/index.ts`](../packages/karaka/sdk/src/index.ts))

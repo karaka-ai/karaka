@@ -31,6 +31,8 @@ Mount `dsh-session` wherever a session must exist. It creates and holds event-so
 
 `ctx.sessions.create()` builds a live session bound to the calling fiber; `get(id)` and `list()` find sessions, and `fork()` creates a child session from a stable prefix of a live one.
 
+Creation metadata may carry one atomic `applicationOwner` with non-empty `applicationId`, `tenantId`, and `userId`. The immutable header preserves it across persistence and forks; a partial owner is rejected instead of becoming an ambiguous authorization record.
+
 ```text
 const session = ctx.sessions.create(sessionId, { meta: { cwd: '/workspace' } })
 ctx.sessions.get(sessionId)      // the live session

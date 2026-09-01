@@ -8,7 +8,7 @@ Source: [`packages/core/tools/src/index.ts`](../../packages/core/tools/src/index
 
 ## `ToolDefinition` — a registered tool
 
-A `ToolSchema` (the model-facing fields) plus a mandatory canonical output declaration, the `execute` function, host-only scheduler metadata, an optional final-content callback, and optional UI presenters. The registry holds these; the loop dispatches calls through them. The registry's `schemas()` builds the model-facing `ToolSchema[]` by an explicit allowlist — `output`/`execute`/`finalizeContent`/`timeoutMs`/`isConcurrencySafe`/`presentCall`/`presentResult` must never leak into a model request.
+A `ToolSchema` (the model-facing fields) plus a mandatory canonical output declaration, a host-only visibility policy, the `execute` function, host-only scheduler metadata, an optional final-content callback, and optional UI presenters. The registry holds these; the loop dispatches calls through them. The registry's `schemas()` builds the model-facing `ToolSchema[]` by an explicit allowlist — `output`/`isVisible`/`execute`/`finalizeContent`/`timeoutMs`/`isConcurrencySafe`/`presentCall`/`presentResult` must never leak into a model request.
 
 ```ts type-equiv
 /** Tool-owned canonical output contract used after the body returns a JSON value. */
@@ -23,10 +23,30 @@ interface ToolOutputDefinition {
 ```
 
 ```ts type-equiv
+/** Scope and selection facts supplied to a definition-owned visibility rule. */
+interface ToolVisibilityContext {
+  /** Viewing or executing scope, normally the Agent; undefined for the global view. */
+  readonly scope: ScopeKey | undefined
+  /** Whether the definition comes from a parent or global registry layer. */
+  readonly inherited: boolean
+  /** Whether an inherited definition is named by an allow-list on the scope chain. */
+  readonly explicitlyAllowed: boolean
+}
+```
+
+```ts type-equiv
 /** A registered tool: its schema plus the execution function. */
 interface ToolDefinition extends ToolSchema {
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
+  /**
+   * Pure host-only visibility policy evaluated for model presentation and dispatch.
+   * Omit for every scope; returning false makes the tool indistinguishable from
+   * an unregistered tool in that scope. This callback is never model-visible.
+   * @param visibility - viewing scope and inherited-selection facts.
+   * @returns whether this scope may discover and call the tool.
+   */
+  isVisible?(visibility: Readonly<ToolVisibilityContext>): boolean
   /**
    * Run one accepted call and return only its canonical lossless-JSON value.
    * Async work must observe or forward `exec.signal` and settle only after its

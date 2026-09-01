@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The harness is assembled from npm packages under `packages/`, grouped by capability family: sessions and the agent loop, model-facing tools, shell and filesystem execution, web access, subagents, and the rest. Use this page as the top-level map: find the owning group, then open its README for the package list. Every package is scoped `@deepseek-ai/dsh-*` and lives in exactly one group; each group README is the authoritative package map for its family.
+The harness is assembled from npm packages under `packages/`, grouped by capability family: sessions and the agent loop, model-facing tools, shell and filesystem execution, web access, subagents, and the rest. Use this page as the top-level map: find the owning group, then open its README for the package list. Harness packages use `@deepseek-ai/dsh-*`; the application-facing Karaka group uses `@karaka/*`. Every package lives in exactly one group, whose README is the authoritative package map for that family.
 
 ## Table of Contents
 
@@ -28,6 +28,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 
 | Group | Role |
 |---|---|
+| [`karaka/`](karaka/README.md) | Application SDK, authenticated ingress, persistent-server bundle, and launcher |
 | [`core/`](core/README.md) | Product API spine: sessions, prompts, tools, agent services, and the concrete loop |
 | [`api/`](api/README.md) | Remote BFF assembly and Typert RPC gateway |
 | [`typert/`](typert/README.md) | Type graph generation, artifact loading, and runtime registry |
@@ -57,7 +58,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`spill/`](spill/README.md) | Spill capability family: storage seam, local impl, tool-result spill policy |
 | [`todo/`](todo/README.md) | The model-facing `todo_write` tool |
 | [`plan/`](plan/README.md) | Plan collaboration state with a direct entry command and reviewed exit |
-| [`preset/`](preset/README.md) | Per-session agent composition from preset `cordis.yml` files |
+| [`preset/`](preset/README.md) | Standing Agent compositions with scoped views from preset `cordis.yml` files |
 | [`guard/`](guard/README.md) | Loop-hygiene guards: advisory repeat-call reminders + the `tools/execute` deadline enforcer |
 | [`bundle/`](bundle/README.md) | Installable `dsh --profile` patch layers |
 | [`extensions/`](extensions/README.md) | Agent runtime self-modification: live plugin/service inspection and model-written mount/unmount |

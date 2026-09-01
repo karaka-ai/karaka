@@ -5,9 +5,9 @@
  * proof (alias escapes and global script files).
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { collectPackageSources, EventRelationCollector } from './gen-doc-graphs.ts'
 import { TypeScriptProject } from './ts-project.ts'
@@ -82,6 +82,14 @@ function dispatchersOf(pkgs: readonly string[], event: string): string[] {
 }
 
 describe('event relation call-site indexing', () => {
+  it('links Karaka packages in the generated server-auth roles', () => {
+    const document = readFileSync(resolve(import.meta.dirname, '../docs/capability-seams.md'), 'utf8')
+
+    expect(document).toContain(
+      '| `ctx.serverAuth` | `seam` | [`server-auth`](../packages/karaka/server-auth) | [`server-auth`](../packages/karaka/server-auth) | [`mcp-application`](../packages/karaka/mcp-application), [`transport-http`](../packages/karaka/transport-http)',
+    )
+  })
+
   it('recovers a proven-local helper through the single-file fast path', () => {
     expect(dispatchersOf(['pkga', 'pkgb'], 'pkga/local-event')).toEqual(['pkga'])
   })

@@ -558,19 +558,20 @@ async remove(id: string): Promise<void>
 @Remote('deletePreset') async remoteExportDelete(id: string): Promise<void>
 
 /**
- * One agent's instance of a service its preset mounted.
+ * The shared service instance mounted by an agent's preset generation.
  *
- * A preset publishes services behind `isolate` realms, which are invisible
- * outside the group that declares them — including to the host. This is how a
- * caller holding the agent reads one anyway: a request that is ABOUT a
- * session but arrives from outside it, which is every browser RPC.
+ * Agents joined to one standing generation resolve the same instance. Its
+ * `isolate` realm separates that generation from the root and other preset
+ * generations. The agent addresses the generation for callers such as
+ * browser RPC handlers; it does not imply a chat-local service instance.
  *
  * Read addressing only. A host row that `inject`s a service cannot use this,
- * because injection resolves before any session exists and has no agent to
- * key by; such a service belongs on the host plane instead.
- * @param agent - the agent whose composition to look inside.
+ * because injection has no agent to address through; such a service belongs
+ * on the host plane. Plugins keep chat-local mutable state on the Agent or
+ * Session, or key it by their identities.
+ * @param agent - an agent joined to the preset generation to inspect.
  * @param name - the service name as the preset's rows resolve it.
- * @returns the agent's instance, or undefined when its preset mounts none.
+ * @returns the generation's shared instance, or undefined when it mounts none.
  */
 serviceFor<K extends string & keyof Context>(agent: { ctx: Context }, name: K): Context[K] | undefined
 

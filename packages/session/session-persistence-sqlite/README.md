@@ -33,7 +33,7 @@ Choose this backend when a local deployment benefits from one queryable database
 
 ### Disk footprint and performance
 
-The packed layout exchanges some SQLite-local latency for a smaller queryable database. The available 501-session comparison measures schema 19 rather than schema 20; that layout used 233.18 MB against the SQLite comparison baseline's 438.31 MB and compressed JSONL's 148.15 MB. Full writes were about 2.3× faster than JSONL and suffix reads remained much faster; complete reads and forks were slightly slower than JSONL. The [persistence latency and page-size decision](../../../.agents/notes/implemented/architecture/2026-08-25-persistence-latency-and-page-size.md) owns the method, complete metrics, and accepted trade-offs.
+The packed layout exchanges some SQLite-local latency for a smaller queryable database. The available 501-session comparison measures schema 19 rather than schema 21; that layout used 233.18 MB against the SQLite comparison baseline's 438.31 MB and compressed JSONL's 148.15 MB. Full writes were about 2.3× faster than JSONL and suffix reads remained much faster; complete reads and forks were slightly slower than JSONL. The [persistence latency and page-size decision](../../../.agents/notes/implemented/architecture/2026-08-25-persistence-latency-and-page-size.md) owns the method, complete metrics, and accepted trade-offs.
 
 The disk cost buys a structured, queryable view of session history: external tooling can analyze `sessions` and `events` with SQL, decoding physical rows the way this provider does — the groundwork for features such as built-in full-text search.
 
@@ -75,7 +75,7 @@ await ctx.sessionPersistence.append(id, events)
 
 ### Startup and safe operation
 
-A fresh database initializes directly at schema version 20 with 64 KiB pages. Existing files are never retuned: databases with any other version, a foreign application identity, an unversioned non-pristine schema, or unexpected schema objects are rejected before any data is exposed or changed. This pre-release provider ships no migration. Every statement and fixed pragma comes from packaged `.sql` resources in `resources/sql/`, and runtime values are bound as SQLite parameters, so package code never assembles query text.
+A fresh database initializes directly at schema version 21 with 64 KiB pages. Existing files are never retuned: databases with any other version, a foreign application identity, an unversioned non-pristine schema, or unexpected schema objects are rejected before any data is exposed or changed. This pre-release provider ships no migration. Every statement and fixed pragma comes from packaged `.sql` resources in `resources/sql/`, and runtime values are bound as SQLite parameters, so package code never assembles query text.
 
 Each connection disables SQLite trusted schemas and memory-mapped I/O, verifies the requested journal mode, and pins `synchronous=FULL` so a resolved append remains durable across an OS crash or power loss. On POSIX, the database parent directory and file must belong to the current user, the parent must not be group/world-writable, and the file must grant no group or world permissions; Windows additionally rejects symbolic links and non-regular files, while ACL restriction stays the deployment's job. Path and ownership failures reject plugin initialization; Node's SQLite driver loads lazily on the first persistence operation. Ordinary `create` stays lazy until the first append, while `ensureMaterialized` writes a session metadata row with no event rows.
 
@@ -94,7 +94,7 @@ This section explains the design decisions behind the provider and points at the
 The provider is built on one separation and three commitments:
 
 - **Logical contract, physical format.** Callers always read and write ordinary `SessionEvent[]`; how rows are packed, stored, and compressed is private to this package.
-- **The schema owns the format.** Schema 20 is a frozen physical contract: a database at another version, with a foreign identity, or with unexpected schema objects is rejected, never migrated. Changing the schema, row codec, page size, or dictionary bytes requires a new schema version.
+- **The schema owns the format.** Schema 21 is a frozen physical contract: a database at another version, with a foreign identity, or with unexpected schema objects is rejected, never migrated. Changing the schema, row codec, page size, or dictionary bytes requires a new schema version.
 - **Durability is the default.** Appends run in immediate transactions with `synchronous=FULL`, and a resolved `append()` means the batch is durable. Normal appends are insert-only: earlier event rows are never rewritten.
 - **Efficiency within strict bounds.** Packing and compression keep the database small, but every limit is a hard format bound — at most 1,024 events and 1 MiB of payload per packed row.
 
@@ -173,7 +173,7 @@ Physical packing does not mutate request prefixes. Provider cache reuse depends 
 
 These limits define when the provider is a poor fit or needs special operational care. They are current package constraints, not a general SQLite comparison or a task backlog.
 
-- **Pre-release design with no migration** — schema 20 is an interim SQLite-only design; neither schema stability nor migration support is guaranteed.
+- **Pre-release design with no migration** — schema 21 is an interim SQLite-only design; neither schema stability nor migration support is guaranteed.
 - **Packing depends on batch boundaries** — a compatible run split by the write-behind window or an explicit flush stays split across physical rows; this avoids rewriting prior rows at the cost of a timing-dependent packing ratio.
 - **Synchronous SQLite and compression** — Node's SQLite driver and Zstandard calls block the JavaScript thread.
 - **Busy waits block the event loop** — SQLite waits inside synchronous calls; a competing writer can stall the thread for up to the configured `busyTimeoutMs`.
@@ -186,6 +186,6 @@ These limits define when the provider is a poor fit or needs special operational
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-The 501-session corpus contains private session data and is not committed. Its aggregate method, complete results, and rejected candidates are recorded in the [persistence latency and page-size decision](../../../.agents/notes/implemented/architecture/2026-08-25-persistence-latency-and-page-size.md); the packaged dictionary's hash-pinned resource is part of the schema-20 source of truth.
+The 501-session corpus contains private session data and is not committed. Its aggregate method, complete results, and rejected candidates are recorded in the [persistence latency and page-size decision](../../../.agents/notes/implemented/architecture/2026-08-25-persistence-latency-and-page-size.md); the packaged dictionary's hash-pinned resource is part of the schema-21 source of truth.
 
 </details>

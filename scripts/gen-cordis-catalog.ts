@@ -89,6 +89,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   terminals: 'terminal.md',
   sandbox: 'sandbox.md',
   sandboxPolicy: 'sandbox.md',
+  serverAuth: 'karaka-application.md',
   sessionPersistence: 'persistence.md',
   sessionQuery: 'session-query.md',
   sessionFileReferences: 'session-reference.md',
@@ -237,6 +238,11 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  AuthenticatedApplication: 'karaka-application.md',
+  ApplicationId: 'karaka-application.md',
+  ApplicationOwner: 'karaka-application.md',
+  TenantId: 'karaka-application.md',
+  UserId: 'karaka-application.md',
   Agent: 'core.md',
   AgentCancelCause: 'core.md',
   AgentFactory: 'core.md',
