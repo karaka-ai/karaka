@@ -1,0 +1,8 @@
+version: 1
+scenario: application-chat
+profile: karaka
+composition: karaka-application
+recording: authored
+header:
+  class: application-chat
+  pin: true
