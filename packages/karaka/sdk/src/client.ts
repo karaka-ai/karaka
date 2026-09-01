@@ -209,16 +209,13 @@ async function* parseEventStream(stream: ReadableStream<Uint8Array>): AsyncItera
   try {
     while (true) {
       const next = await reader.read()
-      if (next.done) {
-        completed = true
-        break
-      }
-      buffer += decoder.decode(next.value, { stream: true })
-      let boundary: number
-      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-        const frame = buffer.slice(0, boundary)
-        buffer = buffer.slice(boundary + 2)
-        const data = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
+      buffer += decoder.decode(next.done ? undefined : next.value, { stream: !next.done })
+      let boundary = /(?:\r\n|\r|\n){2}/.exec(buffer)
+      while (boundary !== null) {
+        const frame = buffer.slice(0, boundary.index)
+        buffer = buffer.slice(boundary.index + boundary[0].length)
+        boundary = /(?:\r\n|\r|\n){2}/.exec(buffer)
+        const data = frame.split(/\r\n|\r|\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
         if (data.length === 0) continue
         const event = ApplicationChatEventSchema.parse(JSON.parse(data))
         if (event.type === 'error') {
@@ -227,6 +224,10 @@ async function* parseEventStream(stream: ReadableStream<Uint8Array>): AsyncItera
           throw error
         }
         yield event
+      }
+      if (next.done) {
+        completed = true
+        break
       }
     }
   } finally {

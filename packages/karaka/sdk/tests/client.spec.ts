@@ -103,6 +103,30 @@ describe('KarakaClient', () => {
     expect(streamed).toEqual([user, assistant])
   })
 
+  it('parses CRLF event frames split between transport chunks', async () => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"type":"text-delta","cursor":1,"text":"one"}\r\n\r\n'))
+        controller.enqueue(encoder.encode('data: {"type":"text-delta","cursor":2,"text":"two"}\r'))
+        controller.enqueue(encoder.encode('\n\r\n'))
+        controller.close()
+      },
+    })
+    const fetch = vi.fn(() => Promise.resolve(new Response(stream, { status: 200 })))
+    const client = createKarakaClient({ endpoint: 'http://karaka', chatToken: 'token', fetch })
+    const events = []
+
+    for await (const event of client.forUser({ tenantId: 't', userId: 'u' }).chats.stream({ chatId: 'c' })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      { type: 'text-delta', cursor: 1, text: 'one' },
+      { type: 'text-delta', cursor: 2, text: 'two' },
+    ])
+  })
+
   it('coordinates a custom server transport path explicitly', async () => {
     const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 })))
     const client = createKarakaClient({
