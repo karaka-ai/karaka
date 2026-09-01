@@ -1,16 +1,13 @@
 /**
- * Mount one preset composition under an agent's scope context, then prove the
- * result is usable before the agent is published.
+ * Mount one preset composition under its standing scope, then prove the result
+ * is usable before any agent joins that generation.
  *
- * The scope context is what makes the composition per-session: entry contexts
- * chain to the context the subtree was plugged into, so every `ctx.tools`
- * and `ctx.systemPrompt` registration inside the preset files into that
- * agent's layer and unwinds with it. Two guards make that safe. A row that
- * never reached a usable state is rejected, because a directly-plugged subtree
- * is absent from `ctx.loader.entries()` and no boot audit covers it. A row that
- * published a service into the ROOT realm is rejected, because such a service
- * is process-global rather than per-session and the second session mounting the
- * same preset collides with the first.
+ * Entry contexts chain to the standing context, so scoped contributions remain
+ * visible to every agent joined to that preset while the mounted generation
+ * lives. Two guards make that safe. A row that never reached a usable state is
+ * rejected, because a directly-plugged subtree is absent from
+ * `ctx.loader.entries()` and no boot audit covers it. A row that published a
+ * service into the ROOT realm is rejected because it escaped preset isolation.
  * @module @deepseek-ai/dsh-agent-presets/mount
  */
 
@@ -251,14 +248,14 @@ export function standingMountFor(agentCtx: Context): JoinedPresetMount | undefin
 }
 
 /**
- * One agent's instance of a service its preset mounted.
+ * The shared service instance mounted by an agent's preset generation.
  *
- * A preset publishes a service behind an `isolate` realm so two sessions
- * cannot collide, and an entry-local realm is invisible to everything outside
- * the group — including the agent's own scope context and the host. That is
- * right for the rows inside the group and wrong for one caller: a request that
- * is ABOUT a session but arrives from outside it, which is every browser RPC
- * the api-proxy serves.
+ * Agents joined to one standing generation resolve the same instance. Its
+ * `isolate` realm separates that generation from the root and other preset
+ * generations, while making it invisible to the host. The agent is therefore
+ * an address for locating the generation, not an owner of a chat-local service
+ * instance. Every browser RPC the api-proxy serves needs this addressing
+ * because it arrives from outside the preset realm.
  *
  * Ownership is the same relation {@link leakedServices} reads, inverted: there
  * it names implementations a subtree published into the ROOT realm, here it
@@ -266,13 +263,14 @@ export function standingMountFor(agentCtx: Context): JoinedPresetMount | undefin
  * identity for the reason stated on {@link withinFiber}.
  *
  * This is READ addressing for a caller that already holds the agent. It is not
- * a general host handle on a session's internals: a host row that `inject`s a
- * service cannot use it, because injection resolves before any session exists
- * and has no agent to key by — such a service belongs on the host plane.
+ * a general host handle on chat-local state: plugins keep that state on the
+ * Agent or Session, or key it by their identities. A host row that `inject`s a
+ * service cannot use this lookup because injection resolves without an agent;
+ * such a service belongs on the host plane.
  * @param ctx - any context of the runtime whose service store is inspected.
- * @param agent - the agent whose mounted composition to look inside.
+ * @param agent - an agent joined to the preset generation to inspect.
  * @param name - the service name as the preset's rows resolve it.
- * @returns the agent's instance, or undefined when its preset mounts none.
+ * @returns the generation's shared instance, or undefined when it mounts none.
  */
 export function serviceForAgent<K extends string & keyof Context>(
   ctx: Context,
@@ -366,17 +364,18 @@ function mountDetail(error: unknown): string {
 }
 
 /**
- * Mount `preset` under `agentCtx` and return only once every row is usable.
+ * Mount `preset` under `standingCtx` and return only once every row is usable.
  *
- * The subtree is owned by `agentCtx`'s fiber, so it unwinds with the agent and
- * the caller receives no disposer. A rejection leaves nothing mounted.
- * @param agentCtx - the agent's scope context, from the agent factory's `setup`.
+ * The subtree is owned by the standing generation's fiber, so it is shared by
+ * joined agents and unwinds when that generation is disposed. A rejection
+ * leaves nothing mounted.
+ * @param standingCtx - the standing preset generation's scope context.
  * @param preset - the resolved preset to compose the agent from.
- * @throws when `agentCtx` carries no scope, a row is unusable, or a row
+ * @throws when `standingCtx` carries no scope, a row is unusable, or a row
  * published a service into the root realm.
  */
-export async function mountPreset(agentCtx: Context, preset: AgentPreset): Promise<void> {
-  const scope = scopeOf(agentCtx)
+export async function mountPreset(standingCtx: Context, preset: AgentPreset): Promise<void> {
+  const scope = scopeOf(standingCtx)
   if (scope === undefined) {
     throw new Error(
       `agent-presets: refusing to mount preset "${preset.id}" into an unscoped context; `
@@ -388,12 +387,12 @@ export async function mountPreset(agentCtx: Context, preset: AgentPreset): Promi
   // carries the host composition's base, which is inside the installed
   // harness and is therefore where a row's package name has to resolve from.
   /* v8 ignore next -- the Loader sets `baseUrl` on the root before any scoped context derives from it */
-  if (agentCtx.baseUrl !== undefined) harnessBase.set(config, agentCtx.baseUrl)
+  if (standingCtx.baseUrl !== undefined) harnessBase.set(config, standingCtx.baseUrl)
   // Before the record this mount is about to add: standing mounts are one per
   // preset and live until whole-tree teardown, so pruning here only sweeps
   // records of torn-down runtimes (tests; an HMR reload of the roster).
   pruneDisposedMounts()
-  const handle = agentCtx.plugin(PresetTree, config)
+  const handle = standingCtx.plugin(PresetTree, config)
   try {
     await handle.await()
     const subtree = mounted.get(config)
@@ -404,14 +403,14 @@ export async function mountPreset(agentCtx: Context, preset: AgentPreset): Promi
     if (unusable.length > 0) {
       throw new Error(`${String(unusable.length)} row(s) did not activate:\n${unusable.join('\n')}`)
     }
-    const leaked = leakedServices(agentCtx, fiber)
+    const leaked = leakedServices(standingCtx, fiber)
     if (leaked.length > 0) {
       throw new Error(
         `row(s) published process-global service(s) [${leaked.join(', ')}]; `
         + 'a preset service must sit behind an `isolate` realm or move to the host composition',
       )
     }
-    mounts.add({ presetId: preset.id, fiber, tree, key: scopeOf(agentCtx) })
+    mounts.add({ presetId: preset.id, fiber, tree, key: scopeOf(standingCtx) })
   } catch (error) {
     try {
       await handle.dispose()

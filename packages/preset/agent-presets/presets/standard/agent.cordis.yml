@@ -1,10 +1,11 @@
-# The `standard` agent preset: the full coding agent, mounted once per process.
+# The `standard` agent preset: the full coding agent, mounted once per detected
+# generation.
 #
-# This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
-# standing scope; every session naming it joins by scope parentage, so the
-# tools and prompt sections registered here cover each joined agent while a
-# session's own state stays keyed per Session/Agent inside the plugins. The
-# host composition (`base.cordis.yml` + `web.cordis.yml`) keeps everything a
+# This file is an AGENT-PLANE composition. The roster mounts each detected
+# generation under a standing scope; every session naming it joins by scope
+# parentage, so the tools and prompt sections registered here cover each joined
+# agent while a session's own state stays keyed per Session/Agent inside the
+# plugins. The host composition (`base.cordis.yml` + `web.cordis.yml`) keeps everything a
 # preset must not own: the registries themselves, the sandbox and approval
 # stack, persistence, and the model route.
 #
@@ -248,8 +249,8 @@
   config:
     allowParallelInProgress: true
 
-# The `web` service and its search provider stay in the host composition; only
-# the model-facing tool is per-session.
+# The `web` service and its search provider stay in the host composition; this
+# model-facing registration is visible through Agents joined to this preset.
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:

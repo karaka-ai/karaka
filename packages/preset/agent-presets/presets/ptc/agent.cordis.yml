@@ -7,22 +7,23 @@
 #
 # The registry itself stays on the host plane — the agent loop's scheduler and
 # the API proxy's presenters are its consumers — so what this preset owns is
-# the PRESENTATION of that registry for this agent alone. Native sessions run
-# beside this one in the same process, each seeing its own catalog.
+# the PRESENTATION of that registry for agents joined to this preset. Agents
+# joined to other presets use their own scoped catalogs.
 #
-# This file is an AGENT-PLANE composition. It is mounted under one agent's
-# scope context, so every tool and prompt section it registers belongs to that
-# session alone. The host composition (`base.cordis.yml` + `web.cordis.yml`)
-# keeps everything a preset must not own: the registries themselves, the
-# sandbox and approval stack, persistence, and the model route.
+# This file is an AGENT-PLANE composition. The roster mounts one standing
+# generation and every Agent naming it sees its scoped tool and prompt
+# registrations. Plugin instances are shared within the generation, so mutable
+# chat state stays on the Agent or Session, or is keyed by their identities.
+# The host composition (`base.cordis.yml` + `web.cordis.yml`) keeps everything
+# a preset must not own: the registries themselves, the sandbox and approval
+# stack, persistence, and the model route.
 #
 # A service row here MUST sit inside a group carrying an `isolate` realm.
 # Without one it publishes into the root realm, where it is process-global
-# rather than per-session and the second session mounting this preset collides
-# with the first; `dsh-agent-presets` rejects that at mount. `true` means an
-# entry-local realm — one private instance per mounted session, which is the
-# default this deployment wants. A shared label would instead pool one instance
-# across every session naming it.
+# and escapes preset isolation; `dsh-agent-presets` rejects that at mount.
+# `true` means an entry-local realm private to this standing generation, whose
+# joined Agents share the instance. A shared label joins realms; it does not
+# pool instances.
 
 # ── identity ────────────────────────────────────────────────────────────────
 
@@ -249,8 +250,8 @@
   config:
     allowParallelInProgress: true
 
-# The `web` service and its search provider stay in the host composition; only
-# the model-facing tool is per-session.
+# The `web` service and its search provider stay in the host composition; this
+# model-facing registration is visible through Agents joined to this preset.
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:
@@ -259,9 +260,10 @@
 
 # ── presentation ────────────────────────────────────────────────────────────
 
-# PTC mode for this agent alone. The row waits for the host's `codeRuntime`
-# rather than assuming it: a deployment that composes no TypeScript runtime
-# fails this preset at mount, naming this id, instead of at the first request.
+# PTC mode for Agents joined to this preset. The row waits for the host's
+# `codeRuntime` rather than assuming it: a deployment that composes no
+# TypeScript runtime fails this preset at mount, naming this id, instead of at
+# the first request.
 - id: tool-presentation
   name: '@deepseek-ai/dsh-agent-tool-presentation'
   config:

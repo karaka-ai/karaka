@@ -1,6 +1,6 @@
 ---
 name: editing-cordis-compositions
-description: Use when creating, changing, or validating a Cordis composition for this harness — writing or editing an agent preset, adding or removing a plugin row, deciding whether something belongs to the host composition or to one session, checking whether a preset you authored actually mounts, or diagnosing a row that mounted but contributed nothing.
+description: Use when creating, changing, or validating a Cordis composition for this harness — writing or editing an agent preset, adding or removing a plugin row, deciding whether something belongs to the host composition or a standing preset generation, checking whether a preset you authored actually mounts, or diagnosing a row that mounted but contributed nothing.
 ---
 
 # Editing Cordis compositions
@@ -19,9 +19,9 @@ Two planes, and the choice is not about how "agent-related" something feels — 
 
 **Host composition.** The registries themselves (`tools`, `systemPrompt`, `agents`, `agent-loop`, `sessions`), anything crossing sessions (persistence, session query, storage, settings, credentials, telemetry), the sandbox and approval stack, the model route, and the subagent registry with its spawn/fork backends. One instance for the process.
 
-**Agent preset.** What one session contributes to those registries: its tool plugins, its persona and prompt sections, its compaction policy. One instance per session, mounted under that session's scope and unwound with it.
+**Agent preset.** Model-facing behavior for agents that select it: tool plugins, persona and prompt sections, and compaction policy. The roster mounts one standing instance per preset generation. Each joined Agent sees its scoped registrations; plugins must keep mutable chat state on the Agent or Session, or key it by their identities.
 
-**A service with a consumer outside the agent plane cannot move into a preset.** `subagents` is the worked example: the registry answers cross-session queries for the host api-proxy, so a per-session copy both starves that host row — it waits forever for a service nothing provides — and collides on the second session, since a provider name registers once. The preset contributes the delegation *tools*; the registry and its backends stay host-side.
+**A service with a consumer outside the agent plane cannot move into a preset.** `subagents` is the worked example: the registry answers cross-session queries for the host api-proxy, but a preset-isolated copy is invisible to that host row. The preset contributes the delegation *tools* through its scoped registrations; the registry and its backends stay host-side.
 
 A preset is a directory holding one `agent.cordis.yml`, optionally beside a `preset.yml` carrying display metadata — `name` and `description` (and, for shipped presets, a roster `order`). Write the metadata too: a preset without it shows up in every picker as its bare directory name.
 
@@ -75,7 +75,7 @@ A composition written from scratch usually forgets a group realm or a consumer r
 
 ## The rule that catches people
 
-**A row that publishes a service may not sit loose in a preset.** Registering a service without an isolate realm puts it in the process-global realm, so the second session mounting that preset collides with the first. The mount rejects it rather than letting the collision surface later.
+**A row that publishes a service may not sit loose in a preset.** Registering a service without an isolate realm puts it in the process-global realm, where it can collide with a host service or another preset and becomes visible outside its preset generation. The mount rejects it.
 
 Whether a row publishes a service is not visible from its name, and package READMEs are absent from an installed deployment. Read it off the live runtime instead: `cordis_inspect what:"services"` lists every service with the fiber that owns it, so a service attributed to a fiber other than the row you are adding is one that row consumes rather than provides. For a row not in your current composition, mount-validate and read the rejection — it names the offending service.
 
@@ -96,7 +96,7 @@ When a preset genuinely owns a service, wrap the provider **and every consumer t
       name: '@deepseek-ai/dsh-tool-workflow'
 ```
 
-`true` means a realm private to each mounting session. A string label instead joins subtrees into one shared realm; `provide()` still throws on the second registration under that symbol, so a label does not pool instances and is not what a preset needs.
+`true` means a realm private to that standing preset generation. Every Agent joined to the generation shares the service instance, so the service must key chat-local mutable state by Agent or Session. A string label instead joins subtrees into one shared realm; `provide()` still throws on the second registration under that symbol, so a label does not pool instances and is not what a preset needs.
 
 A consumer left outside the group resolves the host's registry, which the preset did not populate, and then contributes nothing. Mount-validation catches that as a row that never activated.
 
@@ -162,4 +162,4 @@ The two rows are independent. Leaving both disabled preserves the copied preset,
 
 ## What not to move into a preset
 
-`agent-loop` registers the one agent factory and throws on a second. The registries own the per-session layering and cannot themselves be per-session. Session persistence must stay host-side or the session list fragments. The sandbox, approval, and permission rows are a deliberate boundary: a preset is exactly as privileged as the plugins it names, so letting one relax its own confinement would defeat the confinement.
+`agent-loop` registers the one agent factory and throws on a second. The registries own scoped Agent views and cannot themselves live inside a preset. Session persistence must stay host-side or the session list fragments. The sandbox, approval, and permission rows are a deliberate boundary: a preset is exactly as privileged as the plugins it names, so letting one relax its own confinement would defeat the confinement.
