@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
+import { constants as osConstants } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { initProfile, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-app-boot'
 
@@ -122,7 +123,10 @@ export function ownKarakaChild(child: ChildProcess, signals: SignalSource = proc
     }
     const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
       cleanup()
-      resolveExit(signal === null ? code ?? 1 : 128)
+      const signalNumber = signal === null
+        ? undefined
+        : (osConstants.signals as Partial<Record<NodeJS.Signals, number>>)[signal]
+      resolveExit(signal === null ? code ?? 1 : 128 + (signalNumber ?? 0))
     }
     signals.on('SIGINT', onInterrupt)
     signals.on('SIGTERM', onTerminate)

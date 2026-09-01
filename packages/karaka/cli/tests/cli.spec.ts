@@ -165,6 +165,23 @@ export function apply(ctx) {
     expect(signals.listenerCount('SIGINT')).toBe(0)
   })
 
+  it.each([
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const)('preserves the %s child exit status', async (signal, expected) => {
+    const signals = new EventEmitter()
+    const child = Object.assign(new EventEmitter(), {
+      exitCode: null,
+      signalCode: null,
+      kill: vi.fn(() => true),
+    })
+    const exit = ownKarakaChild(child as never, signals)
+
+    child.emit('exit', null, signal)
+
+    await expect(exit).resolves.toBe(expected)
+  })
+
   it('boots the shipped Karaka profile through the real Loader', async () => {
     const project = mkdtempSync(join(tmpdir(), 'karaka-loader-'))
     initKarakaProject(project)
