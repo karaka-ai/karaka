@@ -142,6 +142,7 @@ export class ApiSessionList {
     for (const record of records) {
       const live = this.ctx.sessions.get(record.header.id)
       if (live !== undefined) {
+        if (live.header.applicationOwner !== undefined) continue
         items.push(this.summaryFor(live))
         continue
       }
@@ -236,7 +237,7 @@ export class ApiSessionList {
       const visible = await provider.listSessions(signal)
       signal.throwIfAborted()
       const visibleIds = new Set(visible
-        .filter(record => record.header.cwd !== undefined)
+        .filter(record => record.header.cwd !== undefined && record.header.applicationOwner === undefined)
         .map(record => record.header.id))
       if (visibleIds.size === 0) return { items: [], hasMore: false }
       const authorized: SessionSearchItem[] = []

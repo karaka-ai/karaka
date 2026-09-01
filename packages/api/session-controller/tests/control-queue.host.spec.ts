@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { ApplicationId, SessionId, TenantId, UserId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it } from 'vitest'
 import { SessionControlController } from '../src/control.ts'
@@ -110,6 +110,46 @@ describe('Session control queue projection', () => {
     const replacement = ctx.sessions.create(SessionId('replacement-session'))
     Object.defineProperty(agent, 'session', { configurable: true, value: replacement })
     inbox.append('next-turn', message('wrong-session'))
+
+    abort.abort()
+    await iterator.next()
+  })
+
+  it('excludes application-owned sessions from baselines and live frames', async () => {
+    const { ctx, control, inbox } = await harness()
+    const application = ctx.sessions.create(SessionId('application-chat'), {
+      meta: {
+        applicationOwner: {
+          applicationId: ApplicationId('billing'),
+          tenantId: TenantId('tenant-1'),
+          userId: UserId('user-1'),
+        },
+      },
+    })
+    const applicationInbox = new Inbox(application, {
+      inserted: () => {}, discarded: () => {}, claimed: () => {},
+    })
+    ctx.agents.register({
+      id: application.id,
+      session: application,
+      inbox: applicationInbox,
+      status: 'running',
+      ctx,
+    } as Agent)
+
+    const abort = new AbortController()
+    const iterator = control.control(abort.signal)[Symbol.asyncIterator]()
+    const opened = await iterator.next()
+    if (opened.done || opened.value.type !== 'baseline') throw new Error('missing baseline')
+    expect(opened.value.value.queues).not.toHaveProperty(application.id)
+    expect(opened.value.value.jobs).not.toHaveProperty(application.id)
+    expect(opened.value.value.projections).not.toHaveProperty(application.id)
+
+    applicationInbox.append('next-turn', message('private'))
+    inbox.append('next-turn', message('ordinary'))
+    await expect(iterator.next()).resolves.toMatchObject({
+      value: { type: 'queue', sessionId: 'queue-session' },
+    })
 
     abort.abort()
     await iterator.next()
