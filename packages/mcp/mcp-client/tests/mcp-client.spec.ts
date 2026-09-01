@@ -8,6 +8,7 @@ import { ToolCallId, LlmAdapter, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { createScope } from '@deepseek-ai/dsh-scope'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { PostToolDecision } from '@deepseek-ai/dsh-tools'
@@ -202,6 +203,27 @@ describe('syncTools', () => {
     // Raw names are NOT registered.
     expect(ctx.tools.get('greet')).toBeUndefined()
     expect(ctx.tools.get('add')).toBeUndefined()
+  })
+
+  it('rejects an MCP input schema whose root is not an object', async () => {
+    const client = createMockClient([
+      { name: 'invalid', inputSchema: { type: 'string' } },
+    ])
+
+    await expect(syncTools(client as never, ctx, defaultOpts, new Map()))
+      .rejects.toThrow(/object-rooted/)
+    expect(ctx.tools.get('mcp__srv__invalid')).toBeUndefined()
+  })
+
+  it('accepts the MCP SDK root dialect marker on a supported object schema', async () => {
+    const client = createMockClient([{
+      name: 'valid',
+      inputSchema: { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', properties: {} },
+    }])
+
+    await syncTools(client as never, ctx, defaultOpts, new Map())
+
+    expect(ctx.tools.get('mcp__srv__valid')?.parameters).toEqual({ type: 'object', properties: {} })
   })
 
   it('lets two servers publish the same raw name side by side', async () => {
@@ -411,6 +433,56 @@ describe('tool execution', () => {
       { name: 'echo', arguments: { msg: 'hi' } },
       undefined,
       expect.objectContaining({ timeout: 60_000 }),
+    )
+  })
+
+  it('applies neutral invocation and visibility extensions', async () => {
+    const client = createMockClient(
+      [{ name: 'invoice', inputSchema: { type: 'object' } }],
+      { content: [{ type: 'text', text: 'ok' }] },
+    )
+    await syncTools(client as never, ctx, {
+      ...defaultOpts,
+      extension: {
+        invocationMeta: execution => ({ traceId: execution.callId }),
+        isToolVisible: (_name, visibility) => visibility.explicitlyAllowed,
+      },
+    }, new Map())
+
+    const agent = {
+      id: 'chat-1',
+      session: {
+        id: 'chat-1',
+        header: {},
+      },
+    }
+    let agentScope!: Context
+    await ctx.plugin(Object.assign((inner: Context) => {
+      agentScope = createScope(inner, agent).ctx
+    }, { inject: ['tools'] }))
+    expect(ctx.tools.schemas()).toEqual([])
+    expect(ctx.tools.schemas(agent as never)).toEqual([])
+    agentScope.tools.restrict({ allow: ['mcp__srv__invoice'] })
+    expect(ctx.tools.schemas(agent as never).map(tool => tool.name)).toEqual(['mcp__srv__invoice'])
+    const result = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('c1'),
+      name: 'mcp__srv__invoice',
+      arguments: {},
+      agent: agent as never,
+    })
+
+    expect(result.isError).toBe(false)
+    expect(client.callTool).toHaveBeenCalledWith(
+      {
+        name: 'invoice',
+        arguments: {},
+        _meta: {
+          traceId: 'c1',
+        },
+      },
+      undefined,
+      expect.anything(),
     )
   })
 
@@ -1215,42 +1287,41 @@ describe('createTransport', () => {
   })
 })
 
-describe('tool execution — non-object args fallback', () => {
+describe('tool execution — local input validation', () => {
   let ctx: Context
 
   beforeEach(async () => {
     ctx = await mountRegistry()
   })
 
-  it('coerces null args to empty object for callTool', async () => {
+  it('rejects null args before callTool', async () => {
     const client = createMockClient(
       [{ name: 'coerce', inputSchema: { type: 'object' } }],
       { content: [{ type: 'text', text: 'ok' }] },
     )
 
     await syncTools(client as never, ctx, defaultOpts, new Map())
-    await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'mcp__srv__coerce', arguments: null })
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'mcp__srv__coerce', arguments: null })
 
-    expect(client.callTool).toHaveBeenCalledWith(
-      { name: 'coerce', arguments: {} },
-      undefined,
-      expect.anything(),
-    )
+    expect(result.isError).toBe(true)
+    expect(client.callTool).not.toHaveBeenCalled()
   })
 
-  it('coerces primitive string args to empty object for callTool', async () => {
+  it('rejects schema-invalid object fields before callTool', async () => {
     const client = createMockClient(
-      [{ name: 'coerce2', inputSchema: { type: 'object' } }],
+      [{ name: 'coerce2', inputSchema: {
+        type: 'object',
+        properties: { count: { type: 'integer' } },
+        required: ['count'],
+        additionalProperties: false,
+      } }],
       { content: [{ type: 'text', text: 'ok' }] },
     )
 
     await syncTools(client as never, ctx, defaultOpts, new Map())
-    await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'mcp__srv__coerce2', arguments: 'bad' })
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'mcp__srv__coerce2', arguments: { count: 'bad' } })
 
-    expect(client.callTool).toHaveBeenCalledWith(
-      { name: 'coerce2', arguments: {} },
-      undefined,
-      expect.anything(),
-    )
+    expect(result.isError).toBe(true)
+    expect(client.callTool).not.toHaveBeenCalled()
   })
 })

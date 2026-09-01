@@ -5,7 +5,13 @@ import { DatabaseSync } from 'node:sqlite'
 import { chmod, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, {
+  ApplicationId,
+  SESSION_FORMAT_VERSION,
+  SessionId,
+  TenantId,
+  UserId,
+} from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent, SessionHeader, SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
 import SessionPersistence, { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
@@ -321,11 +327,23 @@ describe('SQLite session search', () => {
 
   it('searches two-character Unicode61 tokens in live-only sessions', async () => {
     const ctx = await liveContext({ path: ':memory:', snippetChars: 20 })
+    const applicationOwner = {
+      applicationId: ApplicationId('billing'),
+      tenantId: TenantId('tenant-1'),
+      userId: UserId('user-1'),
+    }
     const session = ctx.sessions.create(SessionId('live'), {
       // agentPreset rides along: the index rebuilds the header a caller reads,
       // and a session listed under the wrong composition is a lie about what it
       // ran. The full-header comparison below is what pins every column.
-      meta: { cwd: '/work', createdAt: 10, seedLength: 1, delegationDepth: 2, agentPreset: 'minimal' },
+      meta: {
+        cwd: '/work',
+        createdAt: 10,
+        seedLength: 1,
+        delegationDepth: 2,
+        agentPreset: 'minimal',
+        applicationOwner,
+      },
     })
     session.append(
       'user/message',
@@ -1089,6 +1107,29 @@ describe('SQLite reconciliation and source lifecycle', () => {
     ctx.sessions.create(shared.id, {
       seed: messageEvents('live needle'),
       meta: { createdAt: 10, delegationDepth: 2 },
+    })
+
+    await expect(ctx.sessionQuery.searchSessions({ query: 'needle' }))
+      .rejects.toThrow(expectCode('SESSION_QUERY_SOURCE_CONFLICT'))
+  })
+
+  it('rejects application-owner conflicts between live and persisted sources', async () => {
+    const shared = header('owner-conflict', 10, {
+      applicationOwner: {
+        applicationId: ApplicationId('billing'),
+        tenantId: TenantId('tenant-1'),
+        userId: UserId('user-1'),
+      },
+    })
+    TestPersistence.reset([{ meta: shared, events: messageEvents('persisted needle') }])
+    const ctx = await liveContext()
+    await ctx.plugin(TestPersistence)
+    ctx.sessions.create(shared.id, {
+      seed: messageEvents('live needle'),
+      meta: {
+        createdAt: 10,
+        applicationOwner: { ...shared.applicationOwner!, userId: UserId('user-2') },
+      },
     })
 
     await expect(ctx.sessionQuery.searchSessions({ query: 'needle' }))

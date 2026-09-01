@@ -1,5 +1,5 @@
 ---
-description: "按 preset cordis.yml 文件进行按会话的 agent 组装，供选择、配置或排查 agent preset 的用户与维护者阅读。"
+description: "带有按 Agent 划分作用域视图的常驻 Agent Preset 组合，供选择、配置或排查 preset 的用户与维护者阅读。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-agent-presets` 让每个 agent（智能体）会话都从同一个 preset 组装：preset 是一个目录，内含一份 `agent.cordis.yml`，列出该会话运行的插件。命名某个 preset 的会话会获得该 preset 的工具、提示词段落与 skill（技能），而其他会话各自保持自己的，因此一个进程可以同时运行多个组装方式不同的 agent。本包维护 preset 名单：它列出已配置根目录提供的每个 preset——随附的与你自己放在 `<dshHome>/.agent-presets` 下的——在 preset 无法启动会话时给出原因，并允许你通过复制既有 preset 来创建新 preset。默认 preset 是一项可按部署或按用户覆盖的设置，会话只有在尚未产出任何内容时才能切换 preset。preset 的权限恰好等于它所引用插件的权限，因此你创作的 preset 与 shell 访问权限同级。
+`dsh-agent-presets` 为每个被选择的 preset 挂载一份常驻组合：preset 是一个目录，内含一份 `agent.cordis.yml`，列出它的插件。命名某个 preset 的每个 Agent（智能体）都会加入该组合并看到它的工具、提示词段落与 skill（技能），而命名其他 preset 的 Agent 会看到自己的作用域视图，因此一个进程可以同时运行多个组装方式不同的 Agent。加入同一 preset 世代的 Agent 共享其中的插件实例；插件必须把聊天本地可变状态放在 Agent 或 Session 上，或按其标识进行分区。本包维护 preset 名单：它列出已配置根目录提供的每个 preset——随附的与你自己放在 `<dshHome>/.agent-presets` 下的——在 preset 无法启动会话时给出原因，并允许你通过复制既有 preset 来创建新 preset。默认 preset 是一项可按部署或按用户覆盖的设置，会话只有在尚未产出任何内容时才能切换 preset。preset 的权限恰好等于它所引用插件的权限，因此你创作的 preset 与 shell 访问权限同级。
 
 ## 目录
 
@@ -25,11 +25,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在需要让每个 agent 会话从 preset 文件获得自己的工具、提示词段落与 skill 的组装中挂载本包。每个会话都会命名一个 preset——显式指定或通过配置的默认值——并据此组装；没有本包时，会话只能回退到宿主组装挂载的内容。
+当每个 Agent 都应从具名 preset 获得工具、提示词段落与 skill 时挂载本包。每个会话都会命名一个 preset——显式指定或通过配置的默认值——并加入其常驻组合；没有本包时，会话只能回退到宿主组装挂载的内容。
 
 ### preset 给会话带来什么
 
-从 preset 组装的会话会运行该 preset `agent.cordis.yml` 所列插件：它的工具、提示词段落与 skill。加入同一 preset 的会话共享一份已安装的组装，且各会话的状态彼此隔离。子 agent（subagent）会加入其父方的组装，因此它看到的工具与提示词段落和创建它的 agent 相同。
+从 preset 组装的会话会运行该 preset `agent.cordis.yml` 所列插件：它的工具、提示词段落与 skill。加入同一 preset 的会话共享一份已安装的组装及其中的插件实例。只有当插件把状态存放在 Agent 或 Session 上，或按其标识进行分区时，会话本地状态才会彼此隔离。子 agent（subagent）会加入其父方的组装，因此它看到的工具与提示词段落和创建它的 agent 相同。
 
 可选的 preset 来自两处：本包 `presets/` 下随包交付的 preset，以及你自己放在 `<dshHome>/.agent-presets` 下的 preset。选择器会展示每个 preset 的显示名与描述；组装无法加载的 preset 会连同原因一起列出而不是被隐藏，因此你能看到该修什么或删什么。
 
@@ -94,7 +94,7 @@ agent-presets:
 
 ### 设计理念
 
-- **每个 preset 一份常驻组装。** preset 在进程内只挂载一次，挂到常驻 scope 之下；agent 通过把自己的 scope key 认父到该挂载来加入，因此挂载的注册与监听器覆盖每个已加入的 agent，而不覆盖兄弟 preset 的。
+- **每个检测到的世代一份常驻组装。** agent 通过把自己的 scope key 认父到该世代的常驻挂载来加入，因此其注册与监听器覆盖每个已加入的 agent，而不覆盖兄弟 preset 的。组合发生变化时会启动另一个世代，已加入的 agent 则保留旧世代。
 - **代际以组装文件为键。** 挂载记录组装文件的 stamp（mtime 与大小）；发现 stamp 过期的会话会开启下一个代际，而已加入的会话保持各自运行的那个代际——运行中的会话在文件被修改或删除后继续存活。
 - **preset 文件是输入，绝不是持久化目标。** 被挂载的子树把 `write()` 覆写为空操作，因此 loader 发起的写回绝不会重写共享的 preset 文件。
 - **发现过程拥有健康。** 组装缺失或不可加载的目录是携带原因的 broken 名单行，而不是被跳过——被跳过的目录仍占着它的 id，而任何界面都没有可删的东西。

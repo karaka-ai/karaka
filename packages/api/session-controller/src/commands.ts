@@ -18,11 +18,13 @@ import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import {
   ApiSessionAgentController,
+  ApiSessionApplicationOwnership,
   ApiSessionCwdConflict,
   ApiSessionNotFound,
   ApiSessionPresetConflict,
   ApiSessionSubagentOwnership,
   apiSessionSubagentOwnershipError,
+  apiSessionApplicationOwnershipError,
   hasApiSessionSubagentOwner,
   inspectApiSession,
 } from './agent.ts'
@@ -117,6 +119,30 @@ export class SessionCommandController {
    */
   async selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
     const agent = await this.resolveAgent(request.sessionId)
+    return this.selectModelForAgent(agent, request, true)
+  }
+
+  /**
+   * Select a model for one application chat without changing the deployment default.
+   * @param agent - owner-verified application Agent.
+   * @param request - application chat identity and requested model selection.
+   * @returns the normalized selection installed for that chat.
+   */
+  async selectApplicationModel(
+    agent: Agent,
+    request: SessionSelectModelRequest,
+  ): Promise<SessionSelectModelValue> {
+    if (agent.id !== request.sessionId || agent.session.header.applicationOwner === undefined) {
+      throw new Error('session-controller: application model selection requires its owner-verified Agent')
+    }
+    return this.selectModelForAgent(agent, request, false)
+  }
+
+  private async selectModelForAgent(
+    agent: Agent,
+    request: SessionSelectModelRequest,
+    saveDeploymentDefault: boolean,
+  ): Promise<SessionSelectModelValue> {
     return this.agents.serializeImageAdmission(agent, async () => {
       try {
         const resolved = await this.ctx.llm.resolveCallConfig({
@@ -134,12 +160,14 @@ export class SessionCommandController {
             : { reasoningEffort: resolved.reasoningEffort }),
         }
         this.agents.selectForNextRequest(agent, selected)
-        try {
-          await this.ctx.agentDefaultModel.saveSelection(selected)
-        } catch (error) {
-          this.ctx.logger.warn(
-            `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
-          )
+        if (saveDeploymentDefault) {
+          try {
+            await this.ctx.agentDefaultModel.saveSelection(selected)
+          } catch (error) {
+            this.ctx.logger.warn(
+              `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
+            )
+          }
         }
         return { selected: { ...selected } }
       } catch (error) {
@@ -206,6 +234,7 @@ export class SessionCommandController {
       )
     }
     using source = observed
+    this.rejectApplicationOwnership(source.header)
     const lastSeq = source.events.at(-1)?.seq ?? -1
     const atSeq = request.atSeq
     const anchoredBoundary = atSeq === undefined
@@ -281,6 +310,23 @@ export class SessionCommandController {
    * @returns acknowledgement that the Agent accepted the prompt.
    */
   async prompt(request: SessionPromptRequest): Promise<SessionPromptValue> {
+    return this.promptAgent(await this.resolveAgent(request.sessionId), request)
+  }
+
+  /**
+   * Admit a prompt to one owner-verified application Agent.
+   * @param agent - owner-verified application Agent.
+   * @param request - prompt content, source metadata, and delivery mode.
+   * @returns acknowledgement that the Agent accepted the prompt.
+   */
+  async promptApplication(agent: Agent, request: SessionPromptRequest): Promise<SessionPromptValue> {
+    if (agent.id !== request.sessionId || agent.session.header.applicationOwner === undefined) {
+      throw new Error('session-controller: application prompt requires its owner-verified Agent')
+    }
+    return this.promptAgent(agent, request)
+  }
+
+  private async promptAgent(agent: Agent, request: SessionPromptRequest): Promise<SessionPromptValue> {
     const clientTimeZone = request.clientTimeZone === undefined
       ? undefined
       : canonicalClientTimeZone(request.clientTimeZone)
@@ -291,7 +337,6 @@ export class SessionCommandController {
         { value: request.clientTimeZone },
       )
     }
-    const agent = await this.resolveAgent(request.sessionId)
     const selection = this.agents.selectionFor(agent).current
     if (!routeServed(this.ctx, selection.provider)) {
       throw new RemoteError(
@@ -348,6 +393,7 @@ export class SessionCommandController {
       if (error instanceof ApiSessionNotFound) {
         throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId })
       }
+      if (remoteErrorOf(error) !== undefined) throw error
       throw new RemoteError(
         'gateway/internal',
         `attachment authorization unavailable for session "${request.sessionId}": ${String(error)}`,
@@ -394,6 +440,9 @@ export class SessionCommandController {
     if (agent !== undefined && hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
       throw apiSessionSubagentOwnershipError(request.sessionId)
     }
+    if (agent?.session.header.applicationOwner !== undefined) {
+      throw apiSessionApplicationOwnershipError(request.sessionId)
+    }
     if (agent === undefined) {
       throw new RemoteError('session/queue-item-not-found', 'queued item is no longer pending', { itemId: request.itemId })
     }
@@ -438,6 +487,22 @@ export class SessionCommandController {
     if (hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
       throw apiSessionSubagentOwnershipError(request.sessionId)
     }
+    if (agent.session.header.applicationOwner !== undefined) {
+      throw apiSessionApplicationOwnershipError(request.sessionId)
+    }
+    agent.cancel({ kind: 'user' }, { keepInbox: true })
+    return { accepted: true }
+  }
+
+  /**
+   * Cancel one owner-verified application Agent without entering generic routing.
+   * @param agent - owner-verified application Agent.
+   * @returns acknowledgement that cancellation was requested.
+   */
+  cancelApplication(agent: Agent): SessionCancelValue {
+    if (agent.session.header.applicationOwner === undefined) {
+      throw new Error('session-controller: application cancellation requires its owner-verified Agent')
+    }
     agent.cancel({ kind: 'user' }, { keepInbox: true })
     return { accepted: true }
   }
@@ -467,16 +532,26 @@ export class SessionCommandController {
     if (error instanceof ApiSessionSubagentOwnership) {
       throw apiSessionSubagentOwnershipError(error.sessionId)
     }
+    if (error instanceof ApiSessionApplicationOwnership) {
+      throw apiSessionApplicationOwnershipError(error.sessionId)
+    }
     throw new RemoteError('gateway/internal', `failed to create session "${sessionId}": ${String(error)}`, {})
   }
 
   private async readSessionState(sessionId: SessionId): Promise<SessionReadState> {
     const attached = this.ctx.sessions.get(sessionId)
     if (attached !== undefined) {
+      this.rejectApplicationOwnership(attached.header)
       return { id: attached.id, header: attached.header, events: [...attached.events] }
     }
     const inspected = await inspectApiSession(this.ctx, sessionId)
     return { id: inspected.meta.id, header: inspected.meta, events: inspected.events }
+  }
+
+  private rejectApplicationOwnership(header: SessionHeader): void {
+    if (header.applicationOwner !== undefined) {
+      throw apiSessionApplicationOwnershipError(header.id)
+    }
   }
 
   private async forkWorkspace(source: SessionHeader): Promise<Workspace | undefined> {

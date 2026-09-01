@@ -10,13 +10,16 @@ import type { DatabaseSync } from 'node:sqlite'
 import { setTimeout as delay } from 'node:timers/promises'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import {
+  ApplicationId,
   type SessionHeader,
   type SessionId,
+  TenantId,
+  UserId,
 } from '@deepseek-ai/dsh-session'
 import { sql } from './sql.ts'
 
 /** Current physical-record schema with packed and compressed event rows. */
-export const SCHEMA_VERSION = 20
+export const SCHEMA_VERSION = 21
 /** Application id reserved for DeepSeek Harness SQLite session databases. */
 export const SESSION_PERSISTENCE_SQLITE_APPLICATION_ID = 0x44534850
 
@@ -33,6 +36,9 @@ export interface SessionRow {
   readonly revision: number
   readonly delegation_depth: number | null
   readonly agent_preset: string | null
+  readonly application_id: string | null
+  readonly tenant_id: string | null
+  readonly user_id: string | null
 }
 
 /** One physical event row; packed rows may represent multiple logical events. */
@@ -208,7 +214,7 @@ function initializeDatabase(db: DatabaseSync): void {
   db.exec(sql('schema'))
   db.prepare(sql('insert-persistence-state')).run(randomUUID())
   db.exec(sql('set-application-id'))
-  db.exec(sql('set-user-version-20'))
+  db.exec(sql('set-user-version-21'))
 }
 
 let canonicalSchema: readonly SchemaObjectRow[] | undefined
@@ -303,6 +309,9 @@ export function decodeSessionRow(value: unknown): SessionRow {
     origin,
     delegation_depth: nullableNonnegativeSafeIntegerField(row, 'delegation_depth'),
     agent_preset: nullableStringField(row, 'agent_preset'),
+    application_id: nullableNonemptyStringField(row, 'application_id'),
+    tenant_id: nullableNonemptyStringField(row, 'tenant_id'),
+    user_id: nullableNonemptyStringField(row, 'user_id'),
     incarnation,
     revision: nonnegativeSafeIntegerField(row, 'revision'),
   }
@@ -347,6 +356,10 @@ export function decodeStoreIdentity(value: unknown): string {
  * @returns the session header.
  */
 export function rowToMeta(row: SessionRow): SessionHeader {
+  const ownerFields = [row.application_id, row.tenant_id, row.user_id]
+  if (ownerFields.some(field => field === null) && ownerFields.some(field => field !== null)) {
+    throw new Error('stored application ownership must contain application_id, tenant_id, and user_id together')
+  }
   return {
     version: row.version,
     id: brandString<SessionId>(row.id),
@@ -357,6 +370,13 @@ export function rowToMeta(row: SessionRow): SessionHeader {
     ...row.origin === null ? {} : { origin: row.origin },
     ...row.delegation_depth === null ? {} : { delegationDepth: row.delegation_depth },
     ...row.agent_preset === null ? {} : { agentPreset: row.agent_preset },
+    ...row.application_id === null ? {} : {
+      applicationOwner: {
+        applicationId: ApplicationId(row.application_id),
+        tenantId: TenantId(row.tenant_id as string),
+        userId: UserId(row.user_id as string),
+      },
+    },
   }
 }
 
@@ -381,6 +401,12 @@ function nullableStringField(value: unknown, key: string): string | null {
   const field = record(value, 'SQLite row')[key]
   if (field === null) return null
   if (typeof field !== 'string') throw new Error(`stored ${key} must be a string or null`)
+  return field
+}
+
+function nullableNonemptyStringField(value: unknown, key: string): string | null {
+  const field = nullableStringField(value, key)
+  if (field !== null && field.length === 0) throw new Error(`stored ${key} must not be empty`)
   return field
 }
 

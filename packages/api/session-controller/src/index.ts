@@ -9,6 +9,7 @@ import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import {
   ApiSessionAgentController,
+  apiSessionApplicationOwnershipError,
   inspectApiSession,
   type ApiSessionAgentResult,
 } from './agent.ts'
@@ -20,6 +21,7 @@ import { ApiSessionList, DEFAULT_COLD_BLANK_PROBE_MAX_BYTES } from './list.ts'
 import { buildModelCatalog } from './catalog.ts'
 import { installModelSelectionProjection } from './model-selection-projection.ts'
 import { SessionSkillCatalog } from './skill-catalog.ts'
+import { ApplicationChatController } from './application.ts'
 import type {
   ModelCatalog,
   SessionAttachmentRequest,
@@ -55,6 +57,7 @@ export type * from './types.ts'
 export { ApiSessionNotFound } from './agent.ts'
 export { SessionFileReferences } from './file-references.ts'
 export { SessionSkillCatalog } from './skill-catalog.ts'
+export type * from './application.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -69,6 +72,8 @@ export interface Config {
   readonly coldBlankProbeMaxBytes?: number
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /** Milliseconds an idle application Agent remains live before cold-resume eviction. */
+  readonly applicationIdleMs?: number
 }
 
 /** Host integrations replaceable by direct unit tests. */
@@ -96,12 +101,15 @@ export class SessionController extends TypertRemoteService {
   static Config: z<Config> = z.object({
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     nativeOpen: z.boolean(),
+    applicationIdleMs: z.natural().min(1).default(300_000),
   })
 
   private readonly agents: ApiSessionAgentController
   private readonly commands: SessionCommandController
   private readonly controlState: SessionControlController
   private readonly history: SessionHistoryController
+  /** Host-only application chat operations used by authenticated transports. */
+  readonly application: ApplicationChatController
   private readonly listState: ApiSessionList
   private readonly openPath: (path: string, signal: AbortSignal) => Promise<void>
   private readonly canOpenPath: () => boolean
@@ -114,7 +122,7 @@ export class SessionController extends TypertRemoteService {
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
     installModelSelectionProjection(ctx)
-    this.agents = new ApiSessionAgentController(ctx)
+    this.agents = new ApiSessionAgentController(ctx, config.applicationIdleMs ?? 300_000)
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
     this.controlState = new SessionControlController(ctx)
     // Registered before history so reverse-order teardown closes every
@@ -123,6 +131,7 @@ export class SessionController extends TypertRemoteService {
       await Promise.allSettled([...this.promotions])
     }, 'session-controller.promotions')
     this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation) })
+    this.application = new ApplicationChatController(ctx, this.agents, this.commands)
     this.listState = new ApiSessionList(
       ctx,
       config.coldBlankProbeMaxBytes ?? DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
@@ -134,15 +143,19 @@ export class SessionController extends TypertRemoteService {
     ctx.plugin(SessionSkillCatalog)
 
     ctx.on('session/created', (session) => {
+      if (session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/added', this.listState.summaryFor(session))
     })
     ctx.on('session/disposed', (session) => {
+      if (session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/removed', session.id)
     })
     ctx.on('agent/status', ({ agent, status }) => {
+      if (agent.session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/status', agent.id, status === 'running')
     })
     ctx.on('agent/error', ({ agent, error }) => {
+      if (agent.session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/error', agent.id, errorChain(error))
     })
     ctx.on('session/event', (session, event) => {
@@ -155,6 +168,7 @@ export class SessionController extends TypertRemoteService {
           event.data.header.config.reasoningEffort,
         )
       }
+      if (session.header.applicationOwner !== undefined) return
       if (event.type !== 'user/message' || event.data.source.kind !== 'user') return
       ctx.emit('api-session/activity', session.id, event.time)
     })
@@ -194,6 +208,9 @@ export class SessionController extends TypertRemoteService {
   ): Promise<{ meta: SessionHeader; events: SessionEvent[] }> {
     const attached = this.ctx.sessions.get(sessionId)
     if (attached !== undefined) {
+      if (attached.header.applicationOwner !== undefined) {
+        return Promise.reject(apiSessionApplicationOwnershipError(sessionId))
+      }
       return Promise.resolve({ meta: attached.header, events: [...attached.events] })
     }
     return inspectApiSession(this.ctx, sessionId, signal)

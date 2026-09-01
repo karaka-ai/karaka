@@ -6,7 +6,9 @@ import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { officialClientBuildEnvironment, writeClientBuildRecord } from '../client-build-environment.ts'
 import { releaseFamily, type ReleaseMember } from './families.ts'
-import { compareVersions, nextVendorVersion, planShared, reachesPayload } from './bump.ts'
+import {
+  compareVersions, nextVendorVersion, planShared, postBumpTagInstruction, reachesPayload,
+} from './bump.ts'
 
 /**
  * A release member standing in for a manifest on disk.
@@ -46,7 +48,20 @@ describe('release families', () => {
     const members = releaseFamily('dsh').members(resolve(import.meta.dirname, '../..'))
 
     expect(members.some(member => member.directory.startsWith('packages/experimental/'))).toBe(false)
+    expect(members.some(member => member.directory.startsWith('packages/karaka/'))).toBe(false)
     expect(members.map(member => member.name)).not.toContain('@deepseek-ai/dsh-experimental-agent-team')
+  })
+
+  it('releases Karaka packages as an independent family', () => {
+    const karaka = releaseFamily('karaka')
+    const members = karaka.members(resolve(import.meta.dirname, '../..'))
+
+    expect(members.map(member => member.name)).toContain('@karaka/cli')
+    expect(members.every(member => member.name.startsWith('@karaka/'))).toBe(true)
+    expect(karaka.installedEntry).toEqual({ packageName: '@karaka/cli', binPath: 'lib/bin.js' })
+    expect(karaka.tagFor(members[0]!)).toBe(`karaka-v${members[0]!.version}`)
+    expect(postBumpTagInstruction(karaka))
+      .toBe('release bump: committed. After this merges to main, tag it:')
   })
 
   it('bumps private dsh packages without adding release tags', () => {
@@ -272,6 +287,7 @@ describe('release families', () => {
 
   it('drives the installed entry only for the family that publishes one', () => {
     expect(releaseFamily('dsh').installedEntry).toEqual({ packageName: '@deepseek-ai/dsh', binPath: 'lib/bin.js' })
+    expect(releaseFamily('karaka').installedEntry).toEqual({ packageName: '@karaka/cli', binPath: 'lib/bin.js' })
     expect(releaseFamily('vendor').installedEntry).toBeUndefined()
   })
 

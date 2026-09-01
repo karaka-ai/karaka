@@ -67,6 +67,8 @@ Add one entry per server; nothing else is required. After the harness starts, th
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-mcp-client) is the exhaustive source for every accepted field.
 
+Application-owned endpoints use [`@karaka/mcp-application`](../../karaka/mcp-application/README.md), which adds server authentication, Session identity, and Agent Preset selection without changing this generic client.
+
 After startup, the server's tools appear as `mcp__<serverName>__<tool>` — try a prompt that uses one. If the initial connection fails, the harness still starts but no tools from that server appear, and an error is logged; set `failOnStartupError: true` to make a startup failure abort the harness instead.
 
 ### Tool naming and coexistence
@@ -115,6 +117,7 @@ This section explains the design decisions behind the bridge and points at the c
 | [`src/index.ts`](src/index.ts) | Plugin entry: `Config` schema, `serverName` reservation, activation await |
 | [`src/connection.ts`](src/connection.ts) | Connection supervisor: client generations, reconnect policy, attempt budget, disposal |
 | [`src/tools.ts`](src/tools.ts) | Tool bridge: discovery, naming, registration swap, execution, image projection |
+| [`src/extension.ts`](src/extension.ts) | Neutral hooks for dynamic headers, invocation metadata, and tool visibility |
 | [`src/transport.ts`](src/transport.ts) | Transport factory: stdio spawn with scrubbed env, Streamable HTTP |
 | [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant; generations are observable only through the tool registry) |
 
@@ -127,6 +130,8 @@ The supervisor listens for `notifications/tools/list_changed` and queues a re-sy
 ### Tool execution internals
 
 A tool call sends an uncached `tools/call` request carrying the raw MCP name, the JSON arguments, the abort signal, and the configured timeout; the public name is never sent to the server and never parsed back. Canonical success is `{ content: JsonValue[], structuredContent? }`, preserving the complete MCP JSON blocks for programmatic and PTC mode callers. A supported advertised `outputSchema` validates `structuredContent`; unsupported schema vocabulary falls back to unconstrained `JsonValue`. An MCP `isError` result throws before any image persistence, so the registry produces a failed tool result. Image batches are decoded and validated as a whole before any member is saved; any refusal projects every image as diagnostic text.
+
+A specializing Cordis plugin may pass an `McpClientExtension` to resolve dynamic HTTP headers, add protocol `_meta`, or restrict discovered tools with neutral ToolRuntime visibility facts. The generic configuration does not expose those hooks directly.
 
 ### Environment scrubbing (stdio)
 

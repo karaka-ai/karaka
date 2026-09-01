@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import {
   decodeSeqRanges, decodeStorageRecord, encodeSeqRanges, packChunkRuns, SESSION_FORMAT_VERSION,
 } from '@deepseek-ai/dsh-session'
-import type { SessionEvent, SessionHeader, SessionId, StorageRecord } from '@deepseek-ai/dsh-session'
+import type { ApplicationOwner, SessionEvent, SessionHeader, SessionId, StorageRecord } from '@deepseek-ai/dsh-session'
 import { SessionFormatUnsupportedError, sessionFormatVersionRefusal } from '@deepseek-ai/dsh-session-persistence'
 
 /** Physical encoding selected for JSONL session artifacts. */
@@ -43,6 +43,7 @@ export interface HeaderLine {
   origin?: 'subagent'
   delegationDepth: number
   agentPreset?: string
+  applicationOwner?: ApplicationOwner
 }
 
 /**
@@ -62,6 +63,7 @@ export function toHeaderLine(header: SessionHeader): HeaderLine {
     ...header.origin !== undefined ? { origin: header.origin } : {},
     delegationDepth: header.delegationDepth ?? 0,
     ...header.agentPreset !== undefined ? { agentPreset: header.agentPreset } : {},
+    ...header.applicationOwner !== undefined ? { applicationOwner: header.applicationOwner } : {},
   }
 }
 
@@ -84,6 +86,7 @@ export function fromHeaderLine(line: HeaderLine): SessionHeader {
     ...line.origin !== undefined ? { origin: line.origin } : {},
     delegationDepth: line.delegationDepth,
     ...line.agentPreset !== undefined ? { agentPreset: line.agentPreset } : {},
+    ...line.applicationOwner !== undefined ? { applicationOwner: line.applicationOwner } : {},
   }
 }
 
@@ -106,7 +109,18 @@ function isHeaderLine(value: unknown): value is HeaderLine {
       || (value as { origin?: unknown }).origin === 'subagent')
     && ((value as { agentPreset?: unknown }).agentPreset === undefined
       || typeof (value as { agentPreset?: unknown }).agentPreset === 'string')
+    && isApplicationOwner((value as { applicationOwner?: unknown }).applicationOwner)
   )
+}
+
+function isApplicationOwner(value: unknown): value is ApplicationOwner | undefined {
+  if (value === undefined) return true
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return Object.keys(record).length === 3
+    && typeof record.applicationId === 'string' && record.applicationId.length > 0
+    && typeof record.tenantId === 'string' && record.tenantId.length > 0
+    && typeof record.userId === 'string' && record.userId.length > 0
 }
 
 /**

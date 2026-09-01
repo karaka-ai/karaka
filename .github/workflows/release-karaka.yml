@@ -1,0 +1,87 @@
+# Pack the public @karaka/* product family. Karaka depends on the DSH, vendor,
+# and Landlock families, so rehearsal installs all four local pack outputs while
+# uploading only Karaka's tarballs.
+name: Release (Karaka)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  pack:
+    name: Pack npm tarballs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - name: Configure pnpm store path
+        id: pnpm-store
+        run: |
+          store_root="$HOME/.local/share/pnpm/store"
+          echo "PNPM_CONFIG_STORE_DIR=$store_root" >> "$GITHUB_ENV"
+          store_path=$(PNPM_CONFIG_STORE_DIR="$store_root" pnpm store path --silent)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release version
+        run: pnpm run release:verify --family karaka
+
+      - name: Build
+        run: pnpm run build:official
+
+      - name: Pack Karaka release tarballs
+        run: pnpm run release:pack --family karaka --out dist/npm-karaka --concurrency 8
+
+      - name: Pack DSH dependencies for verification
+        run: pnpm run release:pack --family dsh --out dist/npm-dsh --concurrency 8
+
+      - name: Pack vendored dependencies for verification
+        run: pnpm run release:pack --family vendor --out dist/npm-vendor --concurrency 8
+
+      - name: Pack the Landlock entry for verification
+        run: |
+          pnpm --dir native/landlock-run run build:ts
+          pnpm --dir native/landlock-run/packages/entry pack --pack-destination "$PWD/dist/npm-landlock"
+
+      - name: Verify packed install
+        run: pnpm run release:verify-packed-install --family karaka --from dist/npm-karaka --from dist/npm-dsh --from dist/npm-vendor --from dist/npm-landlock
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: karaka-npm-tarballs
+          path: dist/npm-karaka/*
+          if-no-files-found: error
+          retention-days: 7

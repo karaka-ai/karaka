@@ -8,7 +8,7 @@ kind: "package-reference"
 
 ## 概述
 
-`@deepseek-ai/dsh-api-session-controller` 拥有 Host 的 `ctx.sessionController` 服务，以及生成的 Client `session`、`skills` 和 `fileReferences` Remote namespace。它提供 Session 生命周期与历史、Host generation 模型目录、工作区路径打开、用户可调用 skill 发现，以及面向 Agent 的文件引用 adapter。当 Client 需要按 Session 寻址的操作时，请通过 API Gateway 使用它。
+`@deepseek-ai/dsh-api-session-controller` 拥有 Host 的 `ctx.sessionController` 服务，以及生成的 Client `session`、`skills` 和 `fileReferences` Remote namespace。它提供 Session 生命周期与历史、Host generation 模型目录、工作区路径打开、用户可调用 skill 发现，以及面向 Agent 的文件引用 adapter。其仅 Host 的 `application` controller 在精确持久 owner 下创建和恢复无 Workspace 应用聊天。Remote namespace 通过 API Gateway 使用；带认证应用 transport 调用仅 Host controller。
 
 ## 目录
 
@@ -40,6 +40,7 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 |---|---:|---|
 | `coldBlankProbeMaxBytes` | `1,024` | 可进行空白状态验证的冷 Session 工件最大物理大小；`0` 禁用探测 |
 | `nativeOpen` | 平台探测 | 是否能把 Session 工作区路径交给原生桌面打开器 |
+| `applicationIdleMs` | `300,000` | 保留的应用自有 Agent 在冷恢复前的空闲生命周期 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-api-session-controller)是所有受支持字段及其 JSDoc 的完整来源。
 
@@ -61,6 +62,7 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 - Control baseline 表示进程本地状态，因此 Host 重启后无法重建 jobs。
 - follow 恢复失败会对调用方可见，而不会无限重试。
 - 文件引用补全使用共享 Agent lookup，因此可能恢复冷 Session；`skills/list` 目录是不激活 Agent 的 skill 元数据读取路径。
+- 应用 request-id 去重和逐聊天串行化是进程本地行为；多副本接收需要外部协调。应用 follow 会直接读取无 workspace 的 Session 日志，不使用面向浏览器且按 workspace 过滤的历史路径。
 
 
 <a id="dev-note"></a>

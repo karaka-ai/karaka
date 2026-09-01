@@ -25,6 +25,7 @@ export class SessionControlController {
   constructor(private readonly ctx: Context) {
     ctx.on('session/event', (session, event) => { this.onSessionEvent(session, event) })
     ctx.sessionProjections.onChanged((session, key, value, seq) => {
+      if (isApplicationSession(session)) return
       this.broadcast({
         type: 'projection',
         sessionId: session.id,
@@ -37,6 +38,7 @@ export class SessionControlController {
       jobsCtx.jobs.onJobsChanged((owner) => { this.onJobsChanged(owner) })
     })
     ctx.on('session/created', (session) => {
+      if (isApplicationSession(session)) return
       const jobs = this.jobsFor(this.ctx.agents.get(session.id))
       if (jobs.length > 0) this.broadcast({ type: 'jobs', sessionId: session.id, jobs })
     })
@@ -65,7 +67,7 @@ export class SessionControlController {
   }
 
   private baseline(): SessionControlBaseline {
-    const sessions = this.ctx.sessions.list()
+    const sessions = this.ctx.sessions.list().filter(session => !isApplicationSession(session))
     const queues = Object.create(null) as Record<SessionId, readonly SessionQueuedItem[]>
     const jobs = Object.create(null) as Record<SessionId, readonly SessionJob[]>
     for (const session of sessions) {
@@ -96,6 +98,7 @@ export class SessionControlController {
   }
 
   private onSessionEvent(session: Session, event: SessionEvent): void {
+    if (isApplicationSession(session)) return
     if (event.type !== 'agent/inbox/spliced') return
     const agent = this.ctx.agents.get(session.id)
     if (agent?.session !== session) return
@@ -108,10 +111,12 @@ export class SessionControlController {
 
   private onJobsChanged(owner: Agent | undefined): void {
     if (owner !== undefined) {
+      if (isApplicationSession(owner.session)) return
       this.broadcast({ type: 'jobs', sessionId: owner.id, jobs: this.jobsFor(owner) })
       return
     }
     for (const session of this.ctx.sessions.list()) {
+      if (isApplicationSession(session)) continue
       this.broadcast({
         type: 'jobs',
         sessionId: session.id,
@@ -128,6 +133,10 @@ export class SessionControlController {
   private broadcast(frame: SessionControlFrame): void {
     for (const stream of this.streams) stream.push(frame)
   }
+}
+
+function isApplicationSession(session: Session): boolean {
+  return session.header.applicationOwner !== undefined
 }
 
 class ControlQueue {

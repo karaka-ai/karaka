@@ -31,6 +31,8 @@ kind: "package-reference"
 
 `ctx.sessions.create()` 构建绑定到调用方 fiber 的实时会话；`get(id)` 与 `list()` 查找会话，`fork()` 从实时会话的稳定前缀创建子会话。
 
+创建元数据可以携带一个原子 `applicationOwner`，其中 `applicationId`、`tenantId` 与 `userId` 都必须为非空字符串。不可变 header 会在持久化与 fork 中保留它；不完整 owner 会被拒绝，不会成为含糊的授权记录。
+
 ```text
 const session = ctx.sessions.create(sessionId, { meta: { cwd: '/workspace' } })
 ctx.sessions.get(sessionId)      // the live session

@@ -14,8 +14,13 @@ CREATE TABLE sessions (
   origin           TEXT,
   delegation_depth INTEGER,
   agent_preset     TEXT,
+  application_id   TEXT,
+  tenant_id        TEXT,
+  user_id          TEXT,
   incarnation      TEXT NOT NULL,
-  revision         INTEGER NOT NULL
+  revision         INTEGER NOT NULL,
+  CHECK ((application_id IS NULL AND tenant_id IS NULL AND user_id IS NULL)
+      OR (length(application_id) > 0 AND length(tenant_id) > 0 AND length(user_id) > 0))
 ) STRICT;
 
 CREATE TABLE events (

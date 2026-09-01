@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import { resolveChildAgentOptions } from '../src/child-agent.ts'
+import { ApplicationId, Session, SessionId, TenantId, UserId } from '@deepseek-ai/dsh-session'
+import { childSessionMeta, resolveChildAgentOptions } from '../src/child-agent.ts'
 
 function parentAgent(): Agent {
   const id = SessionId('parent')
@@ -15,7 +15,8 @@ function parentAgent(): Agent {
       maxTokens: 512,
     },
     session: Session.create(id),
-  } as Agent
+    ctx: { get: () => undefined },
+  } as unknown as Agent
 }
 
 describe('child Agent options', () => {
@@ -72,5 +73,23 @@ describe('child Agent options', () => {
       maxTokens: 512,
       subagentDepth: 1,
     })
+  })
+})
+
+describe('child Session metadata', () => {
+  it('inherits the complete application owner from its parent', () => {
+    const id = SessionId('application-parent')
+    const applicationOwner = {
+      applicationId: ApplicationId('billing'),
+      tenantId: TenantId('tenant-1'),
+      userId: UserId('user-1'),
+    }
+    const parent = {
+      ...parentAgent(),
+      id,
+      session: Session.create(id, undefined, { version: 0, id, createdAt: 1, applicationOwner }),
+    } as Agent
+
+    expect(childSessionMeta(parent, 1, 0).applicationOwner).toEqual(applicationOwner)
   })
 })

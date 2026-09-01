@@ -1,7 +1,6 @@
 /** Cold Session history pagination and live-event source. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { Deque } from '@deepseek-ai/dsh-deque'
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session'
 import { isChunkRow, packChunkRuns, type ChunkRow } from '@deepseek-ai/dsh-session/chunk-rows'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
@@ -21,6 +20,7 @@ import type {
   SessionProjectionValues,
   SessionWireEvent,
 } from './types.ts'
+import { SessionEventFollower } from './follow.ts'
 
 const DEFAULT_MAX_MESSAGES = 50
 const MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
@@ -89,85 +89,40 @@ export class SessionHistoryController {
     validateFollowRequest(request)
     const { address } = request
     const target = addressId(address)
-    const buffered = new Deque<SessionEvent>()
-    let snapshotCursor: number | undefined
-    let wake: (() => void) | undefined
-    const notify = (): void => {
-      const resume = wake
-      wake = undefined
-      resume?.()
+    using follower = new SessionEventFollower(
+      this.ctx,
+      target,
+      signal,
+      this.closeFollowers,
+      nextSeq => new RemoteError('gateway/internal', `session event stream skipped seq ${String(nextSeq)}`, {}),
+    )
+    using source = await this.sourceFor(address, signal, true)
+    const events = source.events
+    signal.throwIfAborted()
+    const cursor = source.cursor
+    follower.snapshotAt(cursor)
+    const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES)
+    yield {
+      type: 'snapshot',
+      header: source.header,
+      cursor,
+      records: pageRecords(page.events),
+      hasMore: page.hasMore,
+      projections: source.projections === undefined
+        ? { asOfSeq: cursor, values: {} }
+        : projectionBlock(source.projections),
     }
-    const follower = { closed: false }
-    const close = (): void => {
-      follower.closed = true
-      notify()
+    if (address.kind === 'session' && source.source === 'prepared') {
+      const promotion = source.retain()
+      try {
+        this.promote(promotion)
+      } catch (error: unknown) {
+        promotion[Symbol.dispose]()
+        throw error
+      }
     }
-    this.closeFollowers.add(close)
-    const disposeEvent = this.ctx.on('session/event', (session, event) => {
-      if (session.id !== target) return
-      buffered.pushBack(event)
-      notify()
-    }, { global: true })
-    const disposeCreated = this.ctx.on('session/created', (session) => {
-      if (session.id !== target) return
-      // Constructor seed events have no session/event notification. Normally
-      // only the end-seed suffix is new; if persistence advanced after the
-      // opening observation, replay everything beyond that snapshot cursor.
-      const suffix = session.events.slice(snapshotCursor === undefined
-        ? session.firstLiveSeq
-        : snapshotCursor + 1)
-      for (let index = suffix.length - 1; index >= 0; index -= 1) {
-        buffered.pushFront(suffix[index] as SessionEvent)
-      }
-      notify()
-    }, { global: true })
-    const onAbort = (): void => { notify() }
-    signal.addEventListener('abort', onAbort, { once: true })
-    try {
-      using source = await this.sourceFor(address, signal, true)
-      const events = source.events
-      signal.throwIfAborted()
-      const cursor = source.cursor
-      snapshotCursor = cursor
-      const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES)
-      yield {
-        type: 'snapshot',
-        header: source.header,
-        cursor,
-        records: pageRecords(page.events),
-        hasMore: page.hasMore,
-        projections: source.projections === undefined
-          ? { asOfSeq: cursor, values: {} }
-          : projectionBlock(source.projections),
-      }
-      if (address.kind === 'session' && source.source === 'prepared') {
-        const promotion = source.retain()
-        try {
-          this.promote(promotion)
-        } catch (error: unknown) {
-          promotion[Symbol.dispose]()
-          throw error
-        }
-      }
-      let nextSeq = cursor + 1
-      while (!follower.closed && !signal.aborted) {
-        const item = buffered.popFront()
-        if (item === undefined) {
-          await new Promise<void>((resolve) => { wake = resolve })
-          continue
-        }
-        if (item.seq < nextSeq) continue
-        if (item.seq !== nextSeq) {
-          throw new RemoteError('gateway/internal', `session event stream skipped seq ${String(nextSeq)}`, {})
-        }
-        nextSeq++
-        yield entryFor(item)
-      }
-    } finally {
-      this.closeFollowers.delete(close)
-      signal.removeEventListener('abort', onAbort)
-      disposeCreated()
-      disposeEvent()
+    for await (const event of follower.eventsAfter(cursor + 1)) {
+      yield entryFor(event)
     }
   }
 
@@ -182,7 +137,7 @@ export class SessionHistoryController {
         signal,
         projectionMode: withProjections || address.kind === 'subagent' ? 'all' : 'none',
       })
-      if (observation.header.cwd === undefined) {
+      if (observation.header.cwd === undefined || observation.header.applicationOwner !== undefined) {
         observation[Symbol.dispose]()
         rejectNotFound(address)
       }

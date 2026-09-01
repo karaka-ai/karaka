@@ -4,7 +4,7 @@ import { isAbsolute } from 'node:path'
 import * as yaml from 'js-yaml'
 
 /** Public `dsh` profile used to control a recorded-session scenario. */
-export type SnapshotProfile = 'headless' | 'sdk' | 'acp' | 'web'
+export type SnapshotProfile = 'headless' | 'sdk' | 'acp' | 'web' | 'karaka'
 
 /** How a canonical session may be regenerated. */
 export type SnapshotRecording = 'live' | 'authored'
@@ -103,7 +103,7 @@ export interface SnapshotManifest {
   session?: SnapshotSessionReference
 }
 
-const PROFILES = new Set<SnapshotProfile>(['headless', 'sdk', 'acp', 'web'])
+const PROFILES = new Set<SnapshotProfile>(['headless', 'sdk', 'acp', 'web', 'karaka'])
 const RECORDINGS = new Set<SnapshotRecording>(['live', 'authored'])
 const PLATFORMS = new Set<SnapshotPlatform>(['posix', 'pwsh'])
 const PERMISSIONS = new Set<SnapshotPermission>(['read-only', 'workspace-write', 'danger-full-access'])
@@ -178,7 +178,7 @@ export function parseSnapshotManifest(source: string, path = 'snapshot.yml'): Sn
     if (root.version !== 1) throw new Error('manifest.version must equal 1')
     const scenario = root.scenario === undefined ? undefined : name(root.scenario, 'manifest.scenario')
     if (typeof root.profile !== 'string' || !PROFILES.has(root.profile as SnapshotProfile)) {
-      throw new Error('manifest.profile must be headless, sdk, acp, or web')
+      throw new Error('manifest.profile must be headless, sdk, acp, web, or karaka')
     }
 
     const composition = root.composition === undefined

@@ -8,7 +8,7 @@
 
 ## `ToolDefinition` — 一个已注册的工具
 
-由一个 `ToolSchema`（面向模型的字段）、必需的规范输出声明、`execute` 函数、仅供宿主使用的调度器元数据、可选的最终内容回调和可选 UI 展示函数组成。注册表持有这些定义，循环通过它们分派调用。注册表的 `schemas()` 通过显式允许列表构建面向模型的 `ToolSchema[]`；`output`/`execute`/`finalizeContent`/`timeoutMs`/`isConcurrencySafe`/`presentCall`/`presentResult` 绝不能泄漏到模型请求中。
+由一个 `ToolSchema`（面向模型的字段）、必需的规范输出声明、仅供宿主使用的可见性策略、`execute` 函数、仅供宿主使用的调度器元数据、可选的最终内容回调和可选 UI 展示函数组成。注册表持有这些定义，循环通过它们分派调用。注册表的 `schemas()` 通过显式允许列表构建面向模型的 `ToolSchema[]`；`output`/`isVisible`/`execute`/`finalizeContent`/`timeoutMs`/`isConcurrencySafe`/`presentCall`/`presentResult` 绝不能泄漏到模型请求中。
 
 ```ts type-equiv
 /** Tool-owned canonical output contract used after the body returns a JSON value. */
@@ -23,10 +23,30 @@ interface ToolOutputDefinition {
 ```
 
 ```ts type-equiv
+/** Scope and selection facts supplied to a definition-owned visibility rule. */
+interface ToolVisibilityContext {
+  /** Viewing or executing scope, normally the Agent; undefined for the global view. */
+  readonly scope: ScopeKey | undefined
+  /** Whether the definition comes from a parent or global registry layer. */
+  readonly inherited: boolean
+  /** Whether an inherited definition is named by an allow-list on the scope chain. */
+  readonly explicitlyAllowed: boolean
+}
+```
+
+```ts type-equiv
 /** A registered tool: its schema plus the execution function. */
 interface ToolDefinition extends ToolSchema {
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
+  /**
+   * Pure host-only visibility policy evaluated for model presentation and dispatch.
+   * Omit for every scope; returning false makes the tool indistinguishable from
+   * an unregistered tool in that scope. This callback is never model-visible.
+   * @param visibility - viewing scope and inherited-selection facts.
+   * @returns whether this scope may discover and call the tool.
+   */
+  isVisible?(visibility: Readonly<ToolVisibilityContext>): boolean
   /**
    * Run one accepted call and return only its canonical lossless-JSON value.
    * Async work must observe or forward `exec.signal` and settle only after its

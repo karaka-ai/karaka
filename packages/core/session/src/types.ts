@@ -50,6 +50,53 @@ export function SessionId(id: string): SessionId {
  */
 export const SESSION_FORMAT_VERSION = 0
 
+/** Authenticated Karaka application-server identity. */
+export type ApplicationId = Branded<'ApplicationId'>
+/** Tenant identity trusted from an authenticated application server. */
+export type TenantId = Branded<'TenantId'>
+/** User identity trusted from an authenticated application server. */
+export type UserId = Branded<'UserId'>
+
+/**
+ * Brand a validated application-server identity.
+ *
+ * @param id - Non-empty application-server identity.
+ * @returns The branded application identity.
+ */
+export function ApplicationId(id: string): ApplicationId {
+  return brandString<ApplicationId>(id)
+}
+
+/**
+ * Brand a validated tenant identity.
+ *
+ * @param id - Non-empty tenant identity.
+ * @returns The branded tenant identity.
+ */
+export function TenantId(id: string): TenantId {
+  return brandString<TenantId>(id)
+}
+
+/**
+ * Brand a validated user identity.
+ *
+ * @param id - Non-empty user identity.
+ * @returns The branded user identity.
+ */
+export function UserId(id: string): UserId {
+  return brandString<UserId>(id)
+}
+
+/** Trusted application identity attached to a Karaka-owned session. */
+export interface ApplicationOwner {
+  /** Authenticated application server identity. */
+  readonly applicationId: ApplicationId
+  /** Tenant identity asserted by the authenticated application. */
+  readonly tenantId: TenantId
+  /** User identity asserted by the authenticated application. */
+  readonly userId: UserId
+}
+
 /**
  * Immutable validated storage metadata, kept outside the conversation event log.
  */
@@ -91,6 +138,8 @@ export interface SessionHeader {
    * would replay history the model can no longer act on.
    */
   readonly agentPreset?: string
+  /** Application identity authorized to operate this session. */
+  readonly applicationOwner?: ApplicationOwner
 }
 
 /**
@@ -113,6 +162,7 @@ export interface CreateSessionOptions {
     readonly origin?: 'subagent'
     readonly delegationDepth?: number
     readonly agentPreset?: string
+    readonly applicationOwner?: ApplicationOwner
   }
 }
 

@@ -130,6 +130,24 @@ function validateSessionHeader(id: SessionId, input: unknown): SessionHeader {
   if (record.agentPreset !== undefined && typeof record.agentPreset !== 'string') {
     throw new Error('session header agentPreset must be a string')
   }
+  if (record.applicationOwner !== undefined) {
+    const owner = record.applicationOwner
+    if (owner === null || typeof owner !== 'object' || Array.isArray(owner)) {
+      throw new Error('session header applicationOwner must be a plain record')
+    }
+    const fields = owner as Record<string, unknown>
+    if (Reflect.getPrototypeOf(owner) !== Object.prototype && Reflect.getPrototypeOf(owner) !== null) {
+      throw new Error('session header applicationOwner must be a plain record')
+    }
+    for (const field of ['applicationId', 'tenantId', 'userId'] as const) {
+      if (typeof fields[field] !== 'string' || fields[field].length === 0) {
+        throw new Error(`session header applicationOwner.${field} must be a non-empty string`)
+      }
+    }
+    if (Object.keys(fields).some(field => field !== 'applicationId' && field !== 'tenantId' && field !== 'userId')) {
+      throw new Error('session header applicationOwner contains an unknown field')
+    }
+  }
   return deepFreeze(record as unknown as SessionHeader)
 }
 
@@ -882,6 +900,7 @@ export class SessionStore extends Service {
       ...meta?.origin === undefined ? {} : { origin: meta.origin },
       ...meta?.delegationDepth === undefined ? {} : { delegationDepth: meta.delegationDepth },
       ...meta?.agentPreset === undefined ? {} : { agentPreset: meta.agentPreset },
+      ...meta?.applicationOwner === undefined ? {} : { applicationOwner: meta.applicationOwner },
     }
     return Session.create(sessionId, seed, header)
   }
@@ -1086,6 +1105,9 @@ export class SessionStore extends Service {
       seed,
       meta: {
         ...liveSource.header.cwd !== undefined ? { cwd: liveSource.header.cwd } : {},
+        ...liveSource.header.applicationOwner === undefined
+          ? {}
+          : { applicationOwner: liveSource.header.applicationOwner },
         parentSession: liveSource.id,
         seedLength: seed.length,
       },

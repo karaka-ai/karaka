@@ -17,6 +17,10 @@ export function assertSessionHeadersCompatible(a: SessionHeader, b: SessionHeade
     || a.parentSession !== b.parentSession
     || a.seedLength !== b.seedLength
     || (a.delegationDepth ?? 0) !== (b.delegationDepth ?? 0)
+    || a.agentPreset !== b.agentPreset
+    || a.applicationOwner?.applicationId !== b.applicationOwner?.applicationId
+    || a.applicationOwner?.tenantId !== b.applicationOwner?.tenantId
+    || a.applicationOwner?.userId !== b.applicationOwner?.userId
   ) {
     throw new SessionQueryError(
       `session source headers conflict for session "${a.id}"`,

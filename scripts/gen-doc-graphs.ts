@@ -93,6 +93,7 @@ const GROUP_ORDER = [
   'storage',
   'workspace',
   'support',
+  'karaka',
   'acp',
   'ui',
 ]
@@ -257,6 +258,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Configuration carries references to secrets; providers own the values. Consumers resolve per operation, so a rotated credential reaches the very next request; the settings controller exposes value-free views and write-only storage.',
   },
   {
+    key: 'serverAuth',
+    pkg: 'server-auth',
+    title: 'Application server authentication seam',
+    mode: 'seam',
+    implementations: ['server-auth'],
+    consumers: ['mcp-application', 'transport-http'],
+    note: 'The default provider verifies inbound application credentials and resolves outbound MCP authorization; deployments may replace the service through the same Cordis contract.',
+  },
+  {
     key: 'authorization',
     pkg: 'authorization',
     title: 'Authorization flow registry',
@@ -373,9 +383,9 @@ const SERVICE_ROLES: ServiceRole[] = [
   {
     key: 'agentPresets',
     pkg: 'agent-presets',
-    title: 'Per-session agent composition',
+    title: 'Standing Agent Preset composition',
     mode: 'core',
-    note: 'Discovers preset directories over trusted and user-authored roots and mounts one preset cordis.yml under an agent scope during creation, rejecting a row that never activates or that publishes into the root service realm.',
+    note: 'Discovers preset directories over trusted and user-authored roots, mounts one standing generation per selected preset, and joins each Agent through scoped parentage; unusable rows and root-realm service publication are rejected.',
   },
   {
     key: 'commands',
@@ -704,9 +714,20 @@ function pkgLink(pkg: Pkg | undefined, fallback: string, up = '..'): string {
   return pkg ? repoLink(pkg.rel, `\`${pkg.short}\``, up) : `\`${fallback}\``
 }
 
+const SERVICE_PACKAGE_PATHS = new Map([
+  ['mcp-application', 'packages/karaka/mcp-application'],
+  ['server-auth', 'packages/karaka/server-auth'],
+  ['transport-http', 'packages/karaka/transport-http'],
+])
+
+function servicePkgLink(name: string, pkgsByShort: Map<string, Pkg>): string {
+  const explicit = SERVICE_PACKAGE_PATHS.get(name)
+  return explicit === undefined ? pkgLink(pkgsByShort.get(name), name) : repoLink(explicit, `\`${name}\``)
+}
+
 function pkgList(names: string[] | undefined, pkgsByShort: Map<string, Pkg>): string {
   if (!names || names.length === 0) return '-'
-  return names.map(name => pkgLink(pkgsByShort.get(name), name)).join(', ')
+  return names.map(name => servicePkgLink(name, pkgsByShort)).join(', ')
 }
 
 function tableCell(value: string): string {
@@ -766,7 +787,7 @@ function renderCapabilitySeams(pkgs: Pkg[], services: readonly ServiceEntry[]): 
   lines.push(...nodes.values(), ...[...edges].sort(), ...[...companionEdges].sort())
   lines.push('```', '', '| ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |', '| --- | --- | --- | --- | --- | --- | --- |')
   for (const role of SERVICE_ROLES) {
-    lines.push(`| \`ctx.${role.key}\` | \`${role.mode}\` | ${pkgLink(pkgsByShort.get(role.pkg), role.pkg)} | ${pkgList(role.implementations, pkgsByShort)} | ${pkgList(role.consumers, pkgsByShort)} | ${pkgList(role.companions, pkgsByShort)} | ${tableCell(role.note)} |`)
+    lines.push(`| \`ctx.${role.key}\` | \`${role.mode}\` | ${servicePkgLink(role.pkg, pkgsByShort)} | ${pkgList(role.implementations, pkgsByShort)} | ${pkgList(role.consumers, pkgsByShort)} | ${pkgList(role.companions, pkgsByShort)} | ${tableCell(role.note)} |`)
   }
   lines.push('', ...maintenanceFooter(maintenance))
   return lines.join('\n')

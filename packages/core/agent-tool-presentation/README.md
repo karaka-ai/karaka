@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-An [agent preset](../../preset/agent-presets/README.md) carries `dsh-agent-tool-presentation` to choose which form of its tools the model sees: `native` (every visible schema), `ptc` (only `run_code` plus a generated SDK), or `both`. The tool registry itself stays on the host plane — this row only declares the presentation for the mounting agent, so a PTC mode session runs beside native ones in one process, each seeing its own catalog. A PTC mode waits for a code runtime before mounting, so a preset selecting PTC mode against a deployment without one fails at mount instead of at the first prompt. The `mode` field is required: a preset without this row already gets the deployment default. Choose it when an agent preset needs to fix the tool form its agents' models see.
+An [agent preset](../../preset/agent-presets/README.md) carries `dsh-agent-tool-presentation` to choose which form of its tools the model sees and, optionally, which inherited host tools remain visible. `native` presents every selected schema, `ptc` presents only `run_code` plus a generated SDK, and `both` presents both forms. The tool registry itself stays on the host plane; this row declares presentation and restrictions for the mounting agent scope, so differently configured sessions coexist in one process. A PTC mode waits for a code runtime before mounting. The `mode` field is required; `allow` and `deny` are optional.
 
 ## Table of Contents
 
@@ -38,8 +38,10 @@ Add this row to an agent preset to fix how every agent joined to that preset see
 | Field | Default | Meaning |
 |---|---|---|
 | `mode` | required | `native` — every schema; `ptc` — `run_code` plus generated SDK; `both` — both forms |
+| `allow` | all inherited tools | Keep only these inherited host tool names |
+| `deny` | none | Remove these inherited host tool names after `allow` |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-tool-presentation) is the exhaustive source for every accepted field. `mode` is required rather than defaulted because a preset without this row inherits the deployment default.
+The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-tool-presentation) is the exhaustive source for every accepted field. Unknown names fail when the preset mounts. Restrictions affect inherited host tools only and unwind with the preset scope. Application-owned MCP tools fail closed: an agent preset must name each one in `allow`; matching the application owner alone does not expose it.
 
 ### What PTC mode requires
 

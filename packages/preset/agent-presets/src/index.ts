@@ -1,12 +1,13 @@
 /**
- * Agent presets: each session composes its model-facing plugin set from one
- * preset `cordis.yml`, mounted ONCE per preset under a standing scope and
- * joined by every agent that names it.
+ * Agent presets: each Agent selects its model-facing plugin set from one
+ * preset `cordis.yml`. The roster mounts one standing scope per detected
+ * composition generation; every Agent selecting that generation joins it.
  *
  * The standing mount is what makes a preset one composition rather than one
  * per session: its plugin instances, tool registrations, prompt sections, and
- * projection units exist exactly once, keyed per session inside the plugins
- * themselves (they predate presets and were written for a shared world). An
+ * projection units exist once within that generation, keyed per session
+ * inside the plugins themselves (they predate presets and were written for a
+ * shared world). An
  * agent joins by having its scope key parented to the mount's
  * ({@link bindScopeParent}), which makes the mount's registrations visible to
  * that agent's views and the mount's listeners receive that agent's events —
@@ -606,19 +607,20 @@ export class AgentPresets extends TypertRemoteService {
   }
 
   /**
-   * One agent's instance of a service its preset mounted.
+   * The shared service instance mounted by an agent's preset generation.
    *
-   * A preset publishes services behind `isolate` realms, which are invisible
-   * outside the group that declares them — including to the host. This is how a
-   * caller holding the agent reads one anyway: a request that is ABOUT a
-   * session but arrives from outside it, which is every browser RPC.
+   * Agents joined to one standing generation resolve the same instance. Its
+   * `isolate` realm separates that generation from the root and other preset
+   * generations. The agent addresses the generation for callers such as
+   * browser RPC handlers; it does not imply a chat-local service instance.
    *
    * Read addressing only. A host row that `inject`s a service cannot use this,
-   * because injection resolves before any session exists and has no agent to
-   * key by; such a service belongs on the host plane instead.
-   * @param agent - the agent whose composition to look inside.
+   * because injection has no agent to address through; such a service belongs
+   * on the host plane. Plugins keep chat-local mutable state on the Agent or
+   * Session, or key it by their identities.
+   * @param agent - an agent joined to the preset generation to inspect.
    * @param name - the service name as the preset's rows resolve it.
-   * @returns the agent's instance, or undefined when its preset mounts none.
+   * @returns the generation's shared instance, or undefined when it mounts none.
    */
   serviceFor<K extends string & keyof Context>(agent: { ctx: Context }, name: K): Context[K] | undefined {
     return serviceForAgent(this.ctx, agent, name)

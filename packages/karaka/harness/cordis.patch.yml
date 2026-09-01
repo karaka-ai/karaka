@@ -1,0 +1,67 @@
+# Persistent Karaka application server over the shared dsh-base composition.
+
+- id: session-persistence-jsonl
+  disabled: true
+
+- id: tool-bash
+  disabled: true
+
+- id: tool-pwsh
+  disabled: true
+
+- id: tool-fs
+  disabled: true
+
+- id: tool-fs-search
+  disabled: true
+
+- id: tool-workflow
+  disabled: true
+
+- id: tool-ralph
+  disabled: true
+
+- id: tool-str-replace-editor
+  disabled: true
+
+- insert:
+    - id: session-persistence-sqlite
+      name: '@deepseek-ai/dsh-session-persistence-sqlite'
+      config:
+        path: !!js dshHomePath('karaka-sessions.sqlite')
+
+    - id: workspace
+      name: '@deepseek-ai/dsh-workspace'
+
+    - id: session-controller
+      name: '@deepseek-ai/dsh-api-session-controller'
+
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: support
+        roots:
+          - path: !!js process.env.KARAKA_AGENTS_DIR ?? (process.cwd() + '/agents')
+            trust: user
+        includeShippedRoot: false
+        includeUserRoot: false
+
+    - id: webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      config:
+        host: !!js process.env.KARAKA_HOST ?? '127.0.0.1'
+        port: !!js Number(process.env.KARAKA_PORT ?? 3400)
+        compression: gzip
+        compressionLevel: 1
+        compressionThresholdBytes: 1024
+
+    - id: server-auth
+      name: '@karaka/server-auth'
+      config:
+        applications: []
+
+    - id: karaka-http
+      name: '@karaka/transport-http'
+      config:
+        path: /v1
+        maxBodyBytes: 1048576

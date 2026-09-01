@@ -19,11 +19,13 @@ import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './connection.ts'
 import type { ReconnectConfig } from './connection.ts'
+import type { McpClientExtension } from './extension.ts'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
 import type {} from '@deepseek-ai/dsh-tools'
 
 export type { McpResult } from './tools.ts'
 export type { ReconnectConfig, ResolvedReconnectPolicy } from './connection.ts'
+export type { McpClientExtension } from './extension.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'mcp-client'
@@ -110,28 +112,31 @@ const Reconnect: z<ReconnectConfig> = z.object({
   maxAttempts: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(RECONNECT_DEFAULTS.maxAttempts),
 })
 
-export const Config = z.union([
-  z.object({
-    transport: z.const('stdio'),
-    serverName: z.string().required().pattern(SERVER_NAME_PATTERN),
-    command: z.string().required(),
-    args: z.array(String).default([]),
-    env: z.dict(String).default({}),
-    cwd: z.string().default(''),
-    toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
-    failOnStartupError: z.boolean().default(false),
-    reconnect: Reconnect,
-  }),
-  z.object({
-    transport: z.const('streamable-http'),
-    serverName: z.string().required().pattern(SERVER_NAME_PATTERN),
-    url: z.string().required(),
-    headers: z.dict(String).default({}),
-    toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
-    failOnStartupError: z.boolean().default(false),
-    reconnect: Reconnect,
-  }),
-]) as unknown as z<ConfigInput, Config>
+/** Runtime parser and default resolver for stdio MCP configuration. */
+export const StdioConfig: z<StdioConfigInput, StdioConfig> = z.object({
+  transport: z.const('stdio'),
+  serverName: z.string().required().pattern(SERVER_NAME_PATTERN),
+  command: z.string().required(),
+  args: z.array(String).default([]),
+  env: z.dict(String).default({}),
+  cwd: z.string().default(''),
+  toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
+  failOnStartupError: z.boolean().default(false),
+  reconnect: Reconnect,
+})
+
+/** Runtime parser and default resolver for Streamable HTTP MCP configuration. */
+export const StreamableHttpConfig: z<StreamableHttpConfigInput, StreamableHttpConfig> = z.object({
+  transport: z.const('streamable-http'),
+  serverName: z.string().required().pattern(SERVER_NAME_PATTERN),
+  url: z.string().required(),
+  headers: z.dict(String).default({}),
+  toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
+  failOnStartupError: z.boolean().default(false),
+  reconnect: Reconnect,
+})
+
+export const Config = z.union([StdioConfig, StreamableHttpConfig]) as unknown as z<ConfigInput, Config>
 
 // ---- Plugin apply ----
 
@@ -141,9 +146,10 @@ export const Config = z.union([
  * ordinary function as a constructor, whose returned Promise is not startup work.
  * @param ctx - plugin context carrying the tool registry.
  * @param config - resolved transport and server namespace configuration.
+ * @param extension - optional transport and tool policy supplied by a specializing plugin.
  * @returns startup readiness after connection and initial tool discovery settle.
  */
-export async function apply(ctx: Context, config: Config): Promise<void> {
+export async function apply(ctx: Context, config: Config, extension?: McpClientExtension): Promise<void> {
   // Fail loud at load: reconnect misconfiguration (including programmatic
   // construction that bypassed Schemastery) rejects THIS instance before any
   // effect registers.
@@ -170,19 +176,29 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // The supervisor owns the client/transport generations, the reconnect
   // loop, and the live tool registrations; disposal stops reconnection,
   // quiesces in-flight work, and unregisters the current generation.
-  const connection = startConnection(ctx, config, reconnect)
+  const connect = async (connectionCtx: Context): Promise<void> => {
+    const connection = startConnection(connectionCtx, config, reconnect, extension)
 
-  ctx.effect(() => {
-    return () => connection.dispose()
-  }, 'mcp-client.connection')
+    connectionCtx.effect(() => {
+      return () => connection.dispose()
+    }, 'mcp-client.connection')
 
-  // Block plugin activation on the initial connection + tool discovery so
-  // Cordis consumers observe the tools immediately after the fiber activates.
-  // When failOnStartupError is true, a failed initial attempt rejects the
-  // fiber (Cordis rolls it back); otherwise the error is logged and the
-  // supervisor enters its reconnect loop.
-  const outcome = await connection.ready
-  if (outcome.error !== undefined && config.failOnStartupError) {
-    throw new Error(`mcp-client(${config.serverName}): initial connection or tool synchronization failed`, { cause: outcome.error })
+    // Block plugin activation on the initial connection + tool discovery so
+    // Cordis consumers observe the tools immediately after the fiber activates.
+    // When failOnStartupError is true, a failed initial attempt rejects the
+    // fiber (Cordis rolls it back); otherwise the error is logged and the
+    // supervisor enters its reconnect loop.
+    const outcome = await connection.ready
+    if (outcome.error !== undefined && config.failOnStartupError) {
+      const detail = outcome.error instanceof Error
+        ? outcome.error.message
+        : typeof outcome.error === 'string' ? outcome.error : 'unknown startup error'
+      throw new Error(
+        `mcp-client(${config.serverName}): initial connection or tool synchronization failed: ${detail}`,
+        { cause: outcome.error },
+      )
+    }
   }
+
+  await connect(ctx)
 }

@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-api-session-controller` owns the Host `ctx.sessionController` service and the generated Client `session`, `skills`, and `fileReferences` Remote namespaces. It serves Session lifecycle and history, the Host-generation model catalog, workspace-path opening, user-invocable skill discovery, and the adapter for Agent-scoped file references. Use it through API Gateway when a Client needs operations addressed by a Session.
+`@deepseek-ai/dsh-api-session-controller` owns the Host `ctx.sessionController` service and the generated Client `session`, `skills`, and `fileReferences` Remote namespaces. It serves Session lifecycle and history, the Host-generation model catalog, workspace-path opening, user-invocable skill discovery, and the adapter for Agent-scoped file references. Its Host-only `application` controller creates and resumes workspace-free application chats under an exact durable owner. Use the Remote namespaces through API Gateway; authenticated application transports call the Host-only controller.
 
 ## Table of Contents
 
@@ -40,6 +40,7 @@ The Session object also carries local submission echoes: `session.beginSubmissio
 |---|---:|---|
 | `coldBlankProbeMaxBytes` | `1,024` | Maximum physical size of a cold Session artifact eligible for blankness verification; `0` disables probes |
 | `nativeOpen` | platform-detected | Whether Session workspace paths can be handed to a native desktop opener |
+| `applicationIdleMs` | `300,000` | Idle lifetime of a retained application-owned Agent before cold resume |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-api-session-controller) is the exhaustive source for accepted fields and their JSDoc.
 
@@ -61,6 +62,7 @@ No direct effect; model requests remain owned by the Agent and LLM packages.
 - Control baselines represent process-local state and therefore cannot reconstruct jobs after a Host restart.
 - A failed follow resumption remains visible to the caller instead of retrying indefinitely.
 - File-reference completion uses the shared Agent lookup and can resume a cold Session; the `skills/list` catalog is the non-activating alternative for skill metadata.
+- Application request-id deduplication and per-chat serialization are process-local; multi-replica admission requires external coordination. Application follow reads workspace-free Session logs directly and does not use the workspace-filtered browser history path.
 
 
 <a id="dev-note"></a>
