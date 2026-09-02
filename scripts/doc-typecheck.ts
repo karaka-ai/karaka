@@ -78,6 +78,7 @@ function builtTypeCompilerOptions(): ts.CompilerOptions {
     specifier,
     candidates.map(builtDeclarationPath),
   ]))
+  paths['@karaka/agent/*'] = ['./packages/karaka/agent/lib/public/*']
   const options: ts.CompilerOptions = {
     ...parsed.options,
     paths,
@@ -193,6 +194,33 @@ function compileBlocksStandalone(blocks: Block[]): string | undefined {
   }
 }
 
+/** Identify examples that consume generated Karaka Agent subpath declarations. */
+function importsKarakaAgentSubpath(block: Block): boolean {
+  const source = ts.createSourceFile(block.file, block.code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  return source.statements.some((statement) => {
+    if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) return false
+    return statement.moduleSpecifier !== undefined
+      && ts.isStringLiteral(statement.moduleSpecifier)
+      && statement.moduleSpecifier.text.startsWith('@karaka/agent/')
+  })
+}
+
+/** Keep source-reference examples separate from the Karaka Agent artifact API. */
+function compileBlocksStandaloneByPlane(blocks: Block[]): string | undefined {
+  const publicAgentBlocks = blocks.filter(importsKarakaAgentSubpath)
+  const sourceBlocks = blocks.filter(block => !importsKarakaAgentSubpath(block))
+  const failures: string[] = []
+  if (sourceBlocks.length > 0) {
+    const failure = compileBlocksStandalone(sourceBlocks)
+    if (failure !== undefined) failures.push(failure)
+  }
+  if (publicAgentBlocks.length > 0) {
+    const diagnostics = compileBlocksAgainstBuiltTypes(publicAgentBlocks)
+    if (diagnostics.length > 0) failures.push(formatDiagnostics(diagnostics, publicAgentBlocks))
+  }
+  return failures.length === 0 ? undefined : failures.join('\n')
+}
+
 /** Map virtual or temporary block paths back to their owning Markdown fences. */
 function remapBlockPaths(output: string, blocks: Block[]): string {
   return output.replace(/(?:[^\s:()]*[/\\])?block-(\d+)\.ts\((\d+),(\d+)\)/g, (_match, index: string, line: string, column: string) => {
@@ -235,7 +263,7 @@ const compilationError = useBuiltTypes
     const diagnostics = compileBlocksAgainstBuiltTypes(checked)
     return diagnostics.length === 0 ? undefined : formatDiagnostics(diagnostics, checked)
   })()
-  : compileBlocksStandalone(checked)
+  : compileBlocksStandaloneByPlane(checked)
 if (compilationError !== undefined) {
   console.error('doc-typecheck: documentation code blocks failed to compile.\n')
   console.error(compilationError)
