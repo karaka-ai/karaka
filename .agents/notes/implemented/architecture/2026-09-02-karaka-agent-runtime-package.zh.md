@@ -18,6 +18,8 @@ Karaka 发布三个包。`@karaka/sdk` 是后端 client 和应用 MCP 工具 hos
 
 Agent 拥有进程 entry、基础 Cordis 组合、Karaka overlay、runtime asset 和内置插件 registry。公开配置名称使用 `@karaka/agent/*`。Loader 从内置 registry 解析这些精确名称，从声明名称的文件解析相对名称，并从 Agent 项目解析其他 bare name。因此，应用专用插件可以位于服务器仓库中并通过 `./` 或 `../` 加载；可复用插件可以保留为普通已安装 dependency。
 
+每个内置插件名称也是公开 Node 子路径，并具有原始具名导出与默认导出。仅含约定的 Service Definition 模块使用相同的扁平 DSH 派生名称，但不成为 Loader 插件。Agent 构建通过一个共享 runtime 图输出 Loader 与公开 entry；公开 declaration facade 共用一棵私有 declaration tree，其中跨 package 引用为相对路径且不含 DSH package 名称。Agent 项目直接依赖 `@karaka/agent`，因此本地 `plugins/*.js` 文件和可复用包针对 Loader 挂载的相同 service identity 进行编译。
+
 一个 Agent 定义仍是一个 Agent Preset 目录。`preset.yml` 拥有发现 metadata，`agent.cordis.yml` 拥有行为插件组合。每个 chat 在该 preset 的常驻世代中创建或恢复独立 Agent 与持久 Session。组合改变时会启动另一个世代，而不会替换已加入 chat 使用的实例。
 
 每个应用 chat Session 在其持久 header 中保留一个原子 `{ applicationId, tenantId, userId }` owner。SDK 发送认证 chat 请求，并把显式注册的后端 callback 暴露为已认证的 Streamable HTTP MCP 工具。认证、HTTP/SSE ingress 和应用 MCP client 是 Agent 内部模块，但仍是可替换的 Cordis service 与插件。
@@ -42,4 +44,4 @@ Agent 拥有进程 entry、基础 Cordis 组合、Karaka overlay、runtime asset
 
 ## 后果
 
-Karaka 部署安装一个公开 runtime 标识，并可添加私有插件而无需发布它们。内置构建必须保持动态模块加载、native asset、worker entry、declaration 和共享 Cordis instance 完整；clean packed-install test 负责此风险。内部 workspace 继续供 DSH 开发使用，但改变其模块图不要求对应的 Karaka 包图。SQLite 持久化 chat owner 和事件；待处理的结构化问题仍保留在进程内。TLS、副本数、跨副本路由和 supervision 仍由部署负责。
+Karaka 部署安装一个公开 runtime 标识，并可添加私有插件而无需发布它们。向内置 Loader registry 添加受支持的 DSH 模块时，也会添加其匹配的公开子路径；仅含约定的 entry 保持显式审计列表。内置构建必须保持动态模块加载、native asset、worker entry、declaration 和共享 Cordis instance 完整；clean packed-install test 负责此风险。内部 workspace 继续供 DSH 开发使用，但改变其模块图不要求对应的 Karaka 包图。SQLite 持久化 chat owner 和事件；待处理的结构化问题仍保留在进程内。TLS、副本数、跨副本路由和 supervision 仍由部署负责。

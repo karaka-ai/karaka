@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@karaka/cli` creates an Agent project and starts its installed `@karaka/agent` runtime. `karaka init` writes a Cordis deployment patch and one Agent Preset without overwriting files. `karaka start` runs the Agent in the foreground with a private project-local `.karaka` home.
+`@karaka/cli` creates an Agent project and starts its installed `@karaka/agent` runtime. `karaka init` writes a Cordis deployment patch, one Agent Preset, a `plugins/` directory, and matching direct dependencies on the CLI and Agent packages without overwriting files. `karaka start` runs the Agent in the foreground with a private project-local `.karaka` home.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ English | [中文](README.zh.md)
 - `karaka init --dir <path>` creates the agent workspace; the default is `apps/agents`.
 - `karaka start --config <path>` prepares the project-local `.karaka` home and launches `@karaka/agent/bin`; the default patch is `karaka.cordis.yml`.
 
-Agent Presets can load bundled `@karaka/agent/*` plugins, relative JavaScript files from the project, or optional packages installed by the project.
+Agent Presets can load bundled `@karaka/agent/*` plugins, relative JavaScript files from the project `plugins/` directory, or optional reusable packages installed by the project. Local and installed plugins import their service and plugin APIs from the same flat `@karaka/agent/*` subpaths.
 
 ## Model Experience
 

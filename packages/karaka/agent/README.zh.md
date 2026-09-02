@@ -39,7 +39,20 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 
 ### 扩展 Agent
 
-`agent.cordis.yml` 的 row 可以指定 `@karaka/agent/persona` 或 `@karaka/agent/agent-tool-presentation` 等内置别名。runtime 从内置 registry 解析这些精确别名，因此无需单独安装。`./plugins/customer-tools.js` 等相对 row 从该 Agent Preset 的组合文件旁解析。`@acme/customer-tools` 等 bare row 从服务器项目解析，因此该项目需将此包安装为自身依赖；其源码可以从 `@karaka/agent/cordis` 导入 Cordis API，但不得依赖 Karaka 私有的内置实现包。
+`agent.cordis.yml` 的 row 可以指定 `@karaka/agent/persona` 或 `@karaka/agent/agent-tool-presentation` 等内置别名。每个内置别名也是 Node 子路径，并具有与其源模块相同的具名导出和默认导出。替换提供方使用的 Service Definition 模块即使不是 Loader 插件，也具有匹配的扁平子路径；例如，本地存储提供方可以导入 `StorageBackend`，而无需安装 DSH 包：
+
+```ts
+import type { StorageBackend } from '@karaka/agent/storage'
+```
+
+Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署 row 可以直接加载一个插件：
+
+```yaml
+- id: customer-storage
+  name: ./plugins/customer-storage.js
+```
+
+相对名称从组合文件旁解析，因此 Agent Preset 使用 `../../plugins/customer-tools.js` 加载共享根插件。可复用插件也可以是 `@acme/customer-tools` 等已安装包。两种形式都从 `@karaka/agent/*` 导入公开约定；两种形式都不依赖私有 DSH 构建输入。
 
 -----
 
@@ -51,7 +64,7 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 
 可执行文件先加载内置基础组合，再应用 Karaka 服务器 patch，最后应用 `--config` 指定的部署 patch。在 Cordis Loader 挂载任何 row 之前，插件 registry 将所有已发布的组合名称映射到静态导入的实现。精确 registry 别名优先于 Node 包解析。相对插件文件仍以组合目录为基准，而 bare 外部包使用服务器项目的配置 URL 作为 Node 解析基准。
 
-构建会生成一组以 `lib/bin.js` 为入口的确定性 runtime chunk；定向清理会保留 TypeScript 输入，同时在每次 bundle 前移除先前的 JavaScript 输出。SQLite migration 和 worker 资源随可执行文件一起发布，因为这些实现通过 `import.meta.url` 定位资源。
+构建会生成一组由 `lib/bin.js`、Loader registry 和 `lib/public/` 下的入口共享的 runtime chunk，因此 service 保持同一 JavaScript identity。公开 declaration facade 共用一棵私有 declaration tree；其中跨 package 引用均为相对路径，且不包含 DSH package 名称。SQLite migration 和 worker 资源随可执行文件一起发布，因为这些实现通过 `import.meta.url` 定位资源。
 
 | 文件 | 作用 |
 |---|---|
@@ -90,7 +103,7 @@ runtime 自身不添加固定的模型文本；改变 Agent 组合可能改变�
 
 - **每次启动一个 Node 进程**——副本数量、TLS 终止和负载均衡仍由部署负责。
 - **默认禁用本地编码工具**——Agent 需要显式可信的插件组合才能获得文件系统或子进程访问。
-- **尚未发布 Capability 类型子路径**——插件作者现在可以使用 `@karaka/agent/cordis`，但专用的 `@karaka/agent/llm`、`/agent`、`/tools`、`/session` 和 `/persistence` 声明入口需要一个不会暴露私有 `@deepseek-ai/dsh-*` 导入的 declaration bundle。
+- **本地 TypeScript 编译由项目负责**——runtime 加载相对 JavaScript 文件；使用 TypeScript 编写插件的项目必须在启动前完成编译。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`@karaka/cli` 创建 Agent 项目并启动其已安装的 `@karaka/agent` runtime。`karaka init` 写入 Cordis 部署 patch 和一个 Agent Preset，且不覆盖已有文件。`karaka start` 使用项目私有的 `.karaka` home 在前台运行 Agent。
+`@karaka/cli` 创建 Agent 项目并启动其已安装的 `@karaka/agent` runtime。`karaka init` 写入 Cordis 部署 patch、一个 Agent Preset、`plugins/` 目录以及 CLI 与 Agent 包的匹配直接依赖，且不覆盖已有文件。`karaka start` 使用项目私有的 `.karaka` home 在前台运行 Agent。
 
 ## 目录
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 - `karaka init --dir <path>` 创建 Agent 工作区；默认路径为 `apps/agents`。
 - `karaka start --config <path>` 准备项目本地 `.karaka` home 并启动 `@karaka/agent/bin`；默认 patch 为 `karaka.cordis.yml`。
 
-Agent Preset 可以加载内置 `@karaka/agent/*` 插件、项目中的相对 JavaScript 文件或项目安装的可选包。
+Agent Preset 可以加载内置 `@karaka/agent/*` 插件、项目 `plugins/` 目录中的相对 JavaScript 文件或项目安装的可选可复用包。本地插件和已安装插件都从相同的扁平 `@karaka/agent/*` 子路径导入其 service 与插件 API。
 
 <a id="model-experience"></a>
 ## 模型体验
