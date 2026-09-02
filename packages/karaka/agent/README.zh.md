@@ -3,13 +3,13 @@ description: "自包含的 Karaka Agent runtime，内置 Cordis 插件、持久 
 kind: "package-library"
 ---
 
-# @karaka/agent
+# @karaka-ai/agent
 
 [English](README.md) | 中文
 
 ## 概述
 
-`@karaka/agent` 是完整的 Karaka Agent 服务器 runtime。它的可执行文件将 Karaka 维护的 Agent、Session、LLM、工具、持久化、Preset、认证和 HTTP transport 实现打包在一个发布包中；安装后的 runtime 不会解析 `@deepseek-ai/dsh-*` 包。服务器项目仍可通过内置 `@karaka/agent/*` 别名、项目中的相对插件文件以及由该项目安装的可选 npm 插件包来组合 Agent。`@karaka/cli` 是常规启动器，而 `@karaka/agent/bin` 是它委托的稳定进程入口。
+`@karaka-ai/agent` 是完整的 Karaka Agent 服务器 runtime。它的可执行文件将 Karaka 维护的 Agent、Session、LLM、工具、持久化、Preset、认证和 HTTP transport 实现打包在一个发布包中；安装后的 runtime 不会解析 `@deepseek-ai/dsh-*` 包。服务器项目仍可通过内置 `@karaka-ai/agent/*` 别名、项目中的相对插件文件以及由该项目安装的可选 npm 插件包来组合 Agent。`@karaka-ai/cli` 是常规启动器，而 `@karaka-ai/agent/bin` 是它委托的稳定进程入口。
 
 ## 目录
 
@@ -27,7 +27,7 @@ kind: "package-library"
 
 ### 适用场景
 
-服务器项目需要运行 Karaka 时，在该项目中安装本包。常规运行优先使用 `karaka start`；如果已有进程管理器负责启动和关闭，则可直接使用此可执行文件。应用后端应改用 `@karaka/sdk`，且不导入此 runtime。
+服务器项目需要运行 Karaka 时，在该项目中安装本包。常规运行优先使用 `karaka start`；如果已有进程管理器负责启动和关闭，则可直接使用此可执行文件。应用后端应改用 `@karaka-ai/sdk`，且不导入此 runtime。
 
 ### 入口点
 
@@ -39,10 +39,10 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 
 ### 扩展 Agent
 
-`agent.cordis.yml` 的 row 可以指定 `@karaka/agent/persona` 或 `@karaka/agent/agent-tool-presentation` 等内置别名。每个内置别名也是 Node 子路径，并具有与其源模块相同的具名导出和默认导出。替换提供方使用的 Service Definition 模块即使不是 Loader 插件，也具有匹配的扁平子路径；例如，本地存储提供方可以导入 `StorageBackend`，而无需安装 DSH 包：
+`agent.cordis.yml` 的 row 可以指定 `@karaka-ai/agent/persona` 或 `@karaka-ai/agent/agent-tool-presentation` 等内置别名。每个内置别名也是 Node 子路径，并具有与其源模块相同的具名导出和默认导出。替换提供方使用的 Service Definition 模块即使不是 Loader 插件，也具有匹配的扁平子路径；例如，本地存储提供方可以导入 `StorageBackend`，而无需安装 DSH 包：
 
 ```ts
-import type { StorageBackend } from '@karaka/agent/storage'
+import type { StorageBackend } from '@karaka-ai/agent/storage'
 ```
 
 Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件是 patch 层，因此新 row 必须放在 `insert` 下；此示例还选择了本地插件注册的后端：
@@ -57,7 +57,7 @@ Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件�
       name: ./plugins/customer-storage.js
 ```
 
-相对名称从组合文件旁解析，因此 Agent Preset 使用 `../../plugins/customer-tools.js` 加载共享根插件。可复用插件也可以是 `@acme/customer-tools` 等已安装包。两种形式都从 `@karaka/agent/*` 导入公开约定；两种形式都不依赖私有 DSH 构建输入。
+相对名称从组合文件旁解析，因此 Agent Preset 使用 `../../plugins/customer-tools.js` 加载共享根插件。可复用插件也可以是 `@acme/customer-tools` 等已安装包。两种形式都从 `@karaka-ai/agent/*` 导入公开约定；两种形式都不依赖私有 DSH 构建输入。
 
 -----
 
@@ -75,7 +75,7 @@ Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件�
 |---|---|
 | [`src/bin.ts`](src/bin.ts) | 进程参数、Karaka home 校验和启动委托 |
 | [`src/launch.ts`](src/launch.ts) | Patch 组合、项目解析基准、启动、信号和释放 |
-| [`src/plugins.ts`](src/plugins.ts) | 内置 runtime 插件的精确 `@karaka/agent/*` 别名 |
+| [`src/plugins.ts`](src/plugins.ts) | 内置 runtime 插件的精确 `@karaka-ai/agent/*` 别名 |
 | [`base.cordis.patch.yml`](base.cordis.patch.yml) | 内置 Agent runtime 组合 |
 | [`cordis.patch.yml`](cordis.patch.yml) | Karaka 认证和应用 transport 扩展 |
 
@@ -86,8 +86,8 @@ Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件�
 <a id="further-exploration"></a>
 ## 延伸阅读
 
-- [`@karaka/cli`](../cli/README.zh.md) ——创建服务器项目并启动此可执行文件。
-- [`@karaka/sdk`](../sdk/README.zh.md) ——将应用后端连接到运行中的 Karaka 服务器。
+- [`@karaka-ai/cli`](../cli/README.zh.md) ——创建服务器项目并启动此可执行文件。
+- [`@karaka-ai/sdk`](../sdk/README.zh.md) ——将应用后端连接到运行中的 Karaka 服务器。
 - [Cordis 入门](../../../docs/cordis-primer.zh.md) ——说明组合 row、Loader 解析、Service 和隔离。
 - [架构](../../../docs/architecture.zh.md) ——说明此处内置的 Agent、Session、Capability 和应用层。
 

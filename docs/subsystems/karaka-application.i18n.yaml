@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/karaka-application.md
-karaka-application.md: ae105cbc6e7f39c3b19ba8e44be89395ae638f67
-karaka-application.zh.md: 434b07dfa640c357bd6250152f31e762bd4a91f3
+karaka-application.md: 2041d52eb99faf985c4ecf790e6d7ae3542ec9d5
+karaka-application.zh.md: 3252e10fdb9fb95a94380a56a770f9b99ed14654

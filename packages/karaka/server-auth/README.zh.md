@@ -3,13 +3,13 @@ description: "Karaka 应用服务器流量的 Cordis 认证约定与共享 beare
 kind: "package-reference"
 ---
 
-# @karaka/server-auth
+# @karaka-ai/server-auth
 
 [English](README.md) | 中文
 
 ## 概述
 
-`@karaka/server-auth` 定义 `ctx.serverAuth`，并提供默认共享 bearer 实现。它把入站应用聊天凭据验证为 `applicationId`，并解析 Karaka 调用该应用 MCP 工具 endpoint 时使用的出站凭据。凭据值保留在 `ctx.credentials` 中，并在每次操作时解析。
+`@karaka-ai/server-auth` 定义 `ctx.serverAuth`，并提供默认共享 bearer 实现。它把入站应用聊天凭据验证为 `applicationId`，并解析 Karaka 调用该应用 MCP 工具 endpoint 时使用的出站凭据。凭据值保留在 `ctx.credentials` 中，并在每次操作时解析。
 
 ## 目录
 

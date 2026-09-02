@@ -42,7 +42,7 @@ dsh --profile web --dump-config
 
 所有受支持的 DSH Node 应用都通过 `dsh` profile launcher 运行。随附应用是 `dsh web`（刻意为 `--profile web` 保留的别名）、`dsh --profile headless`、`dsh --profile sdk`、`dsh --profile sdk-minimal` 与 `dsh --profile acp`。TypeScript SDK 会解析其同版本 `dsh` 依赖并选择 `sdk`；自定义插件组合继续由 profile 与有序 patch 文件表达，而不是内联应用树。`sdk-minimal` 是位于同一 launcher 后的仓库自有独立组合包，而不是由调用方提供的 Cordis 配置树。
 
-Karaka 有独立的发布边界。`karaka start` 解析并启动 `@karaka/agent/bin`；Agent 包拥有自己的组合与内置插件 registry，不解析或启动 `dsh` 包。
+Karaka 有独立的发布边界。`karaka start` 解析并启动 `@karaka-ai/agent/bin`；Agent 包拥有自己的组合与内置插件 registry，不解析或启动 `dsh` 包。
 
 Vendored CLI、仅用于构建和测试的可执行文件、进程内直接挂载插件以及私有浏览器 WebWorker 预览都不属于 Harness 应用启动器。[`verify-application-entrypoints`](../scripts/verify-application-entrypoints.ts)将每个包 bin、可执行源码、产品 profile 包装层与根 demo 归入显式类别，并拒绝任何绕过 `dsh` 的 Node 应用路径。
 
@@ -51,15 +51,15 @@ Python SDK 遵循相同的应用架构。其运行时 wheel 把普通 `dsh` CLI 
 <a id="karaka-application-runtime"></a>
 ## Karaka 应用运行时
 
-Karaka 在自包含的 [`@karaka/agent`](../packages/karaka/agent/README.zh.md) 服务器中运行应用自有 Agent。应用后端安装 [`@karaka/sdk`](../packages/karaka/sdk/README.zh.md)；独立 Karaka 进程安装 [`@karaka/cli`](../packages/karaka/cli/README.zh.md)，由它带入同版本 Agent runtime、Agent 定义以及可选 Cordis 插件包。安装 SDK 不会启动任何进程或监听端口。
+Karaka 在自包含的 [`@karaka-ai/agent`](../packages/karaka/agent/README.zh.md) 服务器中运行应用自有 Agent。应用后端安装 [`@karaka-ai/sdk`](../packages/karaka/sdk/README.zh.md)；独立 Karaka 进程安装 [`@karaka-ai/cli`](../packages/karaka/cli/README.zh.md)，由它带入同版本 Agent runtime、Agent 定义以及可选 Cordis 插件包。安装 SDK 不会启动任何进程或监听端口。
 
-一个 Agent 定义就是一个 Agent Preset 目录。`preset.yml` 提供名称、描述和顺序等发现元数据。`agent.cordis.yml` 是行为插件组合：persona、选中的远程工具、skill、subagent 和其他作用域贡献。`@karaka/agent/*` 名称从内置 registry 解析；相对路径从组合文件解析；其他 bare name 从 Agent 项目已安装的依赖解析。Karaka 为每个检测到的组合世代挂载一棵常驻 Cordis 插件树。创建或恢复聊天时，其 Agent scope 获得所属世代注册的作用域贡献。加入同一世代的聊天共享 preset 插件实例，但各自保有独立的 Agent 与 Session 状态；组合发生变化时会启动新世代，而仍加入旧世代的聊天不会受到干扰。新聊天采用部署的默认模型选择；`chats.setModel()` 从该聊天的下一次请求起生效，并继续作为该聊天的选择，而不会更改部署默认值或其他聊天。
+一个 Agent 定义就是一个 Agent Preset 目录。`preset.yml` 提供名称、描述和顺序等发现元数据。`agent.cordis.yml` 是行为插件组合：persona、选中的远程工具、skill、subagent 和其他作用域贡献。`@karaka-ai/agent/*` 名称从内置 registry 解析；相对路径从组合文件解析；其他 bare name 从 Agent 项目已安装的依赖解析。Karaka 为每个检测到的组合世代挂载一棵常驻 Cordis 插件树。创建或恢复聊天时，其 Agent scope 获得所属世代注册的作用域贡献。加入同一世代的聊天共享 preset 插件实例，但各自保有独立的 Agent 与 Session 状态；组合发生变化时会启动新世代，而仍加入旧世代的聊天不会受到干扰。新聊天采用部署的默认模型选择；`chats.setModel()` 从该聊天的下一次请求起生效，并继续作为该聊天的选择，而不会更改部署默认值或其他聊天。
 
 Karaka 通过 `ctx.serverAuth` 认证应用后端；后端 SDK 通过 HTTP/SSE transport 发送自身凭据及可信的租户与用户标识。Session Controller 创建或恢复 Agent 前，transport 会把 `{ applicationId, tenantId, userId }` 绑定到持久 Session header。后续历史、提示、模型、回复、取消与流操作都必须匹配同一 owner。
 
-应用工具沿相反方向传输。SDK 在应用已有的 Node HTTP 服务器上挂载带认证的 MCP handler。`@karaka/mcp-application` 用出站服务器认证、Session 身份转发和 Agent Preset 工具选择来专门化通用 MCP 客户端。每个应用自有工具都保持隐藏，直到所选 preset 在 `allow` 列表中显式点名。应用在分派已注册 callback 前验证 Karaka 的凭据。
+应用工具沿相反方向传输。SDK 在应用已有的 Node HTTP 服务器上挂载带认证的 MCP handler。`@karaka-ai/mcp-application` 用出站服务器认证、Session 身份转发和 Agent Preset 工具选择来专门化通用 MCP 客户端。每个应用自有工具都保持隐藏，直到所选 preset 在 `allow` 列表中显式点名。应用在分派已注册 callback 前验证 Karaka 的凭据。
 
-`karaka start` 运行嵌入 `@karaka/agent` 的 Loader、Agent Presets、ReactLoopAgent、模型 adapter、工具 registry、Session log、SQLite 持久化、认证和 HTTP transport。默认组合禁用本地文件系统和子进程工具。一次启动拥有一个 Node 进程；副本数、副本间路由和 TLS 终止仍由部署负责。
+`karaka start` 运行嵌入 `@karaka-ai/agent` 的 Loader、Agent Presets、ReactLoopAgent、模型 adapter、工具 registry、Session log、SQLite 持久化、认证和 HTTP transport。默认组合禁用本地文件系统和子进程工具。一次启动拥有一个 Node 进程；副本数、副本间路由和 TLS 终止仍由部署负责。
 
 ## 核心包
 

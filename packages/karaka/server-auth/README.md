@@ -3,13 +3,13 @@ description: "Cordis authentication contract and shared-bearer provider for Kara
 kind: "package-reference"
 ---
 
-# @karaka/server-auth
+# @karaka-ai/server-auth
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-`@karaka/server-auth` defines `ctx.serverAuth` and provides the default shared-bearer implementation. It verifies inbound application chat credentials into an `applicationId` and resolves the outbound credential used when Karaka calls that application's MCP tool endpoint. Credential values remain in `ctx.credentials` and are resolved for each operation.
+`@karaka-ai/server-auth` defines `ctx.serverAuth` and provides the default shared-bearer implementation. It verifies inbound application chat credentials into an `applicationId` and resolves the outbound credential used when Karaka calls that application's MCP tool endpoint. Credential values remain in `ctx.credentials` and are resolved for each operation.
 
 ## Table of Contents
 

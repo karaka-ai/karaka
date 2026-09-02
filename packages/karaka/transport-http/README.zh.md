@@ -3,13 +3,13 @@ description: "从应用后端进入持久 Karaka 进程的带认证 JSON 与 SSE
 kind: "package-reference"
 ---
 
-# @karaka/transport-http
+# @karaka-ai/transport-http
 
 [English](README.md) | 中文
 
 ## 概述
 
-`@karaka/transport-http` 在 `ctx.webServer` 上挂载应用 Chat API。它通过 `ctx.serverAuth` 认证调用服务器，把该应用身份与可信的租户和用户值组合，再调用 `ctx.sessionController.application`。JSON 路由接收命令并读取历史；SSE 流式输出稳定聊天事件和结构化用户问题。
+`@karaka-ai/transport-http` 在 `ctx.webServer` 上挂载应用 Chat API。它通过 `ctx.serverAuth` 认证调用服务器，把该应用身份与可信的租户和用户值组合，再调用 `ctx.sessionController.application`。JSON 路由接收命令并读取历史；SSE 流式输出稳定聊天事件和结构化用户问题。
 
 ## 目录
 

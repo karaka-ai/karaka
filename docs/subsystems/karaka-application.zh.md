@@ -6,7 +6,7 @@ Karaka 应用边界把可信后端服务器连接到持久 Agent Preset。入站
 
 默认 provider 为两个方向使用可独立轮换的凭据引用。认证证明调用服务器，而不是终端用户：已认证应用负责提供正确的租户与用户身份。Session Controller 在每个聊天操作上强制执行最终 owner。
 
-完整进程流程见 [Karaka 架构](../architecture.zh.md#karaka-application-runtime)，认证、应用工具 endpoint 和插件加载见 [`@karaka/agent`](../../packages/karaka/agent/README.zh.md)。
+完整进程流程见 [Karaka 架构](../architecture.zh.md#karaka-application-runtime)，认证、应用工具 endpoint 和插件加载见 [`@karaka-ai/agent`](../../packages/karaka/agent/README.zh.md)。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
