@@ -23,7 +23,7 @@ export function initKarakaProject(directory = 'apps/agents'): string {
       private: true,
       type: 'module',
       scripts: { start: 'karaka start', dev: 'karaka start' },
-      dependencies: { '@karaka/agent': karakaVersion, '@karaka/cli': karakaVersion },
+      dependencies: { '@karaka-ai/agent': karakaVersion, '@karaka-ai/cli': karakaVersion },
     }, undefined, 2) + '\n'],
     ['karaka.cordis.yml', KARAKA_CONFIG],
     ['agents/support/preset.yml', 'name: Support\ndescription: General application support\norder: 1\n'],
@@ -55,7 +55,7 @@ export function prepareKarakaRuntime(project = process.cwd()): KarakaRuntime {
   const home = resolve(project, '.karaka')
   mkdirSync(home, { recursive: true, mode: 0o700 })
   if (process.platform !== 'win32') chmodSync(home, 0o700)
-  return { home, bin: require.resolve('@karaka/agent/bin') }
+  return { home, bin: require.resolve('@karaka-ai/agent/bin') }
 }
 
 /**
@@ -134,7 +134,7 @@ function readPackageVersion(): string {
     version?: unknown
   }
   if (typeof manifest.version !== 'string' || manifest.version.length === 0) {
-    throw new Error('@karaka/cli package version is unavailable')
+    throw new Error('@karaka-ai/cli package version is unavailable')
   }
   return manifest.version
 }
@@ -157,14 +157,14 @@ const KARAKA_CONFIG = `# Final Cordis patch for this Karaka deployment.
 `
 
 const SUPPORT_AGENT = `- id: persona
-  name: '@karaka/agent/persona'
+  name: '@karaka-ai/agent/persona'
   config:
     text: You are a helpful support agent.
     complete: true
     includeRuntimeContext: false
 
 - id: tools
-  name: '@karaka/agent/agent-tool-presentation'
+  name: '@karaka-ai/agent/agent-tool-presentation'
   config:
     mode: native
     allow: []

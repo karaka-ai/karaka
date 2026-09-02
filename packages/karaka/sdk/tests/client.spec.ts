@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createKarakaClient } from '@karaka/sdk'
+import { createKarakaClient } from '@karaka-ai/sdk'
 
 describe('KarakaClient', () => {
   it('authenticates requests and binds tenant/user identity', async () => {

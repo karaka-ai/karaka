@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { createKarakaToolHost } from '@karaka/sdk'
+import { createKarakaToolHost } from '@karaka-ai/sdk'
 
 const cleanups: Array<() => Promise<void>> = []
 

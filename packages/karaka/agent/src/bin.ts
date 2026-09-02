@@ -7,7 +7,7 @@ import { isAbsolute, resolve } from 'node:path'
 
 function readConfig(args: readonly string[]): string {
   if (args.length !== 2 || args[0] !== '--config' || args[1] === undefined || !isAbsolute(args[1])) {
-    throw new Error('usage: @karaka/agent/bin --config <absolute path>')
+    throw new Error('usage: @karaka-ai/agent/bin --config <absolute path>')
   }
   return args[1]
 }

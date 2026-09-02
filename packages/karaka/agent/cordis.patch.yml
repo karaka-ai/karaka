@@ -26,18 +26,18 @@
 
 - insert:
     - id: session-persistence-sqlite
-      name: '@karaka/agent/session-persistence-sqlite'
+      name: '@karaka-ai/agent/session-persistence-sqlite'
       config:
         path: !!js dshHomePath('karaka-sessions.sqlite')
 
     - id: workspace
-      name: '@karaka/agent/workspace'
+      name: '@karaka-ai/agent/workspace'
 
     - id: session-controller
-      name: '@karaka/agent/api-session-controller'
+      name: '@karaka-ai/agent/api-session-controller'
 
     - id: agent-presets
-      name: '@karaka/agent/agent-presets'
+      name: '@karaka-ai/agent/agent-presets'
       config:
         default: support
         roots:
@@ -47,7 +47,7 @@
         includeUserRoot: false
 
     - id: webserver
-      name: '@karaka/agent/host-webserver'
+      name: '@karaka-ai/agent/host-webserver'
       config:
         host: !!js process.env.KARAKA_HOST ?? '127.0.0.1'
         port: !!js Number(process.env.KARAKA_PORT ?? 3400)
@@ -56,12 +56,12 @@
         compressionThresholdBytes: 1024
 
     - id: server-auth
-      name: '@karaka/agent/server-auth'
+      name: '@karaka-ai/agent/server-auth'
       config:
         applications: []
 
     - id: karaka-http
-      name: '@karaka/agent/transport-http'
+      name: '@karaka-ai/agent/transport-http'
       config:
         path: /v1
         maxBodyBytes: 1048576

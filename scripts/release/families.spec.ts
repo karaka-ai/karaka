@@ -57,14 +57,14 @@ describe('release families', () => {
     const members = karaka.members(resolve(import.meta.dirname, '../..'))
 
     expect(members.map(member => member.name)).toEqual([
-      '@karaka/agent',
-      '@karaka/cli',
-      '@karaka/sdk',
+      '@karaka-ai/agent',
+      '@karaka-ai/cli',
+      '@karaka-ai/sdk',
     ])
-    const agent = members.find(member => member.name === '@karaka/agent')
+    const agent = members.find(member => member.name === '@karaka-ai/agent')
     expect(Object.keys(agent?.manifest.dependencies ?? {}).filter(name => name.startsWith('@deepseek-ai/dsh-')))
       .toEqual([])
-    expect(karaka.installedEntry).toEqual({ packageName: '@karaka/cli', binPath: 'lib/bin.js' })
+    expect(karaka.installedEntry).toEqual({ packageName: '@karaka-ai/cli', binPath: 'lib/bin.js' })
     expect(karaka.tagFor(members[0]!)).toBe(`karaka-v${members[0]!.version}`)
     expect(postBumpTagInstruction(karaka))
       .toBe('release bump: committed. After this merges to main, tag it:')
@@ -293,7 +293,7 @@ describe('release families', () => {
 
   it('drives the installed entry only for the family that publishes one', () => {
     expect(releaseFamily('dsh').installedEntry).toEqual({ packageName: '@deepseek-ai/dsh', binPath: 'lib/bin.js' })
-    expect(releaseFamily('karaka').installedEntry).toEqual({ packageName: '@karaka/cli', binPath: 'lib/bin.js' })
+    expect(releaseFamily('karaka').installedEntry).toEqual({ packageName: '@karaka-ai/cli', binPath: 'lib/bin.js' })
     expect(releaseFamily('vendor').installedEntry).toBeUndefined()
   })
 

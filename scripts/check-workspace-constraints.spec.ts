@@ -96,7 +96,7 @@ describe('Karaka publication boundary', () => {
     expect(checkWorkspaceManifest({
       dir: 'packages/karaka/agent',
       manifest: {
-        name: '@karaka/agent',
+        name: '@karaka-ai/agent',
         publishConfig: { access: 'public' },
         repository: {
           type: 'git',
@@ -107,7 +107,7 @@ describe('Karaka publication boundary', () => {
     })).toEqual([])
     expect(checkWorkspaceManifest({
       dir: 'packages/karaka/server-auth',
-      manifest: { name: '@karaka/server-auth', private: true },
+      manifest: { name: '@karaka-ai/server-auth', private: true },
     })).toEqual([])
   })
 })

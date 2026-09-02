@@ -6,7 +6,7 @@ import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { ApplicationId } from '@deepseek-ai/dsh-session'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { ToolExecution, ToolVisibilityContext } from '@deepseek-ai/dsh-tools'
-import type {} from '@karaka/server-auth'
+import type {} from '@karaka-ai/server-auth'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'karaka-mcp-application'

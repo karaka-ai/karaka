@@ -8,9 +8,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import * as ApplicationMcp from '@karaka/mcp-application'
-import { createKarakaToolHost } from '@karaka/sdk'
-import BearerServerAuth from '@karaka/server-auth'
+import * as ApplicationMcp from '@karaka-ai/mcp-application'
+import { createKarakaToolHost } from '@karaka-ai/sdk'
+import BearerServerAuth from '@karaka-ai/server-auth'
 
 const cleanups: Array<() => Promise<void>> = []
 

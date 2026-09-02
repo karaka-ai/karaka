@@ -55,7 +55,7 @@ const CHOOSER_BACKEND_PACKAGES = [
   '@deepseek-ai/dsh-client-ui-directory-picker-browse',
   '@deepseek-ai/dsh-client-ui-directory-picker-native',
 ]
-const KARAKA_AGENT_PLUGIN_PREFIX = '@karaka/agent/'
+const KARAKA_AGENT_PLUGIN_PREFIX = '@karaka-ai/agent/'
 const KARAKA_AGENT_PLUGIN_REGISTRY = 'packages/karaka/agent/src/plugins.ts'
 const errors: string[] = []
 const pluginReferences: PluginReference[] = []
@@ -95,11 +95,11 @@ if (import.meta.main) {
  * Validate Karaka Agent plugin aliases against the registry embedded in its
  * bundle. These names intentionally do not resolve through Node: the Loader
  * consults `builtins` before it tries project-relative package resolution.
- * @returns one diagnostic per unregistered `@karaka/agent/*` config row.
+ * @returns one diagnostic per unregistered `@karaka-ai/agent/*` config row.
  */
 function validateKarakaAgentBuiltinResolution(): string[] {
   const registrySource = readFileSync(resolve(root, KARAKA_AGENT_PLUGIN_REGISTRY), 'utf8')
-  const names = new Set([...registrySource.matchAll(/^\s*'(@karaka\/agent\/[^']+)':/gm)]
+  const names = new Set([...registrySource.matchAll(/^\s*'(@karaka-ai\/agent\/[^']+)':/gm)]
     .map(match => match[1])
     .filter((name): name is string => name !== undefined))
   if (names.size === 0) {

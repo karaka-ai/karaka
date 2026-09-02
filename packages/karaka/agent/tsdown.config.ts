@@ -10,7 +10,7 @@ const resolveFrom = createRequire(import.meta.url)
 const packageDir = dirname(fileURLToPath(import.meta.url))
 const outputDir = resolve(packageDir, 'lib')
 const publicEntryDir = resolve(outputDir, 'public-entries')
-const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka\/(?:mcp-application|server-auth|transport-http)(?:\/|$)/
+const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka-ai\/(?:mcp-application|server-auth|transport-http)(?:\/|$)/
 
 const contractModules: Readonly<Record<string, string>> = {
   attachment: '@deepseek-ai/dsh-attachment',
@@ -53,7 +53,7 @@ function readBundledModules(): PublicModule[] {
         return [identifier, specifier] as const
       }),
   )
-  const modules = [...source.matchAll(/^  '@karaka\/agent\/([^']+)': (plugin\d+),$/gmu)]
+  const modules = [...source.matchAll(/^  '@karaka-ai\/agent\/([^']+)': (plugin\d+),$/gmu)]
     .map((match): PublicModule => {
       const subpath = match[1]
       const identifier = match[2]
@@ -61,7 +61,7 @@ function readBundledModules(): PublicModule[] {
         throw new Error('Karaka Loader registry contains an invalid public alias')
       }
       const specifier = imports.get(identifier)
-      if (specifier === undefined) throw new Error(`missing static import for @karaka/agent/${subpath}`)
+      if (specifier === undefined) throw new Error(`missing static import for @karaka-ai/agent/${subpath}`)
       return { subpath, specifier }
     })
   if (modules.length !== imports.size) {
@@ -76,7 +76,7 @@ function readPublicModules(): PublicModule[] {
   for (const [subpath, specifier] of Object.entries(contractModules)) {
     const existing = modules.get(subpath)
     if (existing !== undefined && existing !== specifier) {
-      throw new Error(`public subpath @karaka/agent/${subpath} maps to both ${existing} and ${specifier}`)
+      throw new Error(`public subpath @karaka-ai/agent/${subpath} maps to both ${existing} and ${specifier}`)
     }
     modules.set(subpath, specifier)
   }

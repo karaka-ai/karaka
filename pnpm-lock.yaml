@@ -6905,19 +6905,19 @@ importers:
       '@deepseek-ai/dsh-workspace':
         specifier: workspace:^
         version: link:../../workspace/workspace
-      '@karaka/mcp-application':
+      '@karaka-ai/mcp-application':
         specifier: workspace:^
         version: link:../mcp-application
-      '@karaka/server-auth':
+      '@karaka-ai/server-auth':
         specifier: workspace:^
         version: link:../server-auth
-      '@karaka/transport-http':
+      '@karaka-ai/transport-http':
         specifier: workspace:^
         version: link:../transport-http
 
   packages/karaka/cli:
     dependencies:
-      '@karaka/agent':
+      '@karaka-ai/agent':
         specifier: workspace:^
         version: link:../agent
       commander:
@@ -6964,10 +6964,10 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
-      '@karaka/sdk':
+      '@karaka-ai/sdk':
         specifier: workspace:^
         version: link:../sdk
-      '@karaka/server-auth':
+      '@karaka-ai/server-auth':
         specifier: workspace:^
         version: link:../server-auth
       zod:
@@ -7036,10 +7036,10 @@ importers:
       '@deepseek-ai/dsh-user-questions':
         specifier: workspace:^
         version: link:../../interaction/user-questions
-      '@karaka/sdk':
+      '@karaka-ai/sdk':
         specifier: workspace:^
         version: link:../sdk
-      '@karaka/server-auth':
+      '@karaka-ai/server-auth':
         specifier: workspace:^
         version: link:../server-auth
 

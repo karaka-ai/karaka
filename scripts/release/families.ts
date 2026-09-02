@@ -387,7 +387,7 @@ class KarakaFamily extends ReleaseFamily {
     'packages/karaka/sdk/package.json',
   ] as const
   readonly tagPrefix = 'karaka-v'
-  readonly packagePrefix = '@karaka/'
+  readonly packagePrefix = '@karaka-ai/'
 
   verifyVersions(members: readonly ReleaseMember[]): void {
     const versions = new Set(members.map(member => member.version))
@@ -405,7 +405,7 @@ class KarakaFamily extends ReleaseFamily {
     validateTarballPayload(files, member.name)
   }
 
-  readonly installedEntry = { packageName: '@karaka/cli', binPath: 'lib/bin.js' }
+  readonly installedEntry = { packageName: '@karaka-ai/cli', binPath: 'lib/bin.js' }
 }
 
 /** `vendor/*`: every package keeps its own version line, so every package has its own tag. */

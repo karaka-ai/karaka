@@ -77,7 +77,7 @@ function publicSpecifiers(pkg: WorkspacePackage): string[] {
     specifiers.add(key === '.' ? pkg.name : `${pkg.name}/${key.slice(2)}`)
   }
 
-  if (pkg.name === '@karaka/agent') {
+  if (pkg.name === '@karaka-ai/agent') {
     for (const entry of globSync('lib/public-entries/**/*.ts', { cwd: pkg.dir })) {
       specifiers.add(`${pkg.name}/${entry.slice('lib/public-entries/'.length, -'.ts'.length)}`)
     }
@@ -105,7 +105,7 @@ const privateKarakaDeclarations = globSync('packages/karaka/agent/lib/**/*.d.ts'
   .filter(path => !path.includes('/lib/types/'))
   .filter(path => readFileSync(resolve(root, path), 'utf8').includes('@deepseek-ai/dsh-'))
 if (privateKarakaDeclarations.length > 0) {
-  console.error('verify-node-next-types: @karaka/agent declarations expose private DSH module names.')
+  console.error('verify-node-next-types: @karaka-ai/agent declarations expose private DSH module names.')
   console.error(privateKarakaDeclarations.join('\n'))
   process.exit(1)
 }

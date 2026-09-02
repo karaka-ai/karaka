@@ -1,4 +1,4 @@
-# Pack the public @karaka/* product family. Karaka depends on the DSH, vendor,
+# Pack the public @karaka-ai/* product family. Karaka depends on the DSH, vendor,
 # and Landlock families, so rehearsal installs all four local pack outputs while
 # uploading only Karaka's tarballs.
 name: Release (Karaka)

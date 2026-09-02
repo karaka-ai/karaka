@@ -18,8 +18,8 @@ import {
   parseSnapshotManifest,
   type NormalizeContext,
 } from '@deepseek-ai/dsh-session-snapshot'
-import { createKarakaClient } from '@karaka/sdk'
-import { initKarakaProject, prepareKarakaRuntime } from '@karaka/cli'
+import { createKarakaClient } from '@karaka-ai/sdk'
+import { initKarakaProject, prepareKarakaRuntime } from '@karaka-ai/cli'
 import { execa, type ResultPromise } from 'execa'
 import { describe, expect, it } from 'vitest'
 
@@ -132,14 +132,14 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
     createReadyPlugin(project),
     linkReplayPlugin(project),
     writeFile(join(project, 'agents/support/agent.cordis.yml'), `- id: persona
-  name: '@karaka/agent/persona'
+  name: '@karaka-ai/agent/persona'
   config:
     text: You are a helpful support agent.
     complete: true
     includeRuntimeContext: false
 
 - id: tools
-  name: '@karaka/agent/agent-tool-presentation'
+  name: '@karaka-ai/agent/agent-tool-presentation'
   config:
     mode: native
     allow: []
@@ -290,7 +290,7 @@ describe('Karaka recorded-session snapshot', () => {
     }
   })
 
-  it.skipIf(mode === 'record')('replays an authenticated application chat through @karaka/agent', async () => {
+  it.skipIf(mode === 'record')('replays an authenticated application chat through @karaka-ai/agent', async () => {
     const manifestPath = join(scenarioDir, 'snapshot.yml')
     const manifest = parseSnapshotManifest(await readFile(manifestPath, 'utf8'), manifestPath)
     expect(manifest).toMatchObject({ profile: 'karaka', recording: 'authored' })

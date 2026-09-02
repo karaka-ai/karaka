@@ -34,7 +34,7 @@ const MANIFEST_BIN_ALLOWLIST = new Map<string, ManifestBin>([
 /** Every executable in a Node application workspace has one explicit role. */
 const EXECUTABLE_SOURCE_ALLOWLIST = new Map<string, string>([
   ['apps/cli/src/bin.ts', 'supported dsh application launcher'],
-  ['packages/karaka/agent/src/bin.ts', 'Karaka Agent entry launched by @karaka/cli'],
+  ['packages/karaka/agent/src/bin.ts', 'Karaka Agent entry launched by @karaka-ai/cli'],
   ['packages/karaka/cli/src/bin.ts', 'Karaka wrapper that launches the installed Agent runtime'],
   ['packages/context/time-context/tests/fixtures/driver.ts', 'test-only subprocess driver'],
   ['packages/experimental/webworker-packer/bin.js', 'private build-only wrapper'],
