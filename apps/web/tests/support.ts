@@ -17,6 +17,9 @@ export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
  */
 export const ZH_BROWSER_LOCALE = 'zh-CN'
 
+/** Browser time zone shared by Web snapshots that do not exercise time-zone selection. */
+export const SNAPSHOT_BROWSER_TIME_ZONE = 'Asia/Shanghai'
+
 /**
  * Open the standard browser-test page advertising English before client boot.
  * This keeps role locators and goldens deterministic while leaving the Host
@@ -28,7 +31,11 @@ export const ZH_BROWSER_LOCALE = 'zh-CN'
  * @returns the initialized page.
  */
 export async function newEnglishPage(browser: Browser, height = 1000): Promise<Page> {
-  return await browser.newPage({ viewport: { width: 1680, height }, locale: 'en-US' })
+  return await browser.newPage({
+    viewport: { width: 1680, height },
+    locale: 'en-US',
+    timezoneId: SNAPSHOT_BROWSER_TIME_ZONE,
+  })
 }
 
 /**
