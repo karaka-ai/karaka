@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { ApplicationId } from '@deepseek-ai/dsh-session'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import BearerServerAuth from '@karaka-ai/server-auth'
 
 function credentials(values: Map<string, string>) {
@@ -50,6 +50,20 @@ describe('BearerServerAuth', () => {
     await ctx.fiber.dispose()
   })
 
+  it('rejects empty and unknown application identities', async () => {
+    const ctx = new Context()
+    ctx.provide('credentials', credentials(new Map()) as never)
+    await expect(ctx.plugin(BearerServerAuth, {
+      applications: [{ id: '', chatCredential: 'CHAT_TOKEN', toolCredential: 'TOOL_TOKEN' }],
+    })).rejects.toThrow(/id must not be empty/u)
+
+    await ctx.plugin(BearerServerAuth, {
+      applications: [{ id: 'billing', chatCredential: 'CHAT_TOKEN', toolCredential: 'TOOL_TOKEN' }],
+    })
+    await expect(ctx.serverAuth.authorizeTools(ApplicationId('support'))).rejects.toThrow(/unknown application/u)
+    await ctx.fiber.dispose()
+  })
+
   it('fails closed when one bearer value matches multiple applications', async () => {
     const ctx = new Context()
     const values = new Map([
@@ -84,6 +98,57 @@ describe('BearerServerAuth', () => {
     abort.abort(new Error('cancelled'))
 
     await expect(authentication).rejects.toThrow('cancelled')
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects absent and malformed bearer values without resolving credentials', async () => {
+    const ctx = new Context()
+    const resolve = vi.fn().mockResolvedValue({ value: 'chat-secret', source: 'test' })
+    ctx.provide('credentials', { resolve } as never)
+    await ctx.plugin(BearerServerAuth, {
+      applications: [{ id: 'billing', chatCredential: 'CHAT_TOKEN', toolCredential: 'TOOL_TOKEN' }],
+    })
+
+    await expect(ctx.serverAuth.authenticate(undefined)).resolves.toBeUndefined()
+    await expect(ctx.serverAuth.authenticate('Basic chat-secret')).resolves.toBeUndefined()
+    expect(resolve).not.toHaveBeenCalled()
+    await expect(ctx.serverAuth.authenticate('Bearer short')).resolves.toBeUndefined()
+    expect(resolve).toHaveBeenCalledOnce()
+    await ctx.fiber.dispose()
+  })
+
+  it('forwards credential success and failure with a live signal and removes its listener', async () => {
+    const ctx = new Context()
+    const failure = new Error('credential store failed')
+    const resolve = vi.fn()
+      .mockResolvedValueOnce({ value: 'chat-secret', source: 'test' })
+      .mockRejectedValueOnce(failure)
+    ctx.provide('credentials', { resolve } as never)
+    await ctx.plugin(BearerServerAuth, {
+      applications: [{ id: 'billing', chatCredential: 'CHAT_TOKEN', toolCredential: 'TOOL_TOKEN' }],
+    })
+    const signal = new AbortController().signal
+
+    await expect(ctx.serverAuth.authenticate('Bearer chat-secret', signal))
+      .resolves.toEqual({ applicationId: 'billing' })
+    await expect(ctx.serverAuth.authorizeTools(ApplicationId('billing'), signal)).rejects.toBe(failure)
+    await ctx.fiber.dispose()
+  })
+
+  it('honors pre-aborted calls and maps a non-Error cancellation reason', async () => {
+    const ctx = new Context()
+    ctx.provide('credentials', { resolve: () => new Promise(() => undefined) } as never)
+    await ctx.plugin(BearerServerAuth, {
+      applications: [{ id: 'billing', chatCredential: 'CHAT_TOKEN', toolCredential: 'TOOL_TOKEN' }],
+    })
+    const preAborted = AbortSignal.abort(new Error('already cancelled'))
+    await expect(ctx.serverAuth.authenticate('Bearer chat-secret', preAborted)).rejects.toThrow('already cancelled')
+    await expect(ctx.serverAuth.authorizeTools(ApplicationId('billing'), preAborted)).rejects.toThrow('already cancelled')
+
+    const controller = new AbortController()
+    const authentication = ctx.serverAuth.authenticate('Bearer chat-secret', controller.signal)
+    controller.abort('stop')
+    await expect(authentication).rejects.toThrow('server authentication cancelled')
     await ctx.fiber.dispose()
   })
 })
