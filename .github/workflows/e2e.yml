@@ -60,7 +60,7 @@ jobs:
         run: echo "::notice::DEEPSEEK_API_KEY_EXTERNAL is not configured; live DeepSeek e2e is skipped."
 
       - if: env.DSH_REAL_API_CONFIGURED == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - if: env.DSH_REAL_API_CONFIGURED == 'true'
         uses: pnpm/action-setup@v4
