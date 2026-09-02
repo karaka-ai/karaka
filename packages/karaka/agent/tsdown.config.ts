@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'tsdown'
+import { defineConfig, type UserConfig } from 'tsdown'
 import { typertPlugin } from '../../typert/generator/lib/types/tsdown-plugin.js'
 
 const resolveFrom = createRequire(import.meta.url)
@@ -44,13 +44,25 @@ function readBundledModules(): PublicModule[] {
   const source = readFileSync(resolve(packageDir, 'src/plugins.ts'), 'utf8')
   const imports = new Map(
     [...source.matchAll(/^import \* as (plugin\d+) from '([^']+)'$/gmu)]
-      .map(match => [match[1], match[2]] as const),
+      .map(match => {
+        const identifier = match[1]
+        const specifier = match[2]
+        if (identifier === undefined || specifier === undefined) {
+          throw new Error('Karaka Loader registry contains an invalid static import')
+        }
+        return [identifier, specifier] as const
+      }),
   )
   const modules = [...source.matchAll(/^  '@karaka\/agent\/([^']+)': (plugin\d+),$/gmu)]
     .map((match): PublicModule => {
-      const specifier = imports.get(match[2])
-      if (specifier === undefined) throw new Error(`missing static import for @karaka/agent/${match[1]}`)
-      return { subpath: match[1], specifier }
+      const subpath = match[1]
+      const identifier = match[2]
+      if (subpath === undefined || identifier === undefined) {
+        throw new Error('Karaka Loader registry contains an invalid public alias')
+      }
+      const specifier = imports.get(identifier)
+      if (specifier === undefined) throw new Error(`missing static import for @karaka/agent/${subpath}`)
+      return { subpath, specifier }
     })
   if (modules.length !== imports.size) {
     throw new Error(`Karaka Loader registry has ${modules.length} aliases for ${imports.size} static imports`)
@@ -154,7 +166,7 @@ const publicDeclarations = {
 
 const shared = {
   outDir: 'lib',
-  format: ['esm'] as const,
+  format: ['esm'],
   platform: 'node' as const,
   target: 'es2024' as const,
   fixedExtension: false,
@@ -169,7 +181,7 @@ const shared = {
     typertPlugin({ mode: 'workspace', faces: ['host'] }),
     publicDeclarations,
   ],
-}
+} satisfies UserConfig
 
 /** Bundle every private DSH module into the public Agent artifact. */
 export default defineConfig(({ env }) => {
