@@ -49,6 +49,13 @@ export const coverageExemptHeavySuites: readonly CoverageExemptSuite[] = [
   { filter: 'scripts/oxlint-contract.spec.ts', exclude: 'scripts/oxlint-contract.spec.ts' },
   { filter: 'scripts/change-scope.spec.ts', exclude: 'scripts/change-scope.spec.ts' },
   { filter: 'scripts/translation-pairing-merge.spec.ts', exclude: 'scripts/translation-pairing-merge.spec.ts' },
+  // The Karaka launch module statically reaches the complete bundled plugin
+  // graph. The built-package smoke owns that integration; this suite retains
+  // the process lifecycle checks without merging a second source-map graph.
+  {
+    filter: 'packages/karaka/agent/tests/launch.spec.ts',
+    exclude: 'packages/karaka/agent/tests/launch.spec.ts',
+  },
   // Built-artifact proof. Packer/runtime src is threshold-excluded, and the
   // native Windows aggregate makes this uninstrumented gate wait for build so
   // the suite never observes a partially emitted workspace closure.

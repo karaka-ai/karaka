@@ -83,7 +83,7 @@ describe('Karaka Agent launch', () => {
       expect.stringMatching(/packages[/\\]karaka[/\\]agent[/\\]cordis\.yml$/u),
       expect.any(Array),
       expect.any(Function),
-      'file:///deployment/karaka.cordis.yml',
+      expect.stringMatching(/^file:\/\/\/(?:[A-Za-z]:\/)?deployment\/karaka\.cordis\.yml$/u),
     )
     expect(mocks.installBundledPlugins).toHaveBeenCalledWith(host.loader)
     expect(host.provide).toHaveBeenCalledWith('launchEnvironment', { source: 'test' })
