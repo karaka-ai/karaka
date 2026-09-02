@@ -644,7 +644,11 @@ describe('Karaka HTTP transport', () => {
   })
 
   it('maps primitive controller failures without exposing them', async () => {
-    const fixture = await harness({ listAgents: () => Promise.reject('private failure') })
+    const fixture = await harness({
+      // The service boundary accepts unknown failures, including primitives.
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors
+      listAgents: () => Promise.reject('private failure'),
+    })
     const response = await fetch(`${fixture.endpoint}/v1/agents`, {
       headers: { authorization: 'Bearer valid' },
     })
