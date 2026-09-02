@@ -22,6 +22,7 @@ permissions:
 
 env:
   PRIMARY_NODE_VERSION: '24'
+  DSH_CLOUDFLARE_CONFIGURED: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.CF_ACCESS_CLIENT_ID != '' && secrets.CF_ACCESS_CLIENT_SECRET != '' }}
   # Cloudflare Pages project receiving the upload. Its preview deployments are
   # the surface the Access application protects; the project's production branch
   # is deliberately a name no deployment uses, so no unprotected URL exists.
@@ -32,22 +33,30 @@ env:
 
 jobs:
   preview:
-    runs-on: dsh-ubuntu-24-04-16core
+    runs-on: ubuntu-latest
     name: cloudflare pages preview
     steps:
+      - name: Report unavailable Cloudflare credentials
+        if: env.DSH_CLOUDFLARE_CONFIGURED != 'true'
+        run: echo "::notice::Cloudflare preview credentials are not configured; skipping preview deployment."
+
       - uses: actions/checkout@v6
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         with:
           persist-credentials: false
 
       - uses: pnpm/action-setup@v4
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         with:
           dest: ${{ runner.temp }}/setup-pnpm
 
       - uses: actions/setup-node@v6
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
       - name: Configure pnpm store path
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         id: pnpm-store
         run: |
           store_root="$HOME/.local/share/pnpm/store"
@@ -58,6 +67,7 @@ jobs:
       # Read-only: the preview lane consumes the default-branch cache without
       # putting cache upload on its own path.
       - uses: actions/cache/restore@v4
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
@@ -65,15 +75,18 @@ jobs:
             ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
 
       - name: Install (immutable)
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         run: pnpm install --frozen-lockfile
 
       # apps/web consumes workspace packages as built lib products, and
       # build:preview packs the image through the packer's installed bin
       # (lib/bin.js), so neither half exists before the full build runs.
       - name: Build workspace
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         run: pnpm run build
 
       - name: Build the preview page and pack the VFS image
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         env:
           DSH_CLIENT_TITLE: DSH preview pr-${{ github.event.pull_request.number }}
         run: pnpm --filter @deepseek-ai/dsh-web-frontend run build:preview
@@ -83,11 +96,13 @@ jobs:
       # injecting window.__DSH_BOOT__; replacing it with the worker page makes
       # the deployment root the usable entry instead of a page that never boots.
       - name: Shape the upload
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         run: |
           find apps/web/dist -name '*.map' -delete
           cp apps/web/dist/preview.html apps/web/dist/index.html
 
       - name: Upload to Cloudflare Pages
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -112,6 +127,7 @@ jobs:
       # Accept-Encoding is sent because a browser sends it; the assertion is
       # about what the platform does with a body that is already compressed.
       - name: Verify the protected deployment serves the image
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -151,6 +167,7 @@ jobs:
       # idempotent: a pull request opened before this workflow existed never
       # sees an `opened` event, and every later push must not restate the URL.
       - name: Comment the preview URL
+        if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}

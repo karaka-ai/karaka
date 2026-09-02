@@ -98,14 +98,17 @@ describe('CI workflow', () => {
     expect(windows.if).toBe("github.event_name == 'pull_request'")
     expect(commandSteps.some(step => step.run.includes('wine-windows-gates.sh'))).toBe(true)
 
-    // The split native jobs all resolve their pool through the Windows switch.
+    // The split native jobs use standard hosted Windows unless a trusted
+    // same-repository branch explicitly selects the self-hosted fallback.
     for (const [jobName, job] of [['windows-build', windowsBuild], ['windows-coverage', windowsCoverage], ['windows-native-tests', windowsNativeTests], ['windows-observational', windowsObservational]] as const) {
       expect(typeof job['runs-on']).toBe('string')
       expect(job['runs-on'], `${jobName} runs-on must use the Windows failover switch`).toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on'], `${jobName} runs-on must not use the Linux failover switch`).not.toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on']).toContain('self-hosted')
       expect(job['runs-on']).toContain('dsh-win-ci')
-      expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain('windows-2025')
+      expect(job['runs-on']).not.toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain('github.event.pull_request.head.repo.full_name == github.repository')
       expect(job.if).toBe("github.event_name == 'pull_request'")
     }
 
@@ -117,9 +120,13 @@ describe('CI workflow', () => {
     ))
     expect(buildCommands.map(step => step.run)).toContain('pnpm run check:ci:windows-blocking')
 
-    // windows-coverage uses the lower 4-partition profile.
+    // Standard Windows capacity keeps coverage to two isolated partitions.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '4' })
+    expect(windowsCoverage.env).toMatchObject({
+      DSH_COVERAGE_MAX_WORKERS: '2',
+      DSH_COVERAGE_PARTITIONS: '2',
+      DSH_GATE_CONCURRENCY: '2',
+    })
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -161,18 +168,55 @@ describe('CI workflow', () => {
     expect(aggregate.needs).not.toContain('windows-observational')
     expect(aggregate.needs).not.toContain('serial-windows')
 
-    // Linux failover is a separate switch: the three required Linux workers
-    // and the verdict job resolve their pool through DSH_CI_FAILOVER_LINUX,
-    // never the Windows switch.
+    // Linux uses standard hosted capacity by default. Its independent switch
+    // can select self-hosted only for trusted same-repository branches.
     for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-consumers', node24Consumers]] as const) {
       expect(typeof job['runs-on']).toBe('string')
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
+      expect(job['runs-on']).toContain('ubuntu-latest')
+      expect(job['runs-on']).not.toContain('dsh-ubuntu-24-04-16core')
+      expect(job['runs-on']).toContain('github.event.pull_request.head.repo.full_name == github.repository')
     }
+    expect(node24.env).toMatchObject({ DSH_GATE_CONCURRENCY: '2' })
+    expect(node24Coverage.env).toMatchObject({
+      DSH_COVERAGE_MAX_WORKERS: '2',
+      DSH_COVERAGE_PARTITIONS: '2',
+      DSH_GATE_CONCURRENCY: '2',
+    })
+    expect(node24Consumers.env).toMatchObject({
+      DSH_GATE_CONCURRENCY: '2',
+      DSH_OXLINT_THREADS: '2',
+      DSH_PUBLINT_CONCURRENCY: '2',
+      DSH_WEB_SNAPSHOT_WORKERS: '2',
+      DSH_SNAPSHOT_MAX_CONCURRENCY: '2',
+    })
+    expect(windowsObservational.env).toMatchObject({
+      DSH_GATE_CONCURRENCY: '2',
+      DSH_OXLINT_THREADS: '2',
+      DSH_PUBLINT_CONCURRENCY: '2',
+    })
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
     expect(aggregate['runs-on']).toContain('vm-backup')
+    expect(aggregate['runs-on']).toContain('ubuntu-latest')
+    expect(aggregate['runs-on']).toContain('github.event.pull_request.head.repo.full_name == github.repository')
+
+    const previewWorkflow = loadWorkflow('.github/workflows/build-preview-cloudflare.yml')
+    const preview = workflowJob(previewWorkflow, 'preview')
+    expect(preview['runs-on']).toBe('ubuntu-latest')
+    expect(previewWorkflow.env).toMatchObject({
+      DSH_CLOUDFLARE_CONFIGURED: "${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.CF_ACCESS_CLIENT_ID != '' && secrets.CF_ACCESS_CLIENT_SECRET != '' }}",
+    })
+    if (!Array.isArray(preview.steps)) throw new TypeError('preview job must define steps')
+    const previewSteps = preview.steps.filter(isRecord)
+    expect(previewSteps.find(step => step.name === 'Report unavailable Cloudflare credentials')).toMatchObject({
+      if: "env.DSH_CLOUDFLARE_CONFIGURED != 'true'",
+    })
+    for (const step of previewSteps.filter(step => step.name !== 'Report unavailable Cloudflare credentials')) {
+      expect(step.if).toBe("env.DSH_CLOUDFLARE_CONFIGURED == 'true'")
+    }
   })
 
   it('gives the Wine Host TypeScript compile the repository heap budget', () => {
