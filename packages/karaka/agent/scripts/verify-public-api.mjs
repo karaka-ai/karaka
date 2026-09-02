@@ -139,7 +139,11 @@ export function apply(ctx) {
     }
   })
   ctx.provide(storageBackendServiceKey('memory'), backend)
-  if (process.env.KARAKA_PLUGIN_READY) writeFileSync(process.env.KARAKA_PLUGIN_READY, 'ready')
+  if (process.env.KARAKA_PLUGIN_READY) {
+    ctx.inject(['webServer'], () => {
+      writeFileSync(process.env.KARAKA_PLUGIN_READY, 'ready')
+    })
+  }
 }
 `)
   writeFileSync(resolve(project, 'run.mjs'), `import { Context } from '@karaka/agent/cordis'
