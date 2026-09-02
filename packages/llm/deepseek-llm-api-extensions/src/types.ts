@@ -11,7 +11,9 @@ export type DeepSeekLlmApiJson =
 
 /**
  * Merge-extensible table of top-level DeepSeek request extension fields.
- * Contributor packages declaration-merge the field they own.
+ * Contributor packages declaration-merge their field and keep its value
+ * representable as {@link DeepSeekLlmApiJson}; TypeScript cannot constrain
+ * later interface merges.
  */
 export interface DeepSeekLlmApiExtensionMap {}
 
@@ -28,7 +30,7 @@ export interface DeepSeekLlmApiExtensionRequest {
 }
 
 /** One prepared field value and its optional post-2xx commit. */
-export interface PreparedDeepSeekLlmApiExtension<T extends DeepSeekLlmApiJson> {
+export interface PreparedDeepSeekLlmApiExtension<T> {
   /** Detached value merged under the provider's registered field. */
   readonly value: T
   /** Commit state that depends on confirmed provider acceptance. */
@@ -36,7 +38,7 @@ export interface PreparedDeepSeekLlmApiExtension<T extends DeepSeekLlmApiJson> {
 }
 
 /** Provider registered under one key of {@link DeepSeekLlmApiExtensionMap}. */
-export interface DeepSeekLlmApiExtensionProvider<T extends DeepSeekLlmApiJson> {
+export interface DeepSeekLlmApiExtensionProvider<T> {
   /**
    * Prepare one field for an exact serialized request.
    * @param request - immutable base request facts.

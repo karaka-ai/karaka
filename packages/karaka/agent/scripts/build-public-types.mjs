@@ -42,17 +42,28 @@ for (let index = 0; index < queue.length; index += 1) {
 
 for (const entry of manifest) {
   const pkg = registerPackage(entry.specifier, entry.declaration)
-  const target = resolve(pkg.destinationDir, relative(pkg.sourceDir, entry.declaration))
-    .replace(/\.d\.ts$/u, '.js')
   const facade = resolve(publicDir, `${entry.subpath}.d.ts`)
-  const path = relative(dirname(facade), target).replaceAll(sep, '/')
-  const specifier = path.startsWith('.') ? path : `./${path}`
+  const specifier = relativeSpecifier(facade, copiedRuntimeTarget(pkg, entry.declaration))
+  const augmentations = declarationFiles(pkg.sourceDir)
+    .filter(source => source !== entry.declaration && readFileSync(source, 'utf8').includes('declare module '))
+    .map(source => relativeSpecifier(facade, copiedRuntimeTarget(pkg, source)))
+    .sort()
   mkdirSync(dirname(facade), { recursive: true })
   writeFileSync(facade, [
+    ...augmentations.map(augmentation => `import '${augmentation}'`),
     `export * from '${specifier}'`,
     ...(entry.hasDefault ? [`export { default } from '${specifier}'`] : []),
     '',
   ].join('\n'))
+}
+
+function copiedRuntimeTarget(pkg, declaration) {
+  return resolve(pkg.destinationDir, relative(pkg.sourceDir, declaration)).replace(/\.d\.ts$/u, '.js')
+}
+
+function relativeSpecifier(importer, target) {
+  const path = relative(dirname(importer), target).replaceAll(sep, '/')
+  return path.startsWith('.') ? path : `./${path}`
 }
 
 function registerPackage(specifier, declaration) {

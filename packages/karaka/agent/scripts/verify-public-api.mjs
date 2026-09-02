@@ -4,17 +4,18 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 
 const packageDir = resolve(import.meta.dirname, '..')
 const repositoryDir = resolve(packageDir, '../../..')
 const libDir = resolve(packageDir, 'lib')
 const publicDir = resolve(libDir, 'public')
 const publicTypesDir = resolve(libDir, 'public-types')
+const publicEntriesDir = resolve(libDir, 'public-entries')
 const require = createRequire(import.meta.url)
-const publicEntries = filesUnder(resolve(libDir, 'public-entries'))
+const publicEntries = filesUnder(publicEntriesDir)
   .filter(path => path.endsWith('.ts'))
-  .map(path => path.slice(resolve(libDir, 'public-entries').length + 1, -3))
+  .map(path => portableSubpath(relative(publicEntriesDir, path)).slice(0, -3))
 const aliases = [...readFileSync(resolve(packageDir, 'src/plugins.ts'), 'utf8')
   .matchAll(/^  '@karaka\/agent\/([^']+)': plugin\d+,$/gmu)]
   .map(match => match[1])
@@ -73,7 +74,7 @@ try {
   linkDependencies(project, JSON.parse(readFileSync(resolve(agentLink, 'package.json'), 'utf8')).dependencies)
   writeFileSync(resolve(project, 'package.json'), '{"private":true,"type":"module"}\n')
 
-  writeFileSync(resolve(project, 'consumer.ts'), `import { defineTool } from '@karaka/agent/tools'
+  verifyTypes(project, 'consumer.ts', `import { defineTool } from '@karaka/agent/tools'
 import Storage, { storageBackendServiceKey, type StorageBackend } from '@karaka/agent/storage'
 import { defineDomain } from '@karaka/agent/storage-domain'
 import type { SessionPersistence } from '@karaka/agent/session-persistence'
@@ -82,21 +83,27 @@ declare const backend: StorageBackend
 declare const persistence: SessionPersistence
 void [defineTool, Storage, storageBackendServiceKey, defineDomain, backend, persistence]
 `)
-  writeFileSync(resolve(project, 'tsconfig.json'), `${JSON.stringify({
-    compilerOptions: {
-      module: 'NodeNext',
-      moduleResolution: 'NodeNext',
-      noEmit: true,
-      strict: true,
-      target: 'ES2024',
-      types: ['node'],
-    },
-    include: ['consumer.ts'],
-  }, null, 2)}\n`)
-  execFileSync(process.execPath, [require.resolve('typescript/bin/tsc'), '-p', resolve(project, 'tsconfig.json')], {
-    cwd: project,
-    stdio: 'inherit',
-  })
+  verifyTypes(project, 'session-projection-consumer.ts', `import type {
+  SessionProjectionMap,
+  SessionProjectionStateMap,
+} from '@karaka/agent/session-projection'
+import '@karaka/agent/subagent'
+
+type Assert<T extends true> = T
+type ClientProjectionsHaveHostState = Assert<
+  keyof SessionProjectionMap extends keyof SessionProjectionStateMap ? true : false
+>
+declare const proof: ClientProjectionsHaveHostState
+void proof
+`)
+  verifyTypes(project, 'deepseek-extension-consumer.ts', `import type { DeepSeekLlmApiExtensionMap } from '@karaka/agent/deepseek-llm-api-extensions'
+import '@karaka/agent/plugin-package-inventory-deepseek'
+import '@karaka/agent/session-log-deepseek'
+
+declare const packages: DeepSeekLlmApiExtensionMap['dsh_plugin_packages']
+declare const sessionLog: DeepSeekLlmApiExtensionMap['dsh_session_log']
+void [packages, sessionLog]
+`)
 
   const pluginPath = resolve(project, 'plugins/storage-memory.mjs')
   mkdirSync(dirname(pluginPath), { recursive: true })
@@ -175,9 +182,37 @@ function linkDependencies(projectDir, dependencies) {
   symlinkSync(resolve(repositoryDir, 'node_modules/@types/node'), nodeTypes, 'junction')
 }
 
+function verifyTypes(projectDir, filename, source) {
+  writeFileSync(resolve(projectDir, filename), source)
+  const config = resolve(projectDir, 'tsconfig.json')
+  writeFileSync(config, `${JSON.stringify({
+    compilerOptions: {
+      module: 'NodeNext',
+      moduleResolution: 'NodeNext',
+      noEmit: true,
+      strict: true,
+      target: 'ES2024',
+      types: ['node'],
+    },
+    files: [filename],
+  }, null, 2)}\n`)
+  execFileSync(process.execPath, [require.resolve('typescript/bin/tsc'), '-p', config], {
+    cwd: projectDir,
+    stdio: 'inherit',
+  })
+}
+
 function filesUnder(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = resolve(directory, entry.name)
     return entry.isDirectory() ? filesUnder(path) : [path]
   })
+}
+
+function portableSubpath(path) {
+  return path.replaceAll('\\', '/')
+}
+
+if (portableSubpath('nested\\entry') !== 'nested/entry') {
+  throw new Error('public subpath normalization must replace Windows separators')
 }
