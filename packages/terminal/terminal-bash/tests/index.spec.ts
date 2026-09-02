@@ -406,7 +406,7 @@ describe('BashTerminalBackend startup rollback', () => {
         sends.push(request)
         const result = [
           { viewport: 'PS /workspace> ', waitReason: 'inferred_idle' as const },
-          { viewport: "function prompt { 'dsh> ' }\n", waitReason: 'inferred_idle' as const },
+          { viewport: "PS /workspace> function prompt { 'dsh> ' }\n", waitReason: 'stdin_read' as const },
           { viewport: 'dsh> ', waitReason: 'stdin_read' as const },
         ][sends.length - 1]
         if (result === undefined) throw new Error('unexpected pwsh startup send')
