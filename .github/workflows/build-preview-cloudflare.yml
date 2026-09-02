@@ -40,7 +40,7 @@ jobs:
         if: env.DSH_CLOUDFLARE_CONFIGURED != 'true'
         run: echo "::notice::Cloudflare preview credentials are not configured; skipping preview deployment."
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: env.DSH_CLOUDFLARE_CONFIGURED == 'true'
         with:
           persist-credentials: false
