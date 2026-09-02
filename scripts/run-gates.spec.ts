@@ -103,7 +103,7 @@ describe('gate graph validation', () => {
 
     expect(ids).toEqual([
       'rescope-vendor', 'publint', 'constraints', 'package-dependencies', 'application-entrypoints',
-      'dsh-package-licenses', 'package-invariants', 'built-package-invariants', 'node-next-types',
+      'dsh-package-licenses', 'package-invariants', 'built-package-invariants', 'karaka-agent-public-api', 'node-next-types',
       'optional-dependency-imports', 'client-packages', 'client-ui-i18n', 'cordis-config',
       'runtime-closure', 'vendored-links',
     ])
@@ -425,7 +425,7 @@ describe('Node 24 lane ownership', () => {
     const subject = withPnpmEntrypoint(() => gatesForMode('ci-consumers'))
 
     expect(defaultConcurrency('ci-consumers', subject.length, 4)).toEqual({
-      workers: 11,
+      workers: 12,
       source: 'ci-consumers gate count',
     })
     expect(subject.map(item => item.id)).toEqual([
@@ -439,6 +439,7 @@ describe('Node 24 lane ownership', () => {
       'web-snapshot',
       'doc-typecheck',
       'node-next-types',
+      'karaka-agent-public-api',
       'built-bin-smoke',
     ])
     expect(subject.find(item => item.id === 'publint')?.needs).toEqual(['build'])
@@ -456,6 +457,7 @@ describe('Node 24 lane ownership', () => {
       'web-snapshot',
       'doc-typecheck',
       'node-next-types',
+      'karaka-agent-public-api',
       'built-bin-smoke',
     ]) {
       expect(subject.find(item => item.id === id)?.needs).toEqual(['built-package-invariants'])
@@ -482,9 +484,20 @@ describe('Node 24 lane ownership', () => {
         'expected-output',
         'doc-typecheck',
         'node-next-types',
+        'karaka-agent-public-api',
         'built-bin-smoke',
       ],
     })
+  })
+
+  it('runs the packed Karaka Agent consumer after the artifact build', () => {
+    for (const mode of ['ci-primary', 'ci-artifacts', 'ci-consumers'] as const) {
+      expect(withPnpmEntrypoint(() => gatesForMode(mode))
+        .find(item => item.id === 'karaka-agent-public-api')).toMatchObject({
+        displayCommand: 'pnpm run verify-karaka-agent-public-api',
+        needs: mode === 'ci-consumers' ? ['built-package-invariants'] : ['build'],
+      })
+    }
   })
 })
 
