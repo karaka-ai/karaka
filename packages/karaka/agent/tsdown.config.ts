@@ -4,13 +4,13 @@ import { globSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync }
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type UserConfig } from 'tsdown'
-import { typertPlugin } from '../../typert/generator/lib/types/tsdown-plugin.js'
 
 const resolveFrom = createRequire(import.meta.url)
 const packageDir = dirname(fileURLToPath(import.meta.url))
 const repositoryDir = resolve(packageDir, '../../..')
 const outputDir = resolve(packageDir, 'lib')
 const publicEntryDir = resolve(outputDir, 'public-entries')
+const typertPluginRuntime = '../../typert/generator/lib/types/tsdown-plugin.js'
 const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka-ai\/(?:mcp-application|server-auth|transport-http)(?:\/|$)/
 
 const contractModules: Readonly<Record<string, string>> = {
@@ -251,8 +251,6 @@ const shared = {
   plugins: [
     cleanRuntimeOutputs,
     bundledWorkspaceResolver,
-    typertPlugin({ mode: 'workspace', faces: ['host'] }),
-    publicDeclarations,
   ],
 } satisfies UserConfig
 
@@ -265,17 +263,24 @@ export default defineConfig(({ env }) => {
   if (env?.KARAKA_AGENT_BUILD !== undefined && env.KARAKA_AGENT_BUILD !== 'runtime') {
     throw new Error('Karaka Agent build requires the runtime mode')
   }
-  const publicEntries = writePublicEntries(readPublicModules())
-  return {
-    ...shared,
-    entry: {
-      index: 'lib/types/index.js',
-      bin: 'lib/types/bin.js',
-      cordis: 'lib/types/cordis.js',
-      invariant: 'lib/types/invariant.js',
-      ...Object.fromEntries(
-        Object.entries(publicEntries).map(([subpath, entry]) => [`public/${subpath}`, entry]),
-      ),
-    },
-  }
+  return import(typertPluginRuntime).then(({ typertPlugin }) => {
+    const publicEntries = writePublicEntries(readPublicModules())
+    return {
+      ...shared,
+      plugins: [
+        ...(shared.plugins ?? []),
+        typertPlugin({ mode: 'workspace', faces: ['host'] }),
+        publicDeclarations,
+      ],
+      entry: {
+        index: 'lib/types/index.js',
+        bin: 'lib/types/bin.js',
+        cordis: 'lib/types/cordis.js',
+        invariant: 'lib/types/invariant.js',
+        ...Object.fromEntries(
+          Object.entries(publicEntries).map(([subpath, entry]) => [`public/${subpath}`, entry]),
+        ),
+      },
+    }
+  })
 })

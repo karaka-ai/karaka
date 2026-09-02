@@ -17,10 +17,10 @@ interface ProcessShutdown {
 
 function createProcessShutdown(dispose: () => Promise<void>): ProcessShutdown {
   let pending: Promise<void> | undefined
-  let timeout: ReturnType<typeof setTimeout> | undefined
+  let timeout!: ReturnType<typeof setTimeout>
 
   const forceExit = (code: number): void => {
-    if (timeout !== undefined) clearTimeout(timeout)
+    clearTimeout(timeout)
     process.exit(code)
   }
 

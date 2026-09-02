@@ -24,7 +24,7 @@ One agent definition remains one Agent Preset directory. `preset.yml` owns disco
 
 Every application chat Session retains one atomic `{ applicationId, tenantId, userId }` owner in its durable header. The SDK sends authenticated chat requests and exposes explicitly registered backend callbacks as authenticated Streamable HTTP MCP tools. Authentication, HTTP/SSE ingress, and the application MCP client are internal Agent modules, but remain replaceable Cordis services and plugins.
 
-`karaka start` resolves `@karaka-ai/agent/bin`, gives it an absolute deployment patch, and supplies a private project-local Karaka home. Agent owns boot and graceful process teardown. Neither CLI nor SDK resolves or launches the `dsh` package, and no programmatic Agent boot API is part of the public contract.
+`karaka start` locates the same-version Agent executable from the `@karaka-ai/agent` package root, gives it an absolute deployment patch, and supplies a private project-local Karaka home. Agent owns boot and graceful process teardown. Neither CLI nor SDK resolves or launches the `dsh` package, and no programmatic Agent boot API is part of the public contract.
 
 ## Alternatives considered
 

@@ -24,7 +24,7 @@ Agent 拥有进程 entry、基础 Cordis 组合、Karaka overlay、runtime asset
 
 每个应用 chat Session 在其持久 header 中保留一个原子 `{ applicationId, tenantId, userId }` owner。SDK 发送认证 chat 请求，并把显式注册的后端 callback 暴露为已认证的 Streamable HTTP MCP 工具。认证、HTTP/SSE ingress 和应用 MCP client 是 Agent 内部模块，但仍是可替换的 Cordis service 与插件。
 
-`karaka start` 解析 `@karaka-ai/agent/bin`，向其提供绝对部署 patch，并提供项目私有的 Karaka home。Agent 拥有 boot 和优雅进程 teardown。CLI 与 SDK 都不解析或启动 `dsh` 包，公开 contract 也不包含 programmatic Agent boot API。
+`karaka start` 从 `@karaka-ai/agent` package 根目录定位同版本的 Agent 可执行文件，向其提供绝对部署 patch，并提供项目私有的 Karaka home。Agent 拥有 boot 和优雅进程 teardown。CLI 与 SDK 都不解析或启动 `dsh` 包，公开 contract 也不包含 programmatic Agent boot API。
 
 ## 考虑过的替代方案
 
