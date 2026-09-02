@@ -87,7 +87,7 @@ class PresetTree extends Include {
    * @returns the imported module, or the `cordis:` builtin.
    */
   override import(name: string, getOuterStack?: () => string[]): unknown {
-    const bundled = this.ctx.loader.builtins[name]
+    const bundled: unknown = this.ctx.loader.builtins[name]
     if (bundled !== undefined) return bundled
     const row = classifyRowSpecifier(name)
     const base = barePackageBase.get(this.config)

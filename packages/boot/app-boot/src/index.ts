@@ -511,7 +511,7 @@ export async function mountRootInclude(
     ? Include
     : class HostResolvedRootInclude extends Include {
       override import(name: string, getOuterStack?: () => string[]): unknown {
-        const bundled = this.ctx.loader.builtins[name]
+        const bundled: unknown = this.ctx.loader.builtins[name]
         if (bundled !== undefined) return bundled
         const specifier = isAbsolute(name) ? pathToFileURL(name).href : name
         if (name.startsWith('.') || name.startsWith('cordis:')) return super.import(specifier, getOuterStack)
