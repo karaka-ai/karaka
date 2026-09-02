@@ -6,7 +6,7 @@
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -33,7 +33,11 @@ interface TreeFixture {
 async function bootTree(configBody: string, files: Record<string, string> = {}): Promise<TreeFixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-config-reload-'))
   writeFileSync(join(dir, 'noop.mjs'), NOOP_PLUGIN)
-  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content)
+  for (const [name, content] of Object.entries(files)) {
+    const path = join(dir, name)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, content)
+  }
   writeFileSync(join(dir, 'cordis.yml'), configBody)
   const ctx = await boot(NAME, join(dir, 'cordis.yml'))
   const entry = [...ctx.loader.entries()].find(candidate => candidate.subtree !== undefined)
@@ -54,6 +58,20 @@ function entryById(ctx: Context, id: string) {
 function plugin(name: string, body = ''): string {
   return `export default function ${name}(_ctx, config = {}) { ${body} }\n`
 }
+
+describe('project plugin resolution', () => {
+  it('loads a plugins directory relative to the owning config file', async () => {
+    const { ctx, dir } = await bootTree('- id: project-plugin\n  name: ./plugins/storage-memory.mjs\n', {
+      'plugins/storage-memory.mjs': plugin('storageMemory'),
+    })
+    try {
+      expect(entryById(ctx, 'project-plugin').fiber?.runtime?.callback.name).toBe('storageMemory')
+    } finally {
+      await ctx.fiber.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 async function expectUpdateFailure(task: Promise<void>, stage: string): Promise<void> {
   try {

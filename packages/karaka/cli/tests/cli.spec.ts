@@ -26,6 +26,7 @@ describe('karaka init', () => {
     expect(agent).toContain('@karaka/agent/agent-tool-presentation')
     expect(agent).toContain('allow: []')
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('.karaka/\n')
+    expect(statSync(join(root, 'plugins')).isDirectory()).toBe(true)
 
     writeFileSync(join(root, 'agents/support/agent.cordis.yml'), '# developer edit\n')
     writeFileSync(join(root, '.gitignore'), 'node_modules/\n.karaka/\n')
@@ -33,7 +34,7 @@ describe('karaka init', () => {
     expect(readFileSync(join(root, 'agents/support/agent.cordis.yml'), 'utf8')).toBe('# developer edit\n')
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('node_modules/\n.karaka/\n')
     expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))).toMatchObject({
-      dependencies: { '@karaka/cli': '0.1.2-alpha.2' },
+      dependencies: { '@karaka/agent': '0.1.2-alpha.2', '@karaka/cli': '0.1.2-alpha.2' },
     })
   })
 

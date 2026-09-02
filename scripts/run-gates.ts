@@ -315,6 +315,7 @@ function ciPrimaryGates(): Gate[] {
       label: 'node-next types',
       needs: ['build'],
     }),
+    karakaAgentPublicApiGate(['build']),
     builtPackageInvariantsGate(['build']),
     builtBinSmokeGate(),
   ]
@@ -415,6 +416,7 @@ function ciArtifactGates(): Gate[] {
       label: 'node-next types',
       needs: ['build'],
     }),
+    karakaAgentPublicApiGate(['build']),
     builtPackageInvariantsGate(['build']),
     builtBinSmokeGate(),
   ]
@@ -433,6 +435,7 @@ function ciConsumerGates(): Gate[] {
     'expected-output',
     'doc-typecheck',
     'node-next-types',
+    'karaka-agent-public-api',
     'built-bin-smoke',
   ]
   return [
@@ -458,6 +461,7 @@ function ciConsumerGates(): Gate[] {
       label: 'node-next types',
       needs: validatedBuild,
     }),
+    karakaAgentPublicApiGate(validatedBuild),
     builtBinSmokeGate(validatedBuild),
   ]
 }
@@ -645,6 +649,13 @@ function builtPackageInvariantsGate(needs?: string[]): Gate {
   })
 }
 
+function karakaAgentPublicApiGate(needs?: string[]): Gate {
+  return pnpmScript('karaka-agent-public-api', 'verify-karaka-agent-public-api', {
+    label: 'Karaka Agent public API',
+    ...needs === undefined ? {} : { needs },
+  })
+}
+
 function positiveIntArg(envName: string, flag: string): string[] {
   const raw = process.env[envName]
   if (raw === undefined || raw === '') return []
@@ -673,6 +684,7 @@ function hygieneLeafGates(options: { artifactNeeds?: string[] } = {}): Gate[] {
     pnpmScript('dsh-package-licenses', 'verify-dsh-package-licenses', { label: 'DSH package licenses' }),
     pnpmScript('package-invariants', 'verify-package-invariants', { label: 'package invariants' }),
     builtPackageInvariantsGate(options.artifactNeeds),
+    karakaAgentPublicApiGate(options.artifactNeeds),
     pnpmScript('node-next-types', 'verify-node-next-types', {
       label: 'node-next types',
       ...artifactOptions,

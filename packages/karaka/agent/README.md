@@ -39,7 +39,25 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 
 ### Extend an Agent
 
-An `agent.cordis.yml` row may name an embedded alias such as `@karaka/agent/persona` or `@karaka/agent/agent-tool-presentation`. The runtime resolves those exact aliases from its bundled registry, so they require no separate install. A relative row such as `./plugins/customer-tools.js` resolves beside that Agent Preset's composition file. A bare row such as `@acme/customer-tools` resolves from the server project, so the project installs the package as its own dependency; its source can import Cordis APIs from `@karaka/agent/cordis`, but must not depend on Karaka's private bundled implementation packages.
+An `agent.cordis.yml` row may name an embedded alias such as `@karaka/agent/persona` or `@karaka/agent/agent-tool-presentation`. Each embedded alias is also a Node subpath with the same named and default exports as its source module. Service Definition modules used by replacement providers have matching flat subpaths even when they are not Loader plugins; for example, a local storage provider can import `StorageBackend` without installing a DSH package:
+
+```ts
+import type { StorageBackend } from '@karaka/agent/storage'
+```
+
+An Agent project keeps application-specific plugins in its root `plugins/` directory. The deployment file is a patch layer, so a new row belongs under `insert`; this example also selects the backend that the local plugin registers:
+
+```yaml
+- id: storage-domain
+  config:
+    backend: customer
+
+- insert:
+    - id: customer-storage
+      name: ./plugins/customer-storage.js
+```
+
+Relative names resolve beside the composition file, so an Agent Preset uses `../../plugins/customer-tools.js` for a shared root plugin. A reusable plugin may instead be an installed package such as `@acme/customer-tools`. Both forms import public contracts from `@karaka/agent/*`; neither form depends on the private DSH build inputs.
 
 -----
 
@@ -51,7 +69,7 @@ An `agent.cordis.yml` row may name an embedded alias such as `@karaka/agent/pers
 
 The executable loads the bundled base composition, applies Karaka's server patch, then applies the deployment patch named by `--config`. The plugin registry maps every shipped composition name to a statically imported implementation before the Cordis Loader mounts any row. Exact registry aliases take precedence over Node package resolution. Relative plugin files retain the composition directory as their base, while bare external packages use the server project's configuration URL as their Node resolution base.
 
-The build emits one deterministic runtime chunk set rooted at `lib/bin.js`; its targeted cleanup preserves TypeScript inputs while removing prior JavaScript outputs before every bundle. SQLite migrations and worker resources are shipped beside the executable because those implementations locate their assets through `import.meta.url`.
+The build emits one runtime chunk set shared by `lib/bin.js`, the Loader registry, and the entries under `lib/public/`, so services retain one JavaScript identity. Public declaration facades share one private declaration tree whose cross-package references are relative and contain no DSH package names. SQLite migrations and worker resources are shipped beside the executable because those implementations locate their assets through `import.meta.url`.
 
 | File | Role |
 |---|---|
@@ -90,7 +108,7 @@ The runtime adds no fixed model text itself; changing an Agent composition can c
 
 - **One Node process per launch** — replica count, TLS termination, and load balancing remain deployment concerns.
 - **Local coding tools are disabled by default** — an Agent needs an explicit trusted plugin composition to gain filesystem or subprocess access.
-- **Capability type subpaths are not published yet** — plugin authors can use `@karaka/agent/cordis` now, but dedicated `@karaka/agent/llm`, `/agent`, `/tools`, `/session`, and `/persistence` declaration entry points require a declaration bundle that exposes no private `@deepseek-ai/dsh-*` imports.
+- **Local TypeScript compilation is project-owned** — the runtime loads relative JavaScript files; a project that authors plugins in TypeScript must compile them before launch.
 
 <a id="dev-note"></a>
 ### Dev Note
