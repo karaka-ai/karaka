@@ -624,6 +624,19 @@ describe('Issue lifecycle workflow', () => {
   it('targets the current repository for issue policy queries', () => {
     const config: unknown = JSON.parse(readFileSync(resolve(root, '.github/issue-management/config.json'), 'utf8'))
     expect(config).toMatchObject({ organization: 'karaka-ai', repository: 'karaka' })
+
+    const workflow = loadWorkflow('.github/workflows/issue-policy.yml')
+    const policy = workflowJob(workflow, 'policy')
+    if (!Array.isArray(policy.steps)) throw new TypeError('Issue policy workflow must define steps')
+    const target = policy.steps.filter(isRecord).find(step => step.name === 'Target event repository')
+    expect(target).toMatchObject({
+      env: {
+        POLICY_ORGANIZATION: '${{ github.repository_owner }}',
+        POLICY_REPOSITORY: '${{ github.event.repository.name }}',
+      },
+    })
+    expect(String(target?.run)).toContain('config.organization = process.env.POLICY_ORGANIZATION')
+    expect(String(target?.run)).toContain('config.repository = process.env.POLICY_REPOSITORY')
   })
 })
 
