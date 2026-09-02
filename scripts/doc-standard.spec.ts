@@ -61,6 +61,7 @@ const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
   'packages/experimental/webworker-runtime': 'Browser worker runtime library with explicit host entry points.',
   'packages/hooks/hook-protocol': 'Shared wire-protocol library between the hook bridges.',
   'packages/identity/anonymous-user-id': 'Harness-home identity helper with no plugin registration.',
+  'packages/karaka/sdk': 'Application backend client and MCP tool-host library; plain function, class, and type exports.',
   'packages/sandbox/sandbox-windows-acl': 'Windows ACL sandbox library consumed by sandbox-local.',
   'packages/sdk/client': 'Client-process library; the spawned runtime owns plugin behavior.',
   'packages/sdk/protocol': 'Wire-protocol library with type declarations only.',
