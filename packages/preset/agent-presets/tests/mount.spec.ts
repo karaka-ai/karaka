@@ -40,10 +40,14 @@ const ROOTS = [
  * @param roster - roster config, defaulting to the fixture roots.
  * @returns the booted context.
  */
-async function harness(roster: Config = { default: 'standard', roots: ROOTS, includeShippedRoot: false, includeUserRoot: false }): Promise<Context> {
+async function harness(
+  roster: Config = { default: 'standard', roots: ROOTS, includeShippedRoot: false, includeUserRoot: false },
+  bareModuleBaseUrl?: string,
+): Promise<Context> {
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(FIXTURES).href + '/'
   await ctx.plugin(Loader)
+  if (bareModuleBaseUrl !== undefined) ctx.provide('loaderBareModuleBaseUrl', bareModuleBaseUrl)
   ctx.loader.builtins.include = Include
   // A preset outside this workspace cannot resolve `cordis-plugin-group` by
   // name, so the app registers it as a builtin; the fixtures compose the same
@@ -91,6 +95,47 @@ beforeEach(async () => {
 })
 
 describe('composing an agent from a preset', () => {
+  it('resolves a bare plugin package from the server project', async () => {
+    const project = await mkdtemp(join(tmpdir(), 'dsh-preset-project-plugin-'))
+    let scoped: Context | undefined
+    try {
+      const packageDir = join(project, 'node_modules', '@acme', 'customer-tools')
+      const presetRoot = join(project, 'presets')
+      const presetDir = join(presetRoot, 'customer')
+      await mkdir(packageDir, { recursive: true })
+      await mkdir(presetDir, { recursive: true })
+      await writeFile(join(packageDir, 'package.json'), JSON.stringify({
+        name: '@acme/customer-tools',
+        type: 'module',
+        exports: './index.js',
+      }))
+      await writeFile(join(packageDir, 'index.js'), [
+        'export function apply(ctx, config) {',
+        '  globalThis.__PRESET_PROJECT_PLUGIN__ = config.value',
+        '  ctx.effect(() => () => { delete globalThis.__PRESET_PROJECT_PLUGIN__ })',
+        '}',
+        '',
+      ].join('\n'))
+      await writeFile(
+        join(presetDir, COMPOSITION_FILE),
+        '- id: customer-tools\n  name: "@acme/customer-tools"\n  config:\n    value: mounted\n',
+      )
+      const projectBase = pathToFileURL(join(project, 'package.json')).href
+      scoped = await harness({
+        default: 'customer',
+        roots: [{ path: presetRoot, trust: 'user' }],
+        includeShippedRoot: false,
+        includeUserRoot: false,
+      }, projectBase)
+      await agentOn(scoped, 'sess-project-plugin')
+      expect((globalThis as { __PRESET_PROJECT_PLUGIN__?: string }).__PRESET_PROJECT_PLUGIN__).toBe('mounted')
+    } finally {
+      await scoped?.fiber.dispose()
+      delete (globalThis as { __PRESET_PROJECT_PLUGIN__?: string }).__PRESET_PROJECT_PLUGIN__
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
   it('hands an absolute plugin path to Node as a file URL', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-preset-absolute-plugin-'))
     const presetDir = join(root, 'absolute')

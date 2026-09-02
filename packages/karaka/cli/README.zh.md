@@ -1,5 +1,5 @@
 ---
-description: "用于创建 Agent 工作区并启动其持久 DSH profile 的 Karaka CLI。"
+description: "用于创建 Agent 项目并启动其已安装 runtime 的 Karaka CLI。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`@karaka/cli` 把工作区创建与应用 SDK 分开。`karaka init` 创建 Cordis 部署 patch 和一个 Agent Preset，且不覆盖已有文件。`karaka start` 使用持久 `karaka` profile 与项目本地 `.karaka` Harness home 启动现有 `dsh` binary。
+`@karaka/cli` 创建 Agent 项目并启动其已安装的 `@karaka/agent` runtime。`karaka init` 写入 Cordis 部署 patch 和一个 Agent Preset，且不覆盖已有文件。`karaka start` 使用项目私有的 `.karaka` home 在前台运行 Agent。
 
 ## 目录
 
@@ -22,12 +22,14 @@ kind: "package-reference"
 ## 命令
 
 - `karaka init --dir <path>` 创建 Agent 工作区；默认路径为 `apps/agents`。
-- `karaka start --config <path>` 会准备项目本地 `.karaka` home、让 Karaka bundle 与已安装的运行时依赖对 Agent Preset 可见，然后委托给 `dsh` 启动；默认 patch 为 `karaka.cordis.yml`。
+- `karaka start --config <path>` 准备项目本地 `.karaka` home 并启动 `@karaka/agent/bin`；默认 patch 为 `karaka.cordis.yml`。
+
+Agent Preset 可以加载内置 `@karaka/agent/*` 插件、项目中的相对 JavaScript 文件或项目安装的可选包。
 
 <a id="model-experience"></a>
 ## 模型体验
 
-无，因为 CLI 只选择 bundle 与 patch，不贡献提示词或工具定义。
+无，因为 CLI 只选择 Agent executable 与部署 patch，不贡献提示词或工具定义。
 
 #### KV Cache 影响
 
@@ -37,7 +39,7 @@ kind: "package-reference"
 ## 已知限制与延期工作
 
 - **仅前台进程**——CLI 不负责 daemon、监控副本或配置反向代理。
-- **项目本地 Harness home**——当进程本地持久数据需要跨主机替换保留时，运维者必须挂载或备份 `.karaka`。
+- **项目本地 Agent home**——当进程本地持久数据需要跨主机替换保留时，运维者必须挂载或备份 `.karaka`。
 
 <a id="dev-note"></a>
 ### 开发备注

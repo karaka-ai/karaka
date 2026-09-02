@@ -153,9 +153,16 @@ function packageInstalled(name: string, base: string): boolean {
  * @param row - the classified specifier, from {@link classifyRowSpecifier}.
  * @param presetBase - directory URL a preset-relative specifier resolves against.
  * @param harnessBase - base URL a package name resolves against.
+ * @param builtins - module names the host supplies directly to its Loader.
  * @returns true when the row names something that can be imported.
  */
-async function rowResolves(row: RowSpecifier, presetBase: string, harnessBase: string): Promise<boolean> {
+async function rowResolves(
+  row: RowSpecifier,
+  presetBase: string,
+  harnessBase: string,
+  builtins: ReadonlySet<string>,
+): Promise<boolean> {
+  if (builtins.has(row.specifier)) return true
   if (row.kind === 'builtin') return true
   if (row.kind === 'package') return isBuiltin(row.specifier) || packageInstalled(row.specifier, harnessBase)
   const url = row.kind === 'file' ? new URL(row.specifier) : new URL(row.specifier, presetBase)
@@ -188,6 +195,7 @@ interface UnresolvableRow {
  * @param rows - the parsed composition rows.
  * @param presetBase - directory URL a preset-relative specifier resolves against.
  * @param harnessBase - base URL a package name resolves against.
+ * @param builtins - module names the host supplies directly to its Loader.
  * @param at - row-path prefix for nested diagnostics, empty at the top level.
  * @returns one entry per unresolvable row, in composition order.
  */
@@ -195,6 +203,7 @@ async function unresolvableRows(
   rows: readonly unknown[],
   presetBase: string,
   harnessBase: string,
+  builtins: ReadonlySet<string>,
   at = '',
 ): Promise<UnresolvableRow[]> {
   const found: UnresolvableRow[] = []
@@ -203,10 +212,12 @@ async function unresolvableRows(
     if (Boolean(row.disabled)) continue
     const positional = at === '' ? `row ${String(index + 1)}` : `${at} row ${String(index + 1)}`
     if (row.group === true) {
-      found.push(...await unresolvableRows(row.config as readonly unknown[], presetBase, harnessBase, positional))
+      found.push(...await unresolvableRows(
+        row.config as readonly unknown[], presetBase, harnessBase, builtins, positional,
+      ))
       continue
     }
-    if (await rowResolves(classifyRowSpecifier(row.name), presetBase, harnessBase)) continue
+    if (await rowResolves(classifyRowSpecifier(row.name), presetBase, harnessBase, builtins)) continue
     const label = typeof row.id === 'string' && row.id !== '' ? `row "${row.id}"` : positional
     found.push({ label, name: row.name })
   }
@@ -220,9 +231,14 @@ async function unresolvableRows(
  * that the loader would accept.
  * @param path - absolute path of the composition file.
  * @param harnessBase - base URL a row's package name resolves against.
+ * @param builtins - module names the host supplies directly to its Loader.
  * @returns one human-readable reason, or undefined when the file is loadable.
  */
-async function compositionProblem(path: string, harnessBase: string): Promise<string | undefined> {
+async function compositionProblem(
+  path: string,
+  harnessBase: string,
+  builtins: ReadonlySet<string>,
+): Promise<string | undefined> {
   let content: string
   try {
     content = await readFile(path, 'utf8')
@@ -246,7 +262,7 @@ async function compositionProblem(path: string, harnessBase: string): Promise<st
   // The composition's own directory, exactly as `Include` derives it, so a
   // row naming a file the preset ships resolves the way the mount will.
   const presetBase = new URL('.', pathToFileURL(path)).href
-  const unresolvable = await unresolvableRows(rows as readonly unknown[], presetBase, harnessBase)
+  const unresolvable = await unresolvableRows(rows as readonly unknown[], presetBase, harnessBase, builtins)
   const [first] = unresolvable
   if (first === undefined) return undefined
   if (unresolvable.length === 1) {
@@ -287,9 +303,14 @@ async function isFile(path: string): Promise<boolean> {
  * @param root - the directory and the trust its presets inherit.
  * @param harnessBase - base URL a row's package name resolves against; the
  * caller's own `ctx.baseUrl`, which is where the installed harness lives.
+ * @param builtins - module names the host supplies directly to its Loader.
  * @returns the root's presets ordered by id.
  */
-export async function scanRoot(root: PresetRoot, harnessBase: string): Promise<AgentPreset[]> {
+export async function scanRoot(
+  root: PresetRoot,
+  harnessBase: string,
+  builtins: ReadonlySet<string> = new Set(),
+): Promise<AgentPreset[]> {
   const dir = resolve(expandHomePath(root.path))
   let children
   try {
@@ -304,7 +325,7 @@ export async function scanRoot(root: PresetRoot, harnessBase: string): Promise<A
     const directory = join(dir, child.name)
     const path = join(directory, COMPOSITION_FILE)
     const broken = await isFile(path)
-      ? await compositionProblem(path, harnessBase)
+      ? await compositionProblem(path, harnessBase, builtins)
       : `the composition file ${COMPOSITION_FILE} is missing — the directory still occupies the id; delete it or restore the file`
     // Display text only, and never fatal: a preset with unreadable metadata
     // still mounts, it just shows its id.
@@ -326,15 +347,17 @@ export async function scanRoot(root: PresetRoot, harnessBase: string): Promise<A
  * Scan every root in precedence order.
  * @param roots - roots in precedence order; an earlier root wins a duplicate id.
  * @param harnessBase - base URL a row's package name resolves against.
+ * @param builtins - module names the host supplies directly to its Loader.
  * @returns every discovered preset, first-root-wins per id.
  */
 export async function discoverPresets(
   roots: readonly PresetRoot[],
   harnessBase: string,
+  builtins: ReadonlySet<string> = new Set(),
 ): Promise<AgentPreset[]> {
   const byId = new Map<string, AgentPreset>()
   for (const root of roots) {
-    for (const preset of await scanRoot(root, harnessBase)) {
+    for (const preset of await scanRoot(root, harnessBase, builtins)) {
       if (byId.has(preset.id)) continue
       byId.set(preset.id, preset)
     }

@@ -22,7 +22,7 @@ Application backend                         Karaka process
 
 - [应用 SDK](packages/karaka/sdk/README.zh.md)——发送聊天请求，并将后端函数暴露为工具。
 - [Karaka CLI](packages/karaka/cli/README.zh.md)——创建 agent 工作区并启动持久化服务器。
-- [Karaka harness](packages/karaka/harness/README.zh.md)——查看默认服务器组合与安全策略。
+- [Karaka agent 运行时](packages/karaka/agent/README.zh.md)——查看默认服务器组合与安全策略。
 - [架构](docs/architecture.zh.md#karaka-application-runtime)——了解 agent 定义、身份、持久化与进程所有权。
 - [Karaka 包](packages/karaka/README.zh.md)——浏览完整包系列。
 

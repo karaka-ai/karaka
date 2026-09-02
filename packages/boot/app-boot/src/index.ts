@@ -24,6 +24,8 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Harness-home path resolver available to Loader `!!js` config expressions. */
     dshHomePath?: typeof dshHomePath
+    /** Base URL used for bare packages while relative rows stay config-owned. */
+    loaderBareModuleBaseUrl?: string
   }
 }
 
@@ -492,7 +494,7 @@ function groupedDump(
  * @param ctx - context carrying an initialized Loader service.
  * @param absoluteConfigPath - absolute YAML or JSON configuration path.
  * @param patches - initial app and user patches, applied in order.
- * @param bareModuleBaseUrl - optional installed-host base for bare package
+ * @param bareModuleBaseUrl - optional host-selected base for bare package
  * names; relative names continue to resolve beside the configuration file.
  * @returns the created root Include entry, or `undefined` when a surface
  * disposed the whole tree (taking the Loader service with it) while the
@@ -504,10 +506,13 @@ export async function mountRootInclude(
   patches: readonly PatchOptions[] = [],
   bareModuleBaseUrl?: string,
 ): Promise<Entry | undefined> {
+  if (bareModuleBaseUrl !== undefined) ctx.provide('loaderBareModuleBaseUrl', bareModuleBaseUrl)
   ctx.loader.builtins.include = bareModuleBaseUrl === undefined
     ? Include
     : class HostResolvedRootInclude extends Include {
       override import(name: string, getOuterStack?: () => string[]): unknown {
+        const bundled = this.ctx.loader.builtins[name]
+        if (bundled !== undefined) return bundled
         const specifier = isAbsolute(name) ? pathToFileURL(name).href : name
         if (name.startsWith('.') || name.startsWith('cordis:')) return super.import(specifier, getOuterStack)
         const internal = this.ctx.loader.internal
@@ -760,7 +765,7 @@ export async function assertEntriesActivated(ctx: Context, binName: string): Pro
  * @param patches - optional overlay patches applied over the included tree
  * (see {@link loadOptionalPatches}); an empty list mounts none.
  * @param prepare - optional host setup run after Loader installation and before any config-tree entry mounts.
- * @param bareModuleBaseUrl - optional installed-host base for bare package
+ * @param bareModuleBaseUrl - optional host-selected base for bare package
  * names; use it when the host, rather than the configuration project, owns the
  * complete plugin set.
  * @returns the root context once every entry has started, or as soon as a

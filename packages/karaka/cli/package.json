@@ -1,6 +1,6 @@
 {
   "name": "@karaka/cli",
-  "description": "Karaka agent-workspace scaffolding and dsh profile launcher",
+  "description": "Karaka Agent project scaffolding and runtime launcher",
   "version": "0.1.2-alpha.2",
   "repository": {
     "type": "git",
@@ -20,21 +20,11 @@
   "license": "MIT",
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@deepseek-ai/dsh": "workspace:^",
-    "@deepseek-ai/dsh-app-boot": "workspace:^",
-    "@karaka/harness": "workspace:^",
+    "@karaka/agent": "workspace:^",
     "commander": "^15.0.0"
-  },
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@karaka/sdk": "workspace:^",
-    "zod": "^4.4.3"
+    "@deepseek-ai/dsh-invariants": "workspace:^"
   }
 }

@@ -1,4 +1,4 @@
-/** Keyless application-SDK chat through the shipped persistent Karaka profile. */
+/** Keyless application-SDK chat through the shipped persistent Karaka Agent. */
 
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
@@ -18,9 +18,8 @@ import {
   parseSnapshotManifest,
   type NormalizeContext,
 } from '@deepseek-ai/dsh-session-snapshot'
-import { resolveExampleLaunch } from '@deepseek-ai/dsh-loader-smoke'
 import { createKarakaClient } from '@karaka/sdk'
-import { initKarakaProject, prepareKarakaProfile } from '@karaka/cli'
+import { initKarakaProject, prepareKarakaRuntime } from '@karaka/cli'
 import { execa, type ResultPromise } from 'execa'
 import { describe, expect, it } from 'vitest'
 
@@ -29,8 +28,6 @@ const scenarioDir = fileURLToPath(new URL('./application-chat/', import.meta.url
 const fixturePath = join(scenarioDir, 'session.jsonl')
 const promptPath = join(scenarioDir, 'system-prompt.expected.md')
 const schemasPath = join(scenarioDir, 'tool-schemas.expected.json')
-const dshBin = join(repoRoot, 'apps/cli/src/bin.ts')
-const tsconfigPath = join(repoRoot, 'tsconfig.json')
 const mode = process.env.DSH_SNAPSHOT ?? 'replay'
 
 interface JsonRecord {
@@ -84,8 +81,15 @@ async function waitForApplicationApi(endpoint: string, child: ResultPromise): Pr
       const response = await fetch(`${endpoint}/v1/agents`, {
         headers: { authorization: 'Bearer chat-secret' },
       })
-      if (response.ok) return
-      lastError = new Error(`application API returned HTTP ${String(response.status)}`)
+      if (response.ok) {
+        const agents: unknown = await response.json()
+        if (Array.isArray(agents) && agents.some(agent => (
+          typeof agent === 'object' && agent !== null && 'id' in agent && agent.id === 'support'
+        ))) return
+        lastError = new Error('application API has not discovered the support agent')
+      } else {
+        lastError = new Error(`application API returned HTTP ${String(response.status)}`)
+      }
     } catch (error: unknown) {
       lastError = error
     }
@@ -94,7 +98,7 @@ async function waitForApplicationApi(endpoint: string, child: ResultPromise): Pr
   child.kill('SIGTERM')
   const result = await child
   throw new Error(
-    `Karaka application API did not become ready within 15 seconds. stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    `Karaka application API did not discover its support agent within 15 seconds. stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     { cause: lastError },
   )
 }
@@ -128,14 +132,14 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
     createReadyPlugin(project),
     linkReplayPlugin(project),
     writeFile(join(project, 'agents/support/agent.cordis.yml'), `- id: persona
-  name: '@deepseek-ai/dsh-persona'
+  name: '@karaka/agent/persona'
   config:
     text: You are a helpful support agent.
     complete: true
     includeRuntimeContext: false
 
 - id: tools
-  name: '@deepseek-ai/dsh-agent-tool-presentation'
+  name: '@karaka/agent/agent-tool-presentation'
   config:
     mode: native
     allow: []
@@ -181,14 +185,11 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
 async function startKaraka(project: string): Promise<RunningKaraka> {
   const readyFile = join(project, 'karaka-ready')
   await prepareProject(project, readyFile)
-  const prepared = prepareKarakaProfile(project)
-  const launch = resolveExampleLaunch({
-    srcBin: dshBin,
-    configArgs: ['--profile', 'karaka', '--patch', join(project, 'karaka.cordis.yml')],
-    tsconfigPath,
-    sourceImport: 'tsx/esm',
+  const prepared = prepareKarakaRuntime(project)
+  const child = execa(process.execPath, [prepared.bin, '--config', join(project, 'karaka.cordis.yml')], {
+    cwd: project,
     env: {
-      DSH_HOME: prepared.home,
+      KARAKA_HOME: prepared.home,
       DSH_SNAPSHOT: 'replay',
       DSH_SNAPSHOT_FILE: fixturePath,
       DSH_TELEMETRY_DISABLED: '1',
@@ -198,10 +199,6 @@ async function startKaraka(project: string): Promise<RunningKaraka> {
       KARAKA_SNAPSHOT_TOOL_TOKEN: 'tool-secret',
       NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
     },
-  })
-  const child = execa(launch.command, launch.args, {
-    cwd: project,
-    env: launch.env,
     reject: false,
     timeout: 30_000,
     killSignal: 'SIGKILL',
@@ -293,7 +290,7 @@ describe('Karaka recorded-session snapshot', () => {
     }
   })
 
-  it.skipIf(mode === 'record')('replays an authenticated application chat through dsh --profile karaka', async () => {
+  it.skipIf(mode === 'record')('replays an authenticated application chat through @karaka/agent', async () => {
     const manifestPath = join(scenarioDir, 'snapshot.yml')
     const manifest = parseSnapshotManifest(await readFile(manifestPath, 'utf8'), manifestPath)
     expect(manifest).toMatchObject({ profile: 'karaka', recording: 'authored' })

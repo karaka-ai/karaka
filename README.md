@@ -22,7 +22,7 @@ The application authenticates its users and sends trusted tenant and user identi
 
 - [Application SDK](packages/karaka/sdk/README.md) — send chat requests and expose backend functions as tools.
 - [Karaka CLI](packages/karaka/cli/README.md) — create an agent workspace and start the persistent server.
-- [Karaka harness](packages/karaka/harness/README.md) — inspect the default server composition and security posture.
+- [Karaka agent runtime](packages/karaka/agent/README.md) — inspect the default server composition and security posture.
 - [Architecture](docs/architecture.md#karaka-application-runtime) — understand agent definitions, identity, persistence, and process ownership.
 - [Karaka packages](packages/karaka/README.md) — browse the complete package family.
 

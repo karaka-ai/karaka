@@ -11,10 +11,24 @@ import { describe, expect, it } from 'vitest'
 import {
   bundleManifestPaths,
   bundlePluginDependencyErrors,
+  karakaAgentBuiltinErrors,
   metadataExpressionErrors,
   packageTestFixtureDependencyErrors,
   packageTestPluginDependencyErrors,
 } from './verify-cordis-config.ts'
+
+describe('Karaka Agent embedded plugin aliases', () => {
+  it('accepts registered aliases and rejects names absent from the bundle', () => {
+    const file = 'packages/karaka/agent/cordis.patch.yml'
+    expect(karakaAgentBuiltinErrors([
+      { file, name: '@karaka/agent/agent-loop' },
+      { file, name: '@karaka/agent/missing' },
+      { file, name: '@acme/project-plugin' },
+    ], new Set(['@karaka/agent/agent-loop']))).toEqual([
+      `${file}: @karaka/agent/missing is not registered in packages/karaka/agent/src/plugins.ts`,
+    ])
+  })
+})
 
 describe('verify-cordis-config metadata expressions', () => {
   it('accepts a disabled !!js expression', () => {

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   checkExperimentalDependencyIsolation,
   checkExperimentalManifest,
+  checkWorkspaceManifest,
   expectedDshPackageFiles,
   type WorkspaceManifest,
 } from './check-workspace-constraints.ts'
@@ -87,5 +88,26 @@ describe('package payload constraints', () => {
       'cordis.patch.yml',
       'lib/types/**/*.d.ts',
     ])
+  })
+})
+
+describe('Karaka publication boundary', () => {
+  it('publishes only the Agent, CLI, and SDK workspaces', () => {
+    expect(checkWorkspaceManifest({
+      dir: 'packages/karaka/agent',
+      manifest: {
+        name: '@karaka/agent',
+        publishConfig: { access: 'public' },
+        repository: {
+          type: 'git',
+          url: 'git+https://github.com/karaka-ai/karaka.git',
+          directory: 'packages/karaka/agent',
+        },
+      },
+    })).toEqual([])
+    expect(checkWorkspaceManifest({
+      dir: 'packages/karaka/server-auth',
+      manifest: { name: '@karaka/server-auth', private: true },
+    })).toEqual([])
   })
 })

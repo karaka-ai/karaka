@@ -154,7 +154,7 @@
     { "path": "./packages/karaka/mcp-application" },
     { "path": "./packages/karaka/transport-http" },
     { "path": "./packages/karaka/sdk" },
-    { "path": "./packages/karaka/harness" },
+    { "path": "./packages/karaka/agent" },
     { "path": "./packages/karaka/cli" },
     { "path": "./packages/api/settings-controller" },
     { "path": "./packages/api/workspace-controller/tsconfig.host.json" },

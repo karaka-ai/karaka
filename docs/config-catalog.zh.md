@@ -3635,6 +3635,6 @@ export interface Config {
 - `@deepseek-ai/dsh-util-values`（[`packages/util/values/src/index.ts`](../packages/util/values/src/index.ts)）
 - `@deepseek-ai/dsh-util-workspace-path`（[`packages/util/workspace-path/src/index.ts`](../packages/util/workspace-path/src/index.ts)）
 - `@deepseek-ai/dsh-win32-process`（[`packages/subprocess/win32-process/src/index.ts`](../packages/subprocess/win32-process/src/index.ts)）
+- `@karaka/agent`（[`packages/karaka/agent/src/index.ts`](../packages/karaka/agent/src/index.ts)）
 - `@karaka/cli`（[`packages/karaka/cli/src/index.ts`](../packages/karaka/cli/src/index.ts)）
-- `@karaka/harness`（[`packages/karaka/harness/src/index.ts`](../packages/karaka/harness/src/index.ts)）
 - `@karaka/sdk`（[`packages/karaka/sdk/src/index.ts`](../packages/karaka/sdk/src/index.ts)）

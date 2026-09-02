@@ -60,8 +60,10 @@ export interface PackageDependencyFacts {
   readonly hostRuntimeExportUses: readonly HostRuntimeExportUse[]
   readonly peerRequiredHostDependencies: ReadonlySet<string>
   readonly configurationOnlyDevDependencies: ReadonlySet<string>
+  readonly configurationOnlyRuntimeDependencies?: ReadonlySet<string>
   readonly clientInject: ReadonlySet<string>
   readonly cordisDevelopmentOnly: boolean
+  readonly cordisRuntimeDependency?: boolean
 }
 
 /** One runtime export reached from a package's Host source closure. */
@@ -141,6 +143,7 @@ export function discoverPackageDependencyScope(
   const exclude = new Set(policy.clientFaceExclude)
   const host = new Set(policy.hostPackages)
   const cordisDevelopmentOnly = policy.cordisDevelopmentOnlyPackages ?? []
+  const cordisRuntimeDependencies = policy.cordisRuntimeDependencyPackages ?? []
 
   for (const [field, values] of [
     ['clientFaceInclude', policy.clientFaceInclude],
@@ -158,6 +161,16 @@ export function discoverPackageDependencyScope(
   for (const name of cordisDevelopmentOnly) {
     if (!byName.has(name)) violations.push(`cordisDevelopmentOnlyPackages names unknown release package ${name}`)
     if (!host.has(name)) violations.push(`cordisDevelopmentOnlyPackages names unmanaged package ${name}`)
+  }
+  for (const name of duplicates(cordisRuntimeDependencies)) {
+    violations.push(`cordisRuntimeDependencyPackages lists ${name} more than once`)
+  }
+  for (const name of cordisRuntimeDependencies) {
+    if (!byName.has(name)) violations.push(`cordisRuntimeDependencyPackages names unknown release package ${name}`)
+    if (!host.has(name)) violations.push(`cordisRuntimeDependencyPackages names unmanaged package ${name}`)
+    if (cordisDevelopmentOnly.includes(name)) {
+      violations.push(`${name} appears in both cordisDevelopmentOnlyPackages and cordisRuntimeDependencyPackages`)
+    }
   }
   for (const name of include) {
     if (exclude.has(name)) violations.push(`${name} appears in both clientFaceInclude and clientFaceExclude`)
@@ -375,8 +388,12 @@ export function readPackageDependencyFacts(
     configurationOnlyDevDependencies: new Set(
       policy.configurationOnlyDevDependencies[pkg.manifest.name ?? ''] ?? [],
     ),
+    configurationOnlyRuntimeDependencies: new Set(
+      policy.configurationOnlyRuntimeDependencies?.[pkg.manifest.name ?? ''] ?? [],
+    ),
     clientInject: new Set(inject.map(packageNameOf).filter(name => name !== undefined)),
     cordisDevelopmentOnly: policy.cordisDevelopmentOnlyPackages?.includes(pkg.name) === true,
+    cordisRuntimeDependency: policy.cordisRuntimeDependencyPackages?.includes(pkg.name) === true,
   }
 }
 
@@ -467,6 +484,9 @@ export function readPackageDependencyState(
       ...Object.keys(policy.configurationOnlyDevDependencies)
         .filter(name => !selectedNames.has(name))
         .map(name => `configurationOnlyDevDependencies names unmanaged package ${name}`),
+      ...Object.keys(policy.configurationOnlyRuntimeDependencies ?? {})
+        .filter(name => !selectedNames.has(name))
+        .map(name => `configurationOnlyRuntimeDependencies names unmanaged package ${name}`),
     ].sort(),
     workspaceNames,
   }
@@ -488,9 +508,11 @@ export function expectedPackageDependencies(
     expected.set(name, { section, origins: new Set([...(current?.origins ?? []), origin]) })
   }
 
-  expected.set(CORDIS, facts.cordisDevelopmentOnly
-    ? { section: 'devDependencies', origins: new Set(['development-only invariant companion types']) }
-    : { section: 'peer-dev', origins: new Set(['shared Cordis runtime']) })
+  expected.set(CORDIS, facts.cordisRuntimeDependency === true
+    ? { section: 'dependencies', origins: new Set(['installed Cordis runtime']) }
+    : facts.cordisDevelopmentOnly
+      ? { section: 'devDependencies', origins: new Set(['development-only invariant companion types']) }
+      : { section: 'peer-dev', origins: new Set(['shared Cordis runtime']) })
   for (const [name, paths] of facts.allSourceUses) {
     if (!facts.workspaceNames.has(name)) continue
     for (const path of paths) add(name, 'devDependencies', path)
@@ -500,6 +522,9 @@ export function expectedPackageDependencies(
   }
   for (const name of facts.configurationOnlyDevDependencies) {
     if (facts.workspaceNames.has(name)) add(name, 'devDependencies', 'configured development-only relationship')
+  }
+  for (const name of facts.configurationOnlyRuntimeDependencies ?? []) {
+    if (facts.workspaceNames.has(name)) add(name, 'dependencies', 'published bundle external')
   }
   for (const name of Object.keys(facts.manifest.peerDependencies ?? {})) {
     if (name !== CORDIS) add(name, 'devDependencies', 'existing non-Cordis peer')
