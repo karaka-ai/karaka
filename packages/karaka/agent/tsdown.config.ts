@@ -105,9 +105,6 @@ function writePublicEntries(modules: readonly PublicModule[]): Record<string, st
   return entries
 }
 
-const publicModules = readPublicModules()
-const publicEntries = writePublicEntries(publicModules)
-
 /** Remove prior root JavaScript outputs without deleting tsc's `lib/types` inputs. */
 const cleanRuntimeOutputs = {
   name: 'karaka-agent-clean-runtime-outputs',
@@ -176,9 +173,14 @@ const shared = {
 
 /** Bundle every private DSH module into the public Agent artifact. */
 export default defineConfig(({ env }) => {
+  if (env?.DSH_BUILD_FACE === 'client') return { entry: '' }
+  if (env?.DSH_BUILD_FACE !== undefined && env.DSH_BUILD_FACE !== 'host') {
+    throw new Error('Karaka Agent DSH build face must be host or client')
+  }
   if (env?.KARAKA_AGENT_BUILD !== undefined && env.KARAKA_AGENT_BUILD !== 'runtime') {
     throw new Error('Karaka Agent build requires the runtime mode')
   }
+  const publicEntries = writePublicEntries(readPublicModules())
   return {
     ...shared,
     entry: {
