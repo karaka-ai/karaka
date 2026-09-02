@@ -320,7 +320,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     if (manifest.publishConfig?.access !== 'public') {
       errors.push(`${label}: release member must set publishConfig.access to "public"`)
     }
-    const expectedRepositoryUrl = manifest.name?.startsWith('@karaka/') === true
+    const expectedRepositoryUrl = manifest.name?.startsWith('@karaka-ai/') === true
       ? karakaPublishedRepositoryUrl
       : publishedRepositoryUrl
     if (manifest.repository?.type !== 'git'

@@ -3,13 +3,13 @@ description: "Authenticated discovery and invocation of application-owned MCP to
 kind: "package-reference"
 ---
 
-# @karaka/mcp-application
+# @karaka-ai/mcp-application
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-`@karaka/mcp-application` connects Karaka to one application's Streamable HTTP MCP endpoint. It resolves outbound authorization through `ctx.serverAuth`, exposes only tools explicitly selected by an Agent Preset, and forwards the executing Session's application, tenant, user, and chat identifiers with each call.
+`@karaka-ai/mcp-application` connects Karaka to one application's Streamable HTTP MCP endpoint. It resolves outbound authorization through `ctx.serverAuth`, exposes only tools explicitly selected by an Agent Preset, and forwards the executing Session's application, tenant, user, and chat identifiers with each call.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Mount one row in the deployment composition for each application tool endpoint. 
 
 ```yaml
 - id: billing-tools
-  name: '@karaka/mcp-application'
+  name: '@karaka-ai/mcp-application'
   config:
     serverName: billing
     url: https://billing.internal/mcp

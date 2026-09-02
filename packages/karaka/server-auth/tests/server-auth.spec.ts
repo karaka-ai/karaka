@@ -1,7 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { ApplicationId } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
-import BearerServerAuth from '@karaka/server-auth'
+import BearerServerAuth from '@karaka-ai/server-auth'
 
 function credentials(values: Map<string, string>) {
   return {

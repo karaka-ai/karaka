@@ -34,7 +34,7 @@ for (let index = 0; index < queue.length; index += 1) {
         const path = relative(dirname(destination), target).replaceAll(sep, '/')
         return `${quote}${path.startsWith('.') ? path : `./${path}`}${quote}`
       })
-      .replace(/@deepseek-ai\/dsh-([a-z0-9-]+)/gu, '@karaka/agent/$1')
+      .replace(/@deepseek-ai\/dsh-([a-z0-9-]+)/gu, '@karaka-ai/agent/$1')
       .replace(/^\/\/# sourceMappingURL=.*\n?/gmu, '')
     writeFileSync(destination, rewritten.endsWith('\n') ? rewritten : `${rewritten}\n`)
   }

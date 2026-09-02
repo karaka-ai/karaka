@@ -17,10 +17,10 @@ import {
   KARAKA_APPLICATION_API_PATH,
   type ApplicationChatEvent,
   type ApplicationIdentity,
-} from '@karaka/sdk'
+} from '@karaka-ai/sdk'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type {} from '@karaka/server-auth'
+import type {} from '@karaka-ai/server-auth'
 
 export const name = 'karaka-transport-http'
 export const inject = ['serverAuth', 'sessionController', 'webServer']

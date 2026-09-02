@@ -17,7 +17,7 @@ const publicEntries = filesUnder(publicEntriesDir)
   .filter(path => path.endsWith('.ts'))
   .map(path => portableSubpath(relative(publicEntriesDir, path)).slice(0, -3))
 const aliases = [...readFileSync(resolve(packageDir, 'src/plugins.ts'), 'utf8')
-  .matchAll(/^  '@karaka\/agent\/([^']+)': plugin\d+,$/gmu)]
+  .matchAll(/^  '@karaka-ai\/agent\/([^']+)': plugin\d+,$/gmu)]
   .map(match => match[1])
 
 for (const subpath of publicEntries) {
@@ -27,7 +27,7 @@ for (const subpath of publicEntries) {
   }
 }
 for (const alias of aliases) {
-  if (!publicEntries.includes(alias)) throw new Error(`Loader alias @karaka/agent/${alias} has no public entry`)
+  if (!publicEntries.includes(alias)) throw new Error(`Loader alias @karaka-ai/agent/${alias} has no public entry`)
 }
 
 for (const path of filesUnder(libDir)) {
@@ -68,16 +68,16 @@ try {
   }
   execFileSync('tar', ['-xzf', archive, '-C', unpackDir])
 
-  const agentLink = resolve(project, 'node_modules/@karaka/agent')
+  const agentLink = resolve(project, 'node_modules/@karaka-ai/agent')
   mkdirSync(dirname(agentLink), { recursive: true })
   renameSync(resolve(unpackDir, 'package'), agentLink)
   linkDependencies(project, JSON.parse(readFileSync(resolve(agentLink, 'package.json'), 'utf8')).dependencies)
   writeFileSync(resolve(project, 'package.json'), '{"private":true,"type":"module"}\n')
 
-  verifyTypes(project, 'consumer.ts', `import { defineTool } from '@karaka/agent/tools'
-import Storage, { storageBackendServiceKey, type StorageBackend } from '@karaka/agent/storage'
-import { defineDomain } from '@karaka/agent/storage-domain'
-import type { SessionPersistence } from '@karaka/agent/session-persistence'
+  verifyTypes(project, 'consumer.ts', `import { defineTool } from '@karaka-ai/agent/tools'
+import Storage, { storageBackendServiceKey, type StorageBackend } from '@karaka-ai/agent/storage'
+import { defineDomain } from '@karaka-ai/agent/storage-domain'
+import type { SessionPersistence } from '@karaka-ai/agent/session-persistence'
 
 declare const backend: StorageBackend
 declare const persistence: SessionPersistence
@@ -86,8 +86,8 @@ void [defineTool, Storage, storageBackendServiceKey, defineDomain, backend, pers
   verifyTypes(project, 'session-projection-consumer.ts', `import type {
   SessionProjectionMap,
   SessionProjectionStateMap,
-} from '@karaka/agent/session-projection'
-import '@karaka/agent/subagent'
+} from '@karaka-ai/agent/session-projection'
+import '@karaka-ai/agent/subagent'
 
 type Assert<T extends true> = T
 type ClientProjectionsHaveHostState = Assert<
@@ -96,9 +96,9 @@ type ClientProjectionsHaveHostState = Assert<
 declare const proof: ClientProjectionsHaveHostState
 void proof
 `)
-  verifyTypes(project, 'deepseek-extension-consumer.ts', `import type { DeepSeekLlmApiExtensionMap } from '@karaka/agent/deepseek-llm-api-extensions'
-import '@karaka/agent/plugin-package-inventory-deepseek'
-import '@karaka/agent/session-log-deepseek'
+  verifyTypes(project, 'deepseek-extension-consumer.ts', `import type { DeepSeekLlmApiExtensionMap } from '@karaka-ai/agent/deepseek-llm-api-extensions'
+import '@karaka-ai/agent/plugin-package-inventory-deepseek'
+import '@karaka-ai/agent/session-log-deepseek'
 
 declare const packages: DeepSeekLlmApiExtensionMap['dsh_plugin_packages']
 declare const sessionLog: DeepSeekLlmApiExtensionMap['dsh_session_log']
@@ -107,7 +107,7 @@ void [packages, sessionLog]
 
   const pluginPath = resolve(project, 'plugins/storage-memory.mjs')
   mkdirSync(dirname(pluginPath), { recursive: true })
-  writeFileSync(pluginPath, `import { storageBackendServiceKey } from '@karaka/agent/storage'
+  writeFileSync(pluginPath, `import { storageBackendServiceKey } from '@karaka-ai/agent/storage'
 import { writeFileSync } from 'node:fs'
 
 export const name = 'storage-memory'
@@ -146,9 +146,9 @@ export function apply(ctx) {
   }
 }
 `)
-  writeFileSync(resolve(project, 'run.mjs'), `import { Context } from '@karaka/agent/cordis'
-import Storage from '@karaka/agent/storage'
-import * as domainPlugin from '@karaka/agent/storage-domain'
+  writeFileSync(resolve(project, 'run.mjs'), `import { Context } from '@karaka-ai/agent/cordis'
+import Storage from '@karaka-ai/agent/storage'
+import * as domainPlugin from '@karaka-ai/agent/storage-domain'
 
 const localPlugin = await import('./plugins/storage-memory.mjs')
 const ctx = new Context()

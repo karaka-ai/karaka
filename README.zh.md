@@ -4,7 +4,7 @@
 
 Karaka 是面向应用后端的持久化多 agent（智能体）服务器。每个具名 agent 都是一个 DeepSeek Harness Agent Preset，其 Cordis 插件组合提供提示词、工具、skill（技能）、模型行为和其他运行时能力。
 
-应用后端使用 `@karaka/sdk` 向 Karaka 认证、与可用 agent 聊天，并将应用函数暴露为带认证的 MCP 工具。Karaka 独立运行，保存持久化聊天状态，并且只调用该 agent 选中的应用工具。
+应用后端使用 `@karaka-ai/sdk` 向 Karaka 认证、与可用 agent 聊天，并将应用函数暴露为带认证的 MCP 工具。Karaka 独立运行，保存持久化聊天状态，并且只调用该 agent 选中的应用工具。
 
 Karaka 构建于开源 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 之上，该项目由 [DeepSeek AI](https://deepseek.com) 开发。Karaka 保留了由 [Cordis](https://github.com/cordiverse/cordis) 驱动的 Harness **一切皆插件**架构。
 
@@ -12,8 +12,8 @@ Karaka 构建于开源 [DeepSeek Harness](https://github.com/deepseek-ai/deepsee
 
 ```text
 Application backend                         Karaka process
-@karaka/sdk chat client  -- HTTP / SSE -->  named Agent Preset
-@karaka/sdk MCP tools     <--    MCP    --  selected application tools
+@karaka-ai/sdk chat client  -- HTTP / SSE -->  named Agent Preset
+@karaka-ai/sdk MCP tools     <--    MCP    --  selected application tools
 ```
 
 应用负责认证自己的用户，并发送可信的租户与用户标识。Karaka 认证应用服务器，把这些标识绑定到持久化聊天，并在 agent 调用应用工具时转发它们。安装 SDK 不会启动进程或监听端口。

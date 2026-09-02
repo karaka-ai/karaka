@@ -1,5 +1,5 @@
 {
-  "name": "@karaka/agent",
+  "name": "@karaka-ai/agent",
   "description": "Self-contained Karaka agent server runtime",
   "version": "0.1.2-alpha.2",
   "repository": {
@@ -206,8 +206,8 @@
     "@deepseek-ai/dsh-workflow": "workspace:^",
     "@deepseek-ai/dsh-workflow-worker-thread": "workspace:^",
     "@deepseek-ai/dsh-workspace": "workspace:^",
-    "@karaka/mcp-application": "workspace:^",
-    "@karaka/server-auth": "workspace:^",
-    "@karaka/transport-http": "workspace:^"
+    "@karaka-ai/mcp-application": "workspace:^",
+    "@karaka-ai/server-auth": "workspace:^",
+    "@karaka-ai/transport-http": "workspace:^"
   }
 }

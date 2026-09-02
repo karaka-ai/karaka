@@ -3,7 +3,7 @@ import { createConnection } from 'node:net'
 import { Context } from '@deepseek-ai/cordis'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import * as TransportHttp from '@karaka/transport-http'
+import * as TransportHttp from '@karaka-ai/transport-http'
 
 const roots: Context[] = []
 

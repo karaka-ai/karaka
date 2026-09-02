@@ -3,13 +3,13 @@ description: "用于带认证 Karaka 聊天调用，以及在现有应用 HTTP �
 kind: "package-library"
 ---
 
-# @karaka/sdk
+# @karaka-ai/sdk
 
 [English](README.md) | 中文
 
 ## 概述
 
-`@karaka/sdk` 让应用后端可以与运行中 Karaka 服务器里的 agent（智能体）聊天，并将应用函数暴露为带认证的 MCP 工具。`createKarakaClient()` 负责出站 JSON/SSE 调用；`createKarakaToolHost()` 负责显式工具注册表以及用于现有 Node HTTP 路由的 handler。SDK 不启动进程、不监听端口，也不依赖 Cordis、Agent、Session 或 Harness 运行时。
+`@karaka-ai/sdk` 让应用后端可以与运行中 Karaka 服务器里的 agent（智能体）聊天，并将应用函数暴露为带认证的 MCP 工具。`createKarakaClient()` 负责出站 JSON/SSE 调用；`createKarakaToolHost()` 负责显式工具注册表以及用于现有 Node HTTP 路由的 handler。SDK 不启动进程、不监听端口，也不依赖 Cordis、Agent、Session 或 Harness 运行时。
 
 ## 目录
 
@@ -25,14 +25,14 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
-将 `@karaka/sdk` 和 `zod` 声明为应用依赖，然后在已经认证用户并拥有业务操作的后端中导入 SDK。通过 `@karaka/cli` 单独运行 Karaka 服务器；不要在 `cordis.yml` 中挂载 SDK。
+将 `@karaka-ai/sdk` 和 `zod` 声明为应用依赖，然后在已经认证用户并拥有业务操作的后端中导入 SDK。通过 `@karaka-ai/cli` 单独运行 Karaka 服务器；不要在 `cordis.yml` 中挂载 SDK。
 
 ### 与 agent 聊天
 
 创建一个部署客户端，再为每个后端请求绑定可信的租户与用户身份：
 
 ```ts
-import { createKarakaClient } from '@karaka/sdk'
+import { createKarakaClient } from '@karaka-ai/sdk'
 
 const karaka = createKarakaClient({
   endpoint: process.env.KARAKA_ENDPOINT!,
@@ -57,7 +57,7 @@ for await (const event of user.chats.stream({ chatId: chat.chatId })) {
 显式注册每个可调用函数，并导出 handler，供应用服务器挂载到自己的路由：
 
 ```ts
-import { createKarakaToolHost } from '@karaka/sdk'
+import { createKarakaToolHost } from '@karaka-ai/sdk'
 import { z } from 'zod'
 
 const echoInput = z.object({ text: z.string() }).strict()

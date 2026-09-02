@@ -1,5 +1,5 @@
 {
-  "name": "@karaka/cli",
+  "name": "@karaka-ai/cli",
   "description": "Karaka Agent project scaffolding and runtime launcher",
   "version": "0.1.2-alpha.2",
   "repository": {
@@ -20,7 +20,7 @@
   "license": "MIT",
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@karaka/agent": "workspace:^",
+    "@karaka-ai/agent": "workspace:^",
     "commander": "^15.0.0"
   },
   "devDependencies": {

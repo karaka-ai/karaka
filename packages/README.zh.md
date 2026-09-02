@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会话与 agent 循环、面向模型的工具、shell 与文件系统执行、Web 访问、subagent 等等。把本页当作顶层地图使用：先找到拥有某能力的组，再打开其 README 查看包列表。Harness 包使用 `@deepseek-ai/dsh-*`；面向应用的 Karaka 组使用 `@karaka/*`。每个包只属于一个组，该组的 README 是对应能力系列的权威包映射。
+harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会话与 agent 循环、面向模型的工具、shell 与文件系统执行、Web 访问、subagent 等等。把本页当作顶层地图使用：先找到拥有某能力的组，再打开其 README 查看包列表。Harness 包使用 `@deepseek-ai/dsh-*`；面向应用的 Karaka 组使用 `@karaka-ai/*`。每个包只属于一个组，该组的 README 是对应能力系列的权威包映射。
 
 ## 目录
 

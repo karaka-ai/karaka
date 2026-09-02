@@ -8,7 +8,7 @@ import {
   karakaVersion,
   ownKarakaChild,
   prepareKarakaRuntime,
-} from '@karaka/cli'
+} from '@karaka-ai/cli'
 
 describe('karaka init', () => {
   it('reports the installed CLI version used by release probes', () => {
@@ -22,8 +22,8 @@ describe('karaka init', () => {
     expect(readFileSync(join(root, 'karaka.cordis.yml'), 'utf8')).not.toContain('@deepseek-ai/')
     expect(readFileSync(join(root, 'agents/support/preset.yml'), 'utf8')).toContain('name: Support')
     const agent = readFileSync(join(root, 'agents/support/agent.cordis.yml'), 'utf8')
-    expect(agent).toContain('@karaka/agent/persona')
-    expect(agent).toContain('@karaka/agent/agent-tool-presentation')
+    expect(agent).toContain('@karaka-ai/agent/persona')
+    expect(agent).toContain('@karaka-ai/agent/agent-tool-presentation')
     expect(agent).toContain('allow: []')
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('.karaka/\n')
     expect(statSync(join(root, 'plugins')).isDirectory()).toBe(true)
@@ -34,7 +34,7 @@ describe('karaka init', () => {
     expect(readFileSync(join(root, 'agents/support/agent.cordis.yml'), 'utf8')).toBe('# developer edit\n')
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('node_modules/\n.karaka/\n')
     expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))).toMatchObject({
-      dependencies: { '@karaka/agent': '0.1.2-alpha.2', '@karaka/cli': '0.1.2-alpha.2' },
+      dependencies: { '@karaka-ai/agent': '0.1.2-alpha.2', '@karaka-ai/cli': '0.1.2-alpha.2' },
     })
   })
 

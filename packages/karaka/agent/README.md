@@ -3,13 +3,13 @@ description: "Self-contained Karaka Agent runtime with bundled Cordis plugins, p
 kind: "package-library"
 ---
 
-# @karaka/agent
+# @karaka-ai/agent
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-`@karaka/agent` is the complete Karaka Agent server runtime. Its executable bundles the Karaka-maintained Agent, Session, LLM, tool, persistence, preset, authentication, and HTTP transport implementations into one published package; an installed runtime does not resolve `@deepseek-ai/dsh-*` packages. A server project can still compose an Agent from bundled `@karaka/agent/*` aliases, relative plugin files in the project, and optional npm plugin packages installed by that project. `@karaka/cli` is the normal launcher, while `@karaka/agent/bin` is the stable process entry point it delegates to.
+`@karaka-ai/agent` is the complete Karaka Agent server runtime. Its executable bundles the Karaka-maintained Agent, Session, LLM, tool, persistence, preset, authentication, and HTTP transport implementations into one published package; an installed runtime does not resolve `@deepseek-ai/dsh-*` packages. A server project can still compose an Agent from bundled `@karaka-ai/agent/*` aliases, relative plugin files in the project, and optional npm plugin packages installed by that project. `@karaka-ai/cli` is the normal launcher, while `@karaka-ai/agent/bin` is the stable process entry point it delegates to.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ English | [中文](README.zh.md)
 
 ### When to use it
 
-Install this package in a server project when that project must run Karaka. Prefer `karaka start` for normal operation; use the executable directly when another process supervisor already owns launch and shutdown. Application backends use `@karaka/sdk` instead and do not import this runtime.
+Install this package in a server project when that project must run Karaka. Prefer `karaka start` for normal operation; use the executable directly when another process supervisor already owns launch and shutdown. Application backends use `@karaka-ai/sdk` instead and do not import this runtime.
 
 ### Entry point
 
@@ -39,10 +39,10 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 
 ### Extend an Agent
 
-An `agent.cordis.yml` row may name an embedded alias such as `@karaka/agent/persona` or `@karaka/agent/agent-tool-presentation`. Each embedded alias is also a Node subpath with the same named and default exports as its source module. Service Definition modules used by replacement providers have matching flat subpaths even when they are not Loader plugins; for example, a local storage provider can import `StorageBackend` without installing a DSH package:
+An `agent.cordis.yml` row may name an embedded alias such as `@karaka-ai/agent/persona` or `@karaka-ai/agent/agent-tool-presentation`. Each embedded alias is also a Node subpath with the same named and default exports as its source module. Service Definition modules used by replacement providers have matching flat subpaths even when they are not Loader plugins; for example, a local storage provider can import `StorageBackend` without installing a DSH package:
 
 ```ts
-import type { StorageBackend } from '@karaka/agent/storage'
+import type { StorageBackend } from '@karaka-ai/agent/storage'
 ```
 
 An Agent project keeps application-specific plugins in its root `plugins/` directory. The deployment file is a patch layer, so a new row belongs under `insert`; this example also selects the backend that the local plugin registers:
@@ -57,7 +57,7 @@ An Agent project keeps application-specific plugins in its root `plugins/` direc
       name: ./plugins/customer-storage.js
 ```
 
-Relative names resolve beside the composition file, so an Agent Preset uses `../../plugins/customer-tools.js` for a shared root plugin. A reusable plugin may instead be an installed package such as `@acme/customer-tools`. Both forms import public contracts from `@karaka/agent/*`; neither form depends on the private DSH build inputs.
+Relative names resolve beside the composition file, so an Agent Preset uses `../../plugins/customer-tools.js` for a shared root plugin. A reusable plugin may instead be an installed package such as `@acme/customer-tools`. Both forms import public contracts from `@karaka-ai/agent/*`; neither form depends on the private DSH build inputs.
 
 -----
 
@@ -75,7 +75,7 @@ The build emits one runtime chunk set shared by `lib/bin.js`, the Loader registr
 |---|---|
 | [`src/bin.ts`](src/bin.ts) | Process arguments, Karaka home validation, and launch delegation |
 | [`src/launch.ts`](src/launch.ts) | Patch composition, project resolution base, boot, signals, and disposal |
-| [`src/plugins.ts`](src/plugins.ts) | Exact `@karaka/agent/*` aliases for bundled runtime plugins |
+| [`src/plugins.ts`](src/plugins.ts) | Exact `@karaka-ai/agent/*` aliases for bundled runtime plugins |
 | [`base.cordis.patch.yml`](base.cordis.patch.yml) | Bundled Agent runtime composition |
 | [`cordis.patch.yml`](cordis.patch.yml) | Karaka authentication and application transport additions |
 
@@ -86,8 +86,8 @@ The build emits one runtime chunk set shared by `lib/bin.js`, the Loader registr
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [`@karaka/cli`](../cli/README.md) — creates a server project and launches this executable.
-- [`@karaka/sdk`](../sdk/README.md) — connects an application backend to a running Karaka server.
+- [`@karaka-ai/cli`](../cli/README.md) — creates a server project and launches this executable.
+- [`@karaka-ai/sdk`](../sdk/README.md) — connects an application backend to a running Karaka server.
 - [Cordis primer](../../../docs/cordis-primer.md) — explains composition rows, Loader resolution, services, and isolation.
 - [Architecture](../../../docs/architecture.md) — describes the Agent, Session, capability, and application layers bundled here.
 

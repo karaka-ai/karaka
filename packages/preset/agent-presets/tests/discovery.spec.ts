@@ -252,12 +252,12 @@ describe('rows naming a plugin that cannot be resolved', () => {
   it('accepts a module supplied directly by the host Loader', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-presets-builtin-'))
     await mkdir(join(root, 'probe'))
-    await writeFile(join(root, 'probe', COMPOSITION_FILE), '- id: bundled\n  name: \'@karaka/agent/persona\'\n')
+    await writeFile(join(root, 'probe', COMPOSITION_FILE), '- id: bundled\n  name: \'@karaka-ai/agent/persona\'\n')
 
     const [preset] = await scanRoot(
       { path: root, trust: 'user' },
       HARNESS,
-      new Set(['@karaka/agent/persona']),
+      new Set(['@karaka-ai/agent/persona']),
     )
 
     expect(preset?.broken).toBeUndefined()

@@ -6,7 +6,7 @@ The Karaka application boundary connects a trusted backend server to persistent 
 
 The default provider uses independently rotatable credential references for the two directions. Authentication proves the calling server, not the end user: the authenticated application is responsible for supplying correct tenant and user identity. Session Controller enforces the resulting owner on every chat operation.
 
-See the [Karaka architecture](../architecture.md#karaka-application-runtime) for the complete process flow and [`@karaka/agent`](../../packages/karaka/agent/README.md) for authentication, application tool endpoints, and plugin loading.
+See the [Karaka architecture](../architecture.md#karaka-application-runtime) for the complete process flow and [`@karaka-ai/agent`](../../packages/karaka/agent/README.md) for authentication, application tool endpoints, and plugin loading.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

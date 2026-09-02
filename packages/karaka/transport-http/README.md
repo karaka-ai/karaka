@@ -3,13 +3,13 @@ description: "Authenticated JSON and SSE ingress from application backends to th
 kind: "package-reference"
 ---
 
-# @karaka/transport-http
+# @karaka-ai/transport-http
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-`@karaka/transport-http` mounts the application Chat API on `ctx.webServer`. It authenticates the calling server through `ctx.serverAuth`, combines that application identity with trusted tenant and user values, and calls `ctx.sessionController.application`. JSON routes admit commands and read history; SSE streams stable chat events and structured user questions.
+`@karaka-ai/transport-http` mounts the application Chat API on `ctx.webServer`. It authenticates the calling server through `ctx.serverAuth`, combines that application identity with trusted tenant and user values, and calls `ctx.sessionController.application`. JSON routes admit commands and read history; SSE streams stable chat events and structured user questions.
 
 ## Table of Contents
 

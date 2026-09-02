@@ -122,7 +122,7 @@ dsh 族套用仓库的发布 payload 策略（拒绝源码与声明映射）。v
 
 dsh 的验证会一并安装 vendored 族的 pack 产物。harness 的包把 vendored 框架声明成 peer，而那些包属于另一条序列，无凭据的 job 无法从私有 registry 取到——所以 dsh 的 `pack` job 为验证而打包 vendored 族，发布的仍只有 dsh 那一份。发布工作流（`release-publish.yml`）重新打包当前树，只发布 dsh 族。
 
-Karaka 验证会安装本地打包的 Karaka、DSH、vendor 与 Landlock 产物，但发布 workflow 只上传 `@karaka/*`。必须先发布匹配的依赖族，再调度 `release-karaka-publish.yml`，保证每个已发布 Karaka 依赖树都能立即安装。
+Karaka 验证会安装本地打包的 Karaka、DSH、vendor 与 Landlock 产物，但发布 workflow 只上传 `@karaka-ai/*`。必须先发布匹配的依赖族，再调度 `release-karaka-publish.yml`，保证每个已发布 Karaka 依赖树都能立即安装。
 
 验证还会打一份 Landlock entry 的 tarball——`dsh-sandbox-local` 把它声明为普通 `dependencies`——同时略去可选依赖。那些可选项背后的平台包需要 musl 工具链且每个架构各构建一次，单台 runner 产不出来；而装不到它们的消费方也必须能起，这正是「可选」在这里的含义。因此验证按目录内容读取 tarball，而不是读发布顺序：一个目录可能只装着为满足跨序列依赖而打出来的包，任何发布顺序都不描述它。
 

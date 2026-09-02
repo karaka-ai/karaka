@@ -13,9 +13,9 @@ const CLIENT_FACE_EXCLUDE: readonly string[] = [
 const HOST_DEPENDENCY_PACKAGES: readonly string[] = [
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-session',
-  '@karaka/agent',
-  '@karaka/cli',
-  '@karaka/sdk',
+  '@karaka-ai/agent',
+  '@karaka-ai/cli',
+  '@karaka-ai/sdk',
 ]
 
 /** Development-only package relationships not represented by source imports. */
@@ -34,7 +34,7 @@ const CONFIGURATION_ONLY_DEV_DEPENDENCIES = {
 
 /** Runtime dependencies introduced by a package's published bundle rather than its source imports. */
 const CONFIGURATION_ONLY_RUNTIME_DEPENDENCIES = {
-  '@karaka/agent': [
+  '@karaka-ai/agent': [
     '@deepseek-ai/cordis-plugin-hmr',
     '@deepseek-ai/cordis-plugin-loader',
     '@deepseek-ai/cordis-plugin-timer',
@@ -90,8 +90,8 @@ export const PACKAGE_DEPENDENCY_POLICY: PackageDependencyPolicy = {
   clientFaceInclude: CLIENT_FACE_INCLUDE,
   clientFaceExclude: CLIENT_FACE_EXCLUDE,
   hostPackages: HOST_DEPENDENCY_PACKAGES,
-  cordisDevelopmentOnlyPackages: ['@karaka/cli', '@karaka/sdk'],
-  cordisRuntimeDependencyPackages: ['@karaka/agent'],
+  cordisDevelopmentOnlyPackages: ['@karaka-ai/cli', '@karaka-ai/sdk'],
+  cordisRuntimeDependencyPackages: ['@karaka-ai/agent'],
   configurationOnlyDevDependencies: CONFIGURATION_ONLY_DEV_DEPENDENCIES,
   configurationOnlyRuntimeDependencies: CONFIGURATION_ONLY_RUNTIME_DEPENDENCIES,
   duplicateSafePackages: DUPLICATE_SAFE_PACKAGES,

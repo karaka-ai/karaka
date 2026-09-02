@@ -3,13 +3,13 @@ description: "Backend library for authenticated Karaka chat calls and MCP tool h
 kind: "package-library"
 ---
 
-# @karaka/sdk
+# @karaka-ai/sdk
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-`@karaka/sdk` lets an application backend chat with agents in a running Karaka server and expose application functions as authenticated MCP tools. `createKarakaClient()` owns outbound JSON/SSE calls; `createKarakaToolHost()` owns an explicit tool registry and handlers for an existing Node HTTP route. The SDK starts no process, opens no listener, and has no Cordis, Agent, Session, or Harness runtime dependency.
+`@karaka-ai/sdk` lets an application backend chat with agents in a running Karaka server and expose application functions as authenticated MCP tools. `createKarakaClient()` owns outbound JSON/SSE calls; `createKarakaToolHost()` owns an explicit tool registry and handlers for an existing Node HTTP route. The SDK starts no process, opens no listener, and has no Cordis, Agent, Session, or Harness runtime dependency.
 
 ## Table of Contents
 
@@ -25,14 +25,14 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Declare `@karaka/sdk` and `zod` as application dependencies, then import the SDK in the backend that already authenticates users and owns business operations. Run the Karaka server separately through `@karaka/cli`; do not mount the SDK in `cordis.yml`.
+Declare `@karaka-ai/sdk` and `zod` as application dependencies, then import the SDK in the backend that already authenticates users and owns business operations. Run the Karaka server separately through `@karaka-ai/cli`; do not mount the SDK in `cordis.yml`.
 
 ### Chat with an agent
 
 Create one deployment client, then bind the trusted tenant and user identity for each backend request:
 
 ```ts
-import { createKarakaClient } from '@karaka/sdk'
+import { createKarakaClient } from '@karaka-ai/sdk'
 
 const karaka = createKarakaClient({
   endpoint: process.env.KARAKA_ENDPOINT!,
@@ -57,7 +57,7 @@ for await (const event of user.chats.stream({ chatId: chat.chatId })) {
 Register each callable function explicitly and export a handler for the application server to mount on its own route:
 
 ```ts
-import { createKarakaToolHost } from '@karaka/sdk'
+import { createKarakaToolHost } from '@karaka-ai/sdk'
 import { z } from 'zod'
 
 const echoInput = z.object({ text: z.string() }).strict()

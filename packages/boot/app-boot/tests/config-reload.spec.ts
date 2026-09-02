@@ -417,12 +417,12 @@ describe('shipped builtins', () => {
   it('loads an exact packaged-runtime alias without resolving it through Node', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dsh-packaged-alias-'))
     const configPath = join(dir, 'cordis.yml')
-    writeFileSync(configPath, '- id: embedded\n  name: "@karaka/agent/test-plugin"\n  config:\n    value: bundled\n')
+    writeFileSync(configPath, '- id: embedded\n  name: "@karaka-ai/agent/test-plugin"\n  config:\n    value: bundled\n')
     let received: unknown
     let ctx: Context | undefined
     try {
       ctx = await boot(NAME, configPath, [], (prepared) => {
-        prepared.loader.builtins['@karaka/agent/test-plugin'] = (_pluginCtx: Context, config: unknown) => {
+        prepared.loader.builtins['@karaka-ai/agent/test-plugin'] = (_pluginCtx: Context, config: unknown) => {
           received = config
         }
       }, pathToFileURL(configPath).href)

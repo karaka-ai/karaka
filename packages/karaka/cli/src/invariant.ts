@@ -1,9 +1,9 @@
-/** Package-owned invariant companion for `@karaka/cli`. */
+/** Package-owned invariant companion for `@karaka-ai/cli`. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@karaka/cli'
+const PACKAGE_NAME = '@karaka-ai/cli'
 
 export const name = 'karaka-cli-invariant'
 export const inject = ['invariants']

@@ -122,7 +122,7 @@ The `pack` job walks one release set, writes its upload order, and uploads the d
 
 A dsh verification installs the vendored family's pack output too. The harness packages declare the vendored framework as a peer, those packages live in another sequence, and the credential-free job cannot fetch them from a private registry — so the dsh `pack` job packs the vendored family for verification while publishing only the dsh set. The publish workflow (`release-publish.yml`) repacks the current tree and publishes only the dsh set.
 
-Karaka verification installs local Karaka, DSH, vendor, and Landlock tarballs, while its publish workflow uploads only `@karaka/*`. The matching dependency families must be published before `release-karaka-publish.yml` is dispatched, so every published Karaka tree is installable immediately.
+Karaka verification installs local Karaka, DSH, vendor, and Landlock tarballs, while its publish workflow uploads only `@karaka-ai/*`. The matching dependency families must be published before `release-karaka-publish.yml` is dispatched, so every published Karaka tree is installable immediately.
 
 The verification also packs the Landlock entry, which `dsh-sandbox-local` declares as a plain dependency, and omits optional dependencies. The platform packages behind those optional entries need a musl toolchain and one build per architecture, so a job on one runner cannot produce them; a consumer that cannot install them must still start, which is what optional means here. The verification therefore reads a directory by its contents rather than a pack order, because a directory can hold tarballs packed only to satisfy a cross-sequence dependency.
 

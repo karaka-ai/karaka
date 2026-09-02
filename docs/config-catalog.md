@@ -3411,9 +3411,9 @@ export interface Config {
 
 Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages/workflow/workflow-worker-thread/src/index.ts)
 
-<a id="karakamcp-application"></a>
+<a id="karaka-aimcp-application"></a>
 
-## `@karaka/mcp-application`
+## `@karaka-ai/mcp-application`
 
 Requires: `tools` · `serverAuth`
 
@@ -3441,9 +3441,9 @@ Depends on: [`McpClient`](../packages/mcp/mcp-client/src/index.ts)
 
 Source: [`packages/karaka/mcp-application/src/index.ts:18`](../packages/karaka/mcp-application/src/index.ts)
 
-<a id="karakaserver-auth"></a>
+<a id="karaka-aiserver-auth"></a>
 
-## `@karaka/server-auth`
+## `@karaka-ai/server-auth`
 
 Requires: `credentials`
 
@@ -3467,9 +3467,9 @@ export interface ApplicationCredentialConfig {
 
 Source: [`packages/karaka/server-auth/src/index.ts:57`](../packages/karaka/server-auth/src/index.ts)
 
-<a id="karakatransport-http"></a>
+<a id="karaka-aitransport-http"></a>
 
-## `@karaka/transport-http`
+## `@karaka-ai/transport-http`
 
 Requires: `serverAuth` · `sessionController` · `webServer`
 
@@ -3634,6 +3634,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-util-values` ([`packages/util/values/src/index.ts`](../packages/util/values/src/index.ts))
 - `@deepseek-ai/dsh-util-workspace-path` ([`packages/util/workspace-path/src/index.ts`](../packages/util/workspace-path/src/index.ts))
 - `@deepseek-ai/dsh-win32-process` ([`packages/subprocess/win32-process/src/index.ts`](../packages/subprocess/win32-process/src/index.ts))
-- `@karaka/agent` ([`packages/karaka/agent/src/index.ts`](../packages/karaka/agent/src/index.ts))
-- `@karaka/cli` ([`packages/karaka/cli/src/index.ts`](../packages/karaka/cli/src/index.ts))
-- `@karaka/sdk` ([`packages/karaka/sdk/src/index.ts`](../packages/karaka/sdk/src/index.ts))
+- `@karaka-ai/agent` ([`packages/karaka/agent/src/index.ts`](../packages/karaka/agent/src/index.ts))
+- `@karaka-ai/cli` ([`packages/karaka/cli/src/index.ts`](../packages/karaka/cli/src/index.ts))
+- `@karaka-ai/sdk` ([`packages/karaka/sdk/src/index.ts`](../packages/karaka/sdk/src/index.ts))

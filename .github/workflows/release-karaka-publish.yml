@@ -1,4 +1,4 @@
-# Publish @karaka/* after the matching DSH, vendor, and Landlock dependencies
+# Publish @karaka-ai/* after the matching DSH, vendor, and Landlock dependencies
 # are available on npm. This manual workflow publishes only Karaka tarballs.
 name: Release publish (Karaka)
 

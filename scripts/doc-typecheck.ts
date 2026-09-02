@@ -78,7 +78,7 @@ function builtTypeCompilerOptions(): ts.CompilerOptions {
     specifier,
     candidates.map(builtDeclarationPath),
   ]))
-  paths['@karaka/agent/*'] = ['./packages/karaka/agent/lib/public/*']
+  paths['@karaka-ai/agent/*'] = ['./packages/karaka/agent/lib/public/*']
   const options: ts.CompilerOptions = {
     ...parsed.options,
     paths,
@@ -201,7 +201,7 @@ function importsKarakaAgentSubpath(block: Block): boolean {
     if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) return false
     return statement.moduleSpecifier !== undefined
       && ts.isStringLiteral(statement.moduleSpecifier)
-      && statement.moduleSpecifier.text.startsWith('@karaka/agent/')
+      && statement.moduleSpecifier.text.startsWith('@karaka-ai/agent/')
   })
 }
 

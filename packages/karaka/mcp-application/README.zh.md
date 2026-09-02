@@ -3,13 +3,13 @@ description: "Karaka Agent Preset 对应用自有 MCP 工具进行带认证发�
 kind: "package-reference"
 ---
 
-# @karaka/mcp-application
+# @karaka-ai/mcp-application
 
 [English](README.md) | 中文
 
 ## 概述
 
-`@karaka/mcp-application` 将 Karaka 连接到一个应用的 Streamable HTTP MCP endpoint。它通过 `ctx.serverAuth` 解析出站 authorization，仅公开 Agent Preset 明确选择的工具，并随每次调用转发执行 Session 的应用、租户、用户和 chat 标识。
+`@karaka-ai/mcp-application` 将 Karaka 连接到一个应用的 Streamable HTTP MCP endpoint。它通过 `ctx.serverAuth` 解析出站 authorization，仅公开 Agent Preset 明确选择的工具，并随每次调用转发执行 Session 的应用、租户、用户和 chat 标识。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 
 ```yaml
 - id: billing-tools
-  name: '@karaka/mcp-application'
+  name: '@karaka-ai/mcp-application'
   config:
     serverName: billing
     url: https://billing.internal/mcp

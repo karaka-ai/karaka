@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 Karaka is a persistent, multi-agent server for application backends. Each named agent is a DeepSeek Harness Agent Preset whose Cordis plugin composition supplies its prompt, tools, skills, model behavior, and other runtime capabilities.
 
-An application backend uses `@karaka/sdk` to authenticate with Karaka, chat with an available agent, and expose application functions as authenticated MCP tools. Karaka runs separately, keeps durable chat state, and invokes only the application tools selected by that agent.
+An application backend uses `@karaka-ai/sdk` to authenticate with Karaka, chat with an available agent, and expose application functions as authenticated MCP tools. Karaka runs separately, keeps durable chat state, and invokes only the application tools selected by that agent.
 
 Karaka builds on the open-source [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) developed by [DeepSeek AI](https://deepseek.com). It retains the Harness **everything-is-a-plugin** architecture powered by [Cordis](https://github.com/cordiverse/cordis).
 
@@ -12,8 +12,8 @@ Karaka builds on the open-source [DeepSeek Harness](https://github.com/deepseek-
 
 ```text
 Application backend                         Karaka process
-@karaka/sdk chat client  -- HTTP / SSE -->  named Agent Preset
-@karaka/sdk MCP tools     <--    MCP    --  selected application tools
+@karaka-ai/sdk chat client  -- HTTP / SSE -->  named Agent Preset
+@karaka-ai/sdk MCP tools     <--    MCP    --  selected application tools
 ```
 
 The application authenticates its users and sends trusted tenant and user identifiers. Karaka authenticates the application server, binds those identifiers to the durable chat, and forwards them when an agent invokes an application tool. Installing the SDK starts no process and opens no port.

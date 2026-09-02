@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The harness is assembled from npm packages under `packages/`, grouped by capability family: sessions and the agent loop, model-facing tools, shell and filesystem execution, web access, subagents, and the rest. Use this page as the top-level map: find the owning group, then open its README for the package list. Harness packages use `@deepseek-ai/dsh-*`; the application-facing Karaka group uses `@karaka/*`. Every package lives in exactly one group, whose README is the authoritative package map for that family.
+The harness is assembled from npm packages under `packages/`, grouped by capability family: sessions and the agent loop, model-facing tools, shell and filesystem execution, web access, subagents, and the rest. Use this page as the top-level map: find the owning group, then open its README for the package list. Harness packages use `@deepseek-ai/dsh-*`; the application-facing Karaka group uses `@karaka-ai/*`. Every package lives in exactly one group, whose README is the authoritative package map for that family.
 
 ## Table of Contents
 

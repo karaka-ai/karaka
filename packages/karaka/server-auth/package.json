@@ -1,5 +1,5 @@
 {
-  "name": "@karaka/server-auth",
+  "name": "@karaka-ai/server-auth",
   "private": true,
   "description": "Replaceable server authentication for Karaka application and tool traffic",
   "version": "0.1.2-alpha.2",

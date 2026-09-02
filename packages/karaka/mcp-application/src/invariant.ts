@@ -10,4 +10,4 @@ export const inject = ['invariants']
 const install: InvariantInstaller = () => {}
 
 export const apply = (ctx: Context): Promise<() => void> =>
-  Promise.resolve(ctx.invariants.register('@karaka/mcp-application', install))
+  Promise.resolve(ctx.invariants.register('@karaka-ai/mcp-application', install))

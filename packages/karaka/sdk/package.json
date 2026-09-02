@@ -1,5 +1,5 @@
 {
-  "name": "@karaka/sdk",
+  "name": "@karaka-ai/sdk",
   "description": "Backend SDK for Karaka chat and MCP tool hosting",
   "version": "0.1.2-alpha.2",
   "repository": {
