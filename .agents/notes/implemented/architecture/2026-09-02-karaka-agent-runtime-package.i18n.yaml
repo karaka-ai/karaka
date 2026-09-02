@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-02-karaka-agent-runtime-package.md
-2026-09-02-karaka-agent-runtime-package.md: e8e2050916b4d7881eb2e4586f8bf8d0cdb99065
-2026-09-02-karaka-agent-runtime-package.zh.md: 488ac38fb6adc2a0f3575aab9d0a0a4e84cbd0f9
+2026-09-02-karaka-agent-runtime-package.md: 0b2714545a3f308af03dbe38d09d0a9777573410
+2026-09-02-karaka-agent-runtime-package.zh.md: f2df84b64711187150f6c5c4d19a5a773101dae7

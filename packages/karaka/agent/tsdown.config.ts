@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { globSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type UserConfig } from 'tsdown'
@@ -8,6 +8,7 @@ import { typertPlugin } from '../../typert/generator/lib/types/tsdown-plugin.js'
 
 const resolveFrom = createRequire(import.meta.url)
 const packageDir = dirname(fileURLToPath(import.meta.url))
+const repositoryDir = resolve(packageDir, '../../..')
 const outputDir = resolve(packageDir, 'lib')
 const publicEntryDir = resolve(outputDir, 'public-entries')
 const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka-ai\/(?:mcp-application|server-auth|transport-http)(?:\/|$)/
@@ -38,6 +39,16 @@ interface PublicModule {
   readonly subpath: string
   readonly specifier: string
 }
+
+interface WorkspacePackage {
+  readonly dir: string
+  readonly manifest: {
+    readonly types?: unknown
+    readonly exports?: unknown
+  }
+}
+
+const workspaces = workspacePackages()
 
 /** Read the Loader's static namespace imports and exact Karaka aliases. */
 function readBundledModules(): PublicModule[] {
@@ -83,16 +94,80 @@ function readPublicModules(): PublicModule[] {
   return [...modules].map(([subpath, specifier]) => ({ subpath, specifier }))
 }
 
-/** Locate the declaration selected by one package export. */
-function declarationPath(specifier: string): string {
-  const runtimePath = resolveFrom.resolve(specifier)
+/** Locate the declaration selected by one package export, including before workspace runtimes exist. */
+export function declarationPath(
+  specifier: string,
+  resolveRuntime: (request: string) => string = request => resolveFrom.resolve(request),
+): string {
+  return workspaceTypeRuntimePath(specifier, resolveRuntime).replace(/\.js$/u, '.d.ts')
+}
+
+/** Locate the tsc JavaScript selected by one package export before bundling. */
+export function workspaceTypeRuntimePath(
+  specifier: string,
+  resolveRuntime: (request: string) => string = request => resolveFrom.resolve(request),
+): string {
+  let runtimePath: string
+  try {
+    runtimePath = resolveRuntime(specifier)
+  } catch (error) {
+    const declaration = workspaceDeclarationPath(specifier)
+    if (declaration === undefined) throw error
+    return declaration.replace(/\.d\.ts$/u, '.js')
+  }
   const marker = `${sep}lib${sep}`
   const index = runtimePath.lastIndexOf(marker)
   if (index === -1) throw new Error(`cannot locate declarations for ${specifier}`)
-  const declaration = runtimePath.includes(`${marker}types${sep}`)
+  return runtimePath.includes(`${marker}types${sep}`)
     ? runtimePath
     : `${runtimePath.slice(0, index)}${marker}types${sep}${runtimePath.slice(index + marker.length)}`
-  return declaration.replace(/\.js$/u, '.d.ts')
+}
+
+/** Resolve a workspace declaration directly from its package manifest. */
+function workspaceDeclarationPath(specifier: string): string | undefined {
+  const match = /^(@[^/]+\/[^/]+)/u.exec(specifier)
+  const name = match?.[1]
+  if (name === undefined) return undefined
+  const workspace = workspaces.get(name)
+  if (workspace === undefined) return undefined
+  const subpath = specifier.slice(name.length)
+  if (subpath === '' && typeof workspace.manifest.types === 'string') {
+    return resolve(workspace.dir, workspace.manifest.types)
+  }
+  if (!isRecord(workspace.manifest.exports)) return undefined
+  const exported = workspace.manifest.exports[subpath === '' ? '.' : `.${subpath}`]
+  if (!isRecord(exported) || typeof exported.types !== 'string') return undefined
+  return resolve(workspace.dir, exported.types)
+}
+
+/** Read package manifests for build-input workspaces. */
+function workspacePackages(): Map<string, WorkspacePackage> {
+  const result = new Map<string, WorkspacePackage>()
+  const manifestPaths = globSync([
+    'vendor/*/package.json',
+    'packages/*/*/package.json',
+    'native/landlock-run/package.json',
+    'native/landlock-run/packages/*/package.json',
+    'apps/*/package.json',
+    'website/package.json',
+    'python/sdk-runtime/package.json',
+  ], { cwd: repositoryDir })
+  for (const manifestPath of manifestPaths) {
+    const manifest: unknown = JSON.parse(readFileSync(resolve(repositoryDir, manifestPath), 'utf8'))
+    if (isRecord(manifest) && typeof manifest.name === 'string') {
+      const dir = dirname(resolve(repositoryDir, manifestPath))
+      if (result.has(manifest.name)) {
+        throw new Error(`duplicate workspace package ${manifest.name}`)
+      }
+      result.set(manifest.name, { dir, manifest })
+    }
+  }
+  return result
+}
+
+/** Whether a parsed value exposes string-keyed properties. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 /** Generate TypeScript facades so tsdown can inline private runtime and declaration dependencies. */
@@ -144,12 +219,10 @@ const bundledWorkspaceResolver = {
   enforce: 'pre' as const,
   resolveId(source: string, importer?: string): string | null {
     if (!bundledWorkspaceModule.test(source)) return null
-    const resolved = (importer === undefined ? resolveFrom : createRequire(importer)).resolve(source)
-    const marker = `${sep}lib${sep}`
-    if (resolved.includes(`${marker}types${sep}`)) return resolved
-    const index = resolved.lastIndexOf(marker)
-    if (index === -1) return resolved
-    return `${resolved.slice(0, index)}${marker}types${sep}${resolved.slice(index + marker.length)}`
+    return workspaceTypeRuntimePath(
+      source,
+      request => (importer === undefined ? resolveFrom : createRequire(importer)).resolve(request),
+    )
   },
 }
 
