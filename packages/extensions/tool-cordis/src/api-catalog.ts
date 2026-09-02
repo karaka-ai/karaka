@@ -3941,7 +3941,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DeepSeekLlmApiExtensionProvider',
-    declaration: 'export interface DeepSeekLlmApiExtensionProvider<T extends DeepSeekLlmApiJson> {\n    prepare(request: DeepSeekLlmApiExtensionRequest): PreparedDeepSeekLlmApiExtension<T> | undefined | Promise<PreparedDeepSeekLlmApiExtension<T> | undefined>;\n}',
+    declaration: 'export interface DeepSeekLlmApiExtensionProvider<T> {\n    prepare(request: DeepSeekLlmApiExtensionRequest): PreparedDeepSeekLlmApiExtension<T> | undefined | Promise<PreparedDeepSeekLlmApiExtension<T> | undefined>;\n}',
   },
   {
     name: 'DeepSeekLlmApiExtensionRequest',
@@ -4601,7 +4601,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PreparedDeepSeekLlmApiExtension',
-    declaration: 'export interface PreparedDeepSeekLlmApiExtension<T extends DeepSeekLlmApiJson> {\n    readonly value: T;\n    accept?(): void | Promise<void>;\n}',
+    declaration: 'export interface PreparedDeepSeekLlmApiExtension<T> {\n    readonly value: T;\n    accept?(): void | Promise<void>;\n}',
   },
   {
     name: 'PreparedDeepSeekLlmApiExtensions',
