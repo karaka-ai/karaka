@@ -302,6 +302,28 @@ describe('CI workflow', () => {
 })
 
 describe('DeepSeek e2e workflow', () => {
+  it('keeps missing provider credentials non-blocking', () => {
+    const workflow = loadWorkflow('.github/workflows/e2e.yml')
+    const e2e = workflowJob(workflow, 'e2e')
+    if (!Array.isArray(e2e.steps)) throw new TypeError('DeepSeek e2e workflow must define steps')
+
+    const steps = e2e.steps.filter(isRecord)
+    expect(e2e.if).toBeUndefined()
+    expect(steps.some(step => step.name === 'Preflight (require DEEPSEEK_API_KEY)')).toBe(false)
+    expect(e2e.env).toMatchObject({
+      DSH_REAL_API_CONFIGURED: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL != \'\' }}',
+    })
+    expect(steps.find(step => step.name === 'Report unavailable provider credential')).toMatchObject({
+      if: "env.DSH_REAL_API_CONFIGURED != 'true'",
+    })
+    for (const step of steps.filter(step => step.name !== 'Report unavailable provider credential')) {
+      expect(step.if).toBe("env.DSH_REAL_API_CONFIGURED == 'true'")
+    }
+    expect(steps.find(step => step.name === 'E2E tests (real DeepSeek API)')).toMatchObject({
+      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+    })
+  })
+
   it('prepares bubblewrap from the pinned payload without a package transaction', () => {
     const workflow = loadWorkflow('.github/workflows/e2e.yml')
     const e2e = workflowJob(workflow, 'e2e')
@@ -450,13 +472,10 @@ describe('Python release workflows', () => {
     const cleanVenvWindows = buildSteps.find(step => isRecord(step) && step.name === 'Install local SDK and runtime wheels into a clean venv (Windows)')
     const installedKeylessPosix = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel keyless black-box tests (POSIX)')
     const installedKeylessWindows = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel keyless black-box tests (Windows)')
-    const realApiPreflightPosix = buildSteps.find(step => isRecord(step) && step.name === 'Preflight installed-wheel real API test (POSIX)')
-    const realApiPreflightWindows = buildSteps.find(step => isRecord(step) && step.name === 'Preflight installed-wheel real API test (Windows)')
     const installedRealApiPosix = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel real API black-box test (POSIX)')
     const installedRealApiWindows = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel real API black-box test (Windows)')
     if (!isRecord(cleanVenvPosix) || !isRecord(cleanVenvWindows)
       || !isRecord(installedKeylessPosix) || !isRecord(installedKeylessWindows)
-      || !isRecord(realApiPreflightPosix) || !isRecord(realApiPreflightWindows)
       || !isRecord(installedRealApiPosix) || !isRecord(installedRealApiWindows)) {
       throw new TypeError('Python wheel builder must define native POSIX and Windows installed-wheel steps')
     }
@@ -467,6 +486,9 @@ describe('Python release workflows', () => {
     })
     expect(call.secrets).toMatchObject({
       DEEPSEEK_API_KEY_EXTERNAL: { required: false },
+    })
+    expect(build.env).toMatchObject({
+      DSH_REAL_API_CONFIGURED: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL != \'\' }}',
     })
     expect(workflow.concurrency).toMatchObject({
       group: 'build-single-exe-${{ github.workflow }}-${{ github.ref }}',
@@ -504,22 +526,17 @@ describe('Python release workflows', () => {
     expect(installedKeylessWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(cleanVenvWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(JSON.stringify(cleanVenvWindows)).toContain('Scripts\\\\python.exe')
-    expect(realApiPreflightPosix).toMatchObject({
-      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
-    })
-    expect(String(realApiPreflightPosix.if)).toContain('inputs.ci')
-    expect(String(realApiPreflightPosix.if)).toContain('head.repo.fork')
-    expect(String(realApiPreflightPosix.if)).toContain('dependabot[bot]')
-    expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
     expect(installedRealApiPosix).toMatchObject({
       env: {
         DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
         DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
       },
     })
+    expect(String(installedRealApiPosix.if)).toContain("env.DSH_REAL_API_CONFIGURED == 'true'")
     expect(JSON.stringify(installedRealApiPosix)).toContain('--scenario sdk-live')
     expect(JSON.stringify(installedRealApiPosix)).toContain('-u DSH_RUNTIME_MODE')
     expect(installedRealApiWindows).toMatchObject({ shell: 'pwsh' })
+    expect(String(installedRealApiWindows.if)).toContain("env.DSH_REAL_API_CONFIGURED == 'true'")
     expect(JSON.stringify(installedRealApiWindows)).toContain('--scenario sdk-live --installed-wheel')
     expect(manylinuxSmoke).toMatchObject({ if: "runner.os == 'Linux'" })
     expect(JSON.stringify(manylinuxSmoke)).toContain('-e DSH_TELEMETRY_DISABLED')
@@ -586,14 +603,27 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecycleReview.types).toEqual(['submitted'])
     const gated = "${{ github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested' }}"
     const steps = lifecycleJob.steps.filter(isRecord)
+    const credentialStep = steps.find(s => s.name === 'Detect project credentials')
     const tokenStep = steps.find(s => s.name === 'Create project token')
     const handleStep = steps.find(s => s.name === 'Handle repository event')
-    expect(tokenStep).toMatchObject({ if: gated })
-    expect(handleStep).toMatchObject({ if: gated })
+    expect(credentialStep).toMatchObject({ if: gated })
+    expect(String(tokenStep?.if)).toContain("steps.project-credentials.outputs.configured == 'true'")
+    expect(tokenStep).toMatchObject({
+      with: {
+        owner: '${{ github.repository_owner }}',
+        repositories: '${{ github.event.repository.name }}',
+      },
+    })
+    expect(String(handleStep?.if)).toContain("steps.project-credentials.outputs.configured == 'true'")
 
     // issue-policy owns PR validation; it is read-only and a real gate.
     const policyPullRequest = workflowEvent(policy, 'pull_request')
     expect(policyPullRequest.types).toContain('ready_for_review')
+  })
+
+  it('targets the current repository for issue policy queries', () => {
+    const config: unknown = JSON.parse(readFileSync(resolve(root, '.github/issue-management/config.json'), 'utf8'))
+    expect(config).toMatchObject({ organization: 'karaka-ai', repository: 'karaka' })
   })
 })
 

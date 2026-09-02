@@ -1,29 +1,22 @@
 name: E2E (real DeepSeek API)
 
-# Real-API end-to-end suite (`pnpm run test:e2e`). Unlike ci.yml this job
-# consumes the DEEPSEEK_API_KEY_EXTERNAL secret (mapped to the env var
-# DEEPSEEK_API_KEY the tests read) and hits the external API at
-# https://api.deepseek.com (DEEPSEEK_BASE_URL is pinned to it explicitly so a
-# stray repo-root .env can't redirect the run).
+# Real-API end-to-end suite (`pnpm run test:e2e`). When configured, the
+# DEEPSEEK_API_KEY_EXTERNAL secret maps to the DEEPSEEK_API_KEY env var and the
+# suite hits https://api.deepseek.com. Without a key, this optional workflow
+# reports a notice and skips its credentialed work; required keyless builds run
+# in ci.yml and ci-master.yml.
 #
-# pull_request IS a trigger, but GitHub withholds repo secrets from BOTH forked
-# PRs and Dependabot PRs (the latter are same-repo, fork==false, but still
-# keyless). The job-level `if:` below skips the whole job for those untrusted
-# PRs. The Dependabot test keys on the PR AUTHOR (pull_request.user.login), not
-# github.actor (the run trigger) — a maintainer reopening a Dependabot PR would
-# make github.actor human while the PR is still keyless. When the job runs, the
-# secret is expected, so the preflight hard-fails if it's missing (a missing
-# secret would otherwise make the self-skipping suite report a false green). A
-# job skipped by a job-level `if:` reports as a SUCCESSFUL check, so this
-# workflow is safe to use as a required status check if desired.
+# GitHub withholds repository secrets from forked and Dependabot pull requests.
+# Those refs run the same workflow without credentials and cannot exercise the
+# live-provider suites.
 #
 # SECURITY — NEVER change this trigger to `pull_request_target`. `pull_request`
 # checks out and runs the PR's HEAD code WITHOUT secrets for forks, which is what
 # keeps an untrusted fork from exfiltrating the key. `pull_request_target` runs
 # in the BASE repo's context WITH secrets while still able to check out untrusted
 # fork code — a textbook key-leak vector, especially once this repo is public.
-# The fork/secret model and its public-repo implications are recorded in
-# .agents/notes/implemented/testing/2026-06-19-real-api-e2e-ci.md.
+# The fork/secret model and optional-credential policy are recorded in
+# .agents/notes/implemented/testing/2026-09-02-optional-ci-credentials.md.
 #
 # Note: scheduled triggers are auto-disabled after 60 days of repo inactivity;
 # push/pull_request/workflow_dispatch act as backstops.
@@ -55,56 +48,45 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     name: e2e
-    # Run on every trusted event. Skip untrusted PRs (forks + Dependabot) where
-    # the secret is withheld — they would otherwise hard-fail the preflight.
-    if: >-
-      github.event_name != 'pull_request'
-      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]')
+    env:
+      DSH_REAL_API_CONFIGURED: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL != '' }}
     # Profile e2e files can each own several complete dsh subprocess trees, so
     # four file workers preserve process/PTY headroom. Tests retain 120s/test
     # and retry 2; 45m still bounds retry storms against a slow API.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - name: Report unavailable provider credential
+        if: env.DSH_REAL_API_CONFIGURED != 'true'
+        run: echo "::notice::DEEPSEEK_API_KEY_EXTERNAL is not configured; live DeepSeek e2e is skipped."
 
-      - uses: pnpm/action-setup@v4
+      - if: env.DSH_REAL_API_CONFIGURED == 'true'
+        uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
+      - if: env.DSH_REAL_API_CONFIGURED == 'true'
+        uses: pnpm/action-setup@v4
+
+      - if: env.DSH_REAL_API_CONFIGURED == 'true'
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
 
       - name: Install (immutable)
+        if: env.DSH_REAL_API_CONFIGURED == 'true'
         run: pnpm install --frozen-lockfile
 
       # The with-key escalation e2e self-skips without a usable runner. Prepare
       # bwrap so trusted CI exercises it; the functional probe remains the
       # authority on whether the runner can use the sandbox.
       - name: Prepare bubblewrap (unrestrict userns)
+        if: env.DSH_REAL_API_CONFIGURED == 'true'
         run: bash scripts/prepare-ci-bubblewrap.sh
-
-      # Guard against a false green: the e2e suites self-skip when the key is
-      # absent, so a missing/misconfigured secret would otherwise pass as
-      # "all skipped". This job only runs on trusted events (the `if:` above
-      # excludes keyless PRs), so the secret MUST be present — fail loudly if not.
-      - name: Preflight (require DEEPSEEK_API_KEY)
-        env:
-          # Repo secret DEEPSEEK_API_KEY_EXTERNAL holds the external-API key;
-          # the tests read process.env.DEEPSEEK_API_KEY, so map it across here.
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-            echo "::error::DEEPSEEK_API_KEY is empty. The e2e suite would self-skip and"
-            echo "::error::report a false green. Configure the repo secret DEEPSEEK_API_KEY_EXTERNAL."
-            exit 1
-          fi
-          echo "DEEPSEEK_API_KEY present."
 
       # The e2e suites boot the example bins in `lib` mode (DSH_EXAMPLE_MODE=lib):
       # the built artifact under plain Node, resolving plugins through real package
       # exports — the shape a real consumer runs. That requires a prior build.
       - name: Build (lib for the e2e example bins)
+        if: env.DSH_REAL_API_CONFIGURED == 'true'
         run: pnpm run build:official
 
       # Real-API end-to-end tests only. The keyless gates (lint/typecheck/
@@ -113,6 +95,7 @@ jobs:
       # DEEPSEEK_BASE_URL is pinned to the external API; the secret is scoped to
       # this step (and preflight) only — never exposed to checkout/setup/install.
       - name: E2E tests (real DeepSeek API)
+        if: env.DSH_REAL_API_CONFIGURED == 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
           DEEPSEEK_BASE_URL: https://api.deepseek.com
