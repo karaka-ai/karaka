@@ -1,0 +1,9 @@
+- id: session-telemetry-otel
+  disabled: true
+
+- id: server-auth
+  config:
+    applications:
+      - id: test
+        chatCredential: KARAKA_TEST_CHAT_TOKEN
+        toolCredential: KARAKA_TEST_TOOL_TOKEN

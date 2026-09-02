@@ -44,9 +44,9 @@ const mounted = new WeakMap<object, MountedTree>()
  * The base URL bare specifiers resolve against, per pending mount, keyed by the
  * same config object. Recorded before the subtree is plugged, because `Include`
  * rewrites its own context's `baseUrl` to the composition's directory and the
- * pre-mount value is the only handle on where the harness itself lives.
+ * pre-mount value is the only handle on the host-selected package base.
  */
-const harnessBase = new WeakMap<object, string>()
+const barePackageBase = new WeakMap<object, string>()
 
 /**
  * Include subclass that publishes its tree and fiber for the audit, and never
@@ -67,16 +67,15 @@ class PresetTree extends Include {
   }
 
   /**
-   * Resolve a bare specifier from the harness rather than from the preset.
+   * Resolve a bare specifier from the host-selected base rather than from the preset.
    *
    * `EntryTree.import()` resolves against the tree's own `baseUrl`, which
    * `Include` sets to the composition's directory. That is right for a
    * relative specifier — a preset's own files travel with it — and wrong for
    * a package name: a locally authored preset lives under the user's home,
    * where Node's upward `node_modules` walk never reaches the harness's own
-   * dependencies, so every `@deepseek-ai/dsh-*` row would fail to import. The
-   * mount records the host composition's base instead, which is inside the
-   * installed harness, and bare names resolve from there. An absolute
+   * dependencies, so every package row would fail to import. The mount records
+   * the host-selected base instead, and bare names resolve from there. An absolute
    * filesystem path names neither base and becomes a file URL before Node's
    * ESM loader receives it, which is required for drive-letter paths on
    * Windows.
@@ -88,8 +87,10 @@ class PresetTree extends Include {
    * @returns the imported module, or the `cordis:` builtin.
    */
   override import(name: string, getOuterStack?: () => string[]): unknown {
+    const bundled = this.ctx.loader.builtins[name]
+    if (bundled !== undefined) return bundled
     const row = classifyRowSpecifier(name)
-    const base = harnessBase.get(this.config)
+    const base = barePackageBase.get(this.config)
     /* v8 ignore next -- every PresetTree is constructed by `mountPreset`, which records the base first */
     if (base === undefined) return super.import(row.specifier, getOuterStack)
     if (row.kind === 'builtin' || row.kind === 'preset') return super.import(row.specifier, getOuterStack)
@@ -384,10 +385,11 @@ export async function mountPreset(standingCtx: Context, preset: AgentPreset): Pr
   }
   const config: Include.Config = { path: pathToFileURL(preset.path).href }
   // Captured before the subtree exists: the standing scope context still
-  // carries the host composition's base, which is inside the installed
-  // harness and is therefore where a row's package name has to resolve from.
+  // carries the host-selected package base, which is where a row's bare
+  // package name has to resolve from.
   /* v8 ignore next -- the Loader sets `baseUrl` on the root before any scoped context derives from it */
-  if (standingCtx.baseUrl !== undefined) harnessBase.set(config, standingCtx.baseUrl)
+  const bareModuleBaseUrl = standingCtx.get('loaderBareModuleBaseUrl') ?? standingCtx.baseUrl
+  if (bareModuleBaseUrl !== undefined) barePackageBase.set(config, bareModuleBaseUrl)
   // Before the record this mount is about to add: standing mounts are one per
   // preset and live until whole-tree teardown, so pruning here only sweeps
   // records of torn-down runtimes (tests; an HMR reload of the roster).

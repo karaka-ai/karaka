@@ -4,7 +4,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../../../vendor/cordis" },
-    { "path": "../../boot/app-boot" },
+    { "path": "../agent" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }

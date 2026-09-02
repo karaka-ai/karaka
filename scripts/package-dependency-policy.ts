@@ -9,10 +9,12 @@ const CLIENT_FACE_EXCLUDE: readonly string[] = [
   '@deepseek-ai/dsh-api-workspace-controller',
 ]
 
-/** Host-only packages whose peer relays are deliberately flattened. */
+/** Packages whose published dependency graph is deliberately flattened. */
 const HOST_DEPENDENCY_PACKAGES: readonly string[] = [
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-session',
+  '@karaka/agent',
+  '@karaka/cli',
   '@karaka/sdk',
 ]
 
@@ -28,6 +30,15 @@ const CONFIGURATION_ONLY_DEV_DEPENDENCIES = {
   '@deepseek-ai/dsh-client-ui-subagent': ['@deepseek-ai/dsh-client-ui-input-trigger'],
   '@deepseek-ai/dsh-client-ui-theme': ['@deepseek-ai/dsh-api-remotes'],
   '@deepseek-ai/dsh-client-ui-tool': ['@deepseek-ai/dsh-api-remotes'],
+} as const satisfies Readonly<Record<string, readonly string[]>>
+
+/** Runtime dependencies introduced by a package's published bundle rather than its source imports. */
+const CONFIGURATION_ONLY_RUNTIME_DEPENDENCIES = {
+  '@karaka/agent': [
+    '@deepseek-ai/cordis-plugin-hmr',
+    '@deepseek-ai/cordis-plugin-loader',
+    '@deepseek-ai/cordis-plugin-timer',
+  ],
 } as const satisfies Readonly<Record<string, readonly string[]>>
 
 /** Workspace packages whose complete runtime surface is safe across duplicate installations. */
@@ -65,6 +76,10 @@ export interface PackageDependencyPolicy {
   /** Pure libraries whose invariant companion uses Cordis only as a development-time type surface. */
   readonly cordisDevelopmentOnlyPackages?: readonly string[]
   readonly configurationOnlyDevDependencies: Readonly<Record<string, readonly string[]>>
+  /** Workspace modules externalized by a published bundle. */
+  readonly configurationOnlyRuntimeDependencies?: Readonly<Record<string, readonly string[]>>
+  /** Packages that install Cordis instead of requiring an application-owned peer. */
+  readonly cordisRuntimeDependencyPackages?: readonly string[]
   readonly duplicateSafePackages?: readonly string[]
   readonly safeHostDependencyExports: HostDependencyExports
   readonly peerRequiredHostExports: HostDependencyExports
@@ -75,8 +90,10 @@ export const PACKAGE_DEPENDENCY_POLICY: PackageDependencyPolicy = {
   clientFaceInclude: CLIENT_FACE_INCLUDE,
   clientFaceExclude: CLIENT_FACE_EXCLUDE,
   hostPackages: HOST_DEPENDENCY_PACKAGES,
-  cordisDevelopmentOnlyPackages: ['@karaka/sdk'],
+  cordisDevelopmentOnlyPackages: ['@karaka/cli', '@karaka/sdk'],
+  cordisRuntimeDependencyPackages: ['@karaka/agent'],
   configurationOnlyDevDependencies: CONFIGURATION_ONLY_DEV_DEPENDENCIES,
+  configurationOnlyRuntimeDependencies: CONFIGURATION_ONLY_RUNTIME_DEPENDENCIES,
   duplicateSafePackages: DUPLICATE_SAFE_PACKAGES,
   safeHostDependencyExports: SAFE_HOST_DEPENDENCY_EXPORTS,
   peerRequiredHostExports: PEER_REQUIRED_HOST_EXPORTS,

@@ -1,7 +1,7 @@
 /**
- * Enforce dsh profiles as the only supported Node application launcher.
- * Vendor CLIs, build tools, and test tools are explicit classifications
- * rather than implicit holes.
+ * Enforce explicit Node application launchers. DSH applications use profiles;
+ * Karaka uses its self-contained Agent entry. Vendor CLIs, build tools, and
+ * test tools remain explicit classifications rather than implicit holes.
  */
 
 import { existsSync, globSync, readFileSync } from 'node:fs'
@@ -26,6 +26,7 @@ interface DemoPolicy {
 /** Public product launcher plus the private build-only WebWorker packer. */
 const MANIFEST_BIN_ALLOWLIST = new Map<string, ManifestBin>([
   ['apps/cli/package.json', { dsh: 'lib/bin.js' }],
+  ['packages/karaka/agent/package.json', { 'karaka-agent': 'lib/bin.js' }],
   ['packages/karaka/cli/package.json', { karaka: 'lib/bin.js' }],
   ['packages/experimental/webworker-packer/package.json', { 'dsh-pack-vfs-image': './bin.js' }],
 ])
@@ -33,7 +34,8 @@ const MANIFEST_BIN_ALLOWLIST = new Map<string, ManifestBin>([
 /** Every executable in a Node application workspace has one explicit role. */
 const EXECUTABLE_SOURCE_ALLOWLIST = new Map<string, string>([
   ['apps/cli/src/bin.ts', 'supported dsh application launcher'],
-  ['packages/karaka/cli/src/bin.ts', 'Karaka wrapper that delegates application launch to dsh'],
+  ['packages/karaka/agent/src/bin.ts', 'Karaka Agent entry launched by @karaka/cli'],
+  ['packages/karaka/cli/src/bin.ts', 'Karaka wrapper that launches the installed Agent runtime'],
   ['packages/context/time-context/tests/fixtures/driver.ts', 'test-only subprocess driver'],
   ['packages/experimental/webworker-packer/bin.js', 'private build-only wrapper'],
   ['packages/experimental/webworker-packer/src/bin.ts', 'private build-only implementation'],
@@ -99,7 +101,7 @@ function manifestBinViolations(root: string): string[] {
     if (manifest.bin === undefined) continue
     const expected = MANIFEST_BIN_ALLOWLIST.get(path)
     if (expected === undefined) {
-      failures.push(`${path}: package bin bypasses the dsh launcher; applications use apps/cli profiles`)
+      failures.push(`${path}: package bin has no explicit application/build/test classification`)
       continue
     }
     if (normalizedBin(manifest.bin) !== normalizedBin(expected)) {
@@ -190,6 +192,6 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(p
     for (const failure of failures) console.error(`  ${failure}`)
     process.exitCode = 1
   } else {
-    console.log('verify-application-entrypoints: application launch remains delegated to dsh profiles.')
+    console.log('verify-application-entrypoints: application launch matches the explicit entrypoint classifications.')
   }
 }

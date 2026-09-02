@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-31-karaka-application-runtime.md
-2026-08-31-karaka-application-runtime.md: 6de8d062bf50bae96fc756ba54ecc91b0ef7af94
-2026-08-31-karaka-application-runtime.zh.md: 6f7dc5ff9ace0ee68f8d9f1a1bc0f1ef01b98fdb

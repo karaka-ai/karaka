@@ -6,7 +6,7 @@ DeepSeek Harness is an all-plugin Cordis agent harness. Read [docs/architecture.
 
 **Remove at the first tagged release.** Until then, prefer correct foundations to compatibility shims: rename or repackage freely and update every reference. Backends reject old on-disk formats. SQLite uses monotonic `SCHEMA_VERSION`; `dsh-session` keeps `SESSION_FORMAT_VERSION` at `0` with no compatibility promise.
 
-**Application launch.** Node apps use `dsh` profiles. Product CLIs may select a fixed profile, then delegate; launchers, demos, and SDK argv escapes are forbidden ([rule](docs/architecture.md#application-launch)).
+**Application launch.** DSH Node apps use `dsh` profiles. `@karaka/cli` launches the self-contained `@karaka/agent` entry; other launchers, demos, and SDK argv escapes are forbidden ([rule](docs/architecture.md#application-launch)).
 
 ## Repository layout
 

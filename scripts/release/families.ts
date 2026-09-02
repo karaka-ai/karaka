@@ -381,7 +381,11 @@ class DshFamily extends ReleaseFamily {
 class KarakaFamily extends ReleaseFamily {
   readonly id = 'karaka'
   override readonly integrationBranch = 'main'
-  readonly patterns = ['packages/karaka/*/package.json'] as const
+  readonly patterns = [
+    'packages/karaka/agent/package.json',
+    'packages/karaka/cli/package.json',
+    'packages/karaka/sdk/package.json',
+  ] as const
   readonly tagPrefix = 'karaka-v'
   readonly packagePrefix = '@karaka/'
 

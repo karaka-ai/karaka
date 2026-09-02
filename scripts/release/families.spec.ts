@@ -56,8 +56,14 @@ describe('release families', () => {
     const karaka = releaseFamily('karaka')
     const members = karaka.members(resolve(import.meta.dirname, '../..'))
 
-    expect(members.map(member => member.name)).toContain('@karaka/cli')
-    expect(members.every(member => member.name.startsWith('@karaka/'))).toBe(true)
+    expect(members.map(member => member.name)).toEqual([
+      '@karaka/agent',
+      '@karaka/cli',
+      '@karaka/sdk',
+    ])
+    const agent = members.find(member => member.name === '@karaka/agent')
+    expect(Object.keys(agent?.manifest.dependencies ?? {}).filter(name => name.startsWith('@deepseek-ai/dsh-')))
+      .toEqual([])
     expect(karaka.installedEntry).toEqual({ packageName: '@karaka/cli', binPath: 'lib/bin.js' })
     expect(karaka.tagFor(members[0]!)).toBe(`karaka-v${members[0]!.version}`)
     expect(postBumpTagInstruction(karaka))

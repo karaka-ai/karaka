@@ -67,7 +67,7 @@ Add one entry per server; nothing else is required. After the harness starts, th
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-mcp-client) is the exhaustive source for every accepted field.
 
-Application-owned endpoints use [`@karaka/mcp-application`](../../karaka/mcp-application/README.md), which adds server authentication, Session identity, and Agent Preset selection without changing this generic client.
+Application-owned endpoints use the [`@karaka/agent`](../../karaka/agent/README.md) embedded `@karaka/agent/mcp-application` plugin, which adds server authentication, Session identity, and Agent Preset selection without changing this generic client.
 
 After startup, the server's tools appear as `mcp__<serverName>__<tool>` — try a prompt that uses one. If the initial connection fails, the harness still starts but no tools from that server appear, and an error is logged; set `failOnStartupError: true` to make a startup failure abort the harness instead.
 

@@ -196,10 +196,6 @@ describe('loadProfile', () => {
       bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
       patchReload: 'startup',
     })
-    expect(PROFILE_TEMPLATES.karaka).toEqual({
-      bundles: ['@deepseek-ai/dsh-base', '@karaka/harness'],
-      patchReload: 'startup',
-    })
     expect(PROFILE_TEMPLATES.sdk).toEqual({
       bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-sdk-app'],
       patchReload: 'startup',

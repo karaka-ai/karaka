@@ -47,6 +47,13 @@ import {
 } from './composition-inventory.ts'
 import type { AgentPreset, Config, PresetRoot } from './preset.ts'
 import { agentPresetProjectionDefinition } from './session.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Base URL supplied by a host that keeps bare modules separate from config files. */
+    loaderBareModuleBaseUrl?: string
+  }
+}
 export type * from './types.ts'
 export type {
   AgentPresetComposition, AgentPresetCompositionRow, CompositionRowEnablement,
@@ -128,7 +135,7 @@ export class AgentPresets extends TypertRemoteService {
 
   /**
    * Where a row's package name resolves from: the base URL of the composition
-   * this roster was loaded by, which is inside the installed harness.
+   * this roster was loaded by, or from the package base selected by its host.
    *
    * Discovery needs it because a preset's own directory is the wrong base for
    * a package name — a locally authored preset lives under the user's home,
@@ -136,7 +143,7 @@ export class AgentPresets extends TypertRemoteService {
    * dependencies. The mount already resolves rows this way; holding the same
    * base here is what lets health answer the question before a session does.
    */
-  private readonly harnessBase: string
+  private readonly barePackageBase: string
 
   /**
    * The user layer over `config.default`, present only while a settings
@@ -175,7 +182,7 @@ export class AgentPresets extends TypertRemoteService {
         + 'compose it under a Loader, or set the base on the context this plugin is applied to',
       )
     }
-    this.harnessBase = baseUrl
+    this.barePackageBase = ctx.get('loaderBareModuleBaseUrl') ?? baseUrl
     this.resolvedRoots = [
       ...config.includeShippedRoot ? [{ path: SHIPPED_PRESET_ROOT, trust: 'system' } satisfies PresetRoot] : [],
       ...config.roots,
@@ -247,7 +254,11 @@ export class AgentPresets extends TypertRemoteService {
    * @returns the presets, first-root-wins per id.
    */
   async list(): Promise<AgentPreset[]> {
-    return await discoverPresets(this.resolvedRoots, this.harnessBase)
+    return await discoverPresets(
+      this.resolvedRoots,
+      this.barePackageBase,
+      new Set(Object.keys(this.ctx.loader.builtins)),
+    )
   }
 
   /**

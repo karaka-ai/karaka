@@ -131,9 +131,15 @@ describe('package dependency scope', () => {
     expect(PACKAGE_DEPENDENCY_POLICY.hostPackages).toEqual([
       '@deepseek-ai/dsh-llm',
       '@deepseek-ai/dsh-session',
+      '@karaka/agent',
+      '@karaka/cli',
       '@karaka/sdk',
     ])
-    expect(PACKAGE_DEPENDENCY_POLICY.cordisDevelopmentOnlyPackages).toEqual(['@karaka/sdk'])
+    expect(PACKAGE_DEPENDENCY_POLICY.cordisDevelopmentOnlyPackages).toEqual([
+      '@karaka/cli',
+      '@karaka/sdk',
+    ])
+    expect(PACKAGE_DEPENDENCY_POLICY.cordisRuntimeDependencyPackages).toEqual(['@karaka/agent'])
     expect(PACKAGE_DEPENDENCY_POLICY.configurationOnlyDevDependencies).toEqual({
       '@deepseek-ai/dsh-client-locale': ['@deepseek-ai/dsh-api-remotes'],
       '@deepseek-ai/dsh-client-ui-conversation': [
@@ -145,6 +151,13 @@ describe('package dependency scope', () => {
       '@deepseek-ai/dsh-client-ui-subagent': ['@deepseek-ai/dsh-client-ui-input-trigger'],
       '@deepseek-ai/dsh-client-ui-theme': ['@deepseek-ai/dsh-api-remotes'],
       '@deepseek-ai/dsh-client-ui-tool': ['@deepseek-ai/dsh-api-remotes'],
+    })
+    expect(PACKAGE_DEPENDENCY_POLICY.configurationOnlyRuntimeDependencies).toEqual({
+      '@karaka/agent': [
+        '@deepseek-ai/cordis-plugin-hmr',
+        '@deepseek-ai/cordis-plugin-loader',
+        '@deepseek-ai/cordis-plugin-timer',
+      ],
     })
     expect(PACKAGE_DEPENDENCY_POLICY.duplicateSafePackages).toEqual([
       '@deepseek-ai/dsh-brand',

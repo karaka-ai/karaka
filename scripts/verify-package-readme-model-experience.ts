@@ -45,7 +45,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/karaka/sdk': { kind: 'indirect', reason: 'The backend library delegates tool presentation to the Karaka MCP client and selected Agent Preset.' },
-  'packages/karaka/harness': { kind: 'indirect', reason: 'The bundle delegates model context to the plugins selected by each Agent Preset.' },
+  'packages/karaka/agent': { kind: 'indirect', reason: 'The runtime delegates model context to the plugins selected by each Agent Preset.' },
   'packages/karaka/server-auth': { kind: 'none', reason: 'Authentication metadata stays outside prompts, messages, and tool schemas.' },
   'packages/karaka/mcp-application': { kind: 'indirect', reason: 'The plugin registers discovered MCP tool schemas selected by the active Agent Preset.' },
   'packages/karaka/transport-http': { kind: 'none', reason: 'The ingress projects Session input and events but does not assemble model requests.' },

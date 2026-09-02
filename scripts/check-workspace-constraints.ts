@@ -54,8 +54,14 @@ const karakaPublishedRepositoryUrl = 'git+https://github.com/karaka-ai/karaka.gi
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** npm namespace reserved for private experimental packages. */
 const experimentalPackageNamePrefix = '@deepseek-ai/dsh-experimental-'
-/** Directories whose packages this repository publishes: one release member each. */
+/** Non-Karaka directories whose packages this repository publishes. */
 const releaseMemberDirectory = /^(?:packages\/(?!experimental\/)[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
+/** Public Karaka release packages; sibling workspaces are bundled implementation inputs. */
+const karakaReleaseMemberDirectories = new Set([
+  'packages/karaka/agent',
+  'packages/karaka/cli',
+  'packages/karaka/sdk',
+])
 const localArtifactDirs = new Set(['node_modules'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js'],
@@ -296,7 +302,8 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
     }
-  } else if (releaseMemberDirectory.test(dir)) {
+  } else if (releaseMemberDirectory.test(dir)
+    && (!dir.startsWith('packages/karaka/') || karakaReleaseMemberDirectories.has(dir))) {
     // Release members state that they are publishable: npm refuses a private
     // package, and the repository field is how a consumer finds the source of
     // the package it installed.

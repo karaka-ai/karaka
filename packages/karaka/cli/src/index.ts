@@ -1,13 +1,10 @@
-import {
-  chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, symlinkSync, unlinkSync, writeFileSync,
-} from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { constants as osConstants } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { initProfile, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-app-boot'
 
 const require = createRequire(import.meta.url)
 /** Installed Karaka CLI package version. */
@@ -26,7 +23,7 @@ export function initKarakaProject(directory = 'apps/agents'): string {
       private: true,
       type: 'module',
       scripts: { start: 'karaka start', dev: 'karaka start' },
-      dependencies: { '@karaka/cli': karakaVersion, '@karaka/harness': karakaVersion },
+      dependencies: { '@karaka/cli': karakaVersion },
     }, undefined, 2) + '\n'],
     ['karaka.cordis.yml', KARAKA_CONFIG],
     ['agents/support/preset.yml', 'name: Support\ndescription: General application support\norder: 1\n'],
@@ -42,43 +39,39 @@ export function initKarakaProject(directory = 'apps/agents'): string {
   return root
 }
 
-/** Prepared profile paths used by the CLI launcher. */
-export interface KarakaProfile {
+/** Prepared runtime paths used by the CLI launcher. */
+export interface KarakaRuntime {
   readonly home: string
-  readonly profileDir: string
+  readonly bin: string
 }
 
 /**
- * Prepare a project-local Harness home whose profile can resolve the CLI's Karaka bundle dependency.
+ * Prepare the private runtime home and resolve the Agent executable shipped with this CLI.
  * @param project - application project root.
- * @returns Harness home and profile paths.
+ * @returns Agent home and executable path.
  */
-export function prepareKarakaProfile(project = process.cwd()): KarakaProfile {
+export function prepareKarakaRuntime(project = process.cwd()): KarakaRuntime {
   const home = resolve(project, '.karaka')
   mkdirSync(home, { recursive: true, mode: 0o700 })
   if (process.platform !== 'win32') chmodSync(home, 0o700)
-  const template = PROFILE_TEMPLATES.karaka
-  if (template === undefined) throw new Error('Karaka profile template is unavailable')
-  const profileDir = resolve(home, 'profiles/karaka')
-  initProfile(profileDir, template.bundles, template.patchReload)
-  linkProjectDependencies(profileDir, project)
-  linkProfileBundle(profileDir, '@karaka/harness')
-  return { home, profileDir }
+  return { home, bin: require.resolve('@karaka/agent/bin') }
 }
 
 /**
- * Run the Karaka profile through the existing dsh launcher.
+ * Run the installed Karaka Agent executable as the project's foreground child.
  * @param config - deployment patch path relative to the current project.
  * @returns child-process exit code.
  */
 export async function startKarakaProject(config = 'karaka.cordis.yml'): Promise<number> {
   const project = process.cwd()
-  const { home } = prepareKarakaProfile(project)
-  const dshManifest = require.resolve('@deepseek-ai/dsh/package.json')
-  const bin = resolve(dirname(dshManifest), 'lib/bin.js')
-  const child = spawn(process.execPath, [bin, '--profile', 'karaka', '--patch', resolve(project, config)], {
+  const { home, bin } = prepareKarakaRuntime(project)
+  const child = spawn(process.execPath, [bin, '--config', resolve(project, config)], {
     cwd: project,
-    env: { ...process.env, DSH_HOME: home },
+    env: {
+      ...process.env,
+      KARAKA_HOME: home,
+      KARAKA_AGENTS_DIR: process.env.KARAKA_AGENTS_DIR ?? resolve(project, 'agents'),
+    },
     stdio: 'inherit',
   })
   return ownKarakaChild(child)
@@ -90,8 +83,8 @@ interface SignalSource {
 }
 
 /**
- * Forward supervisor shutdown to the persistent Harness child; a second signal forces termination.
- * @param child - spawned dsh profile process.
+ * Forward supervisor shutdown to the persistent Agent child; a second signal forces termination.
+ * @param child - spawned Agent process.
  * @param signals - process-like signal source, replaceable by lifecycle tests.
  * @returns child-process exit code.
  */
@@ -135,100 +128,6 @@ export function ownKarakaChild(child: ChildProcess, signals: SignalSource = proc
   })
 }
 
-function linkProfileBundle(profileDir: string, packageName: string): void {
-  const manifest = require.resolve(`${packageName}/package.json`)
-  linkProfilePackage(profileDir, packageName, dirname(manifest))
-}
-
-function linkProjectDependencies(profileDir: string, project: string): void {
-  const manifestPath = join(project, 'package.json')
-  const manifest = existsSync(manifestPath)
-    ? JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      dependencies?: Record<string, unknown>
-      optionalDependencies?: Record<string, unknown>
-    }
-    : {}
-  const names = new Set([
-    ...Object.keys(manifest.dependencies ?? {}),
-    ...Object.keys(manifest.optionalDependencies ?? {}),
-  ])
-  const statePath = join(profileDir, '.karaka-project-links.json')
-  for (const packageName of readProjectLinkState(statePath)) {
-    if (!names.has(packageName) || !existsSync(projectPackagePath(project, packageName))) {
-      unlinkManagedProfilePackage(profileDir, packageName)
-    }
-  }
-  const linked: string[] = []
-  for (const packageName of names) {
-    const target = projectPackagePath(project, packageName)
-    if (!existsSync(target)) continue
-    linkProfilePackage(profileDir, packageName, target, false)
-    linked.push(packageName)
-  }
-  writeFileSync(statePath, `${JSON.stringify(linked.sort(), undefined, 2)}\n`)
-}
-
-function readProjectLinkState(path: string): string[] {
-  if (!existsSync(path)) return []
-  const state = JSON.parse(readFileSync(path, 'utf8')) as unknown
-  if (!Array.isArray(state)) {
-    throw new Error(`Karaka project-link state is invalid: ${path}`)
-  }
-  const names = state.filter((name): name is string => typeof name === 'string')
-  if (names.length !== state.length) throw new Error(`Karaka project-link state is invalid: ${path}`)
-  return names
-}
-
-function unlinkManagedProfilePackage(profileDir: string, packageName: string): void {
-  const link = projectPackagePath(profileDir, packageName)
-  try {
-    if (!lstatSync(link).isSymbolicLink()) {
-      throw new Error(`Karaka profile package path is not a managed link: ${link}`)
-    }
-    unlinkSync(link)
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
-}
-
-function projectPackagePath(project: string, packageName: string): string {
-  const modules = resolve(project, 'node_modules')
-  const target = resolve(modules, packageName)
-  const nested = relative(modules, target)
-  if (nested.length === 0 || nested.startsWith('..') || isAbsolute(nested)) {
-    throw new Error(`Karaka project declares an invalid package name: ${packageName}`)
-  }
-  return target
-}
-
-function linkProfilePackage(
-  profileDir: string,
-  packageName: string,
-  target: string,
-  dereferenceTarget = true,
-): void {
-  const link = projectPackagePath(profileDir, packageName)
-  const linkedTarget = dereferenceTarget ? realpathSync.native(target) : resolve(target)
-  try {
-    const entry = lstatSync(link)
-    if (!entry.isSymbolicLink()) {
-      throw new Error(`Karaka profile package path is not a managed link: ${link}`)
-    }
-    if (dereferenceTarget) {
-      try {
-        if (realpathSync.native(link) === realpathSync.native(target)) return
-      } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      }
-    }
-    unlinkSync(link)
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
-  mkdirSync(dirname(link), { recursive: true })
-  symlinkSync(linkedTarget, link, 'junction')
-}
-
 function readPackageVersion(): string {
   const manifest = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')) as {
     version?: unknown
@@ -257,14 +156,14 @@ const KARAKA_CONFIG = `# Final Cordis patch for this Karaka deployment.
 `
 
 const SUPPORT_AGENT = `- id: persona
-  name: '@deepseek-ai/dsh-persona'
+  name: '@karaka/agent/persona'
   config:
     text: You are a helpful support agent.
     complete: true
     includeRuntimeContext: false
 
 - id: tools
-  name: '@deepseek-ai/dsh-agent-tool-presentation'
+  name: '@karaka/agent/agent-tool-presentation'
   config:
     mode: native
     allow: []
