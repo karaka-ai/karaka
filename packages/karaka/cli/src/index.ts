@@ -23,12 +23,13 @@ export function initKarakaProject(directory = 'apps/agents'): string {
       private: true,
       type: 'module',
       scripts: { start: 'karaka start', dev: 'karaka start' },
-      dependencies: { '@karaka/cli': karakaVersion },
+      dependencies: { '@karaka/agent': karakaVersion, '@karaka/cli': karakaVersion },
     }, undefined, 2) + '\n'],
     ['karaka.cordis.yml', KARAKA_CONFIG],
     ['agents/support/preset.yml', 'name: Support\ndescription: General application support\norder: 1\n'],
     ['agents/support/agent.cordis.yml', SUPPORT_AGENT],
   ])
+  mkdirSync(join(root, 'plugins'), { recursive: true })
   for (const [relative, content] of files) {
     const path = join(root, relative)
     if (existsSync(path)) continue
