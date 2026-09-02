@@ -24,9 +24,9 @@ Linux additionally retains its manylinux 2.28 clean-install smoke and GLIBC chec
 
 ### Real DeepSeek API
 
-Trusted pull requests run a second installed-wheel check on every native target with `DEEPSEEK_API_KEY_EXTERNAL`, mapped only into a preflight and the live test step. The preflight fails when the secret is empty, so the provider suite cannot self-skip to green. The test starts the public SDK against `https://api.deepseek.com`, asks the model to write an exact sentinel file through the platform shell, asks a second turn in the same session to read it, and verifies the external line content, final responses, completed turn reasons, model-requested tool calls, and the existence and Zstandard framing of its session log. Decoded record content and completed-turn durability are deterministic keyless obligations owned by the restart snapshot rather than inferred from compressed live-provider bytes.
+Trusted pull requests run a second installed-wheel check on every native target when `DEEPSEEK_API_KEY_EXTERNAL` is configured; the credential maps only into the live test step. Without it, the live step skips and the required keyless scenarios continue ([optional CI credentials](2026-09-02-optional-ci-credentials.md)). The test starts the public SDK against `https://api.deepseek.com`, asks the model to write an exact sentinel file through the platform shell, asks a second turn in the same session to read it, and verifies the external line content, final responses, completed turn reasons, model-requested tool calls, and the existence and Zstandard framing of its session log. Decoded record content and completed-turn durability are deterministic keyless obligations owned by the restart snapshot rather than inferred from compressed live-provider bytes.
 
-Fork and Dependabot pull requests never receive the repository secret. Their native jobs run the complete keyless path and skip both secret-bearing steps; `pull_request_target` is forbidden because it would execute untrusted code with the key.
+Fork and Dependabot pull requests never receive the repository secret. Their native jobs run the complete keyless path and skip the live step; `pull_request_target` is forbidden because it would execute untrusted code with the key.
 
 ### Required targets
 
@@ -48,4 +48,4 @@ This decision supersedes the single-target topology in the archived [required Py
 
 ## Consequences
 
-Every pull request pays for four native executable and wheel builds plus deterministic installed-artifact scenarios. Trusted same-repository pull requests also pay for one two-turn DeepSeek task per target. In exchange, the required result describes the files Python users install, proves every published carrier before merge, and cannot pass by importing the checkout or silently skipping the real provider.
+Every pull request pays for four native executable and wheel builds plus deterministic installed-artifact scenarios. Trusted same-repository pull requests with the configured credential also pay for one two-turn DeepSeek task per target. In exchange, the required result describes the files Python users install and proves every published carrier before merge without making provider credentials a prerequisite.
