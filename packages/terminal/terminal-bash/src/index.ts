@@ -123,11 +123,21 @@ async function startupSession(
       await session.initialize(signal)
       return
     }
-    // pwsh cannot install its prompt from the environment. Write the prompt
-    // function through the session, pin UTF-8 output before user input, and
-    // accept only backend stdin_read evidence; echoed setup source containing
-    // the printable prompt is not readiness. Follow-up sends bridge silence
-    // settlements during startup, while one absolute deadline bounds them.
+    // pwsh cannot install its prompt from the environment. First let PSReadLine
+    // finish its initial prompt before writing setup input; an early write can
+    // be consumed while the line editor is still redrawing and interleave the
+    // prompt function with the stock prompt. Then pin UTF-8 output and accept
+    // only backend stdin_read evidence from the installed prompt. Follow-up
+    // sends bridge silence settlements, while one absolute deadline bounds all
+    // startup phases.
+    startupOperation = session.startSend({
+      text: '',
+      submit: false,
+      ...signal !== undefined ? { signal } : {},
+    })
+    const initial = await startupOperation.done
+    if (initial.waitReason === 'session_exit') throw new Error('PTY shell exited during startup')
+    if (initial.waitReason === 'timeout') throw new Error('PTY shell did not reach readiness before startup timeout')
     let viewport = ''
     for (;;) {
       const first = viewport.length === 0
@@ -140,7 +150,7 @@ async function startupSession(
       if (result.waitReason === 'session_exit') throw new Error('PTY shell exited during startup')
       if (result.waitReason === 'timeout') throw new Error('PTY shell did not reach readiness before startup timeout')
       viewport = result.viewport
-      if (result.waitReason === 'stdin_read') break
+      if (result.waitReason === 'stdin_read' && viewport.endsWith(CONTROLLED_PROMPT)) break
     }
     session.motd = viewport
   }

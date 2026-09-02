@@ -98,14 +98,17 @@ describe('CI workflow', () => {
     expect(windows.if).toBe("github.event_name == 'pull_request'")
     expect(commandSteps.some(step => step.run.includes('wine-windows-gates.sh'))).toBe(true)
 
-    // The split native jobs all resolve their pool through the Windows switch.
+    // The split native jobs use standard hosted Windows unless a trusted
+    // same-repository branch explicitly selects the self-hosted fallback.
     for (const [jobName, job] of [['windows-build', windowsBuild], ['windows-coverage', windowsCoverage], ['windows-native-tests', windowsNativeTests], ['windows-observational', windowsObservational]] as const) {
       expect(typeof job['runs-on']).toBe('string')
       expect(job['runs-on'], `${jobName} runs-on must use the Windows failover switch`).toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on'], `${jobName} runs-on must not use the Linux failover switch`).not.toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on']).toContain('self-hosted')
       expect(job['runs-on']).toContain('dsh-win-ci')
-      expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain('windows-2025')
+      expect(job['runs-on']).not.toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain('github.event.pull_request.head.repo.full_name == github.repository')
       expect(job.if).toBe("github.event_name == 'pull_request'")
     }
 
@@ -117,9 +120,13 @@ describe('CI workflow', () => {
     ))
     expect(buildCommands.map(step => step.run)).toContain('pnpm run check:ci:windows-blocking')
 
-    // windows-coverage uses the lower 4-partition profile.
+    // Standard Windows capacity keeps coverage to two isolated partitions.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '4' })
+    expect(windowsCoverage.env).toMatchObject({
+      DSH_COVERAGE_MAX_WORKERS: '2',
+      DSH_COVERAGE_PARTITIONS: '2',
+      DSH_GATE_CONCURRENCY: '2',
+    })
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -161,18 +168,55 @@ describe('CI workflow', () => {
     expect(aggregate.needs).not.toContain('windows-observational')
     expect(aggregate.needs).not.toContain('serial-windows')
 
-    // Linux failover is a separate switch: the three required Linux workers
-    // and the verdict job resolve their pool through DSH_CI_FAILOVER_LINUX,
-    // never the Windows switch.
+    // Linux uses standard hosted capacity by default. Its independent switch
+    // can select self-hosted only for trusted same-repository branches.
     for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-consumers', node24Consumers]] as const) {
       expect(typeof job['runs-on']).toBe('string')
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
+      expect(job['runs-on']).toContain('ubuntu-latest')
+      expect(job['runs-on']).not.toContain('dsh-ubuntu-24-04-16core')
+      expect(job['runs-on']).toContain('github.event.pull_request.head.repo.full_name == github.repository')
     }
+    expect(node24.env).toMatchObject({ DSH_GATE_CONCURRENCY: '2' })
+    expect(node24Coverage.env).toMatchObject({
+      DSH_COVERAGE_MAX_WORKERS: '2',
+      DSH_COVERAGE_PARTITIONS: '2',
+      DSH_GATE_CONCURRENCY: '2',
+    })
+    expect(node24Consumers.env).toMatchObject({
+      DSH_GATE_CONCURRENCY: '2',
+      DSH_OXLINT_THREADS: '2',
+      DSH_PUBLINT_CONCURRENCY: '2',
+      DSH_WEB_SNAPSHOT_WORKERS: '2',
+      DSH_SNAPSHOT_MAX_CONCURRENCY: '2',
+    })
+    expect(windowsObservational.env).toMatchObject({
+      DSH_GATE_CONCURRENCY: '2',
+      DSH_OXLINT_THREADS: '2',
+      DSH_PUBLINT_CONCURRENCY: '2',
+    })
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
     expect(aggregate['runs-on']).toContain('vm-backup')
+    expect(aggregate['runs-on']).toContain('ubuntu-latest')
+    expect(aggregate['runs-on']).toContain('github.event.pull_request.head.repo.full_name == github.repository')
+
+    const previewWorkflow = loadWorkflow('.github/workflows/build-preview-cloudflare.yml')
+    const preview = workflowJob(previewWorkflow, 'preview')
+    expect(preview['runs-on']).toBe('ubuntu-latest')
+    expect(previewWorkflow.env).toMatchObject({
+      DSH_CLOUDFLARE_CONFIGURED: "${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.CF_ACCESS_CLIENT_ID != '' && secrets.CF_ACCESS_CLIENT_SECRET != '' }}",
+    })
+    if (!Array.isArray(preview.steps)) throw new TypeError('preview job must define steps')
+    const previewSteps = preview.steps.filter(isRecord)
+    expect(previewSteps.find(step => step.name === 'Report unavailable Cloudflare credentials')).toMatchObject({
+      if: "env.DSH_CLOUDFLARE_CONFIGURED != 'true'",
+    })
+    for (const step of previewSteps.filter(step => step.name !== 'Report unavailable Cloudflare credentials')) {
+      expect(step.if).toBe("env.DSH_CLOUDFLARE_CONFIGURED == 'true'")
+    }
   })
 
   it('gives the Wine Host TypeScript compile the repository heap budget', () => {
@@ -302,6 +346,28 @@ describe('CI workflow', () => {
 })
 
 describe('DeepSeek e2e workflow', () => {
+  it('keeps missing provider credentials non-blocking', () => {
+    const workflow = loadWorkflow('.github/workflows/e2e.yml')
+    const e2e = workflowJob(workflow, 'e2e')
+    if (!Array.isArray(e2e.steps)) throw new TypeError('DeepSeek e2e workflow must define steps')
+
+    const steps = e2e.steps.filter(isRecord)
+    expect(e2e.if).toBeUndefined()
+    expect(steps.some(step => step.name === 'Preflight (require DEEPSEEK_API_KEY)')).toBe(false)
+    expect(e2e.env).toMatchObject({
+      DSH_REAL_API_CONFIGURED: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL != \'\' }}',
+    })
+    expect(steps.find(step => step.name === 'Report unavailable provider credential')).toMatchObject({
+      if: "env.DSH_REAL_API_CONFIGURED != 'true'",
+    })
+    for (const step of steps.filter(step => step.name !== 'Report unavailable provider credential')) {
+      expect(step.if).toBe("env.DSH_REAL_API_CONFIGURED == 'true'")
+    }
+    expect(steps.find(step => step.name === 'E2E tests (real DeepSeek API)')).toMatchObject({
+      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+    })
+  })
+
   it('prepares bubblewrap from the pinned payload without a package transaction', () => {
     const workflow = loadWorkflow('.github/workflows/e2e.yml')
     const e2e = workflowJob(workflow, 'e2e')
@@ -450,13 +516,10 @@ describe('Python release workflows', () => {
     const cleanVenvWindows = buildSteps.find(step => isRecord(step) && step.name === 'Install local SDK and runtime wheels into a clean venv (Windows)')
     const installedKeylessPosix = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel keyless black-box tests (POSIX)')
     const installedKeylessWindows = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel keyless black-box tests (Windows)')
-    const realApiPreflightPosix = buildSteps.find(step => isRecord(step) && step.name === 'Preflight installed-wheel real API test (POSIX)')
-    const realApiPreflightWindows = buildSteps.find(step => isRecord(step) && step.name === 'Preflight installed-wheel real API test (Windows)')
     const installedRealApiPosix = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel real API black-box test (POSIX)')
     const installedRealApiWindows = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel real API black-box test (Windows)')
     if (!isRecord(cleanVenvPosix) || !isRecord(cleanVenvWindows)
       || !isRecord(installedKeylessPosix) || !isRecord(installedKeylessWindows)
-      || !isRecord(realApiPreflightPosix) || !isRecord(realApiPreflightWindows)
       || !isRecord(installedRealApiPosix) || !isRecord(installedRealApiWindows)) {
       throw new TypeError('Python wheel builder must define native POSIX and Windows installed-wheel steps')
     }
@@ -467,6 +530,9 @@ describe('Python release workflows', () => {
     })
     expect(call.secrets).toMatchObject({
       DEEPSEEK_API_KEY_EXTERNAL: { required: false },
+    })
+    expect(build.env).toMatchObject({
+      DSH_REAL_API_CONFIGURED: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL != \'\' }}',
     })
     expect(workflow.concurrency).toMatchObject({
       group: 'build-single-exe-${{ github.workflow }}-${{ github.ref }}',
@@ -504,22 +570,17 @@ describe('Python release workflows', () => {
     expect(installedKeylessWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(cleanVenvWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(JSON.stringify(cleanVenvWindows)).toContain('Scripts\\\\python.exe')
-    expect(realApiPreflightPosix).toMatchObject({
-      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
-    })
-    expect(String(realApiPreflightPosix.if)).toContain('inputs.ci')
-    expect(String(realApiPreflightPosix.if)).toContain('head.repo.fork')
-    expect(String(realApiPreflightPosix.if)).toContain('dependabot[bot]')
-    expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
     expect(installedRealApiPosix).toMatchObject({
       env: {
         DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
         DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
       },
     })
+    expect(String(installedRealApiPosix.if)).toContain("env.DSH_REAL_API_CONFIGURED == 'true'")
     expect(JSON.stringify(installedRealApiPosix)).toContain('--scenario sdk-live')
     expect(JSON.stringify(installedRealApiPosix)).toContain('-u DSH_RUNTIME_MODE')
     expect(installedRealApiWindows).toMatchObject({ shell: 'pwsh' })
+    expect(String(installedRealApiWindows.if)).toContain("env.DSH_REAL_API_CONFIGURED == 'true'")
     expect(JSON.stringify(installedRealApiWindows)).toContain('--scenario sdk-live --installed-wheel')
     expect(manylinuxSmoke).toMatchObject({ if: "runner.os == 'Linux'" })
     expect(JSON.stringify(manylinuxSmoke)).toContain('-e DSH_TELEMETRY_DISABLED')
@@ -586,14 +647,40 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecycleReview.types).toEqual(['submitted'])
     const gated = "${{ github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested' }}"
     const steps = lifecycleJob.steps.filter(isRecord)
+    const credentialStep = steps.find(s => s.name === 'Detect project credentials')
     const tokenStep = steps.find(s => s.name === 'Create project token')
     const handleStep = steps.find(s => s.name === 'Handle repository event')
-    expect(tokenStep).toMatchObject({ if: gated })
-    expect(handleStep).toMatchObject({ if: gated })
+    expect(credentialStep).toMatchObject({ if: gated })
+    expect(String(tokenStep?.if)).toContain("steps.project-credentials.outputs.configured == 'true'")
+    expect(tokenStep).toMatchObject({
+      with: {
+        owner: '${{ github.repository_owner }}',
+        repositories: '${{ github.event.repository.name }}',
+      },
+    })
+    expect(String(handleStep?.if)).toContain("steps.project-credentials.outputs.configured == 'true'")
 
     // issue-policy owns PR validation; it is read-only and a real gate.
     const policyPullRequest = workflowEvent(policy, 'pull_request')
     expect(policyPullRequest.types).toContain('ready_for_review')
+  })
+
+  it('targets the current repository for issue policy queries', () => {
+    const config: unknown = JSON.parse(readFileSync(resolve(root, '.github/issue-management/config.json'), 'utf8'))
+    expect(config).toMatchObject({ organization: 'karaka-ai', repository: 'karaka' })
+
+    const workflow = loadWorkflow('.github/workflows/issue-policy.yml')
+    const policy = workflowJob(workflow, 'policy')
+    if (!Array.isArray(policy.steps)) throw new TypeError('Issue policy workflow must define steps')
+    const target = policy.steps.filter(isRecord).find(step => step.name === 'Target event repository')
+    expect(target).toMatchObject({
+      env: {
+        POLICY_ORGANIZATION: '${{ github.repository_owner }}',
+        POLICY_REPOSITORY: '${{ github.event.repository.name }}',
+      },
+    })
+    expect(String(target?.run)).toContain('config.organization = process.env.POLICY_ORGANIZATION')
+    expect(String(target?.run)).toContain('config.repository = process.env.POLICY_REPOSITORY')
   })
 })
 

@@ -1,6 +1,7 @@
 # Agent Note: 拉取请求 CI 的可移植恢复边界
 
 Status: implemented
+Archived: 2026-09-02
 
 [English](2026-07-23-portable-required-pull-request-ci.md) | 中文
 

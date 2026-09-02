@@ -34,7 +34,7 @@ describe('application entrypoints', () => {
     write(root, 'packages/example/app/package.json', JSON.stringify({ bin: { app: 'lib/bin.js' } }))
 
     expect(applicationEntrypointViolations(root)).toEqual([
-      'packages/example/app/package.json: package bin bypasses the dsh launcher; applications use apps/cli profiles',
+      'packages/example/app/package.json: package bin has no explicit application/build/test classification',
     ])
   })
 

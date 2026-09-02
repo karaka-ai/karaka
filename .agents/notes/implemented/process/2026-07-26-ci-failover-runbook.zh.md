@@ -6,11 +6,11 @@ Status: implemented
 
 ## 问题
 
-[CI](../../../../.github/workflows/ci.yml) 中三个必需的 Linux 工作作业（`node 24 / static`、`node 24 / coverage`、`node 24 / snapshots and artifacts`）运行在托管的企业级 32 核池上；聚合它们的必需判定作业（`all checks passed`）运行在标准 `ubuntu-latest` 上；独立的原生 Windows 作业（`windows node 24 / native complete`）运行在托管的 `dsh-windows-2025-16core` 大型运行器上。当企业池发生故障——作业无限排队或企业标签消失——所有开启的拉取请求都无法合并，而"合并一个修复"这一常规恢复手段本身正被那些无法运行的必需检查死锁。**适用范围：两个独立开关，每个平台一个。**`DSH_CI_FAILOVER_LINUX` 恢复企业级 Linux 池故障（三个必需的 Linux 工作作业加 `all checks passed` 判定作业）；`DSH_CI_FAILOVER_WINDOWS` 恢复托管 Windows 池故障（原生 Windows 作业）。Linux 池故障无需重定向原生 Windows 作业，反之亦然。判定作业的其余必需依赖（`node-compat`、`python-sdk`、`windows`）按设计留在标准托管运行器上（可移植边界）；若更大范围的 GitHub 托管容量故障连标准池一并击倒，这些依赖仍会阻塞 `all checks passed`。因此故障需要一个任何具备仓库写权限的响应者都能在不合并任何代码的情况下触发的开关。
+[CI](../../../../.github/workflows/ci.yml) 中必需的 Linux 工作作业与原生 Windows 作业使用 GitHub 标准托管运行器。某个平台的托管容量发生故障时，该平台上的所有必需作业可能同时排队或失败，而合并工作流修复也可能被这些检查阻塞。**适用范围：两个独立开关，每个平台一个。**`DSH_CI_FAILOVER_LINUX` 恢复 3 个 Linux 工作作业与 `all checks passed` 的标准 Linux 池故障；`DSH_CI_FAILOVER_WINDOWS` 恢复 4 个原生 Windows 作业的标准 Windows 池故障。因此，故障恢复需要一个具备仓库写权限的响应者无需合并即可切换的开关。
 
 ## 决策
 
-三个必需的 Linux 工作作业、独立的原生 Windows 作业，以及 `all checks passed` 判定作业（若不随切换，即使全部工作作业通过，它仍会滞留在故障池的队列中）——各自通过仓库变量解析运行器池，且开关按平台拆分，使一个平台的故障不会重定向另一个平台。三个 Linux 工作作业与 `all checks passed` 判定作业（其 `needs` 是必需的 Linux 工作作业，且运行在 `vm-backup` 池上）通过 `DSH_CI_FAILOVER_LINUX` 解析；原生 Windows 作业通过 `DSH_CI_FAILOVER_WINDOWS` 解析。变量不存在（正常）时它们运行在托管企业池上；由任何具备写权限的协作者设为 `selfhosted` 时，对应作业切换到公司自有的自托管池：`DSH_CI_FAILOVER_LINUX` 下，Linux 作业与判定作业切到 `vm-backup` 池，快照并发降到共享虚拟机上限，并跳过托管路径的 pnpm 缓存恢复；`DSH_CI_FAILOVER_WINDOWS` 下，原生 Windows 作业切到 `dsh-win-ci` 池。每个开关都是写者可管理的仓库状态而非一次合并，因此在所有检查都是红色时仍然有效。自有池的就绪状态由 `serial / linux (self-hosted standby)` 与 `serial / windows (self-hosted standby)` 通道持续验证——每次 master 推送都在其上运行完整的未分片聚合流程。
+每个 Linux 工作作业、原生 Windows 作业与 `all checks passed` 判定作业都通过平台专用的仓库变量解析运行器。变量不存在时，作业使用 `ubuntu-latest` 或 `windows-2025`。变量设为 `selfhosted` 时，来自可信同仓库且不是 Dependabot 的分支会使用 `vm-backup` 或 `dsh-win-ci`；fork 与 Dependabot 拉取请求仍使用标准托管运行器。Linux 故障切换会跳过托管 pnpm 缓存恢复，因为持久虚拟机拥有热 store。两种拓扑使用同一套降低后的 worker 预算。master 上的热备通道会继续在自托管池中执行完整的未分片聚合流程。
 
 `ci-master.yml` 只豁免一个事件不做取消（`${{ github.event_name != 'push' }}`），因此一次 master 推送不会取消上一次推送留下的、仍在运行的演练。每次演练以单门禁工作进程执行完整的未分片聚合流程，耗时长于 master 合并的间隔；在无条件取消下，演练会在得出结论前被后续运行取代，该通道无法产出供响应者查看的就绪证据。
 
@@ -32,11 +32,11 @@ Status: implemented
 
 1. 仓库 **Settings → Secrets and variables → Actions → Variables → New repository variable**：名称 `DSH_CI_FAILOVER_LINUX`（Linux 池故障）或 `DSH_CI_FAILOVER_WINDOWS`（Windows 池故障），值 `selfhosted`。
 2. 重新触发必需作业，使其重新解析运行器池。已经为托管标签**排队**的作业不会重定向，也无法原地 re-run，因此对于本手册所述的无限排队故障，应取消卡住的运行并 re-run all jobs，或推送一个新提交；“Re-run failed jobs”只有在作业真正失败（而非仍在排队）时才有用。
-3. 切换到此完成。Linux 故障切换状态下，工作流还会把 `DSH_SNAPSHOT_MAX_CONCURRENCY` 降为 12，以限制共享虚拟机上的争抢，并跳过托管路径的 pnpm 缓存恢复，因为虚拟机的持久 store 会直接提供热安装。覆盖率在两个 Linux 池上都使用 4 个单 worker 插桩分区与 2 个豁免 worker。Windows 开关没有并发或缓存分支；它只重定向原生 Windows 作业的运行器池。
+3. 切换到此完成。Linux 故障切换会跳过托管路径的 pnpm 缓存恢复，因为虚拟机的持久 store 会提供热安装。两个 Linux 池都使用 2 个单 worker 插桩覆盖率分区、1 个豁免重型 worker 和相同的快照限制。Windows 开关只会重定向原生 Windows 作业。
 
-#**Dependabot 例外。**两个开关的选择器都刻意排除了 `dependabot[bot]`：故障切换期间，Dependabot 拉取请求继续在托管池排队，而不是把依赖项提供的代码放到持久化虚拟机上执行。故障期间 Dependabot PR 持续排队是预期行为而非切换失败；托管池恢复后它会自行完成。
+#**不可信拉取请求例外。**两个开关都会排除 Dependabot，并要求 `github.event.pull_request.head.repo.full_name == github.repository`。因此，依赖更新与 fork 拉取请求会留在临时标准运行器上，而不会在持久虚拟机中执行其提供的代码。
 
-**谁能扳动这个变量。**GitHub 的 API 允许任何具有写权限的协作者管理仓库变量，因此每个开关实际是写者级而非严格的管理员级。在本仓库的信任模型下这并不构成升权：runner group 接纳本私有、禁 fork 仓库的全部工作流（这是让 PR 引用的故障切换得以成立的刻意取舍），因此任何写者本就可以通过推送分支工作流触达这台虚拟机。抵御不可信代码的边界是仓库成员资格；变量只是为成员路由工作。
+**谁能扳动这个变量。**GitHub 的 API 允许具有写权限的协作者管理仓库变量，因此每个开关实际是写者级而非严格的管理员级。同仓库选择器把自托管执行限定为由仓库写者控制的分支；变量只会路由这些可信工作。
 
 ## 切换期间的容量
 
@@ -45,11 +45,11 @@ Status: implemented
 
 ### 切回
 
-删除 `DSH_CI_FAILOVER_LINUX` 或 `DSH_CI_FAILOVER_WINDOWS` 变量（或改为 `selfhosted` 以外的任何值），新的运行即解析回托管企业池。若故障期间追加注册过实例，将其移除。
+删除 `DSH_CI_FAILOVER_LINUX` 或 `DSH_CI_FAILOVER_WINDOWS` 变量，或改为 `selfhosted` 以外的任何值，新的运行即解析回 GitHub 标准托管池。若故障期间追加注册过实例，将其移除。
 
 ### 信任边界
 
-这些变量是写者可管理的仓库状态；`pull_request` 事件本身既不能设置它们，也不能让不同的值生效，选择器表达式存在于工作流定义中。需要注意：故障切换期间，`pull_request` 运行执行的是 PR merge 引用自带的工作流定义——抵御不可信代码的边界是仓库成员资格（私有、禁 fork、选择器排除 Dependabot），而非该变量。关于 runner group 策略的说明：把 runner group 绑定到 master 引用的工作流与本故障切换机制**不兼容**——五个故障切换作业是从 PR merge 引用求值的 `pull_request` 运行，master 绑定的组会让它们持续排队（2026-07-27 实际故障中亲历；当时将组放宽为本仓库全部工作流才疏通了切换）。更严格的运行器侧策略以牺牲 PR 故障切换为代价；当前采用的形态是仓库范围、全工作流的组访问。
+这些变量是写者可管理的仓库状态；`pull_request` 事件本身不能设置它们。拉取请求运行会执行 merge ref 中的工作流定义，因此运行器选择器还会在选择持久运行器前要求同仓库 head 并排除 Dependabot。fork 与依赖提供的工作流始终使用临时标准容量。runner group policy 可以进一步限制自托管池，但必须允许故障切换所要执行的同仓库拉取请求工作流。
 
 ## 曾考虑的替代方案
 
@@ -59,4 +59,4 @@ Status: implemented
 
 ## 后果
 
-从托管池故障中恢复只需切换受影响平台的变量（任何写者可设）加一次重跑，关键路径上没有合并。代价是每个平台都要维护第二套运行器拓扑：热备通道在每次 master 推送时都运行它们，避免故障切换目标变得陈旧；而 `ci.yml` 中的快照并发与缓存恢复分支带有一条 `selfhosted` 支路（仅 Linux），必须与托管支路保持同步。按平台拆分开关多了一个需要管理的变量，但把每个开关的影响范围限定在单个平台的作业上。
+从托管池故障中恢复只需切换受影响平台的变量并重跑，关键路径上无需合并。代价是每个平台都要维护第二套运行器拓扑：master 上的热备通道会执行它，而 Linux 缓存恢复分支必须与其托管分支保持一致。按平台拆分会把每个开关限制在一个平台内，同仓库保护条件则阻止这条恢复路径接纳 fork 代码。

@@ -372,15 +372,18 @@ describe('experimental Inspector real Worker', () => {
     const secondContext = await clientContext(secondCdp)
     const value = { owner: 'client-console' }
     const marker = 'client-console-event'
-    await client.log(value, marker)
     let firstEvent: CdpMessage | undefined
     let secondEvent: CdpMessage | undefined
-    await vi.waitFor(() => {
+    // Runtime.enable returns after the Worker subscribes, while the Client
+    // receives that subscription on its independent bridge socket. Repeat
+    // the observation until both DevTools sessions have received it.
+    await vi.waitFor(async () => {
+      await client!.log(value, marker)
       firstEvent = consoleEvent(cdp!, firstContext, marker)
       secondEvent = consoleEvent(secondCdp!, secondContext, marker)
       expect(firstEvent).toBeDefined()
       expect(secondEvent).toBeDefined()
-    })
+    }, { timeout: 5_000, interval: 50 })
     const firstObjectId = asRecord(recordArray(firstEvent!.params?.args)[0]).objectId
     const secondObjectId = asRecord(recordArray(secondEvent!.params?.args)[0]).objectId
     expect(firstObjectId).toBeTypeOf('string')
@@ -398,7 +401,7 @@ describe('experimental Inspector real Worker', () => {
     expect((await cdp.call('Runtime.discardConsoleEntries')).error).toBeUndefined()
     expect((await cdp.call('Runtime.getProperties', { objectId: firstObjectId })).error).toBeDefined()
     expect((await secondCdp.call('Runtime.getProperties', { objectId: secondObjectId })).error).toBeUndefined()
-  })
+  }, 10_000)
 
   it('projects a chunked Client bundle as read-only Debugger source', async () => {
     const sourceText = `const clientSourceMarker = 42\n/*${'x'.repeat(150_000)}*/\n`

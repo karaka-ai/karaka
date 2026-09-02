@@ -24,9 +24,9 @@ Linux 另外保留 manylinux 2.28 干净安装冒烟测试与 GLIBC 检查。mac
 
 ### 真实 DeepSeek API
 
-可信拉取请求会在每个原生目标上运行第二项安装后 wheel 检查，并且只在预检与 live 测试步骤中把 `DEEPSEEK_API_KEY_EXTERNAL` 映射进去。密钥为空时预检失败，因此提供方测试不能通过自行 skip 产生假绿。该测试通过公开 SDK 访问 `https://api.deepseek.com`，要求模型通过当前平台 shell 写入内容精确的 sentinel 文件，再在同一 session 的第二个轮次中读取它，并校验外部文件行内容、最终响应、已完成的轮次结束原因、模型请求的工具调用，以及 session 日志存在且采用 Zstandard framing。解码后的记录内容与已完成轮次的持久性是由 restart 快照负责的确定性 keyless 要求，不从压缩后的 live 提供方字节推断。
+配置 `DEEPSEEK_API_KEY_EXTERNAL` 后，可信拉取请求会在每个原生目标上运行第二项安装后 wheel 检查；该凭据只映射到 live 测试步骤。没有该凭据时，live 步骤会跳过，而必需的 keyless 场景继续运行（[可选 CI 凭据](2026-09-02-optional-ci-credentials.zh.md)）。该测试通过公开 SDK 访问 `https://api.deepseek.com`，要求模型通过当前平台 shell 写入内容精确的 sentinel 文件，再在同一 session 的第二个轮次中读取它，并校验外部文件行内容、最终响应、已完成的轮次结束原因、模型请求的工具调用，以及 session 日志存在且采用 Zstandard framing。解码后的记录内容与已完成轮次的持久性是由 restart 快照负责的确定性 keyless 要求，不从压缩后的 live 提供方字节推断。
 
-Fork 与 Dependabot 拉取请求永远不会获得仓库密钥。它们的原生 job 运行完整 keyless 路径并跳过两个带密钥的步骤；禁止使用 `pull_request_target`，因为它会让不可信代码带着密钥执行。
+Fork 与 Dependabot 拉取请求永远不会获得仓库密钥。它们的原生 job 运行完整 keyless 路径并跳过 live 步骤；禁止使用 `pull_request_target`，因为它会让不可信代码带着密钥执行。
 
 ### 必需目标
 
@@ -48,4 +48,4 @@ Fork 与 Dependabot 拉取请求永远不会获得仓库密钥。它们的原生
 
 ## Consequences
 
-每个拉取请求都会承担四个原生可执行文件及 wheel 包构建，并运行确定性的安装后产物场景。可信的同仓库拉取请求还会在每个目标上承担一次双轮 DeepSeek 任务。相应地，必需结果描述 Python 用户实际安装的文件，在合并前证明每个已发布载体，并且不能通过导入 checkout 或静默跳过真实提供方而通过。
+每个拉取请求都会承担四个原生可执行文件及 wheel 包构建，并运行确定性的安装后产物场景。配置凭据后，可信的同仓库拉取请求还会在每个目标上承担一次双轮 DeepSeek 任务。相应地，必需结果描述 Python 用户实际安装的文件，在合并前证明每个已发布载体，并且不把提供方凭据作为前置条件。

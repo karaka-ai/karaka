@@ -1,4 +1,5 @@
-import { once } from 'node:events'
+import { EventEmitter, once } from 'node:events'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createConnection } from 'node:net'
 import { Context } from '@deepseek-ai/cordis'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
@@ -12,7 +13,11 @@ afterEach(async () => {
 })
 
 async function harness(options: {
+  readonly config?: TransportHttp.Config
   readonly holdStream?: boolean
+  readonly omitSnapshot?: boolean
+  readonly openingFrame?: unknown
+  readonly followFrames?: readonly unknown[]
   readonly followError?: Error
   readonly followAfterSnapshotError?: Error
   readonly snapshotCursor?: number
@@ -20,8 +25,12 @@ async function harness(options: {
   readonly nextFrameGate?: Promise<void>
   readonly listAgents?: (signal?: AbortSignal) => Promise<readonly { readonly id: string; readonly name: string }[]>
   readonly create?: () => Promise<{ readonly chatId: string; readonly agentId: string }>
-  readonly prompt?: () => Promise<{ readonly accepted: true; readonly duplicate: boolean }>
+  readonly prompt?: (request: unknown) => Promise<{ readonly accepted: true; readonly duplicate: boolean }>
   readonly events?: () => Promise<readonly unknown[]>
+  readonly cancel?: (request: unknown) => Promise<{ readonly accepted: true }>
+  readonly selectModel?: (request: { provider: string; model: string; reasoningEffort?: string }) => Promise<{
+    readonly selected: { readonly provider: string; readonly model: string; readonly reasoningEffort?: string }
+  }>
   readonly authenticate?: (
     authorization: string | undefined,
     signal?: AbortSignal,
@@ -30,21 +39,36 @@ async function harness(options: {
   const ctx = new Context()
   roots.push(ctx)
   const create = vi.fn(options.create ?? (() => Promise.resolve({ chatId: 'chat-1', agentId: 'support' })))
+  const prompt = vi.fn(options.prompt ?? (() => Promise.resolve({ accepted: true, duplicate: false })))
+  const cancel = vi.fn(options.cancel ?? (() => Promise.resolve({ accepted: true })))
+  const selectModel = vi.fn(options.selectModel ?? ((request: {
+    provider: string
+    model: string
+    reasoningEffort?: string
+  }) => Promise.resolve({
+    selected: {
+      provider: request.provider,
+      model: request.model,
+      ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+    },
+  })))
   const streamAbort = vi.fn()
   const application = {
     listAgents: options.listAgents ?? (() => Promise.resolve([{ id: 'support', name: 'Support' }])),
     create,
-    prompt: options.prompt ?? (() => Promise.resolve({ accepted: true, duplicate: false })),
+    prompt,
     events: options.events ?? (() => Promise.resolve([])),
-    cancel: () => Promise.resolve({ accepted: true }),
-    selectModel: (request: { provider: string; model: string }) => Promise.resolve({
-      selected: { provider: request.provider, model: request.model },
-    }),
+    cancel,
+    selectModel,
     async *follow(_request: unknown, signal: AbortSignal) {
       if (options.followError !== undefined) throw options.followError
       signal.addEventListener('abort', streamAbort, { once: true })
       const snapshotCursor = options.snapshotCursor ?? -1
-      yield { type: 'snapshot' as const, cursor: snapshotCursor, records: options.snapshotRecords ?? [] }
+      if (options.omitSnapshot !== true) {
+        yield options.openingFrame ?? {
+          type: 'snapshot' as const, cursor: snapshotCursor, records: options.snapshotRecords ?? [],
+        }
+      }
       if (options.followAfterSnapshotError !== undefined) throw options.followAfterSnapshotError
       await options.nextFrameGate
       if (options.holdStream === true) {
@@ -53,6 +77,10 @@ async function harness(options: {
             resolve()
           }, { once: true })
         })
+        return
+      }
+      if (options.followFrames !== undefined) {
+        yield* options.followFrames
         return
       }
       yield {
@@ -73,9 +101,9 @@ async function harness(options: {
   } as never)
   ctx.provide('sessionController', { application } as never)
   await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 })
-  const transport = await ctx.plugin(TransportHttp, { path: '/v1' })
+  const transport = await ctx.plugin(TransportHttp, options.config ?? { path: '/v1' })
   return {
-    ctx, transport, create, streamAbort, authenticate,
+    ctx, transport, create, prompt, cancel, selectModel, streamAbort, authenticate,
     endpoint: `http://127.0.0.1:${String(ctx.webServer.port)}`,
   }
 }
@@ -121,6 +149,119 @@ describe('Karaka HTTP transport', () => {
     expect(body).toContain('"type":"snapshot"')
     expect(body).toContain('"type":"text-delta"')
     expect(body).toContain('"text":"hello"')
+  })
+
+  it('serves the complete application route matrix', async () => {
+    const { endpoint, prompt, cancel, selectModel } = await harness()
+    const headers = { authorization: 'Bearer valid', 'content-type': 'application/json' }
+    const identity = { tenantId: 'tenant-1', userId: 'user-1' }
+
+    const agents = await fetch(`${endpoint}/v1/agents`, { headers })
+    await expect(agents.json()).resolves.toEqual([{ id: 'support', name: 'Support' }])
+    expect((await fetch(`${endpoint}/v1/missing`, { headers })).status).toBe(404)
+    expect((await fetch(`${endpoint}/v1/chats/chat-1/history`, { headers })).status).toBe(404)
+
+    const message = await fetch(`${endpoint}/v1/chats/chat%2F1/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ...identity,
+        requestId: 'request-1',
+        content: [
+          { type: 'text', text: 'hello' },
+          { type: 'image', mediaType: 'image/png', data: 'encoded', name: 'chart.png' },
+        ],
+      }),
+    })
+    expect(message.status).toBe(202)
+    await expect(message.json()).resolves.toMatchObject({
+      chatId: 'chat/1', requestId: 'request-1', accepted: true, duplicate: false,
+    })
+    expect(prompt).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: 'chat/1',
+      content: [
+        { type: 'text', text: 'hello' },
+        { type: 'image', mediaType: 'image/png', data: 'encoded', name: 'chart.png' },
+      ],
+    }), expect.any(AbortSignal))
+
+    const cancelled = await fetch(`${endpoint}/v1/chats/chat-1/cancel`, {
+      method: 'POST', headers, body: JSON.stringify(identity),
+    })
+    expect(cancelled.status).toBe(200)
+    expect(cancel).toHaveBeenCalledOnce()
+
+    for (const model of [
+      { provider: 'deepseek', model: 'chat' },
+      { provider: 'deepseek', model: 'reasoner', reasoningEffort: 'high' },
+    ]) {
+      const response = await fetch(`${endpoint}/v1/chats/chat-1/model`, {
+        method: 'POST', headers, body: JSON.stringify({ ...identity, ...model }),
+      })
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toEqual({ selected: model })
+    }
+    expect(selectModel).toHaveBeenCalledTimes(2)
+  })
+
+  it('answers only the pending interaction owned by the addressed chat', async () => {
+    const { ctx, endpoint } = await harness({ holdStream: true })
+    const asking = ctx.waterfall('user-questions/request', {
+      agent: {
+        id: 'chat-1',
+        session: {
+          header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
+          events: [],
+        },
+      } as never,
+      questions: [{ id: 'confirm', question: 'Continue?' }],
+    }, () => Promise.reject(new Error('no answerer')))
+    await Promise.resolve()
+    const stream = await fetch(`${endpoint}/v1/chats/chat-1/stream`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'tenant-1', userId: 'user-1' }),
+    })
+    const reader = stream.body?.getReader()
+    const decoder = new TextDecoder()
+    let body = ''
+    while (!body.includes('interaction-required')) {
+      const chunk = await reader?.read()
+      if (chunk?.done === true || chunk?.value === undefined) break
+      body += decoder.decode(chunk.value, { stream: true })
+    }
+    const interactionId = /"interactionId":"([^"]+)"/u.exec(body)?.[1]
+    expect(interactionId).toBeDefined()
+    const headers = { authorization: 'Bearer valid', 'content-type': 'application/json' }
+    const wrong = await fetch(`${endpoint}/v1/chats/other/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        tenantId: 'tenant-1', userId: 'user-1', interactionId,
+        answers: { answers: [{ id: 'confirm', selected: ['yes'] }] },
+      }),
+    })
+    expect(wrong.status).toBe(403)
+
+    const answered = await fetch(`${endpoint}/v1/chats/chat-1/responses`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        tenantId: 'tenant-1', userId: 'user-1', interactionId,
+        answers: { answers: [
+          { id: 'confirm', selected: ['yes'] },
+          { id: 'detail', selected: [], custom: 'because' },
+        ] },
+      }),
+    })
+    expect(answered.status).toBe(200)
+    await expect(asking).resolves.toEqual({
+      answers: [
+        { id: 'confirm', selected: ['yes'] },
+        { id: 'detail', selected: [], custom: 'because' },
+      ],
+    })
+    await reader?.cancel()
   })
 
   it('maps public failures and hides unexpected internal diagnostics', async () => {
@@ -178,6 +319,145 @@ describe('Karaka HTTP transport', () => {
     })
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({ code: 'BAD_REQUEST', message: 'Invalid request' })
+  })
+
+  it.each([
+    ['SESSION_QUERY_SESSION_NOT_FOUND', 404, 'CHAT_NOT_FOUND'],
+    ['agent-preset/conflict', 409, 'CHAT_CONFLICT'],
+    ['session/conflict', 409, 'CHAT_CONFLICT'],
+    ['session/agent-busy', 409, 'CHAT_CONFLICT'],
+    ['session/model-unavailable', 400, 'BAD_REQUEST'],
+    ['gateway/bad-request', 400, 'BAD_REQUEST'],
+  ] as const)('maps %s to its stable application error', async (code, status, exposed) => {
+    const fixture = await harness({
+      events: () => Promise.reject(Object.assign(new Error('private detail'), { code })),
+    })
+    const response = await fetch(`${fixture.endpoint}/v1/chats/chat-1/history`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'tenant-1', userId: 'user-1' }),
+    })
+
+    expect(response.status).toBe(status)
+    await expect(response.json()).resolves.toMatchObject({ code: exposed })
+  })
+
+  it('rejects malformed and oversized JSON bodies', async () => {
+    const { endpoint } = await harness({ config: { path: '/v1', maxBodyBytes: 16 } })
+    const headers = { authorization: 'Bearer valid', 'content-type': 'application/json' }
+    for (const body of ['{', 'null', '[]', JSON.stringify({ tenantId: 'too-long-for-limit' })]) {
+      const response = await fetch(`${endpoint}/v1/chats`, { method: 'POST', headers, body })
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({ code: 'BAD_REQUEST' })
+    }
+  })
+
+  it('uses default route settings and rejects invalid route prefixes', async () => {
+    const fixture = await harness({ config: {} })
+    const response = await fetch(`${fixture.endpoint}/v1/agents`, {
+      headers: { authorization: 'Bearer valid' },
+    })
+    expect(response.status).toBe(200)
+
+    const ctx = new Context()
+    ctx.provide('serverAuth', {} as never)
+    ctx.provide('sessionController', {} as never)
+    ctx.provide('webServer', {} as never)
+    expect(() => { TransportHttp.apply(ctx, { path: '/' }) }).toThrow(/path/u)
+    expect(() => { TransportHttp.apply(ctx, { path: 'v1' }) }).toThrow(/path/u)
+    expect(() => { TransportHttp.apply(ctx, { path: '/v1/' }) }).toThrow(/path/u)
+    await ctx.fiber.dispose()
+  })
+
+  it('applies raw defaults and treats a request without a URL as the root route', async () => {
+    const ctx = new Context()
+    roots.push(ctx)
+    let handler: ((request: IncomingMessage, response: ServerResponse) => Promise<void>) | undefined
+    ctx.provide('serverAuth', {
+      authenticate: () => Promise.resolve({ applicationId: 'billing' }),
+    } as never)
+    ctx.provide('sessionController', { application: {} } as never)
+    ctx.provide('webServer', {
+      register: (route: { handler: typeof handler }) => {
+        handler = route.handler
+        return () => undefined
+      },
+    } as never)
+    await ctx.plugin({
+      name: 'raw-transport-http-test',
+      apply(child: Context) { TransportHttp.apply(child, {}) },
+    })
+    const request = Object.assign(new EventEmitter(), {
+      method: 'GET', headers: { authorization: 'Bearer valid' }, destroy: vi.fn(),
+    }) as unknown as IncomingMessage
+    const writeHead = vi.fn()
+    const end = vi.fn()
+    const response = Object.assign(new EventEmitter(), {
+      destroyed: false, headersSent: false, writeHead, end, destroy: vi.fn(),
+    }) as unknown as ServerResponse
+
+    await handler?.(request, response)
+
+    expect(writeHead).toHaveBeenCalledWith(404, { 'content-type': 'application/json; charset=utf-8' })
+    expect(end).toHaveBeenCalledWith(JSON.stringify({ code: 'NOT_FOUND', message: 'Route not found' }))
+  })
+
+  it('delegates questions without an application-owned Agent', async () => {
+    const { ctx } = await harness()
+    const next = vi.fn(() => Promise.resolve({ answers: [] }))
+
+    await expect(ctx.waterfall('user-questions/request', {
+      questions: [],
+    } as never, next)).resolves.toEqual({ answers: [] })
+    await expect(ctx.waterfall('user-questions/request', {
+      agent: { session: { header: {} } }, questions: [],
+    } as never, next)).resolves.toEqual({ answers: [] })
+    expect(next).toHaveBeenCalledTimes(2)
+  })
+
+  it('cancels an interaction once when its signal has no reason', async () => {
+    const { ctx } = await harness()
+    let abort: (() => void) | undefined
+    const signal = {
+      reason: undefined,
+      addEventListener: (_name: string, listener: () => void) => { abort = listener },
+      removeEventListener: vi.fn(),
+    } as unknown as AbortSignal
+    const asking = ctx.waterfall('user-questions/request', {
+      agent: {
+        id: 'chat-1',
+        session: {
+          header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
+          events: [],
+        },
+      } as never,
+      questions: [{ id: 'confirm', question: 'Continue?' }],
+      signal,
+    }, () => Promise.reject(new Error('no answerer')))
+    await Promise.resolve()
+    abort?.()
+    abort?.()
+
+    await expect(asking).rejects.toThrow('Interaction was cancelled')
+  })
+
+  it('rejects pending questions when the transport is disposed', async () => {
+    const { ctx, transport } = await harness()
+    const asking = ctx.waterfall('user-questions/request', {
+      agent: {
+        id: 'chat-1',
+        session: {
+          header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
+          events: [],
+        },
+      } as never,
+      questions: [{ id: 'confirm', question: 'Continue?' }],
+    }, () => Promise.reject(new Error('no answerer')))
+    await Promise.resolve()
+
+    await transport.dispose()
+
+    await expect(asking).rejects.toThrow(/disposed/u)
   })
 
   it('replays snapshot records in cursor order before its checkpoint', async () => {
@@ -265,6 +545,116 @@ describe('Karaka HTTP transport', () => {
     expect(body).toContain('"type":"tool-call","cursor":1,"callId":"call-2"')
     expect(body.indexOf('"type":"tool-result","cursor":2,"callId":"call-2"'))
       .toBeLessThan(body.indexOf('"type":"tool-result","cursor":3,"callId":"call-1"'))
+  })
+
+  it('projects the complete durable event vocabulary and ignores internal records', async () => {
+    const events = [
+      { type: 'user/message', seq: 0, data: { source: { kind: 'system' } } },
+      { type: 'assistant/chunk', seq: 1, data: { chunk: { type: 'usage', text: 'hidden' } } },
+      { type: 'tool/call', seq: 2, data: { callId: 2, name: 'bad', arguments: '{}' } },
+      { type: 'tool/result', seq: 3, data: { message: {} } },
+      { type: 'tool/result', seq: 4, data: { result: { ok: true }, message: { source: { callId: 'call-1' } } } },
+      { type: 'tool/result', seq: 5, data: { message: { source: { callId: 'call-2' }, value: 'message' } } },
+      { type: 'tool/result', seq: 6, data: { source: { callId: 'call-3' } } },
+      { type: 'turn/end', seq: 7, data: { reason: 'complete' } },
+      { type: 'internal/event', seq: 8, data: {} },
+    ]
+    const fixture = await harness({ events: () => Promise.resolve(events) })
+    const response = await fetch(`${fixture.endpoint}/v1/chats/chat-1/history`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'tenant-1', userId: 'user-1' }),
+    })
+    const body = await response.json() as { events: unknown[] }
+
+    expect(body.events).toEqual([
+      { type: 'tool-result', cursor: 4, callId: 'call-1', content: { ok: true } },
+      { type: 'tool-result', cursor: 5, callId: 'call-2', content: events[5]?.data.message },
+      { type: 'turn-end', cursor: 7, reason: 'complete' },
+    ])
+  })
+
+  it('rejects missing or invalid opening stream frames', async () => {
+    for (const options of [
+      { omitSnapshot: true, followFrames: [] },
+      { openingFrame: { type: 'event', event: { type: 'turn/end', seq: 0, data: {} } } },
+    ]) {
+      const fixture = await harness(options)
+      const response = await fetch(`${fixture.endpoint}/v1/chats/chat-1/stream`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+        body: JSON.stringify({ tenantId: 'tenant-1', userId: 'user-1' }),
+      })
+      expect(response.status).toBe(500)
+    }
+  })
+
+  it('filters replayed and live events at the reconnect cursor', async () => {
+    const fixture = await harness({
+      snapshotCursor: 3,
+      snapshotRecords: [
+        { type: 'metadata' },
+        { type: 'event', event: { type: 'turn/end', seq: 1, data: { reason: 'old' } } },
+        { type: 'event', event: { type: 'turn/end', seq: 2, data: { reason: 'current' } } },
+      ],
+      followFrames: [
+        { type: 'event', event: { type: 'turn/end', seq: 2, data: { reason: 'skipped' } } },
+        { type: 'snapshot', cursor: 4, records: [] },
+        { type: 'event', event: { type: 'turn/end', seq: 5, data: { reason: 'new' } } },
+      ],
+    })
+    const response = await fetch(`${fixture.endpoint}/v1/chats/chat-1/stream`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'tenant-1', userId: 'user-1', cursor: 2 }),
+    })
+    const body = await response.text()
+
+    expect(body).not.toContain('old')
+    expect(body).not.toContain('current')
+    expect(body).not.toContain('skipped')
+    expect(body).toContain('"cursor":4')
+    expect(body).toContain('new')
+  })
+
+  it('ignores pending interactions owned by another chat', async () => {
+    const { ctx, endpoint } = await harness()
+    const abort = new AbortController()
+    const asking = ctx.waterfall('user-questions/request', {
+      agent: {
+        id: 'other-chat',
+        session: {
+          header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
+          events: [],
+        },
+      } as never,
+      questions: [{ id: 'confirm', question: 'Continue?' }],
+      signal: abort.signal,
+    }, () => Promise.reject(new Error('no answerer')))
+    await Promise.resolve()
+    const response = await fetch(`${endpoint}/v1/chats/chat-1/stream`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'tenant-1', userId: 'user-1' }),
+    })
+
+    expect(await response.text()).not.toContain('interaction-required')
+    abort.abort()
+    await expect(asking).rejects.toBeDefined()
+  })
+
+  it('maps primitive controller failures without exposing them', async () => {
+    const fixture = await harness({
+      // The service boundary accepts unknown failures, including primitives.
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors
+      listAgents: () => Promise.reject('private failure'),
+    })
+    const response = await fetch(`${fixture.endpoint}/v1/agents`, {
+      headers: { authorization: 'Bearer valid' },
+    })
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({ code: 'INTERNAL_ERROR', message: 'Internal server error' })
   })
 
   it('opens with the durable snapshot before replaying a pending interaction', async () => {
@@ -471,5 +861,24 @@ describe('Karaka HTTP transport', () => {
     await reader?.cancel()
 
     await vi.waitFor(() => { expect(streamAbort).toHaveBeenCalledOnce() })
+  })
+
+  it('keeps a shared chat subscription while another stream remains active', async () => {
+    const { endpoint } = await harness({ holdStream: true })
+    const request = {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'tenant-1', userId: 'user-1' }),
+    } as const
+    const first = await fetch(`${endpoint}/v1/chats/chat-1/stream`, request)
+    const second = await fetch(`${endpoint}/v1/chats/chat-1/stream`, request)
+    const firstReader = first.body?.getReader()
+    const secondReader = second.body?.getReader()
+    await firstReader?.read()
+    await secondReader?.read()
+
+    await firstReader?.cancel()
+    await Promise.resolve()
+    await secondReader?.cancel()
   })
 })

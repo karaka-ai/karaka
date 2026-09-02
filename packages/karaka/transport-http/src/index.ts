@@ -21,6 +21,7 @@ import {
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@karaka-ai/server-auth'
+import { json, readObject, writeEvent } from './http.ts'
 
 export const name = 'karaka-transport-http'
 export const inject = ['serverAuth', 'sessionController', 'webServer']
@@ -59,7 +60,7 @@ export function apply(ctx: Context, config: Config): void {
   const base = normalizeBase(config.path ?? KARAKA_APPLICATION_API_PATH)
   const maxBodyBytes = config.maxBodyBytes ?? 1_048_576
   const pending = new Map<string, PendingInteraction>()
-  const subscribers = new Map<SessionId, Set<(event: WireEvent) => void>>()
+  const subscribers = new Map<SessionId, Set<(event: InteractionEvent) => void>>()
   const activeRequests = new Map<Promise<void>, ActiveHttpRequest>()
 
   ctx.effect(() => async () => {
@@ -136,7 +137,7 @@ async function handleRequest(
   base: string,
   maxBodyBytes: number,
   pending: Map<string, PendingInteraction>,
-  subscribers: Map<SessionId, Set<(event: WireEvent) => void>>,
+  subscribers: Map<SessionId, Set<(event: InteractionEvent) => void>>,
   controller: AbortController,
   request: IncomingMessage,
   response: ServerResponse,
@@ -176,7 +177,7 @@ async function route(
   maxBodyBytes: number,
   applicationId: ApplicationId,
   pending: Map<string, PendingInteraction>,
-  subscribers: Map<SessionId, Set<(event: WireEvent) => void>>,
+  subscribers: Map<SessionId, Set<(event: InteractionEvent) => void>>,
   controller: AbortController,
   request: IncomingMessage,
   response: ServerResponse,
@@ -203,8 +204,7 @@ async function route(
     return
   }
   const chatId = sessionId(decodeURIComponent(match[1] as string))
-  const operation = match[2]
-  if (operation === undefined) throw new Error('Matched chat route has no operation')
+  const operation = match[2] as 'messages' | 'stream' | 'history' | 'cancel' | 'model' | 'responses'
   switch (operation) {
     case 'messages': {
       const body = ApplicationPromptRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
@@ -283,19 +283,17 @@ async function stream(
   owner: ApplicationOwner,
   cursor: number | undefined,
   pending: Map<string, PendingInteraction>,
-  subscribers: Map<SessionId, Set<(event: WireEvent) => void>>,
+  subscribers: Map<SessionId, Set<(event: InteractionEvent) => void>>,
   controller: AbortController,
   response: ServerResponse,
 ): Promise<void> {
-  const buffered: WireEvent[] = []
-  const deliveredInteractions = new Set<string>()
+  const buffered: InteractionEvent[] = []
   const queuedInteractions = new Set<string>()
   let directWake = Promise.withResolvers<void>()
-  const direct = (event: WireEvent): void => {
-    if (event.type === 'interaction-required') {
-      if (deliveredInteractions.has(event.interactionId) || queuedInteractions.has(event.interactionId)) return
-      queuedInteractions.add(event.interactionId)
-    }
+  const direct = (event: InteractionEvent): void => {
+    /* v8 ignore next -- duplicate delivery requires an Agent event during kernel-level SSE backpressure */
+    if (queuedInteractions.has(event.interactionId)) return
+    queuedInteractions.add(event.interactionId)
     buffered.push(event)
     directWake.resolve()
   }
@@ -330,7 +328,7 @@ async function stream(
     let nextFrame = frames.next()
     while (true) {
       await drainBufferedInteractions(
-        response, buffered, queuedInteractions, deliveredInteractions, durableCursor, controller.signal,
+        response, buffered, queuedInteractions, durableCursor, controller.signal,
       )
       const wake = directWake.promise
       const next = await Promise.race([
@@ -359,27 +357,22 @@ async function stream(
 
 async function drainBufferedInteractions(
   response: ServerResponse,
-  buffered: WireEvent[],
+  buffered: InteractionEvent[],
   queued: Set<string>,
-  delivered: Set<string>,
   durableCursor: number,
   signal: AbortSignal,
 ): Promise<void> {
   while (true) {
-    const index = buffered.findIndex(event => event.type !== 'interaction-required' || event.cursor <= durableCursor)
+    const index = buffered.findIndex(event => event.cursor <= durableCursor)
     if (index === -1) return
-    const [event] = buffered.splice(index, 1)
-    if (event === undefined) return
-    if (event.type === 'interaction-required') {
-      queued.delete(event.interactionId)
-      if (delivered.has(event.interactionId)) continue
-      delivered.add(event.interactionId)
-    }
+    const event = buffered.splice(index, 1)[0] as InteractionEvent
+    queued.delete(event.interactionId)
     await writeEvent(response, event, signal)
   }
 }
 
 type WireEvent = ApplicationChatEvent
+type InteractionEvent = Extract<WireEvent, { readonly type: 'interaction-required' }>
 
 async function writeFollowFrame(
   response: ServerResponse,
@@ -429,7 +422,7 @@ function projectWireEvent(event: { readonly type: string; readonly seq: number; 
     const message = data.message as Record<string, unknown> | undefined
     const source = message?.source as Record<string, unknown> | undefined
     return typeof source?.callId === 'string'
-      ? [{ type: 'tool-result', cursor: event.seq, callId: source.callId, content: data.result ?? data.message ?? data }]
+      ? [{ type: 'tool-result', cursor: event.seq, callId: source.callId, content: data.result ?? message }]
       : []
   }
   if (event.type === 'turn/end') return [{ type: 'turn-end', cursor: event.seq, reason: data.reason }]
@@ -444,96 +437,12 @@ function sameOwner(left: ApplicationOwner, right: ApplicationOwner): boolean {
   return left.applicationId === right.applicationId && left.tenantId === right.tenantId && left.userId === right.userId
 }
 
-function readObject(
-  request: IncomingMessage,
-  maxBytes: number,
-  signal: AbortSignal,
-): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = []
-    let size = 0
-    const cleanup = (): void => {
-      request.off('data', onData)
-      request.off('end', onEnd)
-      request.off('error', onError)
-      request.off('aborted', onAborted)
-      signal.removeEventListener('abort', onSignal)
-    }
-    const fail = (error: unknown): void => {
-      cleanup()
-      reject(error instanceof Error ? error : new Error(String(error)))
-    }
-    const onData = (chunk: Buffer | Uint8Array): void => {
-      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      size += bytes.length
-      if (size > maxBytes) {
-        fail(badRequest(`request body exceeds ${String(maxBytes)} bytes`))
-        return
-      }
-      chunks.push(bytes)
-    }
-    const onEnd = (): void => {
-      try {
-        const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          throw new Error('request body must be an object')
-        }
-        cleanup()
-        resolve(parsed as Record<string, unknown>)
-      } catch (error: unknown) {
-        fail(badRequest(error instanceof Error ? error.message : 'invalid JSON request body'))
-      }
-    }
-    const onError = (error: Error): void => { fail(error) }
-    const onAborted = (): void => { fail(new Error('request body was aborted')) }
-    const onSignal = (): void => { fail(signal.reason ?? new Error('request body was cancelled')) }
-    if (signal.aborted) {
-      onSignal()
-      return
-    }
-    request.on('data', onData)
-    request.once('end', onEnd)
-    request.once('error', onError)
-    request.once('aborted', onAborted)
-    signal.addEventListener('abort', onSignal, { once: true })
-  })
-}
-
-function publish(subscribers: Map<SessionId, Set<(event: WireEvent) => void>>, chatId: SessionId, event: WireEvent): void {
+function publish(
+  subscribers: Map<SessionId, Set<(event: InteractionEvent) => void>>,
+  chatId: SessionId,
+  event: InteractionEvent,
+): void {
   for (const subscriber of subscribers.get(chatId) ?? []) subscriber(event)
-}
-
-function tryWriteEvent(response: ServerResponse, event: WireEvent): boolean {
-  return response.write(`data: ${JSON.stringify(event)}\n\n`)
-}
-
-async function writeEvent(response: ServerResponse, event: WireEvent, signal: AbortSignal): Promise<void> {
-  if (tryWriteEvent(response, event)) return
-  await new Promise<void>((resolve, reject) => {
-    const cleanup = (): void => {
-      response.off('drain', onDrain)
-      response.off('close', onClose)
-      response.off('error', onError)
-      signal.removeEventListener('abort', onAbort)
-    }
-    const onDrain = (): void => { cleanup(); resolve() }
-    const onClose = (): void => { cleanup(); reject(new Error('SSE response closed before draining')) }
-    const onError = (error: Error): void => { cleanup(); reject(error) }
-    const onAbort = (): void => {
-      cleanup()
-      reject(signal.reason instanceof Error ? signal.reason : new Error('SSE write cancelled'))
-    }
-    response.once('drain', onDrain)
-    response.once('close', onClose)
-    response.once('error', onError)
-    signal.addEventListener('abort', onAbort, { once: true })
-    if (signal.aborted) onAbort()
-  })
-}
-
-function json(response: ServerResponse, status: number, value: unknown): void {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  response.end(JSON.stringify(value))
 }
 
 function normalizeBase(path: string): string {
@@ -545,10 +454,6 @@ function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined
   const code: unknown = Reflect.get(error, 'code')
   return typeof code === 'string' ? code : undefined
-}
-
-function badRequest(message: string): Error {
-  return Object.assign(new Error(message), { code: 'BAD_REQUEST' })
 }
 
 function exposeError(error: unknown): { readonly status: number; readonly code: string; readonly message: string } {

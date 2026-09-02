@@ -3485,7 +3485,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/karaka/transport-http/src/index.ts:29`](../packages/karaka/transport-http/src/index.ts)
+来源：[`packages/karaka/transport-http/src/index.ts:30`](../packages/karaka/transport-http/src/index.ts)
 
 ## 无配置的可加载插件
 

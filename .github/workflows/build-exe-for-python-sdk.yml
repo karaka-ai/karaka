@@ -151,6 +151,8 @@ jobs:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    env:
+      DSH_REAL_API_CONFIGURED: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -346,40 +348,10 @@ jobs:
             Pop-Location
           }
 
-      - name: Preflight installed-wheel real API test (POSIX)
-        if: >-
-          inputs.ci
-          && runner.os != 'Windows'
-          && (github.event_name != 'pull_request'
-              || !(github.event.pull_request.head.repo.fork
-                   || github.event.pull_request.user.login == 'dependabot[bot]'))
-        env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-            echo "::error::DEEPSEEK_API_KEY_EXTERNAL is empty; the installed-wheel real API test cannot self-skip."
-            exit 1
-          fi
-
-      - name: Preflight installed-wheel real API test (Windows)
-        if: >-
-          inputs.ci
-          && runner.os == 'Windows'
-          && (github.event_name != 'pull_request'
-              || !(github.event.pull_request.head.repo.fork
-                   || github.event.pull_request.user.login == 'dependabot[bot]'))
-        shell: pwsh
-        env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:DEEPSEEK_API_KEY)) {
-            throw 'DEEPSEEK_API_KEY_EXTERNAL is empty; the installed-wheel real API test cannot self-skip.'
-          }
-
       - name: Run installed-wheel real API black-box test (POSIX)
         if: >-
           inputs.ci
+          && env.DSH_REAL_API_CONFIGURED == 'true'
           && runner.os != 'Windows'
           && (github.event_name != 'pull_request'
               || !(github.event.pull_request.head.repo.fork
@@ -400,6 +372,7 @@ jobs:
       - name: Run installed-wheel real API black-box test (Windows)
         if: >-
           inputs.ci
+          && env.DSH_REAL_API_CONFIGURED == 'true'
           && runner.os == 'Windows'
           && (github.event_name != 'pull_request'
               || !(github.event.pull_request.head.repo.fork

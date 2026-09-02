@@ -113,6 +113,21 @@ describe('the tool-presentation row', () => {
       .rejects.toThrow(/unknown global tool "missing"/)
   })
 
+  it('can deny inherited tools without an allow list', async () => {
+    const ctx = await host()
+    ctx.tools.register(defineTool({
+      name: 'private',
+      description: 'Second host tool.',
+      parameters: {},
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+      execute: () => Promise.resolve('ok'),
+    }))
+    const { agent } = await mount(ctx, { mode: 'native', deny: ['private'] })
+
+    expect((await ctx.systemPrompt.assemble({ scope: agent })).tools.map(tool => tool.name))
+      .toEqual(['echo'])
+  })
+
   it('restores the deployment default when the agent unloads', async () => {
     const ctx = await host()
     const { agent, row } = await mount(ctx, { mode: 'ptc' })

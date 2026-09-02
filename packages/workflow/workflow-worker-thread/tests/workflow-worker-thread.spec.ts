@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import type { Worker } from 'node:worker_threads'
@@ -19,6 +19,21 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 function fakeParent(): Agent {
   return { id: SessionId('workflow-parent'), options: {} } as unknown as Agent
 }
+
+const testContexts = new Set<Context>()
+
+/** Create a context whose complete plugin tree is released after the current test. */
+function testContext(): Context {
+  const ctx = new Context()
+  testContexts.add(ctx)
+  return ctx
+}
+
+afterEach(async () => {
+  const contexts = [...testContexts]
+  testContexts.clear()
+  await Promise.all(contexts.map(async (ctx) => { await ctx.fiber.dispose() }))
+})
 
 // Allow cold worker startup on contended CI runners.
 vi.setConfig({ testTimeout: 30_000 })
@@ -151,7 +166,7 @@ interface SetupOptions {
 }
 
 async function setup(options?: SetupOptions) {
-  const ctx = new Context()
+  const ctx = testContext()
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SubagentRuntime)
   const provider = new StubProvider(
@@ -467,7 +482,7 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
     })
 
     it('a child result REJECTION crosses back as a fatal AGENT_RESULT error (a broken provider is not a failed child)', async () => {
-      const ctx = new Context()
+      const ctx = testContext()
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       const provider: SubagentProvider = {
@@ -527,7 +542,7 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
     })
 
     it('a child whose dispose() throws synchronously cannot wedge the script (the host acks anyway)', async () => {
-      const ctx = new Context()
+      const ctx = testContext()
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       const provider: SubagentProvider = {
@@ -550,7 +565,7 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
     })
 
     it('a child dispose() rejecting an UNRENDERABLE value still acks — the containment warn is total', async () => {
-      const ctx = new Context()
+      const ctx = testContext()
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       const provider: SubagentProvider = {
@@ -901,7 +916,7 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
     })
 
     it('the settle-reap fires the request signal too: a provider honoring ONLY the signal winds its stray down promptly', async () => {
-      const ctx = new Context()
+      const ctx = testContext()
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       const aborted: string[] = []
@@ -1197,7 +1212,7 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
     })
 
     it('refuses and disposes a provider run that becomes ready after its real worker dies', async () => {
-      const ctx = new Context()
+      const ctx = testContext()
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       const requested = Promise.withResolvers<SubagentStartRequest>()
@@ -1260,7 +1275,7 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
     })
 
     it('a worker that exits before settling reports an error result and reaps its children', async () => {
-      const ctx = new Context()
+      const ctx = testContext()
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       // The child's dispose() REJECTS on top of the worker death: the reap
@@ -1448,7 +1463,7 @@ describe('dsh-workflow-worker-thread', { timeout: 120_000 }, () => {
     })
 
     it('unregisters ctx.workflowEngine when the engine fiber is disposed (HMR safety)', async () => {
-      const ctx = new Context()
+      const ctx = testContext()
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       const fiber = await ctx.plugin(WorkerThreadWorkflowEngine, {})

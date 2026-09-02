@@ -54,8 +54,10 @@ export interface KarakaRuntime {
 export function prepareKarakaRuntime(project = process.cwd()): KarakaRuntime {
   const home = resolve(project, '.karaka')
   mkdirSync(home, { recursive: true, mode: 0o700 })
+  /* v8 ignore next -- the Windows coverage lane exercises the branch without chmod */
   if (process.platform !== 'win32') chmodSync(home, 0o700)
-  return { home, bin: require.resolve('@karaka-ai/agent/bin') }
+  const agentPackage = require.resolve('@karaka-ai/agent/package.json')
+  return { home, bin: resolve(dirname(agentPackage), 'lib/bin.js') }
 }
 
 /**
@@ -133,6 +135,7 @@ function readPackageVersion(): string {
   const manifest = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')) as {
     version?: unknown
   }
+  /* v8 ignore next 3 -- package hygiene validates the published manifest before this module loads */
   if (typeof manifest.version !== 'string' || manifest.version.length === 0) {
     throw new Error('@karaka-ai/cli package version is unavailable')
   }

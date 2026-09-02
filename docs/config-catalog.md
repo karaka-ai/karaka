@@ -3483,7 +3483,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/karaka/transport-http/src/index.ts:29`](../packages/karaka/transport-http/src/index.ts)
+Source: [`packages/karaka/transport-http/src/index.ts:30`](../packages/karaka/transport-http/src/index.ts)
 
 ## Loadable plugins with no config
 
