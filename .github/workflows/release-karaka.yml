@@ -79,7 +79,7 @@ jobs:
       - name: Verify packed install
         run: pnpm run release:verify-packed-install --family karaka --from dist/npm-karaka --from dist/npm-dsh --from dist/npm-vendor --from dist/npm-landlock
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: karaka-npm-tarballs
           path: dist/npm-karaka/*
