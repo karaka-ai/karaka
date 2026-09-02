@@ -45,11 +45,16 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 import type { StorageBackend } from '@karaka/agent/storage'
 ```
 
-Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署 row 可以直接加载一个插件：
+Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件是 patch 层，因此新 row 必须放在 `insert` 下；此示例还选择了本地插件注册的后端：
 
 ```yaml
-- id: customer-storage
-  name: ./plugins/customer-storage.js
+- id: storage-domain
+  config:
+    backend: customer
+
+- insert:
+    - id: customer-storage
+      name: ./plugins/customer-storage.js
 ```
 
 相对名称从组合文件旁解析，因此 Agent Preset 使用 `../../plugins/customer-tools.js` 加载共享根插件。可复用插件也可以是 `@acme/customer-tools` 等已安装包。两种形式都从 `@karaka/agent/*` 导入公开约定；两种形式都不依赖私有 DSH 构建输入。

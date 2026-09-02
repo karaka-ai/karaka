@@ -45,11 +45,16 @@ An `agent.cordis.yml` row may name an embedded alias such as `@karaka/agent/pers
 import type { StorageBackend } from '@karaka/agent/storage'
 ```
 
-An Agent project keeps application-specific plugins in its root `plugins/` directory. A deployment row can load one directly:
+An Agent project keeps application-specific plugins in its root `plugins/` directory. The deployment file is a patch layer, so a new row belongs under `insert`; this example also selects the backend that the local plugin registers:
 
 ```yaml
-- id: customer-storage
-  name: ./plugins/customer-storage.js
+- id: storage-domain
+  config:
+    backend: customer
+
+- insert:
+    - id: customer-storage
+      name: ./plugins/customer-storage.js
 ```
 
 Relative names resolve beside the composition file, so an Agent Preset uses `../../plugins/customer-tools.js` for a shared root plugin. A reusable plugin may instead be an installed package such as `@acme/customer-tools`. Both forms import public contracts from `@karaka/agent/*`; neither form depends on the private DSH build inputs.

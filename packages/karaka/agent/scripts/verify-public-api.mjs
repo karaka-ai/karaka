@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import {
-  mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync,
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -108,6 +108,7 @@ void [packages, sessionLog]
   const pluginPath = resolve(project, 'plugins/storage-memory.mjs')
   mkdirSync(dirname(pluginPath), { recursive: true })
   writeFileSync(pluginPath, `import { storageBackendServiceKey } from '@karaka/agent/storage'
+import { writeFileSync } from 'node:fs'
 
 export const name = 'storage-memory'
 export const inject = ['storage']
@@ -138,6 +139,7 @@ export function apply(ctx) {
     }
   })
   ctx.provide(storageBackendServiceKey('memory'), backend)
+  if (process.env.KARAKA_PLUGIN_READY) writeFileSync(process.env.KARAKA_PLUGIN_READY, 'ready')
 }
 `)
   writeFileSync(resolve(project, 'run.mjs'), `import { Context } from '@karaka/agent/cordis'
@@ -164,6 +166,21 @@ if (globalThis.__karakaBackendUnregistered !== true) throw new Error('local stor
 await storageFiber.dispose()
 `)
   execFileSync(process.execPath, [resolve(project, 'run.mjs')], { cwd: project, stdio: 'inherit' })
+
+  const readyPath = resolve(project, 'plugin-ready')
+  const configPath = resolve(project, 'karaka.cordis.yml')
+  writeFileSync(configPath, `- id: storage-domain
+  config:
+    backend: memory
+
+- insert:
+    - id: customer-storage
+      name: ./plugins/storage-memory.mjs
+`)
+  mkdirSync(resolve(project, 'agents/support'), { recursive: true })
+  writeFileSync(resolve(project, 'agents/support/preset.yml'), 'name: Support\n')
+  writeFileSync(resolve(project, 'agents/support/agent.cordis.yml'), '[]\n')
+  await verifyKarakaPatch(project, agentLink, configPath, readyPath)
 } finally {
   rmSync(project, { recursive: true, force: true })
 }
@@ -200,6 +217,52 @@ function verifyTypes(projectDir, filename, source) {
     cwd: projectDir,
     stdio: 'inherit',
   })
+}
+
+async function verifyKarakaPatch(projectDir, agentDir, configPath, readyPath) {
+  const child = spawn(process.execPath, [resolve(agentDir, 'lib/bin.js'), '--config', configPath], {
+    cwd: projectDir,
+    env: {
+      ...process.env,
+      KARAKA_AGENTS_DIR: resolve(projectDir, 'agents'),
+      KARAKA_HOME: resolve(projectDir, '.karaka'),
+      KARAKA_PLUGIN_READY: readyPath,
+      KARAKA_PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let output = ''
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', chunk => { output += chunk })
+  child.stderr.on('data', chunk => { output += chunk })
+  const exited = new Promise((resolveExit, reject) => {
+    child.once('error', reject)
+    child.once('exit', (code, signal) => { resolveExit({ code, signal }) })
+  })
+  try {
+    const deadline = Date.now() + 10_000
+    while (!existsSync(readyPath)) {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        const result = await exited
+        throw new Error(`packed Karaka Agent exited before loading deployment plugin (${JSON.stringify(result)})\n${output}`)
+      }
+      if (Date.now() >= deadline) throw new Error(`packed Karaka Agent did not load deployment plugin\n${output}`)
+      await new Promise(resolveWait => { setTimeout(resolveWait, 20) })
+    }
+    child.kill('SIGTERM')
+    const result = await exited
+    const cleanExit = result.code === 0
+      || process.platform === 'win32' && result.code === null && result.signal === 'SIGTERM'
+    if (!cleanExit) {
+      throw new Error(`packed Karaka Agent shutdown failed (${JSON.stringify(result)})\n${output}`)
+    }
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL')
+      await exited
+    }
+  }
 }
 
 function filesUnder(directory) {
