@@ -97,7 +97,8 @@ export function scanSlotFiles(scanRoot: string, patterns: readonly string[]): Sc
     .map(path => path.split(sep).join('/')))].sort()
   for (const rel of rels) {
     const abs = resolve(scanRoot, rel)
-    const text = readFileSync(abs, 'utf8')
+    const text = readScannedSource(abs)
+    if (text === undefined) continue
     if (!MERGE_HEAD.test(text) && !REGISTER_HEAD.test(text)) continue
     out.push({
       rel,
@@ -106,6 +107,20 @@ export function scanSlotFiles(scanRoot: string, patterns: readonly string[]): Sc
     })
   }
   return out
+}
+
+/**
+ * Read one glob result while tolerating a concurrent owner removing its temporary file.
+ * @param path - absolute source path returned by the preceding glob.
+ * @returns file contents, or `undefined` when the path disappeared after the glob.
+ */
+export function readScannedSource(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
 }
 
 /**

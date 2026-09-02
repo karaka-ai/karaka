@@ -7,9 +7,22 @@
  * make a stale or undocumented contract fail loudly instead of shipping.
  */
 
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { collectSlotEntries, oversizedSlotReports, resolveSlotEntries, validateSlotContracts } from './gen-client-catalog.ts'
+import { readScannedSource } from './slot-walk.ts'
 import type { SlotDeclaration, SlotRegistration, TypeDeclaration } from './slot-walk.ts'
+
+it('ignores a source path removed after glob discovery', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-slot-walk-'))
+  try {
+    expect(readScannedSource(join(root, 'removed.ts'))).toBeUndefined()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 /** A declaration with every field the catalog needs, overridable per case. */
 function declaration(over: Partial<SlotDeclaration> = {}): SlotDeclaration {

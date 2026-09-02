@@ -16,6 +16,8 @@ Automatic pull-request jobs use standard GitHub-hosted capacity: Linux jobs and 
 
 The automatic Linux and Windows jobs cap top-level gate scheduling, lint tools, publication checks, browser workers, and snapshot processes at two where those controls apply. Coverage runs two isolated single-worker instrumented partitions beside one exempt-heavy worker, with no more than two top-level coverage gates active. This favors reliable completion on standard capacity over the larger pools' latency target.
 
+Concurrent gates share one checkout. A source-corpus scan therefore treats `ENOENT` after glob discovery as a temporary file owner completing cleanup, while every other read failure remains fatal.
+
 The `DSH_CI_FAILOVER_LINUX` and `DSH_CI_FAILOVER_WINDOWS` switches retain the self-hosted fallback for trusted same-repository branches. Their selectors require the pull request head repository to equal the target repository and continue to exclude Dependabot. Fork pull requests therefore remain on ephemeral standard runners even when a failover variable is set.
 
 ## Alternatives considered
