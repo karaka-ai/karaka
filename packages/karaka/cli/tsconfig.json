@@ -3,8 +3,6 @@
   "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
   "include": ["src/**/*.ts"],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../agent/tsconfig.host.json" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../agent/tsconfig.host.json" }
   ]
 }

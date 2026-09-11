@@ -43,6 +43,8 @@ The maintained `jose` verifier checks signed claims against configured public ke
 
 </details>
 
+No runtime invariant companion is published because credentials are resolved and checked at each request boundary.
+
 <a id="model-experience"></a>
 ## Model Experience
 

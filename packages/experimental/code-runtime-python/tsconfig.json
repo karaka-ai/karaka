@@ -21,9 +21,6 @@
       "path": "../../code-runtime/code-runtime"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
       "path": "../../util/timeout"
     },
     {

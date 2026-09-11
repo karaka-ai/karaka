@@ -26,6 +26,8 @@ kind: "package-reference"
 
 Agent Preset 可以加载内置 `@karaka-ai/agent/*` 插件、项目 `plugins/` 目录中的相对 JavaScript 文件或项目安装的可选可复用包。本地插件和已安装插件都从相同的扁平 `@karaka-ai/agent/*` 子路径导入其 service 与插件 API。
 
+不发布运行时不变量伴生入口，因为CLI 在 Cordis 运行时状态之外管理子进程。
+
 <a id="model-experience"></a>
 ## 模型体验
 

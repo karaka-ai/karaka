@@ -43,6 +43,8 @@ kind: "package-reference"
 
 </details>
 
+不发布运行时不变量伴生入口，因为凭据在每次请求边界解析并校验。
+
 <a id="model-experience"></a>
 ## 模型体验
 

@@ -73,8 +73,8 @@ export interface PackageDependencyPolicy {
   readonly clientFaceInclude: readonly string[]
   readonly clientFaceExclude: readonly string[]
   readonly hostPackages: readonly string[]
-  /** Pure libraries whose invariant companion uses Cordis only as a development-time type surface. */
-  readonly cordisDevelopmentOnlyPackages?: readonly string[]
+  /** Plain libraries whose source and published surface do not use Cordis. */
+  readonly cordisIndependentPackages?: readonly string[]
   readonly configurationOnlyDevDependencies: Readonly<Record<string, readonly string[]>>
   /** Workspace modules externalized by a published bundle. */
   readonly configurationOnlyRuntimeDependencies?: Readonly<Record<string, readonly string[]>>
@@ -90,7 +90,7 @@ export const PACKAGE_DEPENDENCY_POLICY: PackageDependencyPolicy = {
   clientFaceInclude: CLIENT_FACE_INCLUDE,
   clientFaceExclude: CLIENT_FACE_EXCLUDE,
   hostPackages: HOST_DEPENDENCY_PACKAGES,
-  cordisDevelopmentOnlyPackages: ['@karaka-ai/cli', '@karaka-ai/sdk'],
+  cordisIndependentPackages: ['@karaka-ai/cli', '@karaka-ai/sdk'],
   cordisRuntimeDependencyPackages: ['@karaka-ai/agent'],
   configurationOnlyDevDependencies: CONFIGURATION_ONLY_DEV_DEPENDENCIES,
   configurationOnlyRuntimeDependencies: CONFIGURATION_ONLY_RUNTIME_DEPENDENCIES,

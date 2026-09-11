@@ -85,7 +85,7 @@ Binding-global and error-class names are language-portable: they must match the 
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: abstract `CodeRuntime` service and the portable-identifier exclusion sets |
 | [`src/types.ts`](src/types.ts) | Vocabulary: `CodeRunRequest`, `CodeBindingNamespace`, `CodeJsonValue`, `CodeRunResult`, `CodeRunFailure` |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant; the seam registers no mutable data relation) |
+| — | No runtime invariant companion is published; this package exposes no independent event sequence or mutable data relation beyond contracts enforced at its owning seam. |
 
 </details>
 

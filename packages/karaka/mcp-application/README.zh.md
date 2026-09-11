@@ -34,6 +34,8 @@ kind: "package-reference"
 
 Agent Preset 通过现有工具 `allow` 列表选择具体限定名称。工具对其他应用和未选择它的 preset 保持隐藏。
 
+不发布运行时不变量伴生入口，因为端点身份在工具展示与调用时校验。
+
 <a id="model-experience"></a>
 ## 模型体验
 

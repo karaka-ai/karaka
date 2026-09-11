@@ -3,8 +3,6 @@ import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }))
 
@@ -20,7 +18,6 @@ import {
   prepareKarakaRuntime,
   startKarakaProject,
 } from '@karaka-ai/cli'
-import * as CliInvariant from '../src/invariant.ts'
 
 function fakeChild(): EventEmitter & {
   exitCode: number | null
@@ -193,19 +190,5 @@ describe('Agent child ownership', () => {
     expect(child.kill).not.toHaveBeenCalled()
     child.emit('exit', null, 'SIGTERM')
     await expect(exit).resolves.toBe(143)
-  })
-})
-
-describe('CLI invariant companion', () => {
-  it('registers its explained empty runtime invariant', async () => {
-    const ctx = new Context()
-    await ctx.plugin(InvariantRegistry)
-    const fiber = await ctx.plugin(CliInvariant)
-
-    expect(() => {
-      ctx.invariants.register('@karaka-ai/cli', () => {})
-    }).toThrow(/already registered/u)
-    await fiber.dispose()
-    await ctx.fiber.dispose()
   })
 })

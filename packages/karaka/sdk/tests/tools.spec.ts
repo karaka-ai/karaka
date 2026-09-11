@@ -2,14 +2,11 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { EventEmitter } from 'node:events'
 import type { AddressInfo } from 'node:net'
-import { Context } from '@deepseek-ai/cordis'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createKarakaToolHost } from '@karaka-ai/sdk'
-import * as SdkInvariant from '../src/invariant.ts'
 
 const cleanups: Array<() => Promise<void>> = []
 
@@ -317,17 +314,5 @@ describe('KarakaToolHost', () => {
 
     await expect(operation).resolves.toBeUndefined()
     expect(exchange.status).toHaveBeenCalledWith(503, { 'content-type': 'application/json' })
-  })
-
-  it('registers its explained empty runtime invariant', async () => {
-    const ctx = new Context()
-    await ctx.plugin(InvariantRegistry)
-    const fiber = await ctx.plugin(SdkInvariant)
-
-    expect(() => {
-      ctx.invariants.register('@karaka-ai/sdk', () => {})
-    }).toThrow(/already registered/u)
-    await fiber.dispose()
-    await ctx.fiber.dispose()
   })
 })

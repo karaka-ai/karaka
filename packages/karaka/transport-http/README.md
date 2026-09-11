@@ -24,6 +24,8 @@ English | [中文](README.zh.md)
 
 `handleQuestions` defaults to `true`. Set it to `false` when the authenticated DSH Remote connection owns human interactions. This disables only this plugin’s question-handler registration; backend chat routes remain available.
 
+No runtime invariant companion is published because request validation and ownership checks run at ingress.
+
 <a id="model-experience"></a>
 ## Model Experience
 
