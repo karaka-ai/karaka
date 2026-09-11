@@ -22,7 +22,7 @@ The module-level Shiki singleton warm-up remains eager. Viewport activation defe
 
 The focused jsdom test replaces the process-global `IntersectionObserver`, mounts several code surfaces, and proves that non-intersecting and unsupported blocks remain plain, intersecting blocks share one observer, leaving the viewport does not remove highlighting, and an activated block continues to highlight changed source. It also covers read-card activation and observer disposal. Each test restores the global and unmounts every component, so the module-level registry cannot leak registrations into another case.
 
-Ordinary jsdom component tests model mounted roots as visible through a test-only observer; production uses the browser API directly. The controlled viewport suite covers source growth before activation, language changes, unmounts and stale notifications. Assembled browser coverage exercises offscreen fences and read cards through the real observer, verifies activation geometry, copy and selection, and retains highlighted DOM after scrolling away.
+Ordinary jsdom component tests and assembled tests over built bundles share a test-only observer that models mounted roots as visible; production uses the browser API directly. The Web test configuration installs this model before assembled boot, and the built boot smoke requires highlighted read-card tokens. The controlled viewport suite covers source growth before activation, language changes, unmounts and stale notifications. Assembled browser coverage exercises offscreen fences and read cards through the real observer, verifies activation geometry, copy and selection, and retains highlighted DOM after scrolling away.
 
 ## Alternatives considered
 
