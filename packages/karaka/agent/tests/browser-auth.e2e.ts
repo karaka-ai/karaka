@@ -6,14 +6,19 @@ import { execa } from 'execa'
 import { exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import { assert, describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { TypertRemoteNamespace$73657373696f6e } from '@deepseek-ai/dsh-typert-protocol'
-import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
+import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { ApplicationAgentRow, ApplicationChatCreate, ApplicationChatPrompt, SessionWireEvent } from '@deepseek-ai/dsh-api-session-controller'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { initKarakaProject, prepareKarakaRuntime } from '@karaka-ai/cli'
 
 interface BrowserTestClient {
-  readonly chats: Pick<TypertRemoteNamespace$73657373696f6e,
-    'applicationAgents' | 'applicationCreate' | 'applicationPrompt' | 'applicationHistory' | 'applicationCancel' | 'applicationFollow'>
+  readonly chats: {
+    applicationAgents(): Promise<RemoteResult<readonly ApplicationAgentRow[]>>
+    applicationCreate(request: Omit<ApplicationChatCreate, 'owner'>): Promise<RemoteResult<unknown>>
+    applicationPrompt(request: Omit<ApplicationChatPrompt, 'owner'>): Promise<RemoteResult<unknown>>
+    applicationHistory(request: { chatId: SessionId }): Promise<RemoteResult<readonly SessionWireEvent[]>>
+    applicationCancel(request: { chatId: SessionId }): Promise<RemoteResult<unknown>>
+  }
   readonly connection: {
     readonly state: { getSnapshot(): string }
     readonly generation: { getSnapshot(): { id: number } | undefined }
