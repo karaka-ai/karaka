@@ -163,6 +163,14 @@ describe('CI workflow', () => {
       isRecord(step) && typeof step.run === 'string'
     ))
     expect(coverageCommands.map(step => step.run)).toContain('pnpm run check:ci:coverage')
+    // Windows coverage runs zero-build like the Linux lane: workspace imports
+    // resolve to src through the tsconfig paths map, and the lib-consuming
+    // suites (webworker-packer image-loadable, webworker-runtime
+    // transform-corpus, client ui-trajectory client-bundle) self-skip on
+    // unbuilt checkouts. The regex catches a regression spelled as
+    // 'corepack pnpm run build' or folded into a multi-line run block, which
+    // an exact string match would miss.
+    expect(coverageCommands.every(step => !/\bpnpm\s+run\s+build(?:\s|$)/.test(step.run))).toBe(true)
 
     // windows-native-tests runs the Windows-specific specs.
     expect(windowsNativeTests.name).toBe('windows node 24 / native tests')

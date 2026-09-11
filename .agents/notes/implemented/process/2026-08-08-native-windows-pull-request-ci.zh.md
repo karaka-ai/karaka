@@ -18,7 +18,7 @@ Status: implemented
 
 `windows-build` 与 `windows-native-tests` 是 `all checks passed` 的依赖项；其工作区构建和定向原生进程结果具有阻断性。`windows-coverage` 仍是常规作业，但不在聚合流程的 `needs` 中，因此逐文件 100% 覆盖率结果会保持红灯并可见，却不会延迟必需判定。`windows-observational` 同样不在聚合流程的 `needs` 中，并使用 `continue-on-error`，因为静态检查、文档、包与构建产物的阻断性判定由 Linux 负责。
 
-`windows-coverage` 会先完成一次工作区构建，再由[job 内分区覆盖率](2026-08-18-in-job-partitioned-coverage.zh.md)启动 2 个单 worker 插桩分片，并与 1 个豁免重型 worker 并行运行，同时只允许 2 个顶层门禁活跃。两项覆盖率门禁都将 Vitest 默认的单测试和轮询时间预算设为 90 秒。`windows-observational` 拥有自己的工作区构建和生产网站验证，把顶层门禁、Oxlint 与 `publint` 都限制为 2，并且只在其他所有观测性门禁结算后启动 built-bin 冒烟测试。冒烟测试的 `needs` 边仍要求构建成功，而 `after` 边会在其他门禁失败后保留这项诊断。SQLite busy-journal 节奏 fixture 会在普通 busy 预算内先注入两次 busy 结果，再返回成功，并观察每次尝试之间的延迟，使 schema 设置的调度时间不进入该断言。translation-pairing 合并套件只导入 `scripts/` 源码和子进程，因此放入豁免重型套件门禁；V8 插桩不会为它贡献任何阈值覆盖率，却会放大 Git 进程延迟。Lefthook 并发 fixture 保留原有结果，采用 30 秒单用例预算与 10 秒进程就绪探测；安装器则允许被抢占的 lock 持有者在独占创建后用 5 秒发布记录。directory-picker 组合为防抖配置写入提供显式的 15 秒轮询预算；workspace-context 组合 fixture 使用测试自有、没有无关 1 秒截止时间的信号。LSP 源码与 ACL 沙箱源码仍计入 Windows 分母：基于 stub 的失败路径套件把每个进程内 ACL 沙箱文件都带到 100%，只有 runner 入口保持排除——它只作为 spawn 出的子进程在插桩运行之外执行，其行为由 runner 套件端到端钉住。窄范围且带注释的 V8 ignore 只覆盖不可达分支（另一平台专属分支、生命周期内不可达的防御守卫），其行为测试仍保留在所属平台。
+`windows-coverage` 在不预先构建的情况下运行 [job 内分区覆盖率](2026-08-18-in-job-partitioned-coverage.zh.md)：2 个单 worker 插桩分片与 1 个豁免重型 worker 并行运行，同时只允许 2 个顶层门禁活跃。工作区 import 解析到 `src`；需要构建产物的套件在未构建的 checkout 上自行跳过。两项覆盖率门禁都将 Vitest 默认的单测试和轮询时间预算设为 90 秒。`windows-observational` 拥有自己的工作区构建和生产网站验证，把顶层门禁、Oxlint 与 `publint` 都限制为 2，并且只在其他所有观测性门禁结算后启动 built-bin 冒烟测试。冒烟测试的 `needs` 边仍要求构建成功，而 `after` 边会在其他门禁失败后保留这项诊断。SQLite busy-journal 节奏 fixture 会在普通 busy 预算内先注入两次 busy 结果，再返回成功，并观察每次尝试之间的延迟，使 schema 设置的调度时间不进入该断言。translation-pairing 合并套件只导入 `scripts/` 源码和子进程，因此放入豁免重型套件门禁；V8 插桩不会为它贡献任何阈值覆盖率，却会放大 Git 进程延迟。Lefthook 并发 fixture 保留原有结果，采用 30 秒单用例预算与 10 秒进程就绪探测；安装器则允许被抢占的 lock 持有者在独占创建后用 5 秒发布记录。directory-picker 组合为防抖配置写入提供显式的 15 秒轮询预算；workspace-context 组合 fixture 使用测试自有、没有无关 1 秒截止时间的信号。LSP 源码与 ACL 沙箱源码仍计入 Windows 分母：基于 stub 的失败路径套件把每个进程内 ACL 沙箱文件都带到 100%，只有 runner 入口保持排除——它只作为 spawn 出的子进程在插桩运行之外执行，其行为由 runner 套件端到端钉住。窄范围且带注释的 V8 ignore 只覆盖不可达分支（另一平台专属分支、生命周期内不可达的防御守卫），其行为测试仍保留在所属平台。
 
 历史大规格运行器试验说明了并发为何保持有界，而不能直接跟随宿主报告的 CPU 数。6 个 coverage worker 在 16 核上分别以 6 分 27 秒和 7 分 50 秒完成，但单个插桩 Vitest 进程内的 4 个、3 个和 2 个 worker 暴露出不可靠 fixture 与 worker 退出；相互独立的单 worker 子进程会保留隔离。标准路径因此使用 2 个插桩子进程与 1 个豁免 worker，自托管回退也保留同一套保守预算。完整平台矩阵负责提供对应的墙钟时间与截止时间证据。
 
@@ -52,6 +52,6 @@ Shiki 会禁用 TextMate 正则的延迟编译，并在用户内容进入保持�
 
 Wine 保留必需聚合流程现有的关键路径和作业身份。`all checks passed` 变绿时，原生覆盖率与观测性结果仍可能处于待处理或红灯状态，因此分支保护采用 Wine 加定向原生构建和进程检查，而评审者和后续自动化采用其余原生结果。
 
-尽管如此，每个拉取请求都会获得真实 NT 内核、NTFS、PowerShell、Windows 进程、原生插件和受支持源码覆盖率信号。原生作业会重复设置流程，并在构建、覆盖率与观测性工作区中重复构建，但它们会降低每个作业的进程数，并暴露兼容性通道掩盖的路径、watcher、生命周期与 fixture 缺陷。
+尽管如此，每个拉取请求都会获得真实 NT 内核、NTFS、PowerShell、Windows 进程、原生插件和受支持源码覆盖率信号。原生作业会重复设置流程，并在构建与观测性工作区中重复构建，但它们会降低每个作业的进程数，并暴露兼容性通道掩盖的路径、watcher、生命周期与 fixture 缺陷。
 
 维护者必须保留两种有意设计的执行拓扑：Wine 快照使用 Linux 安装加 hoisted 布局来触达 win32 二进制文件，而原生作业在标准 Windows 或可信自托管回退中使用相互独立的不可变工作区。任一拓扑独有的失败都必须依据该边界分类，不得削弱或静默跳过。

@@ -57,8 +57,9 @@ export const coverageExemptHeavySuites: readonly CoverageExemptSuite[] = [
     exclude: 'packages/karaka/agent/tests/launch.spec.ts',
   },
   // Built-artifact proof. Packer/runtime src is threshold-excluded, and the
-  // native Windows aggregate makes this uninstrumented gate wait for build so
-  // the suite never observes a partially emitted workspace closure.
+  // suite self-skips on unbuilt checkouts; the serial-windows complete
+  // reference still starts this uninstrumented gate after its build gate, so
+  // the assertions execute against complete real artifacts there.
   {
     filter: 'packages/experimental/webworker-packer/tests/image-loadable.spec.ts',
     exclude: 'packages/experimental/webworker-packer/tests/image-loadable.spec.ts',
