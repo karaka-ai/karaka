@@ -621,17 +621,26 @@ describe('dsh-subagent-dsh-sdk provider', () => {
       provider: 'p',
       model: 'm',
       env: { FAKE_REASON_KIND: reason },
-      shutdownTimeoutMs: 100,
-      disposeEofGraceMs: 200,
-      disposeGraceMs: 200,
+      // Product-default dispose budgets: two real children are reaped under
+      // runner contention, where tight windows misreport slow SIGKILL reaps.
+      shutdownTimeoutMs: DEFAULT_SHUTDOWN_TIMEOUT_MS,
+      disposeEofGraceMs: DEFAULT_DISPOSE_EOF_GRACE_MS,
+      disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
     })
-    const [errored, unknown] = await Promise.all([start('error'), start('unknown-reason')])
-    const [errorResult, unknownResult] = await Promise.all([errored.result, unknown.result])
-    expect(errorResult.diagnostic).toContain('category: child-error')
-    expect(errorResult.diagnostic).not.toContain('child-unknown')
-    expect(unknownResult.diagnostic).toContain('category: child-unknown')
-    expect(unknownResult.diagnostic).not.toContain('child-error')
-    await Promise.all([errored.dispose(), unknown.dispose()])
+    const starts = [start('error'), start('unknown-reason')] as const
+    try {
+      const [errored, unknown] = await Promise.all(starts)
+      const [errorResult, unknownResult] = await Promise.all([errored.result, unknown.result])
+      expect(errorResult.diagnostic).toContain('category: child-error')
+      expect(errorResult.diagnostic).not.toContain('child-unknown')
+      expect(unknownResult.diagnostic).toContain('category: child-unknown')
+      expect(unknownResult.diagnostic).not.toContain('child-error')
+    } finally {
+      await Promise.all(starts.map(started => started.then(
+        run => run.dispose(),
+        () => { /* Rejected startup has no acquired run; the assertion path reports it. */ },
+      )))
+    }
   })
 
   it('dispose cancels a hung child locally and reaps it', async () => {
