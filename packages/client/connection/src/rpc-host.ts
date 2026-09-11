@@ -8,8 +8,9 @@ import {
   type RpcId as RpcIdType,
 } from './rpc.ts'
 import { clientRequestSchema } from './rpc-schema.ts'
-import { bridge, type FetchHandler } from './http-bridge.ts'
-import { isTrustedApiRequest } from './api-request-trust.ts'
+import { bridge } from './http-bridge.ts'
+import type { ConnectionAuthentication, ConnectionCaller } from './auth.ts'
+import { isTrustedApiRequest, header } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type { BrowserAuth } from './browser-auth.ts'
 import type {
@@ -34,7 +35,7 @@ const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
 
 interface ConnectionRpcInterceptor {
   readonly matches: ConnectionRpcEndpointMatcher
-  readonly fetchHandler: FetchHandler
+  readonly fetchHandler: ConnectionFetchHandler
 }
 
 interface RegisteredFetchRoute {
@@ -69,7 +70,8 @@ export class HostConnectionService extends Service implements HostConnectionHand
   constructor(
     ctx: Context,
     private readonly trustedHosts: readonly string[],
-    private readonly browserAuth: BrowserAuth,
+    private readonly browserAuth: BrowserAuth | undefined,
+    private readonly applicationAuth?: { readonly origins: readonly string[] },
   ) {
     super(ctx, 'connection')
   }
@@ -95,16 +97,40 @@ export class HostConnectionService extends Service implements HostConnectionHand
   /** Apply the configured Host/Origin fence, then browser authentication. */
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
     if (!isTrustedApiRequest(request, this.trustedHosts)) return 403
-    return this.browserAuth.isAuthenticated(request) ? undefined : 401
+    return this.browserAuth?.isAuthenticated(request) === true ? undefined : 401
+  }
+
+  /** Authenticate the configured Host or application-user mode. */
+  async authenticate(request: ConnectionTrustRequest): Promise<ConnectionAuthentication> {
+    if (this.applicationAuth === undefined) {
+      const rejection = this.requestRejection(request)
+      return rejection === undefined ? { caller: { kind: 'host' } } : { rejection }
+    }
+    if (!isTrustedApiRequest(request, this.trustedHosts, this.applicationAuth.origins)) return { rejection: 403 }
+    const authorization = header(request.headers, 'authorization')
+    const protocols = header(request.headers, 'sec-websocket-protocol')?.split(',').map(value => value.trim())
+    const credentials = protocols?.filter(value => value.startsWith('dsh.bearer.')) ?? []
+    if (authorization !== undefined && credentials.length > 0) return { rejection: 401 }
+    const credential = authorization?.match(/^Bearer ([^\s]+)$/u)?.[1]
+      ?? (credentials.length === 1 ? credentials[0]?.slice('dsh.bearer.'.length) : undefined)
+    if (credential === undefined) return { rejection: 401 }
+    const provider = this.ctx.get('connectionAuth')
+    if (provider === undefined) return { rejection: 401 }
+    const caller = await provider.authenticate(credential)
+    return caller === undefined || caller.expiresAt <= Date.now() ? { rejection: 401 } : { caller }
   }
 
   /** Authenticate an index request through the process-token exchange or cookie. */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
-    return this.browserAuth.authorizeIndex(request, response)
+    if (this.browserAuth !== undefined) return this.browserAuth.authorizeIndex(request, response)
+    response.writeHead(401)
+    response.end('unauthorized')
+    return false
   }
 
   /** Add this process's launch token to the clean application URL. */
   authenticatedUrl(baseUrl: string): string {
+    if (this.browserAuth === undefined) throw new Error('connection: Host login is disabled')
     return this.browserAuth.authenticatedUrl(baseUrl)
   }
 
@@ -117,16 +143,19 @@ export class HostConnectionService extends Service implements HostConnectionHand
     channel: '/api',
   ): ConnectionFetchHandler {
     return {
-      fetch: (request) => {
+      fetch: (request, caller) => {
         const pathname = new URL(request.url).pathname
         const route = this.fetchRoutes.get(pathname)
-        if (route?.methods.has(request.method) === true) return route.fetch(request)
+        if (route?.methods.has(request.method) === true) {
+          if (caller?.kind === 'application') return Promise.resolve(new Response('forbidden', { status: 403 }))
+          return route.fetch(request)
+        }
         const endpoint = endpointFromPath(channel, pathname)
         const interceptor = this.interceptors.get(channel)
         if (endpoint === undefined || interceptor === undefined || !interceptor.matches(endpoint)) {
           return Promise.resolve(new Response('not found', { status: 404 }))
         }
-        return interceptor.fetchHandler.fetch(request)
+        return interceptor.fetchHandler.fetch(request, caller)
       },
     }
   }
@@ -160,13 +189,19 @@ export class HostConnectionService extends Service implements HostConnectionHand
       kind: 'prefix',
       path: channel,
       handler: async (req, res) => {
-        const rejection = this.requestRejection(req)
-        if (rejection !== undefined) {
+        const authentication = await this.authenticate(req)
+        if ('rejection' in authentication) {
+          const { rejection } = authentication
           res.writeHead(rejection)
           res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
-        await bridge(req, res, fetchHandler)
+        if (authentication.caller.kind === 'application') {
+          res.writeHead(403)
+          res.end('forbidden')
+          return
+        }
+        await bridge(req, res, { fetch: request => fetchHandler.fetch(request, authentication.caller) })
       },
     }
     return owner.effect(
@@ -203,9 +238,9 @@ export class HostConnectionService extends Service implements HostConnectionHand
 function rpcFetchHandler(
   channel: string,
   handler: ConnectionRpcHandler,
-): FetchHandler {
+): ConnectionFetchHandler {
   return {
-    async fetch(request: Request): Promise<Response> {
+    async fetch(request: Request, caller?: ConnectionCaller): Promise<Response> {
       const endpoint = endpointFromPath(channel, new URL(request.url).pathname)
       if (request.method !== 'POST' || endpoint === undefined) {
         return new Response('not found', { status: 404 })
@@ -237,7 +272,8 @@ function rpcFetchHandler(
       }
 
       try {
-        const result = await handler(endpoint, message.payload, request.signal)
+        if (caller?.kind === 'application' && caller.expiresAt <= Date.now()) return new Response('unauthorized', { status: 401 })
+        const result = await handler(endpoint, message.payload, request.signal, caller)
         return fullResponse(message.rpcId, result)
       } catch (error) {
         return new Response(`handler failure: ${String(error)}`, { status: 500 })

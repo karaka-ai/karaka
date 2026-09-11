@@ -8,6 +8,8 @@ The default provider uses independently rotatable credential references for the 
 
 See the [Karaka architecture](../architecture.md#karaka-application-runtime) for the complete process flow and [`@karaka-ai/agent`](../../packages/karaka/agent/README.md) for authentication, application tool endpoints, and plugin loading.
 
+Browser clients instead use the [authenticated Remote connection](../../packages/karaka/agent/README.md#browser-clients). The backend signs an expiring credential containing the entire owner; browser-auth verifies it before Connection and Gateway dispatch chat calls or approval answers. Browser requests cannot choose tenant or user identifiers. Backend and browser ingress share Session Controller ownership checks and JSONL persistence.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

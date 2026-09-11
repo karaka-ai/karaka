@@ -1,5 +1,8 @@
 /** Bundled Cordis modules exposed to Karaka compositions. */
 
+import * as plugin95 from '@karaka-ai/browser-auth'
+import * as plugin96 from '@deepseek-ai/dsh-client-connection'
+import * as plugin97 from '@deepseek-ai/dsh-api-remotes'
 import type { Loader } from '@deepseek-ai/cordis-plugin-loader'
 import * as plugin93 from '@deepseek-ai/cordis-plugin-hmr'
 import * as plugin94 from '@deepseek-ai/cordis-plugin-timer'
@@ -186,6 +189,9 @@ export const bundledPlugins: Readonly<Record<string, unknown>> = Object.freeze({
   '@karaka-ai/agent/workflow-worker-thread': plugin86,
   '@karaka-ai/agent/workspace': plugin87,
   '@karaka-ai/agent/mcp-application': plugin88,
+  '@karaka-ai/agent/browser-auth': plugin95,
+  '@karaka-ai/agent/client-connection': plugin96,
+  '@karaka-ai/agent/api-remotes': plugin97,
   '@karaka-ai/agent/server-auth': plugin89,
   '@karaka-ai/agent/transport-http': plugin90,
   '@karaka-ai/agent/persona': plugin91,

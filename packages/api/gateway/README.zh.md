@@ -55,6 +55,8 @@ Host 组合可通过 `registerRemoteEvents()` 注册唯一的应用事件 source
 
 生成的声明合并通过共享的 `TypertClientRemote` 约定提供 TypeScript API。Client 入口不包含 Host 服务或 Host Cordis 接口合并；方法查找和调用使用普通对象与函数，而不使用 JavaScript Proxy。
 
+应用调用者在每次调用的独立 Cordis context 中保留已验证身份。已注册的访问策略授权方法和事件接收者；没有策略时拒绝应用访问。审批结果必须匹配已认证 owner、活跃客户端 generation，以及实际投递给该客户端的待处理事件。重连仅重放获授权的待处理交互。凭证过期和策略撤销会结束应用流；普通 Host 认证保留完整 Host 权限。
+
 <a id="model-experience"></a>
 ## 模型体验
 

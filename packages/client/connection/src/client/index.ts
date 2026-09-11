@@ -112,6 +112,9 @@ interface ClientTransportGlobal {
  * Connection stays independent of downstream domain state.
  */
 export interface ConnectionHandle {
+  /** Resolve endpoint and credentials for each physical WebSocket attempt. */
+  readonly webSocketOptions?: (path: string, signal: AbortSignal) => Promise<{ url: string; protocols: string[] }>
+
   /**
    * Whether the privileged surface is reachable: the page authority is
    * loopback, the transport declares the page owns the Host
@@ -177,16 +180,38 @@ function watchBrowserNetwork(controller: ConnectionController): () => void {
   }
 }
 
+/** Per-client remote endpoint and application credential acquisition. */
+export interface BrowserConnectionConfig {
+  /** HTTP(S) server origin. Omit for the page's own Host connection. */
+  readonly endpoint?: string
+  /** Return a fresh credential when needed; cancellation ends credential acquisition. */
+  readonly credential?: (signal: AbortSignal) => string | Promise<string>
+}
+
 /**
  * Client plugin body: pick the api by page mode and provide ctx.connection.
  * @param ctx - client cordis context.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: BrowserConnectionConfig = {}): void {
   const pageLocation = typeof location === 'undefined' ? undefined : location
-  const fixture = pageLocation !== undefined && new URLSearchParams(pageLocation.search).has('fixture')
+  const fixture = config.endpoint === undefined && pageLocation !== undefined && new URLSearchParams(pageLocation.search).has('fixture')
   const fixtureRpc = fixture ? createFixtureConnectionRpc() : undefined
   const transport = (globalThis as ClientTransportGlobal).__DSH_TRANSPORT__
-  const rpc = fixtureRpc ?? createWebConnectionRpc(transport?.fetch, transport?.openStream)
+  const base = config.endpoint === undefined ? undefined : new URL(config.endpoint)
+  if (base !== undefined && (!['http:', 'https:'].includes(base.protocol) || base.pathname !== '/' || base.search !== '' || base.hash !== '' || base.username !== '' || base.password !== '')) {
+    throw new Error('connection: endpoint must be an HTTP(S) server origin')
+  }
+  const fetcher: RpcFetch = async (input, init) => {
+    const headers = new Headers(init.headers)
+    if (config.credential !== undefined) {
+      const signal = init.signal ?? new AbortController().signal
+      headers.set('authorization', `Bearer ${await config.credential(signal)}`)
+      signal.throwIfAborted()
+    }
+    const url = base === undefined ? input : new URL(input.pathname + input.search, base)
+    return (transport?.fetch ?? globalThis.fetch)(url, { ...init, headers })
+  }
+  const rpc = fixtureRpc ?? createWebConnectionRpc(fetcher, transport?.openStream)
   let generationSource: ConnectionGenerationSource | undefined
   let owner: ConnectionOwner | undefined
   let generationId = 0
@@ -225,7 +250,18 @@ export function apply(ctx: Context): void {
     publishState(undefined)
   }
   const handle: ConnectionHandle = {
-    isLoopback: transport?.ownsHost === true || pageLocation === undefined || isLoopbackHostname(pageLocation.hostname),
+    isLoopback: config.credential === undefined && (base === undefined
+      ? transport?.ownsHost === true || pageLocation === undefined || isLoopbackHostname(pageLocation.hostname)
+      : isLoopbackHostname(base.hostname)),
+    ...base === undefined && config.credential === undefined ? {} : {
+      async webSocketOptions(path: string, signal: AbortSignal) {
+        const url = new URL(path, base ?? pageLocation?.origin)
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+        const credential = await config.credential?.(signal)
+        signal.throwIfAborted()
+        return { url: url.href, protocols: credential === undefined ? [] : ['dsh', `dsh.bearer.${credential}`] }
+      },
+    },
     generation: {
       getSnapshot: () => generation,
       subscribe: (listener) => {

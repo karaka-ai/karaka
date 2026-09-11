@@ -1,5 +1,6 @@
 /** Generic unary RPC contracts shared by the Host and Client Connection halves. */
 
+import type { ConnectionAuthentication, ConnectionCaller } from './auth.ts'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 
 /** Correlation id minted by a caller and echoed by the Connection response. */
@@ -101,6 +102,7 @@ export type ConnectionRpcHandler = (
   endpoint: string,
   payload: unknown,
   signal: AbortSignal,
+  caller?: ConnectionCaller,
 ) => Promise<ConnectionRpcResult<unknown>>
 
 /** Synchronous ownership test for one endpoint on a shared RPC channel. */
@@ -164,6 +166,13 @@ export interface HostConnectionHandle {
   readonly fetch: HostConnectionFetch
 
   /**
+   * Authenticate an HTTP request or WebSocket upgrade.
+   * @param request - carrier-supplied headers.
+   * @returns verified caller or rejection status.
+   */
+  authenticate(request: ConnectionTrustRequest): Promise<ConnectionAuthentication>
+
+  /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
    * @param channel - shared channel mounted by Connection.
    * @returns Fetch handler for trusted, authenticated requests.
@@ -201,7 +210,7 @@ export interface ConnectionFetchHandler {
    * @param request - Fetch request below the shared channel.
    * @returns the registered response or a 404 response.
    */
-  fetch(request: Request): Promise<Response>
+  fetch(request: Request, caller?: ConnectionCaller): Promise<Response>
 }
 
 /** Client caller for logical RPC channels carried by the current transport. */

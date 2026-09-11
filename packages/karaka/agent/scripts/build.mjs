@@ -5,8 +5,10 @@ import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 
-run(require.resolve('typescript/bin/tsc'), ['-b'])
+run(require.resolve('typescript/bin/tsc'), ['-b', 'tsconfig.host.json'])
 run(require.resolve('tsdown/run'), ['--env.KARAKA_AGENT_BUILD', 'runtime'])
+run(require.resolve('typescript/bin/tsc'), ['-b', 'tsconfig.client.json'])
+run(require.resolve('tsdown/run'), ['--env.DSH_BUILD_FACE', 'client'])
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 run(resolve(packageDir, 'scripts/verify-public-api.mjs'), [])
 

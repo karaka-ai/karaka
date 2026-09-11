@@ -1,3 +1,4 @@
+import type { ApplicationOwner } from '@deepseek-ai/dsh-session/types'
 /** Browser-safe request, result, and lifecycle vocabulary for the Session Remote service. */
 
 import type {
@@ -533,3 +534,31 @@ declare module '@deepseek-ai/cordis' {
 
 /** JSON-compatible projection value accepted by list consumers. */
 export type SessionProjectionValue = JsonValue
+
+/** Stable application-facing Agent roster row. */
+export interface ApplicationAgentRow {
+  readonly id: string
+  readonly name: string
+  readonly description?: string
+}
+
+/** Application chat creation input after server authentication. */
+export interface ApplicationChatCreate {
+  readonly chatId: SessionId
+  readonly agentId: string
+  readonly owner: ApplicationOwner
+}
+
+/** Application chat message admission input after server authentication. */
+export interface ApplicationChatPrompt {
+  readonly chatId: SessionId
+  readonly requestId: string
+  readonly owner: ApplicationOwner
+  readonly content: readonly PromptContentPart[]
+}
+
+/** Application chat operation identity after server authentication. */
+export interface ApplicationChatAddress {
+  readonly chatId: SessionId
+  readonly owner: ApplicationOwner
+}

@@ -6,6 +6,7 @@
     "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
   },
   "files": [
+    "src/application-methods.ts",
     "src/index.ts",
     "src/invariant.ts",
     "src/remote-events.ts",
@@ -65,6 +66,12 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../../vendor/schemastery"
     }
   ]
 }

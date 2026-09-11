@@ -48,6 +48,8 @@
     { "path": "../../util/time" },
     { "path": "../../typert/protocol" },
     { "path": "../../typert/registry" },
-    { "path": "../../workspace/workspace" }
+    { "path": "../../workspace/workspace" },
+    { "path": "../../client/connection/tsconfig.host.json" },
+    { "path": "../gateway/tsconfig.host.json" }
   ]
 }

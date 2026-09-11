@@ -21,18 +21,16 @@ export type RemoteStreamFailureMapper = (error: unknown) => RemoteStreamFailure
 
 /** Own the no-server WebSocket acceptor and every active logical stream. */
 export class RemoteStreamMuxServer {
-  private readonly server = new WebSocketServer({ noServer: true })
+  private readonly server = new WebSocketServer({ noServer: true, handleProtocols: protocols => protocols.has('dsh') ? 'dsh' : false })
   private readonly connections = new Set<Promise<void>>()
   private readonly heartbeatAlive = new WeakMap<WebSocket, boolean>()
   private heartbeatTimer: NodeJS.Timeout | undefined
 
   /**
-   * @param open - Gateway stream dispatcher.
    * @param failure - Gateway error-to-wire mapper.
    * @param heartbeatIntervalMs - interval between WebSocket Ping control frames.
    */
   constructor(
-    private readonly open: RemoteStreamOpener,
     private readonly failure: RemoteStreamFailureMapper,
     private readonly heartbeatIntervalMs: number,
   ) {}
@@ -42,14 +40,17 @@ export class RemoteStreamMuxServer {
    * @param req - authenticated HTTP upgrade request.
    * @param socket - carrier socket transferred to the WebSocket server.
    * @param head - bytes already read after the HTTP upgrade headers.
+   * @param open - stream opener retaining this socket’s authenticated caller.
+   * @param expiresAt - absolute credential expiry in milliseconds; omitted for Host sessions.
    */
-  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, open: RemoteStreamOpener, expiresAt?: number): void {
     this.server.handleUpgrade(req, socket, head, (websocket) => {
       this.heartbeatAlive.set(websocket, true)
       websocket.on('pong', () => { this.heartbeatAlive.set(websocket, true) })
       this.startHeartbeat()
-      const connection = new RemoteStreamMuxConnection(websocket, this.open, this.failure)
-      const done = connection.run()
+      const connection = new RemoteStreamMuxConnection(websocket, open, this.failure)
+      const expiry = expiresAt === undefined ? undefined : setTimeout(() => { websocket.terminate() }, Math.max(0, expiresAt - Date.now()))
+      const done = connection.run().finally(() => { clearTimeout(expiry) })
       this.connections.add(done)
       void done.then(() => { this.connections.delete(done) })
     })

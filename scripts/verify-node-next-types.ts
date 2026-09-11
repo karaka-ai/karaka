@@ -101,8 +101,10 @@ if (badSpecifiers.length > 0) {
   process.exit(1)
 }
 
-const privateKarakaDeclarations = globSync('packages/karaka/agent/lib/**/*.d.ts', { cwd: root })
-  .filter(path => !path.includes('/lib/types/'))
+const privateKarakaDeclarations = globSync('packages/karaka/agent/lib/**/*.d.ts', {
+  cwd: root,
+  exclude: ['packages/karaka/agent/lib/types/**'],
+})
   .filter(path => readFileSync(resolve(root, path), 'utf8').includes('@deepseek-ai/dsh-'))
 if (privateKarakaDeclarations.length > 0) {
   console.error('verify-node-next-types: @karaka-ai/agent declarations expose private DSH module names.')

@@ -55,6 +55,8 @@ Host entry 为每条 Client stream 独立注册 allowlist listener 和队列，�
 
 包内 `clientBundle(..., { hostPhase: true })` 让 Host tsdown 打包 Host 入口，让后续 Client tsdown 只打包 browser 入口。普通 Client 插件仍使用单一 Client project，并在 Client tsdown 阶段一起生成 Node loader 入口和 browser bundle；只有两组源码需要不同 compiler face 时才拆分。
 
+`applicationMethods` 选择向已认证浏览器用户开放的应用聊天方法；`applicationEvents` 选择 `approval/request` 和 `user-questions/request`。两者默认均为空。投递要求精确匹配 Agent Session 中保存的应用、租户和用户。未选中的应用交互委托给下一个 Host handler。已选中的待处理交互可供获授权的重连恢复。Host 调用者保留原有能力。
+
 <a id="model-experience"></a>
 ## 模型体验
 

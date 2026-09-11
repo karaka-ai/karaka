@@ -17,6 +17,7 @@ interface RunningMux {
 const running = new Set<RunningMux>()
 
 afterEach(async () => {
+  vi.useRealTimers()
   await Promise.all([...running].map(async (entry) => {
     running.delete(entry)
     await entry.mux.close().catch(() => undefined)
@@ -205,10 +206,10 @@ const mapFailure: RemoteStreamFailureMapper = error => ({
   details: {},
 })
 
-async function startMux(open: RemoteStreamOpener, heartbeatIntervalMs = 2_000): Promise<RunningMux> {
-  const mux = new RemoteStreamMuxServer(open, mapFailure, heartbeatIntervalMs)
+async function startMux(open: RemoteStreamOpener, heartbeatIntervalMs = 2_000, expiresAt?: number): Promise<RunningMux> {
+  const mux = new RemoteStreamMuxServer(mapFailure, heartbeatIntervalMs)
   const http = createServer()
-  http.on('upgrade', (request, socket, head) => { mux.handleUpgrade(request, socket, head) })
+  http.on('upgrade', (request, socket, head) => { mux.handleUpgrade(request, socket, head, open, expiresAt) })
   await new Promise<void>((resolve, reject) => {
     http.once('error', reject)
     http.listen(0, '127.0.0.1', () => {
@@ -281,3 +282,24 @@ async function closeHttp(server: Server): Promise<void> {
     })
   })
 }
+
+
+describe('Remote stream credential lifetime', () => {
+  it('terminates an accepted connection at credential expiry', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const entry = await startMux(async (_endpoint, _payload, signal) => waitForAbort(signal), 2_000, Date.now() + 60_000)
+    const client = await connect(entry.url)
+    const closed = once(client, 'close')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect((await closed)[0]).toBe(1006)
+  })
+
+  it('does not negotiate an unsupported WebSocket subprotocol', async () => {
+    const entry = await startMux(async (_endpoint, _payload, signal) => waitForAbort(signal))
+    const client = new WebSocket(entry.url, ['unsupported'])
+    const closed = new Promise<void>((resolve) => { client.once('close', () => { resolve() }) })
+    const errors: unknown[] = await once(client, 'error')
+    expect(errors[0]).toMatchObject({ message: 'Server sent no subprotocol' })
+    await closed
+  })
+})

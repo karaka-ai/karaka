@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-`@karaka-ai/agent` 是完整的 Karaka Agent 服务器 runtime。它的可执行文件将 Karaka 维护的 Agent、Session、LLM、工具、持久化、Preset、认证和 HTTP transport 实现打包在一个发布包中；安装后的 runtime 不会解析 `@deepseek-ai/dsh-*` 包。服务器项目仍可通过内置 `@karaka-ai/agent/*` 别名、项目中的相对插件文件以及由该项目安装的可选 npm 插件包来组合 Agent。`@karaka-ai/cli` 是常规启动器，而 `@karaka-ai/agent/bin` 是它委托的稳定进程入口。
+`@karaka-ai/agent` 是完整的 Karaka Agent 服务器 runtime。它的可执行文件将 Karaka 维护的 Agent、Session、LLM、工具、持久化、Preset、认证、HTTP transport 实现和 SDK 请求模式打包在一个发布包中；安装后的 runtime 不会解析 `@deepseek-ai/dsh-*` 包。服务器项目仍可通过内置 `@karaka-ai/agent/*` 别名、项目中的相对插件文件以及由该项目安装的可选 npm 插件包来组合 Agent。`@karaka-ai/cli` 是常规启动器，而 `@karaka-ai/agent/bin` 是它委托的稳定进程入口。
 
 ## 目录
 
@@ -36,6 +36,34 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 ```
 
 以程序方式调用可执行文件时，`--config` 必须指定绝对部署 patch 路径。启动成功后，服务器在前台保持运行，直到收到 `SIGINT` 或 `SIGTERM`；参数无效、缺少 `KARAKA_HOME`、配置不可读、插件无法解析或插件激活失败都会以诊断信息终止进程。
+
+<a id="browser-clients"></a>
+### 浏览器客户端
+
+在前端导入 `@karaka-ai/agent/browser`。这个独立 ESM 入口打包现有 Typert 客户端和生成的类型声明。每个实例接受独立的 Karaka 地址和可续期的凭证回调：
+
+```js
+import { createBrowserClient, SessionId } from '@karaka-ai/agent/browser'
+
+const client = await createBrowserClient({
+  endpoint: 'https://karaka.example',
+  credential: async signal => {
+    const response = await fetch('/karaka-credential', { signal })
+    if (!response.ok) throw new Error('Credential request failed')
+    return response.text()
+  },
+})
+const chatId = SessionId('support-chat')
+const created = await client.chats.applicationCreate({ chatId, agentId: 'support' })
+if (!created.ok) throw new Error(created.error.message)
+client.forChat(chatId).$on('approval/request', async request => {
+  return window.confirm(request.reason) ? 'allowed-once' : 'rejected'
+})
+```
+
+应用后端负责 `/karaka-credential`、登录和凭证签发。为 [browser-auth](../browser-auth/README.zh.md) 配置后端的公开验证密钥、签发者、受众、应用 id 和最大凭证有效期。挂载 `@karaka-ai/agent/client-connection`，配置 `authentication: application`、精确 `frontendOrigins` 和所需 `trustedHosts`；挂载 `@karaka-ai/agent/api-remotes`，选择 `applicationMethods` 和 `applicationEvents`。将现有 `karaka-http` 行的 `handleQuestions` 设为 `false`。除现有 HTTP 行的覆盖外，这些部署 patch 行放在 `insert` 下。
+
+发送 prompt 前，为每个聊天注册审批或问题监听器。销毁时调用 `client.dispose()`。凭证过期会关闭 socket；重连会再次调用凭证回调。TLS 终止和公开服务器路由由部署负责。待处理交互在同一 Karaka 进程内可经连接中断恢复；JSONL 在进程重启后保留聊天所有权和历史。
 
 ### 扩展 Agent
 

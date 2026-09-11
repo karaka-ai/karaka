@@ -22,6 +22,9 @@ English | [中文](README.zh.md)
 
 `path` selects the route prefix and defaults to `/v1`. `maxBodyBytes` limits JSON request bodies and defaults to 1 MiB. A stream verifies chat ownership before committing SSE headers and aborts its Session follower when the client disconnects. Every route registration, pending interaction, and active stream is owned by the plugin effect and ends during disposal.
 
+`handleQuestions` defaults to `true`. Set it to `false` when the authenticated DSH Remote connection owns human interactions. This disables only this plugin’s question-handler registration; backend chat routes remain available.
+
+<a id="model-experience"></a>
 ## Model Experience
 
 None, as this package transports application input and projects Session events without assembling model requests.
