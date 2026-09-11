@@ -46,6 +46,8 @@ jobs:
     name: node 24 / static
     env:
       DSH_GATE_CONCURRENCY: '2'
+      # Stop sibling gates after the first required failure.
+      DSH_GATE_FAIL_FAST: '1'
     steps:
       # Fetch complete history so the archive gate can read the trusted PR base from a reused shallow checkout.
       - uses: actions/checkout@v6
@@ -103,6 +105,8 @@ jobs:
       DSH_COVERAGE_MAX_WORKERS: '2'
       DSH_COVERAGE_PARTITIONS: '2'
       DSH_GATE_CONCURRENCY: '2'
+      # Stop sibling gates after the first required failure.
+      DSH_GATE_FAIL_FAST: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -167,6 +171,8 @@ jobs:
       DSH_PUBLINT_CONCURRENCY: '2'
       DSH_WEB_SNAPSHOT_WORKERS: '2'
       DSH_SNAPSHOT_MAX_CONCURRENCY: '2'
+      # Stop sibling gates after the first required failure.
+      DSH_GATE_FAIL_FAST: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -245,6 +251,9 @@ jobs:
     env:
       DSH_GATE_CONCURRENCY: ${{ matrix.gate_concurrency }}
       DSH_NODE_COMPAT_SKIP_TYPECHECK: '1'
+      # A failed smoke aborts the remaining compatibility gates instead of
+      # letting the build-backed legs run against an already-red aggregate.
+      DSH_GATE_FAIL_FAST: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -427,6 +436,9 @@ jobs:
           || 'windows-2025' }}
     name: windows node 24 / build
     timeout-minutes: 60
+    env:
+      # A failing build or site aborts the sibling gate on the same runner.
+      DSH_GATE_FAIL_FAST: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -474,6 +486,8 @@ jobs:
       DSH_COVERAGE_PARTITIONS: '2'
       DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
       DSH_GATE_CONCURRENCY: '2'
+      # Stop sibling gates after the first required failure.
+      DSH_GATE_FAIL_FAST: '1'
     steps:
       - uses: actions/checkout@v6
         with:
