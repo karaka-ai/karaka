@@ -333,6 +333,26 @@ describe('web e2e: seeded history renders through cold resume', () => {
       .waitFor({ timeout: 10_000 })
   }, 60_000)
 
+  it.skipIf(MODE === 'record')('restores the selected Trajectory from recorded history after reload', async () => {
+    const trajectory = page.getByRole('tab', { name: 'Trajectory', exact: true })
+    const chat = page.getByRole('tab', { name: 'Chat', exact: true })
+    const rows = page.locator('[data-trajectory-scroll] tr[data-trajectory-row-key]')
+    try {
+      await trajectory.click()
+      await expect.poll(() => rows.count(), { timeout: 10_000 }).toBeGreaterThan(0)
+      const before = await rows.allTextContents()
+      expect(before.join('\n')).toContain('DONE')
+      await page.reload({ waitUntil: 'load' })
+      await expect.poll(() => trajectory.getAttribute('aria-selected'), { timeout: 15_000 }).toBe('true')
+      await expect.poll(() => rows.allTextContents(), { timeout: 15_000 }).toEqual(before)
+    } finally {
+      await chat.click()
+      await expect.poll(() => chat.getAttribute('aria-selected'), { timeout: 10_000 }).toBe('true')
+    }
+    await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
+    expect(await page.getByText(PROMPT, { exact: true }).count()).toBe(1)
+  })
+
   it.skipIf(MODE === 'record')('matches the historical conversation aria golden', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-seeded-aria'))
     // This scenario issues zero model calls — the scaffold's route-only
