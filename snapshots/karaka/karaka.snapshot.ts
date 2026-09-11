@@ -4,14 +4,14 @@ import { existsSync } from 'node:fs'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import type { TypertRemoteNamespace$73657373696f6e } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
-import SessionPersistenceSqlite from '@deepseek-ai/dsh-session-persistence-sqlite'
 import {
   formatSystemPromptSnapshot,
   formatToolSchemasSnapshot,
@@ -40,7 +40,7 @@ interface JsonRecord {
 interface RunningKaraka {
   readonly child: ResultPromise
   readonly endpoint: string
-  readonly database: string
+  readonly sessionRoot: string
   readonly credential: string
 }
 
@@ -173,6 +173,9 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
       - id: billing
         chatCredential: KARAKA_SNAPSHOT_CHAT_TOKEN
         toolCredential: KARAKA_SNAPSHOT_TOOL_TOKEN
+      - id: other-application
+        chatCredential: KARAKA_SNAPSHOT_OTHER_CHAT_TOKEN
+        toolCredential: KARAKA_SNAPSHOT_OTHER_TOOL_TOKEN
 
 - insert:
     - id: llm-replay
@@ -193,7 +196,7 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
 
 async function startKaraka(project: string, browser = false): Promise<RunningKaraka> {
   const readyFile = join(project, 'karaka-ready')
-  await prepareProject(project, readyFile)
+  await rm(readyFile, { force: true })
   let credential = ''
   if (browser) {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
@@ -231,6 +234,8 @@ async function startKaraka(project: string, browser = false): Promise<RunningKar
       KARAKA_PORT: '0',
       KARAKA_SNAPSHOT_CHAT_TOKEN: 'chat-secret',
       KARAKA_SNAPSHOT_TOOL_TOKEN: 'tool-secret',
+      KARAKA_SNAPSHOT_OTHER_CHAT_TOKEN: 'other-chat-secret',
+      KARAKA_SNAPSHOT_OTHER_TOOL_TOKEN: 'other-tool-secret',
       NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
     },
     reject: false,
@@ -241,7 +246,7 @@ async function startKaraka(project: string, browser = false): Promise<RunningKar
   return {
     child,
     endpoint,
-    database: join(prepared.home, 'karaka-sessions.sqlite'),
+    sessionRoot: join(prepared.home, 'sessions'),
     credential,
   }
 }
@@ -254,8 +259,8 @@ async function waitForKarakaStartup(readyFile: string, child: ResultPromise): Pr
     return endpoint
   } catch (error: unknown) {
     if (child.exitCode === undefined) child.kill('SIGKILL')
-    await child
-    throw error
+    const result = await child
+    throw new Error(`Karaka startup failed: ${String(error)}. stdout:\n${result.stdout}\nstderr:\n${result.stderr}`, { cause: error })
   }
 }
 
@@ -266,16 +271,28 @@ async function stopKaraka(running: RunningKaraka): Promise<void> {
   expect(result.exitCode, `Karaka shutdown stderr:\n${result.stderr}`).toBe(0)
 }
 
-async function readPersistedSession(database: string): Promise<string> {
+async function readPersistedSession(root: string): Promise<string> {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
-  await ctx.plugin(SessionPersistenceSqlite, { path: database })
   try {
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionPersistenceJsonl, { root })
     const headers = await ctx.sessionPersistence.list()
     expect(headers).toHaveLength(1)
     const header = headers[0]
-    if (header === undefined) throw new Error('Karaka snapshot database has no session')
-    const loaded = await ctx.sessionPersistence.load(header.id)
+    if (header === undefined) throw new Error('Karaka snapshot JSONL root has no session')
+    const backend = ctx.sessionPersistence as SessionPersistenceJsonl
+    const location = backend.locate(header)
+    expect(location.kind).toBe('jsonl')
+    expect(location.path.startsWith(`${root}${sep}`)).toBe(true)
+    expect(location.path).toMatch(/\.jsonl\.zstd$/u)
+    const physical = await readFile(location.path)
+    expect(physical.subarray(0, 4)).toEqual(Buffer.from([0x28, 0xb5, 0x2f, 0xfd]))
+    expect(existsSync(join(dirname(root), 'karaka-sessions.sqlite'))).toBe(false)
+    // Read stored events directly: load/inspect may synthesize crash-recovery events.
+    const loaded = await backend.loadStored(header.id)
+    if (loaded === undefined) throw new Error('Karaka snapshot session has no stored JSONL')
+    expect(loaded.tornMarker).toBeUndefined()
+    await expect(readFile(location.path)).resolves.toEqual(physical)
     return [JSON.stringify({ type: 'session', ...loaded.meta }), ...loaded.events.map(event => JSON.stringify(event)), ''].join('\n')
   } finally {
     await ctx.fiber.dispose()
@@ -333,6 +350,7 @@ describe('Karaka recorded-session snapshot', () => {
     let running: RunningKaraka | undefined
     let browser: BrowserSnapshotClient | undefined
     try {
+      await prepareProject(project, join(project, 'karaka-ready'))
       running = await startKaraka(project, transport === 'browser')
       const client = createKarakaClient({ endpoint: running.endpoint, chatToken: 'chat-secret' })
       const user = client.forUser({ tenantId: 'tenant-1', userId: 'user-1' })
@@ -374,19 +392,52 @@ describe('Karaka recorded-session snapshot', () => {
         browser = undefined
       }
       await stopKaraka(running)
-      const log = await readPersistedSession(running.database)
+      const log = await readPersistedSession(running.sessionRoot)
       expect(records(log)[0]).toMatchObject({
         agentPreset: 'support',
         applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' },
       })
       await compareOrRefresh(log)
-    } finally {
-      await browser?.dispose()
-      if (running !== undefined && running.child.exitCode === undefined) {
-        running.child.kill('SIGKILL')
-        await running.child
+
+      running = await startKaraka(project)
+      const restarted = createKarakaClient({ endpoint: running.endpoint, chatToken: 'chat-secret' })
+      const rightfulUser = restarted.forUser({ tenantId: 'tenant-1', userId: 'user-1' })
+      const otherApplication = createKarakaClient({ endpoint: running.endpoint, chatToken: 'other-chat-secret' })
+      for (const outsider of [
+        otherApplication.forUser({ tenantId: 'tenant-1', userId: 'user-1' }),
+        restarted.forUser({ tenantId: 'other-tenant', userId: 'user-1' }),
+        restarted.forUser({ tenantId: 'tenant-1', userId: 'other-user' }),
+      ]) {
+        await expect(outsider.chats.history('snapshot-chat')).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+        await expect(outsider.chats.send({
+          chatId: 'snapshot-chat', requestId: 'snapshot-request', content: 'unauthorized retry',
+        })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
       }
-      await rm(project, { recursive: true, force: true })
+      await expect(rightfulUser.chats.history('snapshot-chat')).resolves.toEqual(history)
+      await expect(rightfulUser.chats.send({
+        chatId: 'snapshot-chat', requestId: 'snapshot-request', content: 'duplicate retry',
+      })).resolves.toMatchObject({ accepted: true, duplicate: true })
+      await stopKaraka(running)
+      const original = records(log)
+      const resumed = records(await readPersistedSession(running.sessionRoot))
+      expect(resumed.slice(0, original.length)).toEqual(original)
+      // Agent activation records the restored seed once; a duplicate adds no message or turn.
+      expect(resumed.slice(original.length)).toEqual([{
+        type: 'session/end-seed', seq: original.length - 1, time: expect.any(Number), data: {},
+      }])
+    } finally {
+      try {
+        await browser?.dispose()
+      } finally {
+        try {
+          if (running !== undefined && running.child.exitCode === undefined) {
+            running.child.kill('SIGKILL')
+            await running.child
+          }
+        } finally {
+          await rm(project, { recursive: true, force: true })
+        }
+      }
     }
   })
 })

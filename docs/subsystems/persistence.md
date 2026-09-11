@@ -20,7 +20,7 @@ Repair applies only to cold sessions. For a live id, `SessionPersistence.load(id
 
 ## `SessionLocation` — optional per-session artifact target
 
-`SessionPersistence.locate(meta)` synchronously resolves a backend-owned independent artifact without reading, creating, or flushing it. JSONL returns the absolute transcript path inside its project/session directory; SQLite returns `undefined` because sessions share one database. A returned path can therefore name a file that does not yet exist or lacks the current unflushed turn; it is a location hint, not authorization or a freshness guarantee.
+`SessionPersistence.locate(meta)` synchronously resolves a backend-owned independent artifact without reading, creating, or flushing it. JSONL returns the absolute transcript path inside its project/session directory; a backend without one independent artifact per session returns `undefined`. A returned path can therefore name a file that does not yet exist or lacks the current unflushed turn; it is a location hint, not authorization or a freshness guarantee.
 
 ```ts type-equiv
 /**
@@ -93,7 +93,7 @@ interface SessionHeader {
 
 ## Format refusal — logs a build cannot faithfully read
 
-A backend refuses a log it cannot faithfully interpret with `SessionFormatUnsupportedError`, distinct from `SessionPersistenceCorruptionError` because nothing is damaged. A header `version` ahead of `SESSION_FORMAT_VERSION` names the direction ("written by a newer harness — upgrade the harness to open it"); one behind it states that this build ships no upgrade path. After legacy-shape normalization, an event type outside this build's generated vocabulary (`KNOWN_SESSION_EVENT_TYPES`, emitted by `gen-persistence-catalog`) refuses the same way unless the event's envelope carries `ignorable: true` — silently skipping an unrecognized required event could change how the rest of the log must be read. The message appends the raw log path when the backend keeps one artifact per session, so the refused text stays reachable. The JSONL backend refuses a foreign version straight from the raw header line, before validating this format version's header shape or decoding any event row — a structurally different future format still reports the upgrade direction, never "corrupt"; SQLite gates whole-file structure through its own `SCHEMA_VERSION` pragma first. Design rationale and the deferred upgrader chain live in the [session-log-version-mechanism note](../../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md).
+A backend refuses a log it cannot faithfully interpret with `SessionFormatUnsupportedError`, distinct from `SessionPersistenceCorruptionError` because nothing is damaged. A header `version` ahead of `SESSION_FORMAT_VERSION` names the direction ("written by a newer harness — upgrade the harness to open it"); one behind it states that this build ships no upgrade path. After legacy-shape normalization, an event type outside this build's generated vocabulary (`KNOWN_SESSION_EVENT_TYPES`, emitted by `gen-persistence-catalog`) refuses the same way unless the event's envelope carries `ignorable: true` — silently skipping an unrecognized required event could change how the rest of the log must be read. The message appends the raw log path when the backend keeps one artifact per session, so the refused text stays reachable. The JSONL backend refuses a foreign version straight from the raw header line, before validating this format version's header shape or decoding any event row — a structurally different future format still reports the upgrade direction, never "corrupt". An out-of-tree backend must enforce the equivalent direction-aware refusal at its own physical-format boundary. Design rationale and the deferred upgrader chain live in the [session-log-version-mechanism note](../../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md).
 
 ## `CreateSessionOptions` — seeding and metadata
 
@@ -129,7 +129,7 @@ Replay/fork is therefore `ctx.sessions.create(id, { seed: seedEvents })`; resumi
 
 ## `SessionRawArtifact` — verbatim stored artifact text
 
-A backend's own artifact text for one session, byte-identical to what it durably wrote (decoded from its physical encoding). `readRaw` returns it without reconstructing from parsed events, so backend-specific serialization (chunk packing, key order, line breaks) survives. Consumers first test `supportsRawArtifacts`: `false` means the backend does not provide this capability (for example SQLite), while `readRaw(...) === undefined` means a supported backend has no materialized artifact for that session.
+A backend's own artifact text for one session, byte-identical to what it durably wrote (decoded from its physical encoding). `readRaw` returns it without reconstructing from parsed events, so backend-specific serialization (chunk packing, key order, line breaks) survives. Consumers first test `supportsRawArtifacts`: `false` means the backend does not provide this capability, while `readRaw(...) === undefined` means a supported backend has no materialized artifact for that session.
 
 ```ts type-equiv
 /** A backend's own raw artifact text for one session, verbatim. */
@@ -236,7 +236,6 @@ interface SessionPersistenceSnapshot {
 All implement the same abstract `SessionPersistence` (locate/create/append/prepare/load/inspect/readFrom/list/listSnapshots over `SessionEvent`, with optional cancellation on observation methods) and pass the shared `runPersistenceContract` suite:
 
 - **[dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl)** — an append-only logical JSONL log per session, stored as checksummed concatenated Zstandard frames by default or raw lines by configuration, with crash-safe atomic writes, interrupted-turn recovery, and a read/replay path.
-- **[dsh-session-persistence-sqlite](../../packages/session/session-persistence-sqlite)** — an opt-in `node:sqlite` backend using schema 21 to store exact same-block delta runs in bounded physical `text-chunks`, `reasoning-chunks`, and `tool-call-chunks` rows. It reconstructs the complete logical event stream before returning it, packs only newly durable batches, and rejects older schemas rather than migrating them.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -255,8 +254,8 @@ Durable append-only session storage. Implementations preserve contiguous, lossle
 ```ts cordis-catalog
 /**
  * Resolve this backend's independent local artifact for a session without
- * reading, creating, flushing, or otherwise materializing it. Backends such
- * as SQLite that do not own one artifact per session return `undefined`.
+ * reading, creating, flushing, or otherwise materializing it. A backend
+ * that does not own one artifact per Session returns `undefined`.
  * @param meta - the immutable session header whose artifact is requested.
  * @returns the backend-specific absolute location, when one exists.
  */
@@ -370,10 +369,10 @@ abstract borrowSession(id: SessionId, signal?: AbortSignal): Promise<BorrowedSes
  * publication. Only events from the valid contiguous stored prefix are
  * returned, so a torn fragment never reaches the caller. `fromSeq` at or
  * beyond the stored prefix returns an empty event list (never an error).
- * Backends whose medium can seek by seq
- * (SQLite) read only the suffix; sequential media (JSONL, both encodings)
- * still parse the whole artifact and skip forward — the primitive bounds
- * what is RETURNED and refolded, not every backend's physical read.
+ * A backend whose medium can seek by seq may read only the suffix;
+ * sequential media such as JSONL still parse the whole artifact and skip
+ * forward. The primitive bounds what is returned and refolded, not every
+ * backend's physical read.
  * @param id - the persisted session to read.
  * @param fromSeq - first event seq to include; a non-negative safe integer.
  * @param signal - optional cancellation for queued and backend read work.

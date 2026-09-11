@@ -8,7 +8,7 @@ Karaka 应用边界把可信后端服务器连接到持久 Agent Preset。入站
 
 完整进程流程见 [Karaka 架构](../architecture.zh.md#karaka-application-runtime)，认证、应用工具 endpoint 和插件加载见 [`@karaka-ai/agent`](../../packages/karaka/agent/README.zh.md)。
 
-浏览器客户端使用[已认证 Remote 连接](../../packages/karaka/agent/README.zh.md#browser-clients)。后端签发包含完整 owner 的过期凭证；browser-auth 在 Connection 和 Gateway 分发聊天调用或审批响应前验证它。浏览器请求不能选择租户或用户标识。后端与浏览器入口共享 Session Controller 所有权检查和 SQLite 持久化。
+浏览器客户端使用[已认证 Remote 连接](../../packages/karaka/agent/README.zh.md#browser-clients)。后端签发包含完整 owner 的过期凭证；browser-auth 在 Connection 和 Gateway 分发聊天调用或审批响应前验证它。浏览器请求不能选择租户或用户标识。后端与浏览器入口共享 Session Controller 所有权检查和 JSONL 持久化。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

@@ -1,8 +1,5 @@
 # Persistent Karaka application server over the shared dsh-base composition.
 
-- id: session-persistence-jsonl
-  disabled: true
-
 - id: tool-bash
   disabled: true
 
@@ -25,11 +22,6 @@
   disabled: true
 
 - insert:
-    - id: session-persistence-sqlite
-      name: '@karaka-ai/agent/session-persistence-sqlite'
-      config:
-        path: !!js dshHomePath('karaka-sessions.sqlite')
-
     - id: workspace
       name: '@karaka-ai/agent/workspace'
 

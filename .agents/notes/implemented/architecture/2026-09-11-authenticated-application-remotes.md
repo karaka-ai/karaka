@@ -28,6 +28,6 @@ The [Host cookie decision](2026-08-24-browser-token-authentication.md), [Remote 
 
 ## Consequences
 
-The real Karaka composition tests use two signed callers, actual approval/question services, tool execution, the agent loop, and SQLite. They verify cross-chat denial, forged approval rejection, owner changes on reconnect, pending replay, and expired credentials. Packed consumer checks compile the browser API without implicit Node types.
+The real Karaka composition tests use two signed callers, actual approval/question services, tool execution, the agent loop, and JSONL. They verify cross-chat denial, forged approval rejection, owner changes on reconnect, pending replay, and expired credentials. Packed consumer checks compile the browser API without implicit Node types.
 
 Pending interactions remain process-local and require routing reconnects to the same Karaka process. Credentials have absolute expiry; there is no per-token revocation list. TLS, credential issuance, and frontend credential renewal remain application deployment responsibilities. Existing sockets retain their verified caller until expiry; subsequent requests use the currently mounted verifier.

@@ -227,7 +227,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'session-persistence',
     title: 'Durable session persistence seam',
     mode: 'seam',
-    implementations: ['session-persistence-jsonl', 'session-persistence-sqlite'],
+    implementations: ['session-persistence-jsonl'],
     consumers: ['agent-loop', 'tool-bash', 'hooks-claude-code', 'hooks-codex', 'session-query', 'session-query-sqlite', 'message-feedback'],
     note: 'Backends persist the same SessionEvent vocabulary; apps choose a backend at composition time.',
   },
@@ -440,7 +440,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'agent-loop',
     title: 'Concrete loop driver',
     mode: 'bundle',
-    consumers: ['agent-spine-demo'],
+    consumers: ['base', 'sdk-minimal'],
     note: 'The one concrete loop plugin; extension packages depend on dsh-agent events and services, not on this package.',
   },
   {

@@ -254,7 +254,7 @@ export class ApplicationChatController {
     } else {
       using observed = await this.sessionQuery.observeSession(request.chatId, {
         ...(signal === undefined ? {} : { signal }),
-        projectionMode: 'none',
+        projectionMode: 'all',
       })
       if (!applicationOwnerEquals(observed.header.applicationOwner, request.owner)) {
         throw unauthorizedChat(request.chatId)

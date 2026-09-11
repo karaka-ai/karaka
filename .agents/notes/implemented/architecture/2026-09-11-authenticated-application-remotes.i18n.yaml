@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-11-authenticated-application-remotes.md
-2026-09-11-authenticated-application-remotes.md: 042c65b1950f7e979b88000e20ae2d10a71e70ee
-2026-09-11-authenticated-application-remotes.zh.md: e7b5dd1a10f4db84f45c0063a54b8cb1ebebbe7a
+2026-09-11-authenticated-application-remotes.md: f22765c8692e6009cd09b7bb95c93c1e51eefeb5
+2026-09-11-authenticated-application-remotes.zh.md: 81bc9021c0348fb6ff430872f9d0daf2e10dc450

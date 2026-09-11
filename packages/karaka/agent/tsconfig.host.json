@@ -175,9 +175,6 @@
       "path": "../../session/session-persistence-jsonl"
     },
     {
-      "path": "../../session/session-persistence-sqlite"
-    },
-    {
       "path": "../../session/session-projection"
     },
     {

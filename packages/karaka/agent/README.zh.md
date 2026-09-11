@@ -63,7 +63,7 @@ client.forChat(chatId).$on('approval/request', async request => {
 
 应用后端负责 `/karaka-credential`、登录和凭证签发。为 [browser-auth](../browser-auth/README.zh.md) 配置后端的公开验证密钥、签发者、受众、应用 id 和最大凭证有效期。挂载 `@karaka-ai/agent/client-connection`，配置 `authentication: application`、精确 `frontendOrigins` 和所需 `trustedHosts`；挂载 `@karaka-ai/agent/api-remotes`，选择 `applicationMethods` 和 `applicationEvents`。将现有 `karaka-http` 行的 `handleQuestions` 设为 `false`。除现有 HTTP 行的覆盖外，这些部署 patch 行放在 `insert` 下。
 
-发送 prompt 前，为每个聊天注册审批或问题监听器。销毁时调用 `client.dispose()`。凭证过期会关闭 socket；重连会再次调用凭证回调。TLS 终止和公开服务器路由由部署负责。待处理交互在同一 Karaka 进程内可经连接中断恢复；SQLite 在进程重启后保留聊天所有权和历史。
+发送 prompt 前，为每个聊天注册审批或问题监听器。销毁时调用 `client.dispose()`。凭证过期会关闭 socket；重连会再次调用凭证回调。TLS 终止和公开服务器路由由部署负责。待处理交互在同一 Karaka 进程内可经连接中断恢复；JSONL 在进程重启后保留聊天所有权和历史。
 
 ### 扩展 Agent
 
@@ -97,7 +97,7 @@ Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件�
 
 可执行文件先加载内置基础组合，再应用 Karaka 服务器 patch，最后应用 `--config` 指定的部署 patch。在 Cordis Loader 挂载任何 row 之前，插件 registry 将所有已发布的组合名称映射到静态导入的实现。精确 registry 别名优先于 Node 包解析。相对插件文件仍以组合目录为基准，而 bare 外部包使用服务器项目的配置 URL 作为 Node 解析基准。
 
-构建会生成一组由 `lib/bin.js`、Loader registry 和 `lib/public/` 下的入口共享的 runtime chunk，因此 service 保持同一 JavaScript identity。公开 declaration facade 共用一棵私有 declaration tree；其中跨 package 引用均为相对路径，且不包含 DSH package 名称。SQLite migration 和 worker 资源随可执行文件一起发布，因为这些实现通过 `import.meta.url` 定位资源。
+构建会生成一组由 `lib/bin.js`、Loader registry 和 `lib/public/` 下的入口共享的 runtime chunk，因此 service 保持同一 JavaScript identity。公开 declaration facade 共用一棵私有 declaration tree；其中跨 package 引用均为相对路径，且不包含 DSH package 名称。查询索引 schema migration 和 worker 资源随可执行文件一起发布，因为这些实现通过 `import.meta.url` 定位资源。
 
 | 文件 | 作用 |
 |---|---|
@@ -146,3 +146,5 @@ runtime 自身不添加固定的模型文本；改变 Agent 组合可能改变�
 无。
 
 </details>
+
+每个 Karaka home 和 Session 根目录只能运行一个活跃的 Karaka 写入进程。副本需要独立根目录，并通过路由将每个 Session 固定到其所属进程；JSONL 追加不会隔离并发写入者。新 Session 使用 JSONL。本次切换不会读取、迁移或删除原有的 `karaka-sessions.sqlite` 数据库。

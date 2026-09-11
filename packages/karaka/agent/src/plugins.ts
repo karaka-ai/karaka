@@ -44,7 +44,6 @@ import * as plugin34 from '@deepseek-ai/dsh-session'
 import * as plugin35 from '@deepseek-ai/dsh-session-checkpoint-policy'
 import * as plugin36 from '@deepseek-ai/dsh-session-log-deepseek'
 import * as plugin37 from '@deepseek-ai/dsh-session-persistence-jsonl'
-import * as plugin38 from '@deepseek-ai/dsh-session-persistence-sqlite'
 import * as plugin39 from '@deepseek-ai/dsh-session-projection'
 import * as plugin40 from '@deepseek-ai/dsh-session-projection-cache'
 import * as plugin41 from '@deepseek-ai/dsh-session-query-sqlite'
@@ -140,7 +139,6 @@ export const bundledPlugins: Readonly<Record<string, unknown>> = Object.freeze({
   '@karaka-ai/agent/session-checkpoint-policy': plugin35,
   '@karaka-ai/agent/session-log-deepseek': plugin36,
   '@karaka-ai/agent/session-persistence-jsonl': plugin37,
-  '@karaka-ai/agent/session-persistence-sqlite': plugin38,
   '@karaka-ai/agent/session-projection': plugin39,
   '@karaka-ai/agent/session-projection-cache': plugin40,
   '@karaka-ai/agent/session-query-sqlite': plugin41,
