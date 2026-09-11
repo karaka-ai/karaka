@@ -42,7 +42,7 @@ function fixtureLog(): string {
   }) }, { surfaceOp: 'append' })
   session.append('step/end', { turn: 1, step: 2 })
   session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-  return [JSON.stringify({ type: 'session', version: SESSION_FORMAT_VERSION, id: '{{sessionId}}', createdAt: Date.now(), cwd: '{{cwd}}', delegationDepth: 0 }), ...session.events.map(event => JSON.stringify(event)), ''].join('\n')
+  return [JSON.stringify({ type: 'session', version: SESSION_FORMAT_VERSION, id: '{{sessionId}}', createdAt: Date.now(), cwd: '{{cwd}}', delegationDepth: 0 }), ...session.snapshotEvents().map(event => JSON.stringify(event)), ''].join('\n')
 }
 
 async function revealGeometry(block: Locator): Promise<{ height: number; top: number; scroll: number }> {

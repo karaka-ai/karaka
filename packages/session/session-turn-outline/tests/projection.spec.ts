@@ -236,7 +236,7 @@ describe('turn outline projection unit', () => {
     try {
       original.session.append('turn/start', { turn: 1 })
       appendPrompt(original.session, 'restored prompt')
-      const events = [...original.session.events]
+      const events = original.session.snapshotEvents()
       const checkpoint = original.ctx.sessionProjections.checkpoint(original.session)
       await restored.ctx.plugin(SessionTurnOutlinePlugin)
       const session = restored.ctx.sessions.create(SessionId('restored-outline'), { seed: events })

@@ -16,7 +16,7 @@ function fixture() {
     id: SessionId('chat-1'),
     status: 'idle',
     inbox: { nextTurn: [], nextStep: [] },
-    session: { id: SessionId('chat-1'), header: { applicationOwner: owner }, events },
+    session: { id: SessionId('chat-1'), header: { applicationOwner: owner }, snapshotEvents: () => Object.freeze([...events]) },
     whenIdle: () => Promise.resolve(),
   }
   const agents = {
@@ -46,12 +46,12 @@ function fixture() {
     })),
   }
   const controller = new ApplicationChatController(ctx, agents as never, commands as never)
-  return { ctx, controller, agents, commands, agent, sessions, sessionPersistence }
+  return { ctx, controller, agents, commands, agent, sessions, sessionPersistence, events }
 }
 
 describe('ApplicationChatController', () => {
   it('admits application image uploads through the real command only for the exact owner', async () => {
-    const { ctx, agents, agent } = fixture()
+    const { ctx, agents, agent, events } = fixture()
     const attachment = {
       attachmentId: AttachmentId('application-image'), mediaType: 'image/png' as const,
       bytes: 1, width: 1, height: 1,
@@ -67,7 +67,7 @@ describe('ApplicationChatController', () => {
       serializeImageAdmission: (_agent: Agent, operation: () => Promise<unknown>) => operation(),
     })
     const followup = vi.fn((message: UserMessage) => {
-      agent.session.events.push({ type: 'user/message', data: message })
+      events.push({ type: 'user/message', data: message })
     })
     Object.assign(agent, { followup })
     const commands = new SessionCommandController(ctx, agents as never, '/tmp')
@@ -137,8 +137,8 @@ describe('ApplicationChatController', () => {
   })
 
   it('deduplicates a request after the loop claims its durable inbox insertion', async () => {
-    const { controller, commands, agent, sessions } = fixture()
-    agent.session.events.push({
+    const { controller, commands, agent, sessions, events } = fixture()
+    events.push({
       type: 'agent/inbox/spliced',
       data: {
         inserted: [{ source: { kind: 'user', rpcId: 'request-1' } }],

@@ -108,6 +108,48 @@ declare const backend: StorageBackend
 declare const persistence: SessionPersistence
 void [defineTool, Storage, storageBackendServiceKey, defineDomain, backend, persistence]
 `)
+  verifyTypes(project, 'session-reader-consumer.ts', `import { Session, SessionId, type SessionEvent } from '@karaka-ai/agent/session'
+import type ApprovalService from '@karaka-ai/agent/user-approval'
+// @ts-expect-error the chronological approval helper is not part of the public API.
+import { effectiveApprovalPolicy } from '@karaka-ai/agent/user-approval'
+
+const session = Session.create(SessionId('public-reader'))
+const event: SessionEvent | undefined = session.eventAt(0)
+const snapshot: readonly SessionEvent[] = session.snapshotEvents(0, session.seq)
+declare const approval: ApprovalService
+void approval.overrideOf(session)
+// @ts-expect-error Session exposes explicit indexed/snapshot reads, not a live events property.
+void session.events
+// @ts-expect-error published snapshots cannot be mutated.
+snapshot.push(event!)
+void [event, snapshot, effectiveApprovalPolicy]
+`)
+  writeFileSync(resolve(project, 'session-reader.mjs'), `import assert from 'node:assert/strict'
+import { Session, SessionId } from '@karaka-ai/agent/session'
+import * as approval from '@karaka-ai/agent/user-approval'
+
+const session = Session.create(SessionId('public-reader'))
+const first = session.append('turn/start', { turn: 1 })
+const cut = session.snapshotEvents()
+assert.equal(session.eventAt(0), first)
+assert.equal(cut[0], first)
+assert.equal(session.snapshotEvents(), cut)
+assert.equal(session.eventAt(session.seq), undefined)
+assert.ok(Object.isFrozen(cut))
+assert.ok(Object.isFrozen(first))
+assert.ok(Object.isFrozen(first.data))
+const last = session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+assert.equal(cut.length, 1)
+assert.equal(cut[0], first)
+assert.notEqual(session.snapshotEvents(), cut)
+assert.deepEqual(session.snapshotEvents(0, 1), [first])
+assert.deepEqual(session.snapshotEvents(1, 2), [last])
+assert.deepEqual(session.snapshotEvents(1, 1), [])
+assert.equal('events' in session, false)
+assert.equal('effectiveApprovalPolicy' in approval, false)
+`)
+  execFileSync(process.execPath, [resolve(project, 'session-reader.mjs')], { cwd: project, stdio: 'inherit' })
+
   verifyTypes(project, 'session-projection-consumer.ts', `import type {
   SessionProjectionMap,
   SessionProjectionStateMap,
