@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi, type MockInstance } from 'vitest'
 import {
   cliGateOptions,
+  collectDescendants,
   defaultConcurrency,
   formatGateResultReason,
   gatesForMode,
@@ -918,6 +919,37 @@ describe('process-table parsing', () => {
 
   it('drops blank and malformed lines', () => {
     expect(parsePidPpidLines('  123   1\n\ncommand not found\n999 abc\n')).toEqual([[123, 1]])
+  })
+})
+
+describe('process-table traversal', () => {
+  it('preserves breadth-first order without changing the observed rows', () => {
+    const rows = Object.freeze([
+      Object.freeze([3, 2] as const),
+      Object.freeze([2, 1] as const),
+      Object.freeze([4, 1] as const),
+      Object.freeze([5, 4] as const),
+    ])
+    expect(collectDescendants(1, rows)).toEqual([2, 4, 3, 5])
+    expect(collectDescendants(2, rows)).toEqual([3])
+    expect(collectDescendants(1, rows)).toEqual([2, 4, 3, 5])
+    expect(collectDescendants(99, rows)).toEqual([])
+  })
+
+  it('terminates cycles and repeated edges without treating the root as a descendant', () => {
+    expect(collectDescendants(1, [
+      [1, 1], [2, 1], [2, 1], [1, 2], [3, 2], [2, 3], [4, 3], [4, 2],
+    ])).toEqual([2, 3, 4])
+  })
+
+  it('walks a wide child list without passing it as function arguments', () => {
+    const rows = Array.from({ length: 200_000 }, (_, index): [number, number] => [index + 3, 2])
+    rows.unshift([2, 1])
+    const descendants = collectDescendants(1, rows)
+    expect(descendants).toHaveLength(200_001)
+    expect(descendants[0]).toBe(2)
+    expect(descendants.at(-1)).toBe(200_002)
+    expect(new Set(descendants).size).toBe(descendants.length)
   })
 })
 
