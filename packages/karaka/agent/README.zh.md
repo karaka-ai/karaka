@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-`@karaka-ai/agent` 是完整的 Karaka Agent 服务器 runtime。它的可执行文件将 Karaka 维护的 Agent、Session、LLM、工具、持久化、Preset、认证和 HTTP transport 实现打包在一个发布包中；安装后的 runtime 不会解析 `@deepseek-ai/dsh-*` 包。服务器项目仍可通过内置 `@karaka-ai/agent/*` 别名、项目中的相对插件文件以及由该项目安装的可选 npm 插件包来组合 Agent。`@karaka-ai/cli` 是常规启动器，而 `@karaka-ai/agent/bin` 是它委托的稳定进程入口。
+`@karaka-ai/agent` 是完整的 Karaka Agent 服务器 runtime。它的可执行文件将 Karaka 维护的 Agent、Session、LLM、工具、持久化、Preset、认证、HTTP transport 实现和 SDK 请求模式打包在一个发布包中；安装后的 runtime 不会解析 `@deepseek-ai/dsh-*` 包。服务器项目仍可通过内置 `@karaka-ai/agent/*` 别名、项目中的相对插件文件以及由该项目安装的可选 npm 插件包来组合 Agent。`@karaka-ai/cli` 是常规启动器，而 `@karaka-ai/agent/bin` 是它委托的稳定进程入口。
 
 ## 目录
 

@@ -11,7 +11,7 @@ const repositoryDir = resolve(packageDir, '../../..')
 const outputDir = resolve(packageDir, 'lib')
 const publicEntryDir = resolve(outputDir, 'public-entries')
 const typertPluginRuntime = '../../typert/generator/lib/types/tsdown-plugin.js'
-const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka-ai\/(?:mcp-application|server-auth|browser-auth|transport-http)(?:\/|$)/
+const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka-ai\/(?:mcp-application|server-auth|browser-auth|transport-http|sdk)(?:\/|$)/
 
 const contractModules: Readonly<Record<string, string>> = {
   attachment: '@deepseek-ai/dsh-attachment',

@@ -45,8 +45,8 @@ for (const path of filesUnder(libDir)) {
     && !path.includes(`${join('lib', 'types')}${process.platform === 'win32' ? '\\' : '/'}`)
     && !path.includes(`${join('lib', 'public-entries')}${process.platform === 'win32' ? '\\' : '/'}`)
   if (isShippedRuntime
-    && /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"]@deepseek-ai\/dsh-/u.test(source)) {
-    throw new Error(`${path} imports a private DSH runtime package`)
+    && /(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:@deepseek-ai\/dsh-|@karaka-ai\/(?:mcp-application|server-auth|browser-auth|transport-http|sdk)(?:\/|['"]))/u.test(source)) {
+    throw new Error(`${path} imports an unbundled workspace runtime package`)
   }
 }
 
@@ -250,6 +250,7 @@ function verifyTypes(projectDir, filename, source, browser = false) {
 }
 
 async function verifyKarakaPatch(projectDir, agentDir, configPath, readyPath) {
+  mkdirSync(resolve(projectDir, '.karaka'), { recursive: true, mode: 0o700 })
   const child = spawn(process.execPath, [resolve(agentDir, 'lib/bin.js'), '--config', configPath], {
     cwd: projectDir,
     env: {

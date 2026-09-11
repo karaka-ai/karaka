@@ -71,5 +71,10 @@ describe('Agent build config', () => {
       throw new Error('runtime bundle is absent')
     })
     expect(runtime.replaceAll('\\', '/')).toMatch(/\/vendor\/hmr\/lib\/types\/index\.js$/u)
+
+    const sdk = loaded.workspaceTypeRuntimePath('@karaka-ai/sdk', () => {
+      throw new Error('SDK runtime bundle is absent')
+    })
+    expect(sdk.replaceAll('\\', '/')).toMatch(/\/packages\/karaka\/sdk\/lib\/types\/index\.js$/u)
   })
 })

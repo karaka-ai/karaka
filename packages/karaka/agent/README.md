@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@karaka-ai/agent` is the complete Karaka Agent server runtime. Its executable bundles the Karaka-maintained Agent, Session, LLM, tool, persistence, preset, authentication, and HTTP transport implementations into one published package; an installed runtime does not resolve `@deepseek-ai/dsh-*` packages. A server project can still compose an Agent from bundled `@karaka-ai/agent/*` aliases, relative plugin files in the project, and optional npm plugin packages installed by that project. `@karaka-ai/cli` is the normal launcher, while `@karaka-ai/agent/bin` is the stable process entry point it delegates to.
+`@karaka-ai/agent` is the complete Karaka Agent server runtime. Its executable bundles the Karaka-maintained Agent, Session, LLM, tool, persistence, preset, authentication, HTTP transport implementations, and SDK request schemas into one published package; an installed runtime does not resolve `@deepseek-ai/dsh-*` packages. A server project can still compose an Agent from bundled `@karaka-ai/agent/*` aliases, relative plugin files in the project, and optional npm plugin packages installed by that project. `@karaka-ai/cli` is the normal launcher, while `@karaka-ai/agent/bin` is the stable process entry point it delegates to.
 
 ## Table of Contents
 
