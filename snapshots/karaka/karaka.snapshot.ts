@@ -164,6 +164,9 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
       - id: billing
         chatCredential: KARAKA_SNAPSHOT_CHAT_TOKEN
         toolCredential: KARAKA_SNAPSHOT_TOOL_TOKEN
+      - id: other-application
+        chatCredential: KARAKA_SNAPSHOT_OTHER_CHAT_TOKEN
+        toolCredential: KARAKA_SNAPSHOT_OTHER_TOOL_TOKEN
 
 - insert:
     - id: llm-replay
@@ -184,7 +187,7 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
 
 async function startKaraka(project: string): Promise<RunningKaraka> {
   const readyFile = join(project, 'karaka-ready')
-  await prepareProject(project, readyFile)
+  await rm(readyFile, { force: true })
   const prepared = prepareKarakaRuntime(project)
   const child = execa(process.execPath, [prepared.bin, '--config', join(project, 'karaka.cordis.yml')], {
     cwd: project,
@@ -197,6 +200,8 @@ async function startKaraka(project: string): Promise<RunningKaraka> {
       KARAKA_PORT: '0',
       KARAKA_SNAPSHOT_CHAT_TOKEN: 'chat-secret',
       KARAKA_SNAPSHOT_TOOL_TOKEN: 'tool-secret',
+      KARAKA_SNAPSHOT_OTHER_CHAT_TOKEN: 'other-chat-secret',
+      KARAKA_SNAPSHOT_OTHER_TOOL_TOKEN: 'other-tool-secret',
       NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
     },
     reject: false,
@@ -297,6 +302,7 @@ describe('Karaka recorded-session snapshot', () => {
     const project = await mkdtemp(join(tmpdir(), 'karaka-snapshot-'))
     let running: RunningKaraka | undefined
     try {
+      await prepareProject(project, join(project, 'karaka-ready'))
       running = await startKaraka(project)
       const client = createKarakaClient({ endpoint: running.endpoint, chatToken: 'chat-secret' })
       const user = client.forUser({ tenantId: 'tenant-1', userId: 'user-1' })
@@ -324,6 +330,27 @@ describe('Karaka recorded-session snapshot', () => {
         applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' },
       })
       await compareOrRefresh(log)
+
+      running = await startKaraka(project)
+      const restarted = createKarakaClient({ endpoint: running.endpoint, chatToken: 'chat-secret' })
+      const rightfulUser = restarted.forUser({ tenantId: 'tenant-1', userId: 'user-1' })
+      const otherApplication = createKarakaClient({ endpoint: running.endpoint, chatToken: 'other-chat-secret' })
+      for (const outsider of [
+        otherApplication.forUser({ tenantId: 'tenant-1', userId: 'user-1' }),
+        restarted.forUser({ tenantId: 'other-tenant', userId: 'user-1' }),
+        restarted.forUser({ tenantId: 'tenant-1', userId: 'other-user' }),
+      ]) {
+        await expect(outsider.chats.history('snapshot-chat')).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+        await expect(outsider.chats.send({
+          chatId: 'snapshot-chat', requestId: 'snapshot-request', content: 'unauthorized retry',
+        })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+      }
+      await expect(rightfulUser.chats.history('snapshot-chat')).resolves.toEqual(history)
+      await expect(rightfulUser.chats.send({
+        chatId: 'snapshot-chat', requestId: 'snapshot-request', content: 'duplicate retry',
+      })).resolves.toMatchObject({ accepted: true, duplicate: true })
+      await stopKaraka(running)
+      await expect(readPersistedSession(running.database)).resolves.toBe(log)
     } finally {
       if (running !== undefined && running.child.exitCode === undefined) {
         running.child.kill('SIGKILL')

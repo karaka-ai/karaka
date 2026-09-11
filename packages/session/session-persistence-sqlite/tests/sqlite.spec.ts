@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import SessionStore, { ApplicationId, SessionId, TenantId, UserId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import SessionStore, { ApplicationId, SessionId, TenantId, UserId, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
 import SessionPersistenceSqlite, {
   DEFAULT_BUSY_TIMEOUT_MS,
   SCHEMA_VERSION,
@@ -20,7 +20,9 @@ import {
   type CoordinatorFixture,
 } from '../../session-persistence/tests/coordinator-contract.ts'
 import {
+  appendLog,
   meta,
+  oneTurnLog,
   runPersistenceContract,
 } from '../../session-persistence/tests/contract.ts'
 import { MAX_PACKED_DATA_BYTES } from '../src/codec.ts'
@@ -714,6 +716,46 @@ describe('SessionPersistenceSqlite schema ownership', () => {
 })
 
 describe('SessionPersistenceSqlite edge behavior', () => {
+  it('recovers application ownership and forked events after the provider restarts', async () => {
+    const path = await freshDbPath('karaka-sqlite-owner-restart-')
+    const writer = new Context()
+    const applicationOwner = {
+      applicationId: ApplicationId('billing'),
+      tenantId: TenantId('tenant-1'),
+      userId: UserId('user-1'),
+    }
+    let stored: { meta: SessionHeader; events: readonly SessionEvent[] }[]
+    try {
+      await writer.plugin(SessionStore)
+      await writer.plugin(SessionPersistenceSqlite, { path })
+      const parent = writer.sessions.create(SessionId('owned-parent'), { meta: { applicationOwner } })
+      appendLog(parent, oneTurnLog())
+      const child = writer.sessions.fork(parent, undefined, SessionId('owned-child'))
+      expect(child.header).toMatchObject({ applicationOwner, parentSession: parent.id, seedLength: parent.events.length })
+      for (const session of [parent, child]) {
+        await writer.sessionPersistence.ensureMaterialized(session)
+        await writer.sessions.flush(session)
+      }
+      stored = [parent, child].map(session => ({ meta: structuredClone(session.header), events: [...session.events] }))
+    } finally {
+      await writer.fiber.dispose()
+    }
+
+    const reader = new Context()
+    try {
+      await reader.plugin(SessionStore)
+      await reader.plugin(SessionPersistenceSqlite, { path })
+      expect(reader.sessions.get(SessionId('owned-parent'))).toBeUndefined()
+      expect(reader.sessions.get(SessionId('owned-child'))).toBeUndefined()
+      await expect(reader.sessionPersistence.list()).resolves.toEqual(expect.arrayContaining(stored.map(item => item.meta)))
+      for (const item of stored) {
+        await expect(reader.sessionPersistence.load(item.meta.id)).resolves.toEqual(item)
+      }
+    } finally {
+      await reader.fiber.dispose()
+    }
+  })
+
   it('round-trips a workspace-free application owner atomically', async () => {
     const path = await freshDbPath('dsh-sqlite-application-owner-')
     const ctx = new Context()
