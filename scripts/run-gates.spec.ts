@@ -1,13 +1,163 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi, type MockInstance } from 'vitest'
 import {
+  cliGateOptions,
+  collectDescendants,
   defaultConcurrency,
   formatGateResultReason,
   gatesForMode,
+  parsePidPpidLines,
   runGate,
   runGates,
+  taskkillArgs,
   type Gate,
   type GateResult,
 } from './run-gates.ts'
+
+/**
+ * Capture output a gate streams through runGate's streamOutput path.
+ * @returns the accumulated chunks and the stdout spy to restore in finally.
+ */
+function captureStreamedOutput(): { writes: string[]; write: MockInstance } {
+  const writes: string[] = []
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    writes.push(String(chunk))
+    return true
+  })
+  return { writes, write }
+}
+
+/**
+ * A process has stopped executing when its /proc entry is gone, or when it
+ * lingers as a zombie ('Z') — an un-reaped but dead entry still answers
+ * kill(pid, 0), so existence is not a liveness check. Non-Linux falls back to
+ * kill(pid, 0), whose ESRCH means the process is gone.
+ */
+function procStopped(pid: number): boolean {
+  if (process.platform === 'linux') {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+      return /\)\s+Z\s/.test(stat)
+    } catch {
+      return true
+    }
+  }
+  try {
+    process.kill(pid, 0)
+    return false
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Wait until the captured output contains `marker` and the grandchild pid the
+ * gate printed, then return that pid.
+ * @param writes - chunks captured from the gate's streamed stdout.
+ * @param marker - the output line that proves the gate reached the abort point.
+ * @param deadline - fail the wait when exceeded.
+ * @returns the grandchild pid printed by the gate script.
+ */
+async function waitForGrandchildPid(writes: string[], marker: string, deadline: number): Promise<number> {
+  let pid: number | undefined
+  while ((pid === undefined || !writes.join('').includes(marker)) && Date.now() < deadline) {
+    const match = writes.join('').match(/grandchild:(\d+)/)
+    if (match !== null) pid = Number(match[1])
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  expect(pid ?? 0).toBeGreaterThan(0)
+  expect(writes.join('')).toContain(marker)
+  return pid!
+}
+
+/**
+ * Abort the run and assert it settles marked aborted with the grandchild no
+ * longer executing — the abort path must have signalled it from the captured
+ * descendant list rather than settling over a live orphan.
+ * @param promise - the pending `runGate` promise.
+ * @param controller - the signal source to abort.
+ * @param pid - the grandchild pid the gate script printed.
+ */
+async function abortAndExpectTreeStopped(promise: Promise<GateResult>, controller: AbortController, pid: number): Promise<void> {
+  controller.abort()
+  const result = await promise
+  expect(result.aborted).toBe(true)
+  expect(procStopped(pid)).toBe(true)
+}
+
+
+/** Run real detached descendants with explicit release and sampler barriers. */
+async function withSampledTree(
+  kind: 'late-abort' | 'sampler-merge',
+  inspect: (fixture: {
+    writes: string[]
+    release: () => void
+    sample: () => Promise<void>
+    promise: Promise<GateResult>
+    controller: AbortController
+  }) => Promise<void>,
+): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-gate-tree-'))
+  const releaseFile = join(directory, 'release')
+  const { writes, write } = captureStreamedOutput()
+  const controller = new AbortController()
+  const originalInterval = globalThis.setInterval
+  let sampleTick: (() => Promise<void> | undefined) | undefined
+  const interval = vi.spyOn(globalThis, 'setInterval').mockImplementation((callback, delay, ...args) => {
+    if (delay !== 5000) return originalInterval(callback, delay, ...args)
+    sampleTick = callback as () => Promise<void> | undefined
+    // The fixture owns sampler ticks; real time cannot start an overlapping enumeration.
+    return originalInterval(() => {}, delay)
+  })
+  let promise: Promise<GateResult> | undefined
+  try {
+    const wrapper = [
+      "const { spawn } = require('node:child_process')",
+      "const { existsSync } = require('node:fs')",
+      "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'inherit' })",
+      "process.stdout.write('grandchild:' + grandchild.pid + '\\n')",
+      `setInterval(() => { if (existsSync(${JSON.stringify(releaseFile)})) { process.stdout.write('child-exit\\n'); process.exit(0) } }, 10)`,
+    ].join(';')
+    const script = kind === 'late-abort'
+      ? `process.stdout.write('root:' + process.pid + '\\n');${wrapper}`
+      : [
+        "const { spawn } = require('node:child_process')",
+        `const wrapper = spawn(process.execPath, ['-e', ${JSON.stringify(wrapper)}], { stdio: 'inherit' })`,
+        "wrapper.on('exit', () => process.stdout.write('wrapper-exited\\n'))",
+        'setInterval(() => {}, 1000)',
+      ].join(';')
+    promise = runGate(gate(kind, { args: ['-e', script], streamOutput: true }), controller.signal)
+    await inspect({
+      writes,
+      release: () => { writeFileSync(releaseFile, '') },
+      sample: async () => {
+        expect(sampleTick).toBeDefined()
+        // Wait for the real process-table read and cache update on every POSIX host.
+        await sampleTick!()
+      },
+      promise,
+      controller,
+    })
+  } finally {
+    controller.abort()
+    // Cleanup owns the descendant even when the runner under test loses it.
+    const pid = Number(writes.join('').match(/grandchild:(\d+)/)?.[1])
+    if (pid > 0 && !procStopped(pid)) {
+      try { process.kill(pid, 'SIGKILL') } catch { /* The descendant exited after the probe. */ }
+    }
+    try {
+      await promise
+      if (pid > 0) await expect.poll(() => procStopped(pid)).toBe(true)
+    } finally {
+      interval.mockRestore()
+      write.mockRestore()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  }
+}
+
 
 function gate(id: string, options: Partial<Gate> = {}): Gate {
   return {
@@ -294,7 +444,7 @@ describe('gate graph validation', () => {
     const results = await runGates([dependent, root], 1, execute)
 
     expect(execute).toHaveBeenCalledOnce()
-    expect(execute).toHaveBeenCalledWith(root)
+    expect(execute).toHaveBeenCalledWith(root, undefined)
     expect(results[0]).toMatchObject({ gate: dependent, status: 'skipped', error: 'dependency failed or skipped: root' })
   })
 
@@ -540,5 +690,280 @@ describe('gate process outcomes', () => {
     expect(result.exitCode).toBeNull()
     expect(result.signalCode).toBe('SIGTERM')
     expect(formatGateResultReason(result)).toBe('signal SIGTERM')
+  })
+})
+
+describe('fail-fast scheduling', () => {
+  it('aborts the aggregate at the first blocking failure', async () => {
+    const slow = gate('slow')
+    const fast = gate('fast')
+    const dependent = gate('dependent', { needs: ['slow'] })
+    const execute = vi.fn(async (subject: Gate, signal?: AbortSignal) => {
+      if (subject.id === 'fast') {
+        return new Promise<GateResult>((resolve) => {
+          signal?.addEventListener('abort', () => {
+            // The real runGate marks a gate the abort terminated; the drain
+            // must then record it skipped rather than keep the failure.
+            resolve({ ...resultFor(subject, 'failed'), aborted: true })
+          }, { once: true })
+        })
+      }
+      return resultFor(subject, subject.id === 'slow' ? 'failed' : 'passed')
+    })
+
+    const results = await runGates([slow, fast, dependent], 2, execute, () => {}, { failFast: true })
+
+    expect(execute.mock.calls.map(([subject]) => subject.id)).toEqual(['slow', 'fast'])
+    expect(results.map(result => result.status)).toEqual(['failed', 'skipped', 'skipped'])
+    expect(results[1]).toMatchObject({
+      status: 'skipped',
+      error: 'aborted by fail-fast: slow failed',
+    })
+    expect(results[2]).toMatchObject({
+      status: 'skipped',
+      error: 'aborted by fail-fast: slow failed',
+    })
+  })
+
+  it('does not abort on a non-blocking gate failure', async () => {
+    const observational = gate('observational', { allowFailure: true })
+    const root = gate('root')
+    const execute = vi.fn(async (subject: Gate) => (
+      resultFor(subject, subject.id === 'observational' ? 'failed' : 'passed')
+    ))
+
+    const results = await runGates([observational, root], 2, execute, () => {}, { failFast: true })
+
+    expect(execute).toHaveBeenCalledTimes(2)
+    expect(results.map(result => result.status)).toEqual(['failed', 'passed'])
+  })
+
+  it('runs independent gates to completion when fail-fast is disabled', async () => {
+    const root = gate('root')
+    const sibling = gate('sibling')
+    const execute = vi.fn(async (subject: Gate) => (
+      resultFor(subject, subject.id === 'root' ? 'failed' : 'passed')
+    ))
+
+    const results = await runGates([root, sibling], 2, execute, () => {}, { failFast: false })
+
+    expect(execute).toHaveBeenCalledTimes(2)
+    expect(results.map(result => result.status)).toEqual(['failed', 'passed'])
+  })
+
+  it('kills the child when the abort signal fires', async () => {
+    const controller = new AbortController()
+    const promise = runGate(gate('killable', { args: ['-e', 'setInterval(() => {}, 1000)'] }), controller.signal)
+    controller.abort()
+    const result = await promise
+
+    expect(result.status).toBe('failed')
+    expect(result.aborted).toBe(true)
+    if (process.platform !== 'win32') expect(result.signalCode).toBe('SIGTERM')
+  })
+
+  it.skipIf(process.platform === 'win32')('marks a zero-exit child as aborted when the signal fired', async () => {
+    const { writes, write } = captureStreamedOutput()
+    try {
+      const controller = new AbortController()
+      const child = gate('traps-signal', {
+        args: ['-e', "process.stdout.write('ready\\n'); process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)"],
+        streamOutput: true,
+      })
+      const promise = runGate(child, controller.signal)
+      // Wait for the child to register its SIGTERM trap before aborting, so
+      // the signal is caught and the child really exits zero.
+      const deadline = Date.now() + 5000
+      while (!writes.join('').includes('ready') && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      controller.abort()
+      const result = await promise
+
+      // The child trapped the signal and exited zero; the drain must not
+      // report this gate passed, so the raw outcome carries the abort mark.
+      expect(result.status).toBe('passed')
+      expect(result.aborted).toBe(true)
+    } finally {
+      write.mockRestore()
+    }
+  })
+
+  it.skipIf(process.platform === 'win32')('kills the whole gate process tree when the abort signal fires', async () => {
+    const { writes, write } = captureStreamedOutput()
+    const controller = new AbortController()
+    let promise: Promise<GateResult> | undefined
+    try {
+      const script = [
+        "const { spawn } = require('node:child_process')",
+        // Detached, so the grandchild leads its own process group: the gate
+        // group signal cannot reach it, and only the descendant enumeration in
+        // treeKill does — the shape of a nested run-gates' leaf gates.
+        "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true })",
+        "process.stdout.write('grandchild:' + grandchild.pid + '\\n')",
+        'setInterval(() => {}, 1000)',
+      ].join(';')
+      promise = runGate(gate('tree', { args: ['-e', script], streamOutput: true }), controller.signal)
+      const deadline = Date.now() + 5000
+      let pid: number | undefined
+      while (pid === undefined && Date.now() < deadline) {
+        const match = writes.join('').match(/grandchild:(\d+)/)
+        if (match !== null) pid = Number(match[1])
+        else await new Promise(resolve => setTimeout(resolve, 20))
+      }
+      expect(pid ?? 0).toBeGreaterThan(0)
+      controller.abort()
+      const result = await promise
+      expect(result.status).toBe('failed')
+      // The descendant enumeration signals the detached grandchild at the same
+      // time as the group signal reaches the direct child; the direct child's
+      // own death closes the gate pipes, so poll for the grandchild to stop
+      // executing rather than asserting on a fixed instant.
+      const stopDeadline = Date.now() + 5000
+      while (!procStopped(pid!) && Date.now() < stopDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+      expect(procStopped(pid!)).toBe(true)
+    } finally {
+      // A failed wait or assertion must not leave the forever-looping detached
+      // grandchild behind on the host: abort the gate and wait for the
+      // process tree to settle before restoring the spy.
+      controller.abort()
+      await promise
+      write.mockRestore()
+    }
+  })
+
+  it('forwards host interruption signals to the abort path', async () => {
+    const slow = gate('slow')
+    const sibling = gate('sibling')
+    const execute = vi.fn(async (subject: Gate, signal?: AbortSignal) => {
+      if (subject.id === 'slow') {
+        return new Promise<GateResult>((resolve) => {
+          signal?.addEventListener('abort', () => {
+            // A child can trap the signal and exit zero; the drain must still
+            // record the gate skipped so the interrupted run fails.
+            resolve({ ...resultFor(subject, 'passed'), aborted: true })
+          }, { once: true })
+        })
+      }
+      return resultFor(subject)
+    })
+
+    const promise = runGates([slow, sibling], 1, execute, () => {}, { failFast: true, forwardProcessSignals: true })
+    // The first loop iteration starts `slow` synchronously, so its abort
+    // listener is registered before the signal is emitted.
+    process.emit('SIGTERM')
+    const results = await promise
+
+    expect(execute).toHaveBeenCalledOnce()
+    expect(results.map(result => result.status)).toEqual(['skipped', 'skipped'])
+    expect(results[0]).toMatchObject({
+      status: 'skipped',
+      error: 'aborted by fail-fast: host interruption',
+    })
+  })
+
+  it('pairs host signal forwarding with fail-fast at the CLI entrypoint', () => {
+    expect(cliGateOptions(true)).toEqual({ failFast: true, forwardProcessSignals: true })
+    expect(cliGateOptions(false)).toEqual({ failFast: false, forwardProcessSignals: false })
+  })
+
+  it('rejects host signal forwarding without fail-fast', async () => {
+    const execute = vi.fn(async (subject: Gate) => resultFor(subject))
+
+    await expect(runGates([gate('subject')], 1, execute, () => {}, { forwardProcessSignals: true }))
+      .rejects.toThrow('forwardProcessSignals requires failFast')
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('leaves an un-aborted child running to completion', async () => {
+    const result = await runGate(gate('settles', { args: ['-e', ''] }), new AbortController().signal)
+
+    expect(result.status).toBe('passed')
+    expect(result.aborted).toBe(false)
+  })
+
+  it.skipIf(process.platform === 'win32')('kills a detached descendant that outlived the child when the abort arrives later', async () => {
+    await withSampledTree('late-abort', async ({ writes, release, sample, promise, controller }) => {
+      const pid = await waitForGrandchildPid(writes, 'grandchild:', Date.now() + 10000)
+      await sample()
+      release()
+      await waitForGrandchildPid(writes, 'child-exit', Date.now() + 10000)
+      const rootPid = Number(writes.join('').match(/root:(\d+)/)?.[1])
+      await expect.poll(() => procStopped(rootPid)).toBe(true)
+      await abortAndExpectTreeStopped(promise, controller, pid)
+    })
+  })
+
+  it.skipIf(process.platform === 'win32')('keeps a reparented detached descendant tracked across a sampler tick', async () => {
+    await withSampledTree('sampler-merge', async ({ writes, release, sample, promise, controller }) => {
+      const pid = await waitForGrandchildPid(writes, 'grandchild:', Date.now() + 10000)
+      await sample()
+      release()
+      await waitForGrandchildPid(writes, 'wrapper-exited', Date.now() + 10000)
+      await sample()
+      await abortAndExpectTreeStopped(promise, controller, pid)
+    })
+  })
+})
+
+describe('process-table parsing', () => {
+  it('parses `pid ppid` rows from a POSIX ps dump', () => {
+    expect(parsePidPpidLines('  123   1\n456 123\n  789 456\n')).toEqual([[123, 1], [456, 123], [789, 456]])
+  })
+
+  it('parses Windows PowerShell Get-CimInstance output of the same shape', () => {
+    expect(parsePidPpidLines(' 123 1\r\n456 123\r\n')).toEqual([[123, 1], [456, 123]])
+  })
+
+  it('drops blank and malformed lines', () => {
+    expect(parsePidPpidLines('  123   1\n\ncommand not found\n999 abc\n')).toEqual([[123, 1]])
+  })
+})
+
+describe('process-table traversal', () => {
+  it('preserves breadth-first order without changing the observed rows', () => {
+    const rows = Object.freeze([
+      Object.freeze([3, 2] as const),
+      Object.freeze([2, 1] as const),
+      Object.freeze([4, 1] as const),
+      Object.freeze([5, 4] as const),
+    ])
+    expect(collectDescendants(1, rows)).toEqual([2, 4, 3, 5])
+    expect(collectDescendants(2, rows)).toEqual([3])
+    expect(collectDescendants(1, rows)).toEqual([2, 4, 3, 5])
+    expect(collectDescendants(99, rows)).toEqual([])
+  })
+
+  it('terminates cycles and repeated edges without treating the root as a descendant', () => {
+    expect(collectDescendants(1, [
+      [1, 1], [2, 1], [2, 1], [1, 2], [3, 2], [2, 3], [4, 3], [4, 2],
+    ])).toEqual([2, 3, 4])
+  })
+
+  it('walks a wide child list without passing it as function arguments', () => {
+    const rows = Array.from({ length: 200_000 }, (_, index): [number, number] => [index + 3, 2])
+    rows.unshift([2, 1])
+    const descendants = collectDescendants(1, rows)
+    expect(descendants).toHaveLength(200_001)
+    expect(descendants[0]).toBe(2)
+    expect(descendants.at(-1)).toBe(200_002)
+    expect(new Set(descendants).size).toBe(descendants.length)
+  })
+})
+
+describe('Windows tree termination', () => {
+  it('targets the root first and each captured descendant after it', () => {
+    expect(taskkillArgs(100, [201, 302, 403])).toEqual([
+      ['/PID', '100', '/T', '/F'],
+      ['/PID', '201', '/T', '/F'],
+      ['/PID', '302', '/T', '/F'],
+      ['/PID', '403', '/T', '/F'],
+    ])
+  })
+
+  it('terminates the root alone when no descendant was captured', () => {
+    expect(taskkillArgs(100, [])).toEqual([['/PID', '100', '/T', '/F']])
   })
 })

@@ -10,6 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SqliteSessionPersistence from '@deepseek-ai/dsh-session-persistence-sqlite'
 import SqliteSessionQueryEngine, * as queryModule from '@deepseek-ai/dsh-session-query-sqlite'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -17,8 +18,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const temporaryDirectories: string[] = []
+const contexts: Context[] = []
 
 afterEach(async () => {
+  for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   for (const directory of temporaryDirectories.splice(0)) {
     await rm(directory, { recursive: true, force: true })
   }
@@ -31,13 +34,16 @@ async function temporaryPath(name: string): Promise<string> {
 }
 
 describe('dsh-session-query-sqlite real Loader path', () => {
-  it('unwraps, mounts, and searches the real persistence backend', async () => {
-    const persistencePath = await temporaryPath('canonical.db')
+  it.each(['JSONL', 'SQLite'] as const)('unwraps, mounts, and searches the real %s provider', async (kind) => {
+    const persistenceRoot = await temporaryPath('canonical')
     const searchPath = await temporaryPath('derived.db')
     const ctx = new Context()
+    contexts.push(ctx)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SessionStore)
-    const persistence = await ctx.plugin(SqliteSessionPersistence, { path: persistencePath })
+    const persistence = kind === 'SQLite'
+      ? await ctx.plugin(SqliteSessionPersistence, { path: persistenceRoot })
+      : await ctx.plugin(JsonlSessionPersistence, { root: persistenceRoot, compression: 'none' })
 
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(queryModule) as Parameters<Context['plugin']>[0]

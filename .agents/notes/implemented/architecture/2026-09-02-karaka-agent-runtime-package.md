@@ -26,6 +26,8 @@ Every application chat Session retains one atomic `{ applicationId, tenantId, us
 
 `karaka start` locates the same-version Agent executable from the `@karaka-ai/agent` package root, gives it an absolute deployment patch, and supplies a private project-local Karaka home. Agent owns boot and graceful process teardown. Neither CLI nor SDK resolves or launches the `dsh` package, and no programmatic Agent boot API is part of the public contract.
 
+Karaka retains the SQLite provider, schema 21, SQL and compression resources, and dual-provider tests when upstream DSH removes its SQLite option. JSONL-only storage would leave existing application chats unreadable; the derived SQLite query index cannot replace their authoritative database. Cold Agent activation requests the preset projections required to restore its composition; history-only reads omit projection work. The recorded Karaka scenario restarts the real Agent process against the same database and checks cold ownership enforcement, history recovery, and duplicate request admission. The provider test also preserves ownership and inherited events across a real fork and remount. See the [rejected JSONL-only proposal](../../rejected/simplification/2026-08-30-jsonl-only-session-persistence.md).
+
 ## Alternatives considered
 
 **Publish every DSH and Karaka workspace package.** This preserves npm package boundaries but makes application operators install and coordinate an internal implementation graph and exposes DeepSeek Harness naming as Karaka's runtime contract.
