@@ -1,5 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { ApplicationId, Session, SessionId, TenantId, UserId } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { ApplicationChatController } from '../src/application.ts'
@@ -48,6 +50,62 @@ function fixture() {
 }
 
 describe('ApplicationChatController', () => {
+  it('admits application image uploads through the real command only for the exact owner', async () => {
+    const { ctx, agents, agent } = fixture()
+    const attachment = {
+      attachmentId: AttachmentId('application-image'), mediaType: 'image/png' as const,
+      bytes: 1, width: 1, height: 1,
+    }
+    const saveImages = vi.fn(() => Promise.resolve([attachment]))
+    ctx.provide('attachments', { saveImages } as never)
+    ctx.provide('llm', {
+      listProviders: () => [{ id: 'vision' }],
+      resolveModelInfo: () => Promise.resolve({ inputModalities: ['text', 'image'] }),
+    } as never)
+    Object.assign(agents, {
+      selectionFor: () => ({ current: { provider: 'vision', model: 'vision' } }),
+      serializeImageAdmission: (_agent: Agent, operation: () => Promise<unknown>) => operation(),
+    })
+    const followup = vi.fn((message: UserMessage) => {
+      agent.session.events.push({ type: 'user/message', data: message })
+    })
+    Object.assign(agent, { followup })
+    const commands = new SessionCommandController(ctx, agents as never, '/tmp')
+    const controller = new ApplicationChatController(ctx, agents as never, commands)
+    const request = {
+      chatId: agent.id, requestId: 'image-1', owner,
+      content: [
+        { type: 'text' as const, text: 'before' },
+        { type: 'image' as const, mediaType: 'image/png' as const, data: 'AQ==' },
+        { type: 'text' as const, text: 'after' },
+      ],
+    }
+    try {
+      for (const wrongOwner of [
+        { ...owner, applicationId: ApplicationId('another-application') },
+        { ...owner, tenantId: TenantId('another-tenant') },
+        { ...owner, userId: UserId('another-user') },
+      ]) {
+        await expect(controller.prompt({ ...request, owner: wrongOwner }))
+          .rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+      }
+      expect(saveImages).not.toHaveBeenCalled()
+      expect(followup).not.toHaveBeenCalled()
+
+      await expect(controller.prompt(request)).resolves.toEqual({ accepted: true, duplicate: false })
+      expect(saveImages).toHaveBeenCalledWith([{ mediaType: 'image/png', data: new Uint8Array([1]) }])
+      expect(followup).toHaveBeenCalledWith(expect.objectContaining({
+        source: { kind: 'user', rpcId: request.requestId },
+        content: [request.content[0], { type: 'image', attachment }, request.content[2]],
+      }))
+      await expect(controller.prompt(request)).resolves.toEqual({ accepted: true, duplicate: true })
+      expect(saveImages).toHaveBeenCalledOnce()
+      expect(followup).toHaveBeenCalledOnce()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('creates workspace-free chats with authenticated ownership', async () => {
     const { controller, agents, agent, sessionPersistence } = fixture()
 
