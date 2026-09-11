@@ -1211,8 +1211,9 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
         if (enumerationInFlight !== undefined) enumerationInFlight.cancel()
         enumerationInFlight = undefined
       }
-      refreshDescendants()
-      descendantSampler = setInterval(refreshDescendants, 5000)
+      void refreshDescendants()
+      // Native timers ignore the completion promise; controlled clocks can await it.
+      descendantSampler = setInterval(refreshDescendants as () => void, 5000)
       // A gate that settles while an enumeration is still running must not
       // leave the PowerShell subprocess holding stdio handles until its own
       // timeout: stop it as soon as the child's outcome is known.
