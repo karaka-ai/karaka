@@ -802,16 +802,65 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     )
 
     await page.getByRole('button', { name: 'Collapse sidebar' }).click()
+    await page.locator('div[style*="grid-template-columns"]').evaluate(async (frame) => {
+      // Complete collapse before controlling the distinct expansion on resize.
+      await Promise.all(frame.getAnimations().map(animation => animation.finished.catch(() => {
+        // A superseded transition has also stopped moving the frame.
+      })))
+    })
     await trigger.click()
     await catalog.waitFor()
     // Resizing the open portal must preserve its viewport anchor and bounds.
     for (const width of [1680, 360]) {
-      await page.setViewportSize({ width, height: 900 })
-      await expect.poll(async () => {
-        const layout = await readLayout()
-        return layout.catalogLeft === layout.expectedLeft
-          && layout.width === Math.min(336, width - 32)
-      }).toBe(true)
+      // Widening restores the saved sidebar width after the window resize.
+      // Hold that real transition so its final anchor movement cannot race
+      // ahead of the test and leave the stale-position bug unexercised.
+      const transition = width === 1680 ? await page.evaluateHandle(() => {
+        const frame = document.querySelector('div[style*="grid-template-columns"]')
+        if (!(frame instanceof HTMLElement)) throw new Error('layout frame is not mounted')
+        let animation: Animation | undefined
+        const pause = (event: TransitionEvent) => {
+          if (event.target !== frame || event.propertyName !== 'grid-template-columns') return
+          animation = frame.getAnimations().find(candidate => candidate instanceof CSSTransition
+            && candidate.transitionProperty === 'grid-template-columns')
+          if (animation === undefined) throw new Error('sidebar transition is missing')
+          animation.pause()
+          animation.currentTime = 0
+          frame.removeEventListener('transitionrun', pause)
+        }
+        frame.addEventListener('transitionrun', pause)
+        return {
+          ready: () => animation?.playState === 'paused',
+          finish: () => {
+            if (animation === undefined) throw new Error('sidebar transition was not captured')
+            animation.finish()
+          },
+          dispose: () => {
+            frame.removeEventListener('transitionrun', pause)
+            animation?.finish()
+          },
+        }
+      }) : undefined
+      try {
+        await page.setViewportSize({ width, height: 900 })
+        let pausedLeft: number | undefined
+        if (transition !== undefined) {
+          await expect.poll(() => transition.evaluate(control => control.ready())).toBe(true)
+          pausedLeft = (await readLayout()).triggerLeft
+          await transition.evaluate((control) => { control.finish() })
+        }
+        await expect.poll(async () => {
+          const layout = await readLayout()
+          return {
+            leftError: layout.catalogLeft - layout.expectedLeft,
+            width: layout.width,
+            anchorMoved: pausedLeft === undefined || layout.triggerLeft !== pausedLeft,
+          }
+        }).toEqual({ leftError: 0, width: Math.min(336, width - 32), anchorMoved: true })
+      } finally {
+        await transition?.evaluate((control) => { control.dispose() })
+        await transition?.dispose()
+      }
       if (width === 360) {
         await trigger.click()
         await expect.poll(() => catalog.count()).toBe(0)
