@@ -350,7 +350,13 @@ describe('Karaka recorded-session snapshot', () => {
         chatId: 'snapshot-chat', requestId: 'snapshot-request', content: 'duplicate retry',
       })).resolves.toMatchObject({ accepted: true, duplicate: true })
       await stopKaraka(running)
-      await expect(readPersistedSession(running.database)).resolves.toBe(log)
+      const original = records(log)
+      const resumed = records(await readPersistedSession(running.database))
+      expect(resumed.slice(0, original.length)).toEqual(original)
+      // Agent activation records the restored seed once; a duplicate adds no message or turn.
+      expect(resumed.slice(original.length)).toEqual([{
+        type: 'session/end-seed', seq: original.length - 1, time: expect.any(Number), data: {},
+      }])
     } finally {
       if (running !== undefined && running.child.exitCode === undefined) {
         running.child.kill('SIGKILL')

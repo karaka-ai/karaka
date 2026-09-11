@@ -26,7 +26,7 @@ Agent 拥有进程 entry、基础 Cordis 组合、Karaka overlay、runtime asset
 
 `karaka start` 从 `@karaka-ai/agent` package 根目录定位同版本的 Agent 可执行文件，向其提供绝对部署 patch，并提供项目私有的 Karaka home。Agent 拥有 boot 和优雅进程 teardown。CLI 与 SDK 都不解析或启动 `dsh` 包，公开 contract 也不包含 programmatic Agent boot API。
 
-当上游 DSH 移除 SQLite 选项时，Karaka 保留 SQLite provider、schema 21、SQL 与压缩资源以及双 provider 测试。仅使用 JSONL 会使现有应用 chat 无法读取；派生 SQLite 查询索引不能替代其权威数据库。Karaka 录制场景使用同一数据库重启真实 Agent 进程，并检查冷态所有权验证、历史恢复及重复请求接收。provider 测试还验证真实 fork 和重新挂载后保留所有权与继承事件。参见[已拒绝的仅 JSONL 提案](../../rejected/simplification/2026-08-30-jsonl-only-session-persistence.zh.md)。
+当上游 DSH 移除 SQLite 选项时，Karaka 保留 SQLite provider、schema 21、SQL 与压缩资源以及双 provider 测试。仅使用 JSONL 会使现有应用 chat 无法读取；派生 SQLite 查询索引不能替代其权威数据库。冷态 Agent 激活请求恢复其组合所需的 preset 投影；仅读取历史时省略投影计算。Karaka 录制场景使用同一数据库重启真实 Agent 进程，并检查冷态所有权验证、历史恢复及重复请求接收。provider 测试还验证真实 fork 和重新挂载后保留所有权与继承事件。参见[已拒绝的仅 JSONL 提案](../../rejected/simplification/2026-08-30-jsonl-only-session-persistence.zh.md)。
 
 ## 考虑过的替代方案
 
