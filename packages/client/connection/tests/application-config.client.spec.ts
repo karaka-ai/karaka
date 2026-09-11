@@ -1,6 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, type BrowserConnectionConfig, type ConnectionHandle } from '../src/client/index.ts'
+import { createWebConnectionRpc } from '../src/client/rpc.ts'
 
 const roots: Context[] = []
 afterEach(async () => {
@@ -16,6 +17,18 @@ async function mount(config: BrowserConnectionConfig): Promise<ConnectionHandle>
 }
 
 describe('application browser connection configuration', () => {
+  it('keeps page fetch available to RPC callers without a transport override', async () => {
+    vi.stubGlobal('location', { origin: 'https://host.example' })
+    const fetcher = vi.fn((url: URL, init: RequestInit) => {
+      expect(url.href).toBe('https://host.example/api/session/list')
+      const request = JSON.parse(init.body as string) as { rpcId: string }
+      return Promise.resolve(Response.json({ type: 'server-response', rpcId: request.rpcId, result: { ok: true, value: [] } }))
+    })
+    vi.stubGlobal('fetch', fetcher)
+    await expect(createWebConnectionRpc().call('/api', 'session/list', {})).resolves.toEqual({ ok: true, value: [] })
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
   it.each(['ftp://server', 'https://server/path', 'https://server/?q=1', 'https://server/#hash',
     'https://user@server/', 'https://:password@server/'])('rejects non-origin endpoint %s', async (endpoint) => {
     await expect(mount({ endpoint })).rejects.toThrow('HTTP(S) server origin')
