@@ -350,17 +350,16 @@ describe('image draft rail', () => {
     const unknown = bench({ promptError: attachmentError('ATTACHMENT_NOT_REFERENCED') })
     expect(unknown.view.getByRole('alert').textContent).toContain('图片发送失败（ATTACHMENT_NOT_REFERENCED）')
     cleanup()
-    // A subagent turn refuses images under its own code; the reason keys the
-    // same product copy, because the user cannot act on which domain refused.
+    // A subagent refusal uses the same product copy for the same reason.
     const subagent = bench({
       promptError: {
         op: 'send',
-        error: new RemoteError('subagent/attachment-unsupported', 'raw wire text', {
-          childSessionId: SID, reason: 'SUBAGENT_IMAGE_UNSUPPORTED',
+        error: new RemoteError('subagent/attachment-invalid', 'raw wire text', {
+          reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES',
         }),
       },
     })
-    expect(subagent.view.getByRole('alert').textContent).toContain('子智能体会话暂不支持图片')
+    expect(subagent.view.getByRole('alert').textContent).toContain('当前模型不支持图片，请切换支持图片的模型')
     cleanup()
     const other = bench({
       promptError: { op: 'send', error: new RemoteError('gateway/internal', 'boom', {}) },
