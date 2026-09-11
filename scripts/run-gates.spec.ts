@@ -103,10 +103,10 @@ async function withSampledTree(
   const { writes, write } = captureStreamedOutput()
   const controller = new AbortController()
   const originalInterval = globalThis.setInterval
-  let sampleTick: (() => void) | undefined
+  let sampleTick: (() => Promise<void> | undefined) | undefined
   const interval = vi.spyOn(globalThis, 'setInterval').mockImplementation((callback, delay, ...args) => {
     if (delay !== 5000) return originalInterval(callback, delay, ...args)
-    sampleTick = () => callback(...args)
+    sampleTick = callback as () => Promise<void> | undefined
     // The fixture owns sampler ticks; real time cannot start an overlapping enumeration.
     return originalInterval(() => {}, delay)
   })
@@ -130,7 +130,7 @@ async function withSampledTree(
     promise = runGate(gate(kind, { args: ['-e', script], streamOutput: true }), controller.signal)
     await inspect({
       writes,
-      release: () => writeFileSync(releaseFile, ''),
+      release: () => { writeFileSync(releaseFile, '') },
       sample: async () => {
         expect(sampleTick).toBeDefined()
         // Wait for the real process-table read and cache update on every POSIX host.
