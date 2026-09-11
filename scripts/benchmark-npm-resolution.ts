@@ -376,7 +376,7 @@ async function runNpm(
   cwd: string,
   registry: string,
   timeoutMs: number,
-): Promise<{ durationMs: number; output: string; timedOut: boolean }> {
+): Promise<Awaited<ReturnType<typeof runCommandWithTimeout>>> {
   const npmrc = join(cwd, '.npmrc')
   const globalNpmrc = join(cwd, '.npmrc-global')
   writeFileSync(npmrc, `registry=${registry}\n@deepseek-ai:registry=${registry}\n`)
@@ -471,7 +471,14 @@ export async function resolveNpmPackageLock(
       dependencies,
     }, null, 2)}\n`)
     const result = await runNpm(consumer, registry, timeoutMs)
-    if (result.timedOut) throw new Error(`npm resolution exceeded ${String(timeoutMs)} ms`)
+    if (result.timedOut) {
+      throw new Error(`npm resolution exceeded ${String(timeoutMs)} ms: ${JSON.stringify({
+        ...result,
+        registryRequests,
+        archiveRequests,
+        unknownPackages: [...unknownPackages].sort(),
+      })}`)
+    }
     return {
       durationMs: result.durationMs,
       registryRequests,
