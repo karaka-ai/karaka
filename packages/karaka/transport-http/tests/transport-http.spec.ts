@@ -402,6 +402,32 @@ describe('Karaka HTTP transport', () => {
     expect(end).toHaveBeenCalledWith(JSON.stringify({ code: 'NOT_FOUND', message: 'Route not found' }))
   })
 
+  it('leaves application questions to another answerer while retaining backend HTTP routes', async () => {
+    const { ctx, endpoint, create } = await harness({ config: { path: '/v1', handleQuestions: false } })
+    const next = vi.fn(() => Promise.resolve({ answers: [{ id: 'confirm', selected: [], custom: 'continue' }] }))
+    await expect(ctx.waterfall('user-questions/request', {
+      agent: {
+        id: 'chat-1',
+        session: {
+          header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
+          events: [],
+        },
+      } as never,
+      questions: [{ id: 'confirm', question: 'Continue?' }],
+    }, next)).resolves.toEqual({ answers: [{ id: 'confirm', selected: [], custom: 'continue' }] })
+    expect(next).toHaveBeenCalledOnce()
+    const response = await fetch(`${endpoint}/v1/chats`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+      body: JSON.stringify({ chatId: 'chat-1', agentId: 'support', tenantId: 'tenant-1', userId: 'user-1' }),
+    })
+    expect(response.status).toBe(201)
+    expect(create).toHaveBeenCalledWith({
+      chatId: 'chat-1', agentId: 'support',
+      owner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' },
+    }, expect.any(AbortSignal))
+  })
+
   it('delegates questions without an application-owned Agent', async () => {
     const { ctx } = await harness()
     const next = vi.fn(() => Promise.resolve({ answers: [] }))

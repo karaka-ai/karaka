@@ -28,6 +28,8 @@ export const inject = ['serverAuth', 'sessionController', 'webServer']
 
 /** HTTP transport configuration. */
 export interface Config {
+  /** Register this transport as an application question recipient. Default: true. */
+  readonly handleQuestions?: boolean
   /** Route prefix mounted on the shared Host web server. */
   readonly path?: string
   /** Maximum accepted JSON request body size in bytes. */
@@ -35,6 +37,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
+  handleQuestions: z.boolean().default(true),
   path: z.string().default(KARAKA_APPLICATION_API_PATH),
   maxBodyBytes: z.natural().default(1_048_576),
 })
@@ -95,6 +98,8 @@ export function apply(ctx: Context, config: Config): void {
       return operation
     },
   }))
+
+  if (config.handleQuestions === false) return
 
   ctx.on('user-questions/request', async (request, next) => {
     const agent = request.agent

@@ -1,5 +1,8 @@
 /** Platform-neutral assembly of generated Host Remote contributions. */
 
+import type { ApplicationRemoteMethod } from '../application-methods.ts'
+export { APPLICATION_REMOTE_METHODS } from '../application-methods.ts'
+export type { ApplicationRemoteMethod } from '../application-methods.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import agentPresetsRemote from '@deepseek-ai/dsh-agent-presets/remote'
 import commandsRemote from '@deepseek-ai/dsh-commands/remote'
@@ -138,16 +141,24 @@ export const inject = ['remote']
 /**
  * Mount the Host capabilities explicitly selected for this Client assembly.
  * @param ctx - Client Cordis root carrying the typed API service.
+ * @param config - optional application method selection.
  * @returns disposer after every selected Remote namespace is ready.
  */
-export async function apply(ctx: Context): Promise<() => Promise<void>> {
+export async function apply(
+  ctx: Context, config: { applicationMethods?: readonly ApplicationRemoteMethod[] } = {},
+): Promise<() => Promise<void>> {
   const disposers: Array<() => Promise<void>> = []
   try {
-    for (const contribution of [
+    const contributions = config.applicationMethods === undefined ? [
       agentPresetsRemote, commandsRemote, settingsControllerRemote, goalsRemote, llmRemote, dynamicRemote,
       pluginInventoryRemote, messageFeedbackRemote, sessionReferencesRemote,
       subagentsRemote, sessionRemote, workspaceRemote,
-    ]) {
+    ] : [{
+      ...sessionRemote,
+      descriptors: sessionRemote.descriptors.filter(method =>
+        config.applicationMethods?.includes(method.method as ApplicationRemoteMethod)),
+    }]
+    for (const contribution of contributions) {
       disposers.push(await ctx.remote.$mount(contribution))
     }
   } catch (error) {

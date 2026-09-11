@@ -29,6 +29,10 @@ import {
 import type { SessionRemotes } from '../src/client/sessions/remotes.ts'
 import { historyRecordLastSeq } from '../src/client/sessions/history-records.ts'
 
+function applicationNotMounted(): never {
+  throw new Error('application browser methods are not mounted by the Host UI fixture')
+}
+
 const AVAILABLE_STREAM_CONNECTION = {
   generation: {
     getSnapshot: () => ({ id: 1, host: { home: '/h' } }),
@@ -200,6 +204,12 @@ export class FakeApiClient {
         execute: () => Promise.resolve({ ok: true, value: undefined }),
       },
       session: {
+        applicationAgents: applicationNotMounted,
+        applicationCreate: applicationNotMounted,
+        applicationPrompt: applicationNotMounted,
+        applicationHistory: applicationNotMounted,
+        applicationFollow: applicationNotMounted,
+        applicationCancel: applicationNotMounted,
         canOpenWorkspacePath: () => Promise.resolve(ok(true)),
         list: payload => this.record('session.list', payload, this.onList(payload)),
         modelCatalog: () => Promise.resolve({

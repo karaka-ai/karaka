@@ -145,7 +145,7 @@ class ClientRemoteService extends Service implements ClientRemote {
   private readonly connection: ConnectionHandle
   private readonly namespaces = new Map<string, RemoteNamespaceHandle>()
   private hostFacts: RemoteHostFacts | undefined
-  private readonly streams = new RemoteStreamMuxClient()
+  private readonly streams: RemoteStreamMuxClient
   private readonly events: ClientRemoteEvents
   private mutations = Promise.resolve()
 
@@ -154,6 +154,7 @@ class ClientRemoteService extends Service implements ClientRemote {
     this.ownerCtx = ctx
     const connection = ctx.get('connection') as ConnectionHandle
     this.connection = connection
+    this.streams = new RemoteStreamMuxClient(connection.webSocketOptions)
     this.events = new ClientRemoteEvents(
       ctx,
       connection,

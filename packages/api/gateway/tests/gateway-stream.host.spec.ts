@@ -370,6 +370,32 @@ describe('Typert Remote streams', () => {
     expect(service.signals[1]?.aborted).toBe(true)
   })
 
+  it('discards queued Remote events when a paused consumer is cancelled', async () => {
+    const { ctx } = await setup(false)
+    const source = new RemoteEventSourceProbe()
+    const unregister = ctx.typertGateway.registerRemoteEvents(source.source, REMOTE_HOST)
+    const observerAbort = new AbortController()
+    const pausedAbort = new AbortController()
+    const observer = (await ctx.typertGateway.wireStream.open('$events', { args: {} }, observerAbort.signal))[Symbol.asyncIterator]()
+    const paused = (await ctx.typertGateway.wireStream.open('$events', { args: {} }, pausedAbort.signal))[Symbol.asyncIterator]()
+    try {
+      expect((await observer.next()).value).toMatchObject({ type: 'ready' })
+      expect((await paused.next()).value).toMatchObject({ type: 'ready' })
+      source.push({ event: 'fixture/changed', args: ['first'] })
+      source.push({ event: 'fixture/changed', args: ['second'] })
+      expect((await observer.next()).value).toMatchObject({ type: 'emit', args: ['first'] })
+      expect((await observer.next()).value).toMatchObject({ type: 'emit', args: ['second'] })
+      expect((await paused.next()).value).toMatchObject({ type: 'emit', args: ['first'] })
+      pausedAbort.abort()
+      expect(await paused.next()).toEqual({ done: true, value: undefined })
+    } finally {
+      observerAbort.abort()
+      pausedAbort.abort()
+      await Promise.all([observer.return?.(), paused.return?.()])
+      await unregister()
+    }
+  })
+
   it('carries the registered Remote event source and withdraws its active stream', async () => {
     const { ctx } = await setup(true)
     let sourceSignal: AbortSignal | undefined

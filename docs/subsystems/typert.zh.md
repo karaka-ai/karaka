@@ -144,6 +144,8 @@ Connection 会先解码 carrier envelope，再调用 `ctx.typertGateway`。请�
 ```ts type-equiv
 /** One Remote method request after a carrier has decoded its envelope. */
 interface InvokeRemoteRequest {
+  /** Verified transport caller; absent only for trusted same-process calls. */
+  readonly caller?: ConnectionCaller
   /** Remote namespace selected by the generated descriptor. */
   readonly namespace: string
   /** Exported Service method name. */
@@ -158,6 +160,8 @@ interface InvokeRemoteRequest {
 ```ts type-equiv
 /** Stable infrastructure and boundary failures emitted before or after business execution. */
 type TypertGatewayErrorCode =
+  | 'gateway/forbidden'
+  | 'gateway/unauthorized'
   | 'gateway/ambiguous-endpoint'
   | 'gateway/arguments-invalid'
   | 'gateway/binding-invalid'
@@ -180,8 +184,15 @@ type TypertGatewayErrorCode =
 ```ts type-equiv
 /** Host dispatcher consumed by Connection adapters. */
 interface TypertGateway {
+  /**
+   * Install the application assembly's access rules; application callers are denied without them.
+   * @param policy - endpoint and event-recipient policy.
+   * @returns disposer withdrawing access.
+   */
+  registerAccessPolicy(policy: TypertAccessPolicy): () => void
   /** Carrier adapter shared by WebSocket and in-process transports. */
   readonly wireStream: TypertGatewayWireStream
+
   /**
    * Register the application-selected forwarded-event source.
    * @param source - stream factory installed by the Remote assembly.
@@ -192,6 +203,7 @@ interface TypertGateway {
     source: TypertRemoteEventSource,
     host: RemoteEventHostInfo,
   ): () => Promise<void>
+
   /**
    * Invoke one live Remote method without assuming a carrier or response envelope.
    * @param request - decoded endpoint and named wire arguments.
@@ -199,6 +211,7 @@ interface TypertGateway {
    * @throws {@link TypertGatewayError} for dispatch, provider, or boundary failures; lookup-policy and business errors retain identity.
    */
   invoke(request: InvokeRemoteRequest): Promise<unknown>
+
   /**
    * Open one live stream Remote method without assuming a physical carrier.
    * @param request - decoded endpoint and named wire arguments.
@@ -233,6 +246,8 @@ interface TypertClientRemote extends TypertRemoteNamespaceMap {
   $on<Event extends TypertRemoteEvent>(event: Event, listener: TypertClientEventListener<Event>): () => void
 }
 ```
+
+`TypertAccessPolicy` 在每次方法调用时授权 endpoint，并在投递与响应时检查交互接收者。`ConnectionCaller` 保留已验证的完整应用 owner 和过期时间。两者的字段定义见 [Gateway 类型](../../packages/api/gateway/src/types.ts) 和 [Connection 认证类型](../../packages/client/connection/src/auth.ts)。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -315,6 +330,13 @@ Source: [`packages/typert/registry/src/service.ts`](../../packages/typert/regist
 Resolve strict generated definitions or conservative SRC markers against current Cordis Services and Typert providers.
 
 ```ts cordis-catalog
+/**
+ * Install the sole application access policy until its owner is disposed.
+ * @param policy - endpoint and event-recipient authorization.
+ * @returns disposer denying new calls and aborting application streams.
+ */
+registerAccessPolicy(policy: TypertAccessPolicy): () => void
+
 /**
  * Register the sole application-selected forwarded-event source.
  * @param source - stream factory installed by the Remote assembly.

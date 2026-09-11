@@ -4,10 +4,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets'
-import type { ApplicationOwner, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { SessionFollowFrame, SessionRequestId, SessionWireEvent } from './types.ts'
-import type { ModelSelection, PromptContentPart } from './types.ts'
+import type { ModelSelection } from './types.ts'
 import {
   ApiSessionAgentController,
   ApiSessionApplicationOwnerConflict,
@@ -16,33 +16,8 @@ import {
 import { SessionCommandController } from './commands.ts'
 import { SessionEventFollower } from './follow.ts'
 
-/** Stable application-facing Agent roster row. */
-export interface ApplicationAgentRow {
-  readonly id: string
-  readonly name: string
-  readonly description?: string
-}
-
-/** Application chat creation input after server authentication. */
-export interface ApplicationChatCreate {
-  readonly chatId: SessionId
-  readonly agentId: string
-  readonly owner: ApplicationOwner
-}
-
-/** Application chat message admission input after server authentication. */
-export interface ApplicationChatPrompt {
-  readonly chatId: SessionId
-  readonly requestId: string
-  readonly owner: ApplicationOwner
-  readonly content: readonly PromptContentPart[]
-}
-
-/** Application chat operation identity after server authentication. */
-export interface ApplicationChatAddress {
-  readonly chatId: SessionId
-  readonly owner: ApplicationOwner
-}
+export type { ApplicationAgentRow, ApplicationChatCreate, ApplicationChatPrompt, ApplicationChatAddress } from './types.ts'
+import type { ApplicationAgentRow, ApplicationChatCreate, ApplicationChatPrompt, ApplicationChatAddress } from './types.ts'
 
 /** Host-only application API built from existing Session Controller components. */
 export class ApplicationChatController {

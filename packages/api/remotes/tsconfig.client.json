@@ -6,6 +6,7 @@
     "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo"
   },
   "files": [
+    "src/application-methods.ts",
     "src/client/index.ts",
     "src/remote-events.ts",
     "src/types.ts"

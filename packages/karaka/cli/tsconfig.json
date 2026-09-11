@@ -4,7 +4,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../../../vendor/cordis" },
-    { "path": "../agent" },
+    { "path": "../agent/tsconfig.host.json" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }

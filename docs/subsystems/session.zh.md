@@ -598,6 +598,8 @@ interface TurnEndReasonMap {
 
 `SessionOpenWorkspacePathRequest` 携带绝对路径或已按 workspace 解析的 `path`。`SessionOpenWorkspacePathValue` 确认 Host 已接受原生交接。Session-aware Client 会在已知当前 Session cwd 时据此解析相对路径；controller 将路径原样交给打开器，并通过 Session Remote 错误词汇表报告无效请求、取消与打开器失败。
 
+应用聊天使用 `ApplicationAgentRow` 作为 preset 摘要、`ApplicationChatCreate` 作为创建参数、`ApplicationChatPrompt` 作为幂等消息参数、`ApplicationChatAddress` 作为带 owner 的聊天地址。浏览器 Remote 方法从已验证调用者补充 owner。`SessionWireEvent` 携带历史和 follow 流中的 JSON 事件数据。完整字段见 [Session Controller 类型](../../packages/api/session-controller/src/types.ts)。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -613,6 +615,53 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Host service backing the generated `ctx.remote.session` namespace.
 
 ```ts cordis-catalog
+/**
+ * List the deployment's application Agent Presets.
+ * @param signal - caller cancellation.
+ * @returns application-facing preset descriptions.
+ */
+@Remote applicationAgents(signal: AbortSignal): Promise<readonly ApplicationAgentRow[]>
+
+/**
+ * Create an application chat owned by the authenticated caller.
+ * @param request - chat and preset identities.
+ * @param signal - caller cancellation.
+ * @returns the accepted chat and preset identities.
+ */
+@Remote applicationCreate(request: Omit<ApplicationChatCreate, 'owner'>, signal: AbortSignal): Promise<{ readonly chatId: SessionId; readonly agentId: string }>
+
+/**
+ * Send an idempotent message to the caller's chat.
+ * @param request - chat, request id, and message content.
+ * @param signal - caller cancellation before admission.
+ * @returns admission receipt.
+ */
+@Remote applicationPrompt(request: Omit<ApplicationChatPrompt, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true; readonly duplicate: boolean }>
+
+/**
+ * Read the caller's durable chat history.
+ * @param request - chat identity.
+ * @param signal - caller cancellation.
+ * @returns persisted session events after ownership verification.
+ */
+@Remote applicationHistory(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<readonly SessionWireEvent[]>
+
+/**
+ * Follow the caller's chat from a complete snapshot on each connection.
+ * @param request - chat identity.
+ * @param signal - stream lifetime.
+ * @returns snapshot and subsequent committed events.
+ */
+@Remote({ mode: 'stream' }) applicationFollow(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): AsyncIterable<SessionFollowFrame>
+
+/**
+ * Cancel the caller's active chat turn.
+ * @param request - chat identity.
+ * @param signal - caller cancellation.
+ * @returns cancellation acknowledgement.
+ */
+@Remote applicationCancel(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true }>
+
 /**
  * Resolve or resume one ordinary Session for another Host API domain.
  * @param sessionId - Session identity whose Agent owns the operation.

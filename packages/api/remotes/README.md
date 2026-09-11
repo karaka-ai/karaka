@@ -55,6 +55,8 @@ That exception is not just a `files` entry. The root `tsconfig.base.json` maps `
 
 The package-local `clientBundle(..., { hostPhase: true })` makes Host tsdown bundle the Host entry and the later Client tsdown bundle only the browser entry. Ordinary Client plugins remain single Client projects and produce both their Node loader entry and browser bundle during Client tsdown; split only when the two source sets require different compiler faces.
 
+`applicationMethods` selects the application chat methods exposed to authenticated browser users; `applicationEvents` selects `approval/request` and `user-questions/request`. Both default to empty. Delivery requires the exact application, tenant, and user stored on the Agent Session. An unselected application interaction delegates to the next Host handler. Selected pending interactions remain available for authorized reconnects. Host callers retain their existing capabilities.
+
 <a id="model-experience"></a>
 ## Model Experience
 

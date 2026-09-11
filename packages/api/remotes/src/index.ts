@@ -1,5 +1,8 @@
 /** Host BFF entry and Loader shell for the Remote contribution assembly. */
 
+import z from '@deepseek-ai/schemastery'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { APPLICATION_REMOTE_METHODS, type ApplicationRemoteMethod } from './application-methods.ts'
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
@@ -33,16 +36,43 @@ export type { ApiRemoteForwardedEvent } from './types.ts'
 /** Required Host service: the Gateway owns the physical Remote stream mux. */
 export const inject = ['typertGateway']
 
+/** Browser-user capabilities; omitted selections grant no application operations. */
+export interface Config {
+  /** Application chat methods accessible to authenticated browser users. @default [] */
+  readonly applicationMethods?: ApplicationRemoteMethod[]
+  /** Application interactions delivered to their authenticated owners. @default [] */
+  readonly applicationEvents?: ('approval/request' | 'user-questions/request')[]
+}
+
+export const Config: z<Config> = z.object({
+  applicationMethods: z.array(z.union(APPLICATION_REMOTE_METHODS)).default([]),
+  applicationEvents: z.array(z.union(['approval/request', 'user-questions/request'])).default([]),
+})
+
 /** Host plugin body registering this application's selected Cordis event source. */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: Config = {}): void {
+  const methods = new Set((config.applicationMethods ?? []).map(method => `session/${method}`))
+  const events: ReadonlySet<string> = new Set(config.applicationEvents ?? [])
+  ctx.effect(() => ctx.typertGateway.registerAccessPolicy({
+    allows: (_caller, endpoint) => methods.has(endpoint)
+      || endpoint === '$events'
+      || (events.size > 0 && endpoint === '$events/result'),
+    receives: (caller, dispatch) => {
+      if (caller.kind === 'host') return true
+      if (!events.has(dispatch.event) || !('context' in dispatch)) return false
+      const owner = (dispatch.context.subject as Agent).session.header.applicationOwner
+      return owner !== undefined && owner.applicationId === caller.owner.applicationId
+        && owner.tenantId === caller.owner.tenantId && owner.userId === caller.owner.userId
+    },
+  }), 'api-remotes: application access')
   ctx.effect(
-    () => ctx.typertGateway.registerRemoteEvents(remoteEventSource(ctx), { home: homedir() }),
+    () => ctx.typertGateway.registerRemoteEvents(remoteEventSource(ctx, events), { home: homedir() }),
     'api-remotes: forwarded Cordis event source',
   )
 }
 
 /** Create the sole queue and listener set consumed by the registered Gateway. */
-function remoteEventSource(ctx: Context): TypertRemoteEventSource {
+function remoteEventSource(ctx: Context, applicationEvents: ReadonlySet<string>): TypertRemoteEventSource {
   return (signal) => {
     const queue = new RemoteEventQueue()
     const disposers = API_REMOTE_FORWARDED_EVENTS.map(({ event, mode }) => {
@@ -58,6 +88,7 @@ function remoteEventSource(ctx: Context): TypertRemoteEventSource {
       ) {
         const subject = carrierKeyOf(this)
         if (subject === undefined) return next()
+        if ((subject as Agent).session.header.applicationOwner !== undefined && !applicationEvents.has(event)) return next()
         const value = Reflect.get(subject, 'ctx') as unknown
         if (typeof value !== 'object' || value === null) {
           throw new TypeError(`forwarded scoped event ${JSON.stringify(event)} has no live Context`)

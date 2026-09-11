@@ -1359,6 +1359,42 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: '@Remote applicationAgents(signal: AbortSignal): Promise<readonly ApplicationAgentRow[]>',
+        description: 'List the deployment\'s application Agent Presets.',
+        parameters: [{ name: 'signal', description: 'caller cancellation.' }],
+        returns: 'application-facing preset descriptions.',
+      },
+      {
+        signature: '@Remote applicationCreate(request: Omit<ApplicationChatCreate, \'owner\'>, signal: AbortSignal): Promise<{ readonly chatId: SessionId; readonly agentId: string }>',
+        description: 'Create an application chat owned by the authenticated caller.',
+        parameters: [{ name: 'request', description: 'chat and preset identities.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the accepted chat and preset identities.',
+      },
+      {
+        signature: '@Remote applicationPrompt(request: Omit<ApplicationChatPrompt, \'owner\'>, signal: AbortSignal): Promise<{ readonly accepted: true; readonly duplicate: boolean }>',
+        description: 'Send an idempotent message to the caller\'s chat.',
+        parameters: [{ name: 'request', description: 'chat, request id, and message content.' }, { name: 'signal', description: 'caller cancellation before admission.' }],
+        returns: 'admission receipt.',
+      },
+      {
+        signature: '@Remote applicationHistory(request: Omit<ApplicationChatAddress, \'owner\'>, signal: AbortSignal): Promise<readonly SessionWireEvent[]>',
+        description: 'Read the caller\'s durable chat history.',
+        parameters: [{ name: 'request', description: 'chat identity.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'persisted session events after ownership verification.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) applicationFollow(request: Omit<ApplicationChatAddress, \'owner\'>, signal: AbortSignal): AsyncIterable<SessionFollowFrame>',
+        description: 'Follow the caller\'s chat from a complete snapshot on each connection.',
+        parameters: [{ name: 'request', description: 'chat identity.' }, { name: 'signal', description: 'stream lifetime.' }],
+        returns: 'snapshot and subsequent committed events.',
+      },
+      {
+        signature: '@Remote applicationCancel(request: Omit<ApplicationChatAddress, \'owner\'>, signal: AbortSignal): Promise<{ readonly accepted: true }>',
+        description: 'Cancel the caller\'s active chat turn.',
+        parameters: [{ name: 'request', description: 'chat identity.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'cancellation acknowledgement.',
+      },
+      {
         signature: 'resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>',
         description: 'Resolve or resume one ordinary Session for another Host API domain.',
         parameters: [{ name: 'sessionId', description: 'Session identity whose Agent owns the operation.' }],
@@ -2661,6 +2697,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'readonly wireStream: TypertGatewayWireStream = { open: (endpoint, payload, signal) => this.openWireStream(endpoint, payload, signal), failure: error => rpcError(error), }',
         description: 'Carrier adapter shared by the WebSocket mux and local Host transports.',
         parameters: [],
+      },
+      {
+        signature: 'registerAccessPolicy(policy: TypertAccessPolicy): () => void',
+        description: 'Install the sole application access policy until its owner is disposed.',
+        parameters: [{ name: 'policy', description: 'endpoint and event-recipient authorization.' }],
+        returns: 'disposer denying new calls and aborting application streams.',
       },
       {
         signature: 'registerRemoteEvents( source: TypertRemoteEventSource, host: RemoteEventHostInfo, ): () => Promise<void>',
@@ -4261,7 +4303,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'InvokeRemoteRequest',
-    declaration: 'export interface InvokeRemoteRequest {\n    readonly namespace: string;\n    readonly method: string;\n    readonly args: Readonly<Record<string, unknown>>;\n    readonly signal?: AbortSignal;\n}',
+    declaration: 'export interface InvokeRemoteRequest {\n    readonly caller?: ConnectionCaller;\n    readonly namespace: string;\n    readonly method: string;\n    readonly args: Readonly<Record<string, unknown>>;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'JobDoneListener',
@@ -5918,6 +5960,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TurnEndReasonMap',
     declaration: 'export interface TurnEndReasonMap {\n    completed: {\n        kind: \'completed\';\n    };\n    aborted: {\n        kind: \'aborted\';\n        reason: TurnEndCancelCause;\n    };\n    blocked: {\n        kind: \'blocked\';\n    };\n    error: {\n        kind: \'error\';\n        error: LlmFailure;\n    };\n    \'max-tokens\': {\n        kind: \'max-tokens\';\n    };\n    interrupted: {\n        kind: \'interrupted\';\n    };\n}',
+  },
+  {
+    name: 'TypertAccessPolicy',
+    declaration: 'export interface TypertAccessPolicy {\n    allows(caller: ConnectionCaller, endpoint: string): boolean;\n    receives(caller: ConnectionCaller, event: TypertRemoteEventDispatch): boolean;\n}',
   },
   {
     name: 'TypertCodec',

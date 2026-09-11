@@ -296,7 +296,28 @@ export interface Config {
 }
 ```
 
-来源：[`packages/api/gateway/src/index.ts:119`](../packages/api/gateway/src/index.ts)
+来源：[`packages/api/gateway/src/index.ts:122`](../packages/api/gateway/src/index.ts)
+
+<a id="deepseek-aidsh-api-remotes"></a>
+
+## `@deepseek-ai/dsh-api-remotes`
+
+需要：`typertGateway`
+
+```ts config-catalog
+/** Browser-user capabilities; omitted selections grant no application operations. */
+export interface Config {
+  /** Application chat methods accessible to authenticated browser users. @default [] */
+  readonly applicationMethods?: ApplicationRemoteMethod[]
+  /** Application interactions delivered to their authenticated owners. @default [] */
+  readonly applicationEvents?: ('approval/request' | 'user-questions/request')[]
+}
+
+/** Application chat capability selected by a deployment. */
+export type ApplicationRemoteMethod = typeof APPLICATION_REMOTE_METHODS[number]
+```
+
+来源：[`packages/api/remotes/src/index.ts:40`](../packages/api/remotes/src/index.ts)
 
 <a id="deepseek-aidsh-api-session-controller"></a>
 
@@ -316,7 +337,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/api/session-controller/src/index.ts:70`](../packages/api/session-controller/src/index.ts)
+来源：[`packages/api/session-controller/src/index.ts:73`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 
@@ -423,6 +444,10 @@ export type Config = LocalConfig
 ```ts config-catalog
 /** Plugin config: the deployment's non-loopback serving authorities. */
 export interface ConnectionConfig {
+  /** Host login or a configured application-user credential provider. */
+  authentication?: 'host' | 'application'
+  /** Exact frontend origins accepted in application mode. */
+  frontendOrigins?: string[]
   /**
    * Authorities this deployment serves beyond loopback: exact `host:port`, or
    * port-less `host` matching any port. The /api trust fence refuses any
@@ -439,7 +464,7 @@ export interface ConnectionConfig {
 }
 ```
 
-来源：[`packages/client/connection/src/index.ts:55`](../packages/client/connection/src/index.ts)
+来源：[`packages/client/connection/src/index.ts:72`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -3413,7 +3438,36 @@ export interface Config {
 
 来源：[`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages/workflow/workflow-worker-thread/src/index.ts)
 
-<a id="karakamcp-application"></a>
+<a id="karaka-aibrowser-auth"></a>
+
+## `@karaka-ai/browser-auth`
+
+```ts config-catalog
+/** Public verification keys and required credential claims. */
+export interface Config {
+  /** Exact application identity accepted by this deployment. */
+  readonly applicationId: string
+  /** Required JWT issuer. */
+  readonly issuer: string
+  /** Required JWT audience. */
+  readonly audience: string
+  /** Maximum age and issued lifetime, in seconds. */
+  readonly maxTokenAgeSeconds: number
+  /** Public verification keys indexed by the protected JWT key id. */
+  readonly keys: {
+    /** Unique protected JWT key id. */
+    readonly id: string
+    /** Signature algorithm accepted for this key. */
+    readonly algorithm: 'ES256' | 'RS256' | 'EdDSA'
+    /** SPKI PEM public key; private signing keys remain in the backend. */
+    readonly publicKey: string
+  }[]
+}
+```
+
+来源：[`packages/karaka/browser-auth/src/index.ts:12`](../packages/karaka/browser-auth/src/index.ts)
+
+<a id="karaka-aimcp-application"></a>
 
 ## `@karaka-ai/mcp-application`
 
@@ -3443,7 +3497,7 @@ export interface Config {
 
 来源：[`packages/karaka/mcp-application/src/index.ts:18`](../packages/karaka/mcp-application/src/index.ts)
 
-<a id="karakaserver-auth"></a>
+<a id="karaka-aiserver-auth"></a>
 
 ## `@karaka-ai/server-auth`
 
@@ -3469,7 +3523,7 @@ export interface ApplicationCredentialConfig {
 
 来源：[`packages/karaka/server-auth/src/index.ts:57`](../packages/karaka/server-auth/src/index.ts)
 
-<a id="karakatransport-http"></a>
+<a id="karaka-aitransport-http"></a>
 
 ## `@karaka-ai/transport-http`
 
@@ -3478,6 +3532,8 @@ export interface ApplicationCredentialConfig {
 ```ts config-catalog
 /** HTTP transport configuration. */
 export interface Config {
+  /** Register this transport as an application question recipient. Default: true. */
+  readonly handleQuestions?: boolean
   /** Route prefix mounted on the shared Host web server. */
   readonly path?: string
   /** Maximum accepted JSON request body size in bytes. */
@@ -3493,7 +3549,6 @@ export interface Config {
 
 - `@deepseek-ai/dsh-acp-app` — 需要 `cmdlineArgs`（[`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts)）
 - `@deepseek-ai/dsh-agent`（[`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts)）
-- `@deepseek-ai/dsh-api-remotes` — 需要 `typertGateway`（[`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts)）
 - `@deepseek-ai/dsh-api-workspace-controller` — 需要 `typert` · `workspaceRegistry`（[`packages/api/workspace-controller/src/index.ts`](../packages/api/workspace-controller/src/index.ts)）
 - `@deepseek-ai/dsh-authorization` — 需要 `credentials`（[`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts)）
 - `@deepseek-ai/dsh-client-locale`（[`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts)）

@@ -46,6 +46,8 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 
 -----
 
+生成的 `applicationAgents`、`applicationCreate`、`applicationPrompt`、`applicationHistory`、`applicationFollow` 和 `applicationCancel` 方法从 `connectionCaller` 获取完整 owner。浏览器请求包含聊天或消息字段，不能选择 owner。这些方法委托给后端入口使用的同一个带所有权检查的 application controller；部署在 [API Remotes](../remotes/README.zh.md) 中选择可访问的方法。
+
 <a id="model-experience"></a>
 ## 模型体验
 

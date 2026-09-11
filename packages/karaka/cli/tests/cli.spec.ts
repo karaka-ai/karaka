@@ -35,8 +35,9 @@ function fakeChild(): EventEmitter & {
 }
 
 describe('karaka init', () => {
-  it('reports the installed CLI version used by release probes', () => {
-    expect(karakaVersion).toBe('0.1.2-alpha.2')
+  it('keeps the CLI version aligned with the installed Agent', () => {
+    const agent = JSON.parse(readFileSync(new URL('../../agent/package.json', import.meta.url), 'utf8')) as { version: string }
+    expect(karakaVersion).toBe(agent.version)
   })
 
   it('creates Agent configuration without overwriting project edits', () => {
@@ -60,7 +61,7 @@ describe('karaka init', () => {
     initKarakaProject(target)
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('node_modules/\n.karaka/\n')
     expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))).toMatchObject({
-      dependencies: { '@karaka-ai/agent': '0.1.2-alpha.2', '@karaka-ai/cli': '0.1.2-alpha.2' },
+      dependencies: { '@karaka-ai/agent': karakaVersion, '@karaka-ai/cli': karakaVersion },
     })
   })
 

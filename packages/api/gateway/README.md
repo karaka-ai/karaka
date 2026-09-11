@@ -55,6 +55,8 @@ Every unary call resolves to `RemoteResult<T>` — `{ ok: true, value }` or `{ o
 
 Generated declaration merges provide the TypeScript API through the shared `TypertClientRemote` contract. The Client entry contains no Host Service or Host Cordis interface merge, and method lookup and invocation use ordinary objects and functions rather than a JavaScript Proxy.
 
+Application callers retain their verified identity in a separate Cordis context for each invocation. A registered access policy authorizes methods and event recipients; an absent policy denies application access. Approval results must match the authenticated owner, active client generation, and a pending event actually delivered to that client. Reconnect replays only authorized pending interactions. Credential expiry and policy withdrawal end application streams; ordinary Host authentication retains its full Host authority.
+
 <a id="model-experience"></a>
 ## Model Experience
 

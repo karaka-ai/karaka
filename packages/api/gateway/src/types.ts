@@ -3,11 +3,14 @@
  * @module @deepseek-ai/dsh-api-gateway/types
  */
 
+import type { ConnectionCaller } from '@deepseek-ai/dsh-client-connection'
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteEventHostInfo } from './stream-protocol.ts'
 
 /** One Remote method request after a carrier has decoded its envelope. */
 export interface InvokeRemoteRequest {
+  /** Verified transport caller; absent only for trusted same-process calls. */
+  readonly caller?: ConnectionCaller
   /** Remote namespace selected by the generated descriptor. */
   readonly namespace: string
   /** Exported Service method name. */
@@ -99,6 +102,8 @@ export interface TypertGatewayWireStream {
 
 /** Stable infrastructure and boundary failures emitted before or after business execution. */
 export type TypertGatewayErrorCode =
+  | 'gateway/forbidden'
+  | 'gateway/unauthorized'
   | 'gateway/ambiguous-endpoint'
   | 'gateway/arguments-invalid'
   | 'gateway/binding-invalid'
@@ -117,8 +122,22 @@ export type TypertGatewayErrorCode =
   | 'gateway/service-unavailable'
   | 'gateway/signature-invalid'
 
+/** Server-enforced application selection and event recipient rules. */
+export interface TypertAccessPolicy {
+  /** Whether the verified caller may invoke an endpoint. */
+  allows(caller: ConnectionCaller, endpoint: string): boolean
+  /** Whether the verified caller may receive this event or answer its interaction. */
+  receives(caller: ConnectionCaller, event: TypertRemoteEventDispatch): boolean
+}
+
 /** Host dispatcher consumed by Connection adapters. */
 export interface TypertGateway {
+  /**
+   * Install the application assembly's access rules; application callers are denied without them.
+   * @param policy - endpoint and event-recipient policy.
+   * @returns disposer withdrawing access.
+   */
+  registerAccessPolicy(policy: TypertAccessPolicy): () => void
   /** Carrier adapter shared by WebSocket and in-process transports. */
   readonly wireStream: TypertGatewayWireStream
 
