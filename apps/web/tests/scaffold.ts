@@ -1140,9 +1140,9 @@ function normalizeAria(snapshot: string, workspaceCwd: string, age: boolean): st
 }
 
 /**
- * Capture the region's aria snapshot at a settled milestone: poll until two
- * consecutive normalized captures are equal — a single-shot capture races the
- * last React commits.
+ * Capture after the caller's semantic readiness check, polling until two
+ * consecutive normalized captures are equal. Equality alone can describe a
+ * pending operation and does not prove that it completed.
  * @param page - the page under test.
  * @param selector - the region locator selector.
  * @param workspaceCwd - normalization input.

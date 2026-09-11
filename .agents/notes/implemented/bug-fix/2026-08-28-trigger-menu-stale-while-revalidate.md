@@ -12,7 +12,7 @@ Every keystroke inside an open `@`/`/` trigger menu launches a new candidates fe
 
 The reducer's `hit` case (`core/menu.ts`) now retains the previous query's rows and highlight, marking each group `pending` — stale-while-revalidate. Fresh opens (`seedGroups`) still start empty, so the first paint keeps its skeleton; `allReadyEmpty` still auto-closes after settle.
 
-Stale rows are display-only. `pick()` requires the candidate's group to be `ready`, and the `enter` arbitration checks the highlighted group's status before picking: during the pending window Enter is an explicit no-op (`'consumed'`) — it neither picks the stale row nor falls through to submit the draft. Tab already carried the same `ready` check for drilling.
+Stale rows are display-only and expose `aria-disabled="true"` until their group is ready. `pick()` requires the candidate's group to be `ready`, and the `enter` arbitration checks the highlighted group's status before picking: during the pending window Enter is an explicit no-op (`'consumed'`) — it neither picks the stale row nor falls through to submit the draft. Tab already carried the same `ready` check for drilling.
 
 ## Alternatives considered
 
@@ -24,4 +24,4 @@ Stale rows are display-only. `pick()` requires the candidate's group to be `read
 
 ## Consequences
 
-Refinement keystrokes no longer flicker; the list content swaps in place when the fetch settles. The costs: Enter is dead for the pending window (pressing it again after settle picks normally), and rows are index-keyed, so a settle swaps DOM node content in place — pointer tests must wait for a stale-only row to disappear before clicking (`reference-composer.e2e.ts` polls `folderx/` away). A pre-existing highlight blink during refinement remains open and is deferred to a follow-up.
+Refinement keeps the list visible and swaps its content in place when the fetch settles. Enter is consumed during the pending window; a later keypress picks normally. Rows are index-keyed, so tests wait for an enabled matching option before acting, and keyboard picks require the matching highlight. Browser regressions hold a refined Host lookup while the old folder row remains visible, verify it is disabled, then release the lookup and exercise Enter and Tab on the enabled highlight. Controller regressions separately prove the pending-highlight no-op. A pre-existing highlight blink during refinement remains deferred.

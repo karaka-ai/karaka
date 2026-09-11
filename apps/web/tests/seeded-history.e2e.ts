@@ -503,18 +503,46 @@ describe('web e2e: seeded history renders through cold resume', () => {
     // where neither half repeats the other (the dispatched `/` and its
     // argument stay out of the title, and the settlement text never restates
     // the command's own name).
-    await page.getByRole('button', { name: 'Access mode, current: Workspace Write' }).click()
-    await page.getByRole('menuitem', { name: 'Read Only' }).click()
-    await page.getByRole('button', { name: 'Access mode, current: Read Only' }).waitFor({ timeout: 10_000 })
-    // Scoped to the row itself, so unrelated page text that happens to read
-    // `permission` (a future resident slash menu) cannot satisfy or break it.
-    const row = page.locator('[data-variant="others"]').filter({ hasText: 'preset read-only' })
-    await expect.poll(() => row.count(), { timeout: 10_000 }).toBe(1)
-    expect(await row.getByText('permission', { exact: true }).count()).toBe(1)
-    expect(await row.getByText('/permission read-only', { exact: true }).count()).toBe(0)
-    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
-      .split(SEED_ID).join('{{seededId}}')
-    await compareOrRefreshGolden(COMMAND_ROW_EXPECTED, snapshot, MODE)
+    const completion = Promise.withResolvers<undefined>()
+    const entered = Promise.withResolvers<undefined>()
+    const execute = scaffold.ctx.commands.execute.bind(scaffold.ctx.commands)
+    const command = vi.spyOn(scaffold.ctx.commands, 'execute').mockImplementation(async (...args) => {
+      const result = await execute(...args)
+      if (args[1] === '/permission read-only') {
+        entered.resolve(undefined)
+        await completion.promise
+      }
+      return result
+    })
+    try {
+      await page.getByRole('button', { name: 'Access mode, current: Workspace Write' }).click()
+      await page.getByRole('menuitem', { name: 'Read Only' }).click()
+      const access = page.getByRole('button', { name: 'Access mode, current: Read Only' })
+      await access.waitFor({ timeout: 10_000 })
+      // Scoped to the row itself, so unrelated page text that happens to read
+      // `permission` (a future resident slash menu) cannot satisfy or break it.
+      const row = page.locator('[data-variant="others"]').filter({ hasText: 'preset read-only' })
+      await expect.poll(() => row.count(), { timeout: 10_000 }).toBe(1)
+      expect(await row.getByText('permission', { exact: true }).count()).toBe(1)
+      expect(await row.getByText('/permission read-only', { exact: true }).count()).toBe(0)
+      await entered.promise
+      expect(await access.isDisabled()).toBe(true)
+      const pending = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
+      expect(pending).toContain('button "Access mode, current: Read Only" [disabled]')
+      completion.resolve(undefined)
+      await expect.poll(() => access.isEnabled(), { timeout: 10_000 }).toBe(true)
+      const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
+        .split(SEED_ID).join('{{seededId}}')
+      await compareOrRefreshGolden(COMMAND_ROW_EXPECTED, snapshot, MODE)
+    } finally {
+      completion.resolve(undefined)
+      try {
+        // Vitest's result union erases this async method's return type.
+        await Promise.all(command.mock.results.map(result => result.value as ReturnType<typeof execute>))
+      } finally {
+        command.mockRestore()
+      }
+    }
   }, 60_000)
 
   it.skipIf(MODE === 'record')('reports full feedback correlation ids in an expandable two-line row', async () => {

@@ -6,9 +6,9 @@
  * retains them across a query refinement) and falls back to two skeleton
  * rows only while it has none; pointer picks route back through
  * the service (combobox pattern — focus never leaves the textarea, so rows
- * are mousedown-handled and the highlight is exposed via
- * aria-activedescendant on the listbox). A source publishing crumbs gets a
- * breadcrumb header pinned above the scrolling list.
+ * expose aria-disabled while pending; mousedown handles picks and
+ * aria-activedescendant on the listbox exposes the highlight). A source gets a
+ * breadcrumb header pinned above the scrolling list when it publishes crumbs.
  */
 import { Fragment, useEffect, useRef, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
@@ -135,6 +135,7 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                         type="button"
                         role="option"
                         aria-selected={active}
+                        aria-disabled={group.status === 'pending' || undefined}
                         className={clsx(css.item, active && css.active)}
                         // mousedown, not click: the textarea keeps focus (combobox
                         // pattern) — preventing default stops the focus steal, and the

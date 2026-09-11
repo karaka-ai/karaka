@@ -12,7 +12,7 @@ Status: implemented
 
 reducer 的 `hit` 分支(`core/menu.ts`)现在保留上一次查询的行和高亮,并把各组标记为 `pending`——即 stale-while-revalidate。首次打开(`seedGroups`)仍从空开始,首帧保持骨架屏;`allReadyEmpty` 仍在结算后自动关闭。
 
-旧行仅用于显示。`pick()` 要求候选所在组为 `ready`,`enter` 仲裁在 pick 前检查高亮组的状态:pending 窗口内 Enter 是显式 no-op(`'consumed'`)——既不选中旧行,也不落到草稿发送。Tab 的下钻早已带有相同的 `ready` 检查。
+旧行仅用于显示，并以 `aria-disabled="true"` 标记，直至所在分组就绪。`pick()` 要求候选所在组为 `ready`,`enter` 仲裁在 pick 前检查高亮组的状态:pending 窗口内 Enter 是显式 no-op(`'consumed'`)——既不选中旧行,也不落到草稿发送。Tab 的下钻早已带有相同的 `ready` 检查。
 
 ## Alternatives considered
 
@@ -24,4 +24,4 @@ reducer 的 `hit` 分支(`core/menu.ts`)现在保留上一次查询的行和高�
 
 ## Consequences
 
-细化按键不再闪烁;请求结算时列表内容原位替换。代价:pending 窗口内 Enter 失效(结算后再按即正常选中);行按 index 作为 key,结算时 DOM 节点内容原位替换——指针类测试点击前必须等待仅旧查询匹配的行消失(`reference-composer.e2e.ts` 轮询 `folderx/` 消失)。细化期间已存在的高亮闪动问题仍未解决,留待后续 PR。
+细化查询时列表保持可见，请求结算后原位替换内容。pending 窗口内 Enter 被消费；稍后再次按键即可正常选取。行按 index 作为 key，因此测试操作前等待匹配的选项可用，键盘选取还要求对应的高亮。浏览器回归测试在旧文件夹行仍可见时暂停细化后的 Host 查询，验证该行不可用，再放行查询并在可用的高亮选项上验证 Enter 和 Tab。Controller 回归测试单独验证 pending 高亮下的无操作行为。细化期间已存在的高亮闪动问题仍留待后续处理。
