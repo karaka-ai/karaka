@@ -59,7 +59,7 @@ Karaka 通过 `ctx.serverAuth` 认证应用后端；后端 SDK 通过 HTTP/SSE t
 
 应用工具沿相反方向传输。SDK 在应用已有的 Node HTTP 服务器上挂载带认证的 MCP handler。`@karaka-ai/mcp-application` 用出站服务器认证、Session 身份转发和 Agent Preset 工具选择来专门化通用 MCP 客户端。每个应用自有工具都保持隐藏，直到所选 preset 在 `allow` 列表中显式点名。应用在分派已注册 callback 前验证 Karaka 的凭据。
 
-`karaka start` 运行嵌入 `@karaka-ai/agent` 的 Loader、Agent Presets、ReactLoopAgent、模型 adapter、工具 registry、Session log、SQLite 持久化、认证和 HTTP transport。默认组合禁用本地文件系统和子进程工具。一次启动拥有一个 Node 进程；副本数、副本间路由和 TLS 终止仍由部署负责。
+`karaka start` 运行嵌入 `@karaka-ai/agent` 的 Loader、Agent Presets、ReactLoopAgent、模型 adapter、工具 registry、Session log、JSONL 持久化、认证和 HTTP transport。默认组合禁用本地文件系统和子进程工具。一次启动拥有一个 Node 进程；副本数、副本间路由和 TLS 终止仍由部署负责。
 
 ## 核心包
 

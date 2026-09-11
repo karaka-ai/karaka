@@ -69,7 +69,7 @@ Relative names resolve beside the composition file, so an Agent Preset uses `../
 
 The executable loads the bundled base composition, applies Karaka's server patch, then applies the deployment patch named by `--config`. The plugin registry maps every shipped composition name to a statically imported implementation before the Cordis Loader mounts any row. Exact registry aliases take precedence over Node package resolution. Relative plugin files retain the composition directory as their base, while bare external packages use the server project's configuration URL as their Node resolution base.
 
-The build emits one runtime chunk set shared by `lib/bin.js`, the Loader registry, and the entries under `lib/public/`, so services retain one JavaScript identity. Public declaration facades share one private declaration tree whose cross-package references are relative and contain no DSH package names. SQLite migrations and worker resources are shipped beside the executable because those implementations locate their assets through `import.meta.url`.
+The build emits one runtime chunk set shared by `lib/bin.js`, the Loader registry, and the entries under `lib/public/`, so services retain one JavaScript identity. Public declaration facades share one private declaration tree whose cross-package references are relative and contain no DSH package names. Query-index schema migrations and worker resources are shipped beside the executable because those implementations locate their assets through `import.meta.url`.
 
 | File | Role |
 |---|---|
@@ -118,3 +118,5 @@ The runtime adds no fixed model text itself; changing an Agent composition can c
 None.
 
 </details>
+
+Run one active Karaka writer process per Karaka home and Session root. Replicas need separate roots and routing that keeps each Session with its owner process; JSONL append does not fence concurrent writers. New sessions use JSONL. This cutover does not read, migrate, or delete the former `karaka-sessions.sqlite` database.

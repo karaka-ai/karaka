@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-25-persistence-latency-and-page-size.md
+2026-08-25-persistence-latency-and-page-size.md: 55fd31300bfeb3ca32b39ea64794006739c4a2ec
+2026-08-25-persistence-latency-and-page-size.zh.md: 3246446e0ef985ebfca7c22d54e3a9a6753303c3

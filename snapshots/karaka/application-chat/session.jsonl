@@ -1,4 +1,4 @@
-{"type":"session","version":0,"id":"{{session:1}}","createdAt":0,"agentPreset":"support","applicationOwner":{"applicationId":"billing","tenantId":"tenant-1","userId":"user-1"}}
+{"type":"session","version":0,"id":"{{session:1}}","createdAt":0,"delegationDepth":0,"agentPreset":"support","applicationOwner":{"applicationId":"billing","tenantId":"tenant-1","userId":"user-1"}}
 {"type":"permission/preset","data":{"preset":"workspace-write"}}
 {"type":"sandbox/mode","data":{"mode":"workspace-write"}}
 {"type":"approval/policy","data":{"policy":"ask"}}

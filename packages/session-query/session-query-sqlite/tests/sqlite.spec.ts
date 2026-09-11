@@ -17,7 +17,6 @@ import type { SessionEvent, SessionHeader, SessionId as SessionIdType } from '@d
 import SessionPersistence, { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import SqliteSessionPersistence from '@deepseek-ai/dsh-session-persistence-sqlite'
 import SqliteSessionQueryEngine, {
   SESSION_QUERY_SQLITE_SCHEMA_VERSION,
 } from '@deepseek-ai/dsh-session-query-sqlite'
@@ -46,11 +45,9 @@ async function temporaryPath(name = 'search.db'): Promise<string> {
   return join(directory, name)
 }
 
-async function mountPersistence(ctx: Context, path: string, kind: 'JSONL' | 'SQLite'): Promise<Fiber> {
+async function mountPersistence(ctx: Context, path: string): Promise<Fiber> {
   persistenceContexts.push(ctx)
-  return kind === 'SQLite'
-    ? ctx.plugin(SqliteSessionPersistence, { path })
-    : ctx.plugin(JsonlSessionPersistence, { root: path, compression: 'none' })
+  return ctx.plugin(JsonlSessionPersistence, { root: path, compression: 'none' })
 }
 
 function header(id: string, createdAt = 1, extra: Partial<SessionHeader> = {}): SessionHeader {
@@ -1825,13 +1822,13 @@ describe('SQLite schema, cancellation, and real persistence integration', () => 
     await persistence.dispose()
   })
 
-  it.each(['JSONL', 'SQLite'] as const)('combines real %s persistence with SQLite search keylessly', async (kind) => {
+  it('combines real JSONL persistence with SQLite search keylessly', async () => {
     const persistenceRoot = await temporaryPath('canonical')
     const searchPath = await temporaryPath('derived.db')
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjectionRegistry)
-    const persistence = await mountPersistence(ctx, persistenceRoot, kind)
+    const persistence = await mountPersistence(ctx, persistenceRoot)
     const search = await ctx.plugin(SqliteSessionQueryEngine, { path: searchPath })
     const meta = header('real', 10, { cwd: '/work' })
     await ctx.sessionPersistence.create(meta)
@@ -1848,7 +1845,7 @@ describe('SQLite schema, cancellation, and real persistence integration', () => 
     await persistence.dispose()
   })
 
-  it.each(['JSONL', 'SQLite'] as const)('reconciles colliding revisions when the index reopens against another %s store', async (kind) => {
+  it('reconciles colliding revisions when the index reopens against another JSONL store', async () => {
     const persistenceRootA = await temporaryPath('canonical-a')
     const persistenceRootB = await temporaryPath('canonical-b')
     const searchPath = await temporaryPath('derived-collision.db')
@@ -1857,7 +1854,7 @@ describe('SQLite schema, cancellation, and real persistence integration', () => 
     const first = new Context()
     await first.plugin(SessionStore)
     await first.plugin(SessionProjectionRegistry)
-    const persistenceA = await mountPersistence(first, persistenceRootA, kind)
+    const persistenceA = await mountPersistence(first, persistenceRootA)
     await first.sessionPersistence.create(shared)
     await first.sessionPersistence.append(shared.id, messageEvents('alpha source'))
     const inspectA = vi.spyOn(first.sessionPersistence, 'inspect')
@@ -1871,7 +1868,7 @@ describe('SQLite schema, cancellation, and real persistence integration', () => 
     const reopened = new Context()
     await reopened.plugin(SessionStore)
     await reopened.plugin(SessionProjectionRegistry)
-    const persistenceAAgain = await mountPersistence(reopened, persistenceRootA, kind)
+    const persistenceAAgain = await mountPersistence(reopened, persistenceRootA)
     const reopenedInspect = vi.spyOn(reopened.sessionPersistence, 'inspect')
     const searchAAgain = await reopened.plugin(SqliteSessionQueryEngine, { path: searchPath })
     await expect(reopened.sessionQuery.searchSessions({ query: 'alpha' }))
@@ -1883,7 +1880,7 @@ describe('SQLite schema, cancellation, and real persistence integration', () => 
     const second = new Context()
     await second.plugin(SessionStore)
     await second.plugin(SessionProjectionRegistry)
-    const persistenceB = await mountPersistence(second, persistenceRootB, kind)
+    const persistenceB = await mountPersistence(second, persistenceRootB)
     await second.sessionPersistence.create(shared)
     await second.sessionPersistence.append(shared.id, messageEvents('bravo source'))
     const inspectB = vi.spyOn(second.sessionPersistence, 'inspect')

@@ -59,7 +59,7 @@ Karaka authenticates the application backend through `ctx.serverAuth`; the backe
 
 Application tools travel in the opposite direction. The SDK mounts an authenticated MCP handler on the application's existing Node HTTP server. `@karaka-ai/mcp-application` specializes the generic MCP client with outbound server authentication, Session identity forwarding, and Agent Preset tool selection. Every application-owned tool remains hidden until the selected preset explicitly names it in an `allow` list. The application verifies Karaka's credential before dispatching the registered callback.
 
-`karaka start` runs the Loader, Agent Presets, ReactLoopAgent, model adapters, tool registry, Session log, SQLite persistence, authentication, and HTTP transport embedded in `@karaka-ai/agent`. The default composition disables local filesystem and subprocess tools. One launch owns one Node process; replica count, routing between replicas, and TLS termination remain deployment responsibilities.
+`karaka start` runs the Loader, Agent Presets, ReactLoopAgent, model adapters, tool registry, Session log, JSONL persistence, authentication, and HTTP transport embedded in `@karaka-ai/agent`. The default composition disables local filesystem and subprocess tools. One launch owns one Node process; replica count, routing between replicas, and TLS termination remain deployment responsibilities.
 
 ## Core packages
 

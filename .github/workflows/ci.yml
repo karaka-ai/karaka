@@ -595,7 +595,7 @@ jobs:
           packages/workflow/workflow-worker-thread/tests/workflow-worker-thread.spec.ts
           packages/workflow/tool-ralph/tests/integration.spec.ts
           packages/subprocess/subprocess-local/tests/process-exit.spec.ts
-          packages/session/session-persistence-sqlite/tests/differential.spec.ts
+          packages/session/session-persistence-jsonl/tests/jsonl.spec.ts
 
   windows-observational:
     if: github.event_name == 'pull_request'

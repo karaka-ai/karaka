@@ -3,12 +3,12 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore from '@deepseek-ai/dsh-session'
-import SessionPersistenceSqlite from '@deepseek-ai/dsh-session-persistence-sqlite'
+import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import {
   formatSystemPromptSnapshot,
   formatToolSchemasSnapshot,
@@ -37,7 +37,7 @@ interface JsonRecord {
 interface RunningKaraka {
   readonly child: ResultPromise
   readonly endpoint: string
-  readonly database: string
+  readonly sessionRoot: string
 }
 
 function records(log: string): JsonRecord[] {
@@ -212,7 +212,7 @@ async function startKaraka(project: string): Promise<RunningKaraka> {
   return {
     child,
     endpoint,
-    database: join(prepared.home, 'karaka-sessions.sqlite'),
+    sessionRoot: join(prepared.home, 'sessions'),
   }
 }
 
@@ -236,16 +236,28 @@ async function stopKaraka(running: RunningKaraka): Promise<void> {
   expect(result.exitCode, `Karaka shutdown stderr:\n${result.stderr}`).toBe(0)
 }
 
-async function readPersistedSession(database: string): Promise<string> {
+async function readPersistedSession(root: string): Promise<string> {
   const ctx = new Context()
-  await ctx.plugin(SessionStore)
-  await ctx.plugin(SessionPersistenceSqlite, { path: database })
   try {
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionPersistenceJsonl, { root })
     const headers = await ctx.sessionPersistence.list()
     expect(headers).toHaveLength(1)
     const header = headers[0]
-    if (header === undefined) throw new Error('Karaka snapshot database has no session')
-    const loaded = await ctx.sessionPersistence.load(header.id)
+    if (header === undefined) throw new Error('Karaka snapshot JSONL root has no session')
+    const backend = ctx.sessionPersistence as SessionPersistenceJsonl
+    const location = backend.locate(header)
+    expect(location.kind).toBe('jsonl')
+    expect(location.path.startsWith(`${root}${sep}`)).toBe(true)
+    expect(location.path).toMatch(/\.jsonl\.zstd$/u)
+    const physical = await readFile(location.path)
+    expect(physical.subarray(0, 4)).toEqual(Buffer.from([0x28, 0xb5, 0x2f, 0xfd]))
+    expect(existsSync(join(dirname(root), 'karaka-sessions.sqlite'))).toBe(false)
+    // Read stored events directly: load/inspect may synthesize crash-recovery events.
+    const loaded = await backend.loadStored(header.id)
+    if (loaded === undefined) throw new Error('Karaka snapshot session has no stored JSONL')
+    expect(loaded.tornMarker).toBeUndefined()
+    await expect(readFile(location.path)).resolves.toEqual(physical)
     return [JSON.stringify({ type: 'session', ...loaded.meta }), ...loaded.events.map(event => JSON.stringify(event)), ''].join('\n')
   } finally {
     await ctx.fiber.dispose()
@@ -324,7 +336,7 @@ describe('Karaka recorded-session snapshot', () => {
       }
       expect(history.events).toContainEqual(expect.objectContaining({ type: 'assistant-message' }))
       await stopKaraka(running)
-      const log = await readPersistedSession(running.database)
+      const log = await readPersistedSession(running.sessionRoot)
       expect(records(log)[0]).toMatchObject({
         agentPreset: 'support',
         applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' },
@@ -351,7 +363,7 @@ describe('Karaka recorded-session snapshot', () => {
       })).resolves.toMatchObject({ accepted: true, duplicate: true })
       await stopKaraka(running)
       const original = records(log)
-      const resumed = records(await readPersistedSession(running.database))
+      const resumed = records(await readPersistedSession(running.sessionRoot))
       expect(resumed.slice(0, original.length)).toEqual(original)
       // Agent activation records the restored seed once; a duplicate adds no message or turn.
       expect(resumed.slice(original.length)).toEqual([{

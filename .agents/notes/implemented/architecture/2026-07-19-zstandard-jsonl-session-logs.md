@@ -40,6 +40,8 @@ The CLI, ACP, and stdio app bundles expose symmetric `persistenceCompression` pa
 
 The shared persistence and coordinator contracts run against both encodings. Backend tests cover standard framing and checksum interoperability, header-only listing, append rollback, encoding mismatch rejection, complete-frame corruption, and final-frame tears through headers, blocks, and checksum trailers. Default runtime, built-bin, headless, ACP, and Python smokes assert the compressed suffix and Zstandard magic or decode the header; raw-content tests opt out explicitly.
 
+The [historical compression benchmark](../../archived/architecture/2026-08-25-persistence-latency-and-page-size.md) rejected level 19: it saved another 12.1% of bytes but increased full-write time by 67.0% and fork time by 129.8%. This evidence supports the standard compression level; the retired SQLite results do not describe a current Session backend.
+
 ## Alternatives considered
 
 - **One frame per JSONL record** — rejected because it multiplies frame headers and checksums for high-volume chunk events and makes a physical boundary unrelated to the durable append batch.

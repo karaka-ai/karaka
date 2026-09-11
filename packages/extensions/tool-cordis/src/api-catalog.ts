@@ -3692,6 +3692,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
   },
   {
+    name: 'ChunkRow',
+    declaration: 'export type ChunkRow = {\n    type: \'text-chunks\';\n    seq0: number;\n    time0: number;\n    data: TextRunData;\n} | {\n    type: \'reasoning-chunks\';\n    seq0: number;\n    time0: number;\n    data: TextRunData;\n} | {\n    type: \'tool-call-chunks\';\n    seq0: number;\n    time0: number;\n    data: ToolCallRunData;\n};',
+  },
+  {
     name: 'ChunkRowEvent',
     declaration: 'export type ChunkRowEvent = {\n    [Kind in ChunkRow[\'type\']]: {\n        readonly type: `chunkrow/${Kind}`;\n        readonly seq: number;\n        readonly time: number;\n        readonly data: Extract<ChunkRow, {\n            readonly type: Kind;\n        }>[\'data\'];\n    };\n}[ChunkRow[\'type\']];',
   },
