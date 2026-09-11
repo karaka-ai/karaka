@@ -163,6 +163,14 @@ describe('CI workflow', () => {
       isRecord(step) && typeof step.run === 'string'
     ))
     expect(coverageCommands.map(step => step.run)).toContain('pnpm run check:ci:coverage')
+    // Windows coverage runs zero-build like the Linux lane: workspace imports
+    // resolve to src through the tsconfig paths map, and the lib-consuming
+    // suites (webworker-packer image-loadable, webworker-runtime
+    // transform-corpus, client ui-trajectory client-bundle) self-skip on
+    // unbuilt checkouts. The regex catches a regression spelled as
+    // 'corepack pnpm run build' or folded into a multi-line run block, which
+    // an exact string match would miss.
+    expect(coverageCommands.every(step => !/\bpnpm\s+run\s+build(?:\s|$)/.test(step.run))).toBe(true)
 
     // windows-native-tests runs the Windows-specific specs.
     expect(windowsNativeTests.name).toBe('windows node 24 / native tests')
@@ -208,6 +216,14 @@ describe('CI workflow', () => {
     expect(serialInstall!.run.split('\n').map(line => line.trim())).toContain('} else {')
     expect(serialInstall!.run.split('\n').map(line => line.trim())).toContain('pnpm install --frozen-lockfile')
     expect(serialInstall!.run).not.toContain('$cloneFlag')
+    // The unsharded reference runs the whole coverage inventory at the same
+    // per-test budget the PR coverage lane grants; the default 5000ms times
+    // out load-sensitive store scans (e.g. gen-third-party-notices).
+    const serialGate = serialSteps.find((step): step is Record<string, unknown> & { env?: Record<string, unknown> } => (
+      isRecord(step) && step.name === 'Run complete unsharded Windows gate inventory serially'
+    ))
+    expect(serialGate).toBeDefined()
+    expect(serialGate!.env).toMatchObject({ DSH_COVERAGE_TEST_TIMEOUT_MS: '90000' })
 
     // Aggregate: Wine and the required split native jobs are needed;
     // windows-coverage is temporarily non-blocking while Windows ACP
