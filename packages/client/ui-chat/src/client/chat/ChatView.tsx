@@ -321,6 +321,11 @@ export function ChatView({
       return
     }
     const el = scrollerOf(local)
+    if (el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD + 1) {
+      const latest = turnNavigationItems.at(-1)?.turn ?? first.turn
+      setActiveTurn(current => current === latest ? current : latest)
+      return
+    }
     const readingLine = el.getBoundingClientRect().top + Math.min(96, el.clientHeight * 0.2)
     const reading = turnAtLine(local, readingLine)
     // No row reaches the line yet: the flow head still owns the mark. Otherwise
@@ -332,9 +337,6 @@ export function ChatView({
         if (item.turn > reading) break
         next = item.turn
       }
-    }
-    if (el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD + 1) {
-      next = turnNavigationItems.at(-1)?.turn ?? next
     }
     setActiveTurn(current => current === next ? current : next)
   }, [turnNavigationItems])

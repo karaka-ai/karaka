@@ -2179,6 +2179,58 @@ describe('ChatView', () => {
     expect(observe).toHaveBeenCalledTimes(1)
   })
 
+  it('pinned dynamic-height updates select the latest Turn without reading row geometry', () => {
+    let notify: (() => void) | undefined
+    let nextFrame = 0
+    const frames = new Map<number, FrameRequestCallback>()
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      nextFrame += 1
+      frames.set(nextFrame, callback)
+      return nextFrame
+    })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id) })
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        notify = () => { callback([], this as unknown as ResizeObserver) }
+      }
+
+      observe = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ top: 0, bottom: 40 } as DOMRect)
+    const h = makeHarness({
+      nodes: [
+        userInTurn(1, 'first', 1), assistant(2, 'first answer', 1),
+        userInTurn(4, 'second', 2), assistant(5, 'second answer', 2),
+      ],
+      turnEnds: new Map([[1, 3], [2, 6]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    const scroller = view.container.querySelector('[class*="scroll"]') as HTMLDivElement
+    const metrics = installScrollMetrics(scroller, 1_000, 300)
+    scroller.scrollTop = 700
+    act(() => {
+      const pending = [...frames.values()]
+      frames.clear()
+      for (const callback of pending) callback(0)
+    })
+    rect.mockClear()
+
+    metrics.setHeight(1_200)
+    act(() => { notify?.() })
+    act(() => {
+      const pending = [...frames.values()]
+      frames.clear()
+      for (const callback of pending) callback(0)
+    })
+
+    expect(scroller.scrollTop).toBe(900)
+    expect(view.getByRole('button', { name: '跳转到第 2 轮' }).getAttribute('aria-current')).toBe('true')
+    expect(rect).not.toHaveBeenCalled()
+  })
+
   it('entering the at-bottom threshold does not snap the remaining scroll distance', () => {
     const h = makeHarness({ nodes: [user(1, 'q'), assistant(2, 'a')] })
     const view = render(<h.ChatView {...h.props} />)
