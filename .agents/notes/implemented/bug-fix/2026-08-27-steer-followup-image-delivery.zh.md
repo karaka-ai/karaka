@@ -40,6 +40,8 @@ Host 测试覆盖 `mode: 'steer'` 的图片准入；subagent control 测试覆�
 
 ## Consequences
 
+Host 检查目录对跨包打印完全相同的类型声明保留一份。同名但不同的声明仍因歧义而排除；比较使用显示截断前的完整声明。这使 Session Controller 和子代理的 Host 目录保留共享上传字段，同时 Client 保留完整的 wire 声明。生成器回归测试覆盖相同、冲突和长声明；Host 与 Client 检查测试验证提示字段。
+
 Karaka 应用提示通过已验证所有者的 `promptApplication` 路由使用共享图片准入。应用控制器在存储准入前验证完整的应用、租户和用户身份；重复请求 ID 不会再次存储或投递图片。聚焦的应用测试使用真实命令控制器，验证有序内容转换以及这些所有权和重试保证。
 
 图片序列化较慢时，乐观消息停留在选定的 transcript、QueueDock 或 pending-steering 区域，直到与 Host 状态交接。subagent 包依赖 `dsh-attachment`，并可选读取 `ctx.llm`。整批持久化后投递被拒绝的图片按现有保留规则保持为不可达的内容寻址对象。队列缩略图对每张排队图片增加一次授权附件读取，与会话记录缓存共享。上述延后处理的轮次收尾竞态可能使已接受的消息保持 pending。
