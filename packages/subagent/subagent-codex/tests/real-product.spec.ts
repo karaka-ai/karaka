@@ -481,26 +481,22 @@ describe('real @openai/codex 0.149.1 product', () => {
     const sideEffect = 'bypass-side-effect'
     const { harness, fixture } = await realHarness((workspace): readonly ResponsesBehavior[] => {
       const target = join(workspace, sideEffect)
+      const release = join(workspace, 'release-command')
       const command = process.platform === 'win32'
-        ? `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "Set-Content -LiteralPath '${target.replaceAll("'", "''")}' -Value 'bypass' -NoNewline"`
-        : `printf bypass > ${JSON.stringify(target)}`
+        ? `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "while (-not (Test-Path -LiteralPath '${release.replaceAll("'", "''")}')) { Start-Sleep -Milliseconds 20 }; Set-Content -LiteralPath '${target.replaceAll("'", "''")}' -Value 'bypass' -NoNewline"`
+        : `while [ ! -f ${JSON.stringify(release)} ]; do sleep 0.02; done; printf bypass > ${JSON.stringify(target)}`
       const commandCalls = [
         {
           name: 'exec_command',
           arguments: {
             cmd: command,
-          },
-        },
-        {
-          name: 'shell_command',
-          arguments: {
-            command,
+            yield_time_ms: 1,
           },
         },
       ] as const
       return [
         { kind: 'advertisedFunctionCall', choices: commandCalls },
-        { kind: 'complete', text: 'bypass complete' },
+        { kind: 'completeAfterCommand', text: 'bypass complete' },
       ]
     }, 'dangerously-bypass-approvals-and-sandbox')
     const target = join(harness.workspace, sideEffect)
@@ -509,6 +505,10 @@ describe('real @openai/codex 0.149.1 product', () => {
       parent: harness.parent,
       signal: new AbortController().signal,
     })
+    // Both exec_command and its first write_stdin return while the write is blocked.
+    await expect.poll(() => fixture.requests.length, { timeout: 30_000 }).toBeGreaterThanOrEqual(3)
+    expect(existsSync(target)).toBe(false)
+    writeFileSync(join(harness.workspace, 'release-command'), '')
     await expect(run.result).resolves.toEqual({
       output: [{ type: 'text', text: 'bypass complete' }],
       stopReason: 'completed',

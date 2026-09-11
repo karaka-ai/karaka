@@ -48,6 +48,10 @@ Shiki disables lazy TextMate-regex compilation and warms each boot grammar befor
 
 **Use a 32-core or larger runner.** The 32-core comparison improved aggregate gate time by only 1.47 seconds over 16 cores and failed in Node's CJS lexer; earlier high-concurrency 32-core and 64-core trials failed in the same class. More capacity therefore added allocation cost without a stable end-to-end gain.
 
+The Codex bypass fixture follows an advertised `exec_command` session through `write_stdin` until the command reports a successful exit. A private release file blocks the native PowerShell or POSIX write until both command calls have returned a running session; the final model answer cannot stand in for command completion. The fixture then checks the exact file contents and waits for whole-tree disposal.
+
+The npm resolution specs retain the lane's 90-second case budget, reserving 10 seconds for the benchmark's process termination, registry closure, and temporary-root removal. Local runs retain the 10-second child deadline with the same cleanup margin. Timeout diagnostics preserve the child's exit facts, elapsed time, captured output, and registry request counts. This budget allocation does not identify the cause of an individual slow npm launch.
+
 ## Consequences
 
 Wine preserves the required aggregate's existing critical path and job identity. Native coverage and observational results can still be pending or red when `all checks passed` turns green, so branch protection consumes Wine plus the targeted native build and process checks while reviewers and follow-up automation consume the remaining native results.
