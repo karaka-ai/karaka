@@ -23,6 +23,8 @@ kind: "package-reference"
 
 `path` 选择路由前缀，默认为 `/v1`。`maxBodyBytes` 限制 JSON 请求体，默认为 1 MiB。流会在提交 SSE header 前验证聊天 owner，并在客户端断开时中止其 Session follower。每个路由注册、待回答交互和活动流都由插件 effect 所有，并在 dispose 时结束。
 
+`handleQuestions` 默认为 `true`。当已认证的 DSH Remote 连接负责人工交互时，将其设为 `false`。这仅禁用本插件的 question handler 注册；后端聊天路由仍然可用。
+
 <a id="model-experience"></a>
 ## 模型体验
 

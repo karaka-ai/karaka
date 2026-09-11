@@ -238,7 +238,7 @@ class FakeWebSocket extends EventTarget {
   readonly closedWith: { readonly code?: number; readonly reason?: string }[] = []
   readyState = FakeWebSocket.CONNECTING
 
-  constructor(url: string | URL) {
+  constructor(url: string | URL, readonly protocols?: string[]) {
     super()
     this.url = String(url)
     FakeWebSocket.sockets.push(this)
@@ -2283,6 +2283,51 @@ describe('Client Typert API', () => {
 })
 
 describe('Remote stream client carrier lifecycle', () => {
+  it('renews asynchronous credentials on physical reconnect', async () => {
+    await withFakeWebSocket(undefined, async () => {
+      let token = 'first'
+      const client = new RemoteStreamMuxClient(async () => ({ url: 'wss://application.example/api/remote.mux', protocols: ['dsh', token] }))
+      try {
+        client.start()
+        await vi.waitFor(() => { expect(FakeWebSocket.sockets).toHaveLength(1) })
+        expect(FakeWebSocket.sockets[0]).toMatchObject({ url: 'wss://application.example/api/remote.mux', protocols: ['dsh', 'first'] })
+        token = 'second'
+        client.reconnect()
+        await vi.waitFor(() => { expect(FakeWebSocket.sockets).toHaveLength(2) })
+        expect(FakeWebSocket.sockets[1]!.protocols).toEqual(['dsh', 'second'])
+      } finally { await client.close() }
+    })
+  })
+
+  it('aborts pending credential acquisition on disposal and ignores its late result', async () => {
+    await withFakeWebSocket(undefined, async () => {
+      const credential = Promise.withResolvers<{ url: string; protocols: string[] }>()
+      let signal: AbortSignal | undefined
+      const client = new RemoteStreamMuxClient((_path, pendingSignal) => {
+        signal = pendingSignal
+        return credential.promise
+      })
+      client.start()
+      await client.close()
+      expect(signal?.aborted).toBe(true)
+      credential.resolve({ url: 'wss://application.example', protocols: ['dsh'] })
+      await Promise.resolve()
+      expect(FakeWebSocket.sockets).toHaveLength(0)
+    })
+  })
+
+  it('reports credential acquisition failures to pending streams', async () => {
+    await withFakeWebSocket(undefined, async () => {
+      const failure = new Error('credential backend unavailable')
+      const client = new RemoteStreamMuxClient(() => Promise.reject(failure))
+      try {
+        client.start()
+        await expect(client.open('feed/follow', {}, new AbortController().signal).next()).rejects.toBe(failure)
+        expect(FakeWebSocket.sockets).toHaveLength(0)
+      } finally { await client.close() }
+    })
+  })
+
   it('requires the transport owner to start the physical carrier', async () => {
     const client = new RemoteStreamMuxClient()
     await expect(client.open('feed/follow', {}, new AbortController().signal)

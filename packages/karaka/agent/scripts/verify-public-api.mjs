@@ -11,6 +11,7 @@ const repositoryDir = resolve(packageDir, '../../..')
 const libDir = resolve(packageDir, 'lib')
 const publicDir = resolve(libDir, 'public')
 const publicTypesDir = resolve(libDir, 'public-types')
+const browserTypesDir = resolve(libDir, 'browser-types')
 const publicEntriesDir = resolve(libDir, 'public-entries')
 const require = createRequire(import.meta.url)
 const publicEntries = filesUnder(publicEntriesDir)
@@ -34,7 +35,9 @@ for (const path of filesUnder(libDir)) {
   const source = readFileSync(path, 'utf8')
   const isPublicDeclaration = path.endsWith('.d.ts')
     && (path.startsWith(`${publicDir}${process.platform === 'win32' ? '\\' : '/'}`)
-      || path.startsWith(`${publicTypesDir}${process.platform === 'win32' ? '\\' : '/'}`))
+      || path.startsWith(`${publicTypesDir}${process.platform === 'win32' ? '\\' : '/'}`)
+      || path.startsWith(`${browserTypesDir}${process.platform === 'win32' ? '\\' : '/'}`)
+      || path === resolve(libDir, 'browser.d.ts'))
   if (isPublicDeclaration && source.includes('@deepseek-ai/dsh-')) {
     throw new Error(`${path} exposes a private DSH declaration reference`)
   }
@@ -73,6 +76,28 @@ try {
   renameSync(resolve(unpackDir, 'package'), agentLink)
   linkDependencies(project, JSON.parse(readFileSync(resolve(agentLink, 'package.json'), 'utf8')).dependencies)
   writeFileSync(resolve(project, 'package.json'), '{"private":true,"type":"module"}\n')
+
+  verifyTypes(project, 'browser-consumer.ts', `import { createBrowserClient, SessionId } from '@karaka-ai/agent/browser'
+const client = await createBrowserClient({ endpoint: 'https://karaka.example', credential: async signal => {
+  signal.throwIfAborted()
+  return 'signed-credential'
+} })
+const result = await client.chats.applicationCreate({ chatId: SessionId('support-chat'), agentId: 'support' })
+if (result.ok) {
+  client.forChat(result.value.chatId).$on('approval/request', async request => {
+    request.signal?.throwIfAborted()
+    return 'allowed-once'
+  })
+}
+const history = await client.chats.applicationHistory({ chatId: SessionId('support-chat') })
+if (history.ok) for (const event of history.value) void event.type
+void SessionId('support-chat')
+await client.dispose()
+`, true)
+  const browserSource = readFileSync(resolve(agentLink, 'lib/browser.js'), 'utf8')
+  if (/__ModuleLoader__|(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"](?:node:|@deepseek-ai\/)/u.test(browserSource)) {
+    throw new Error('browser runtime includes host-only or private runtime dependencies')
+  }
 
   verifyTypes(project, 'consumer.ts', `import { defineTool } from '@karaka-ai/agent/tools'
 import Storage, { storageBackendServiceKey, type StorageBackend } from '@karaka-ai/agent/storage'
@@ -203,17 +228,18 @@ function linkDependencies(projectDir, dependencies) {
   symlinkSync(resolve(repositoryDir, 'node_modules/@types/node'), nodeTypes, 'junction')
 }
 
-function verifyTypes(projectDir, filename, source) {
+function verifyTypes(projectDir, filename, source, browser = false) {
   writeFileSync(resolve(projectDir, filename), source)
   const config = resolve(projectDir, 'tsconfig.json')
   writeFileSync(config, `${JSON.stringify({
     compilerOptions: {
-      module: 'NodeNext',
-      moduleResolution: 'NodeNext',
+      module: browser ? 'ESNext' : 'NodeNext',
+      moduleResolution: browser ? 'Bundler' : 'NodeNext',
       noEmit: true,
       strict: true,
       target: 'ES2024',
-      types: ['node'],
+      types: browser ? [] : ['node'],
+      lib: browser ? ['ES2024', 'DOM', 'DOM.Iterable'] : ['ES2024'],
     },
     files: [filename],
   }, null, 2)}\n`)

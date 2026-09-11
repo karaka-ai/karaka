@@ -34,7 +34,11 @@
       "types": "./lib/public/*.d.ts",
       "default": "./lib/public/*.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./browser": {
+      "types": "./lib/browser.d.ts",
+      "default": "./lib/browser.js"
+    }
   },
   "files": [
     "lib/*.js",
@@ -46,7 +50,9 @@
     "base.cordis.patch.yml",
     "cordis.patch.yml",
     "cordis.yml",
-    "resources"
+    "resources",
+    "lib/browser.d.ts",
+    "lib/browser-types/**/*.d.ts"
   ],
   "license": "MIT",
   "publishConfig": {
@@ -91,7 +97,8 @@
     "undici": "^8.10.0",
     "ws": "^8.21.0",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "jose": "^6.2.3"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "workspace:^",
@@ -208,6 +215,9 @@
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@karaka-ai/mcp-application": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
-    "@karaka-ai/transport-http": "workspace:^"
+    "@karaka-ai/transport-http": "workspace:^",
+    "@karaka-ai/browser-auth": "workspace:^",
+    "@deepseek-ai/dsh-client-connection": "workspace:^",
+    "@deepseek-ai/dsh-api-remotes": "workspace:^"
   }
 }

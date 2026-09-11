@@ -594,6 +594,8 @@ The backends that consume this contract are on [persistence.md](persistence.md).
 
 `SessionOpenWorkspacePathRequest` carries an absolute or workspace-resolved `path`. `SessionOpenWorkspacePathValue` confirms that the Host accepted the native handoff. A Session-aware Client resolves relative paths against its current Session cwd when known; the controller hands the path to the opener unchanged and reports invalid requests, cancellation, and opener failures through the Session Remote error vocabulary.
 
+Application chats use `ApplicationAgentRow` for preset summaries, `ApplicationChatCreate` for creation, `ApplicationChatPrompt` for idempotent messages, and `ApplicationChatAddress` for an owner-bearing chat address. Browser Remote methods supply the owner from the verified caller. `SessionWireEvent` carries JSON event data in history and follow streams. Complete fields live in [Session Controller types](../../packages/api/session-controller/src/types.ts).
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -609,6 +611,53 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Host service backing the generated `ctx.remote.session` namespace.
 
 ```ts cordis-catalog
+/**
+ * List the deployment's application Agent Presets.
+ * @param signal - caller cancellation.
+ * @returns application-facing preset descriptions.
+ */
+@Remote applicationAgents(signal: AbortSignal): Promise<readonly ApplicationAgentRow[]>
+
+/**
+ * Create an application chat owned by the authenticated caller.
+ * @param request - chat and preset identities.
+ * @param signal - caller cancellation.
+ * @returns the accepted chat and preset identities.
+ */
+@Remote applicationCreate(request: Omit<ApplicationChatCreate, 'owner'>, signal: AbortSignal): Promise<{ readonly chatId: SessionId; readonly agentId: string }>
+
+/**
+ * Send an idempotent message to the caller's chat.
+ * @param request - chat, request id, and message content.
+ * @param signal - caller cancellation before admission.
+ * @returns admission receipt.
+ */
+@Remote applicationPrompt(request: Omit<ApplicationChatPrompt, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true; readonly duplicate: boolean }>
+
+/**
+ * Read the caller's durable chat history.
+ * @param request - chat identity.
+ * @param signal - caller cancellation.
+ * @returns persisted session events after ownership verification.
+ */
+@Remote applicationHistory(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<readonly SessionWireEvent[]>
+
+/**
+ * Follow the caller's chat from a complete snapshot on each connection.
+ * @param request - chat identity.
+ * @param signal - stream lifetime.
+ * @returns snapshot and subsequent committed events.
+ */
+@Remote({ mode: 'stream' }) applicationFollow(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): AsyncIterable<SessionFollowFrame>
+
+/**
+ * Cancel the caller's active chat turn.
+ * @param request - chat identity.
+ * @param signal - caller cancellation.
+ * @returns cancellation acknowledgement.
+ */
+@Remote applicationCancel(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true }>
+
 /**
  * Resolve or resume one ordinary Session for another Host API domain.
  * @param sessionId - Session identity whose Agent owns the operation.

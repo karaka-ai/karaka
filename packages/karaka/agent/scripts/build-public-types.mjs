@@ -5,14 +5,17 @@ import { dirname, relative, resolve, sep } from 'node:path'
 const packageDir = resolve(import.meta.dirname, '..')
 const repositoryDir = resolve(packageDir, '../../..')
 const libDir = resolve(packageDir, 'lib')
+const browser = process.argv.includes('--browser')
 const publicDir = resolve(libDir, 'public')
-const privateDir = resolve(libDir, 'public-types')
+const privateDir = resolve(libDir, browser ? 'browser-types' : 'public-types')
 const require = createRequire(resolve(packageDir, 'package.json'))
-const manifest = JSON.parse(readFileSync(resolve(libDir, 'public-type-manifest.json'), 'utf8'))
+const manifest = browser
+  ? [{ subpath: 'browser', specifier: '@karaka-ai/agent/browser', declaration: resolve(libDir, 'types/client/browser.d.ts'), hasDefault: false }]
+  : JSON.parse(readFileSync(resolve(libDir, 'public-type-manifest.json'), 'utf8'))
 const workspaces = workspacePackages()
 
 rmSync(privateDir, { recursive: true, force: true })
-removeDeclarations(publicDir)
+if (!browser) removeDeclarations(publicDir)
 
 const packages = new Map()
 const queue = []
@@ -42,9 +45,9 @@ for (let index = 0; index < queue.length; index += 1) {
 
 for (const entry of manifest) {
   const pkg = registerPackage(entry.specifier, entry.declaration)
-  const facade = resolve(publicDir, `${entry.subpath}.d.ts`)
+  const facade = browser ? resolve(libDir, 'browser.d.ts') : resolve(publicDir, `${entry.subpath}.d.ts`)
   const specifier = relativeSpecifier(facade, copiedRuntimeTarget(pkg, entry.declaration))
-  const augmentations = declarationFiles(pkg.sourceDir)
+  const augmentations = (browser ? [] : declarationFiles(pkg.sourceDir))
     .filter(source => source !== entry.declaration && readFileSync(source, 'utf8').includes('declare module '))
     .map(source => relativeSpecifier(facade, copiedRuntimeTarget(pkg, source)))
     .sort()
@@ -70,7 +73,7 @@ function registerPackage(specifier, declaration) {
   const name = packageName(specifier)
   const existing = packages.get(name)
   if (existing !== undefined) return existing
-  const marker = `${sep}lib${sep}types${sep}`
+  const marker = browser && name !== '@karaka-ai/agent' ? `${sep}lib${sep}` : `${sep}lib${sep}types${sep}`
   const index = declaration.lastIndexOf(marker)
   if (index === -1) throw new Error(`cannot locate declaration root for ${specifier}`)
   const sourceDir = declaration.slice(0, index + marker.length - 1)
@@ -88,6 +91,13 @@ function packageName(specifier) {
 }
 
 function declarationPath(specifier, importer) {
+  if (browser) {
+    const name = packageName(specifier)
+    const workspace = workspaces.get(name)
+    const subpath = specifier.slice(name.length)
+    const target = subpath === '' ? workspace?.manifest.types : workspace?.manifest.exports?.[`.${subpath}`]?.types
+    if (typeof target === 'string') return resolve(workspace.dir, target)
+  }
   let runtimePath
   try {
     runtimePath = (importer === undefined ? require : createRequire(importer)).resolve(specifier)

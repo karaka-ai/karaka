@@ -11,7 +11,7 @@ const repositoryDir = resolve(packageDir, '../../..')
 const outputDir = resolve(packageDir, 'lib')
 const publicEntryDir = resolve(outputDir, 'public-entries')
 const typertPluginRuntime = '../../typert/generator/lib/types/tsdown-plugin.js'
-const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka-ai\/(?:mcp-application|server-auth|transport-http)(?:\/|$)/
+const bundledWorkspaceModule = /^@deepseek-ai\/dsh-|^@karaka-ai\/(?:mcp-application|server-auth|browser-auth|transport-http)(?:\/|$)/
 
 const contractModules: Readonly<Record<string, string>> = {
   attachment: '@deepseek-ai/dsh-attachment',
@@ -107,6 +107,8 @@ export function workspaceTypeRuntimePath(
   specifier: string,
   resolveRuntime: (request: string) => string = request => resolveFrom.resolve(request),
 ): string {
+  const declaration = workspaceDeclarationPath(specifier)
+  if (declaration !== undefined) return declaration.replace(/\.d\.ts$/u, '.js')
   let runtimePath: string
   try {
     runtimePath = resolveRuntime(specifier)
@@ -200,10 +202,13 @@ const cleanRuntimeOutputs = {
   },
 }
 
-/** Remove bundle outputs recursively while preserving tsc inputs and generated facade sources. */
-function cleanOutputs(directory: string): void {
+/**
+ * Remove Host outputs while preserving compiler inputs, facade sources, and the Client build.
+ * @param directory - Agent output directory.
+ */
+export function cleanOutputs(directory: string): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === 'types' || entry.name === 'public-entries') continue
+    if (['types', 'public-entries', 'browser-types', 'browser.js', 'browser.js.map', 'browser.d.ts', 'browser.d.ts.map'].includes(entry.name)) continue
     const path = resolve(directory, entry.name)
     if (entry.isDirectory()) {
       cleanOutputs(path)
@@ -256,7 +261,7 @@ const shared = {
 
 /** Bundle every private DSH module into the public Agent artifact. */
 export default defineConfig(({ env }) => {
-  if (env?.DSH_BUILD_FACE === 'client') return { entry: '' }
+  if (env?.DSH_BUILD_FACE === 'client') return browserBuild()
   if (env?.DSH_BUILD_FACE !== undefined && env.DSH_BUILD_FACE !== 'host') {
     throw new Error('Karaka Agent DSH build face must be host or client')
   }
@@ -284,3 +289,26 @@ export default defineConfig(({ env }) => {
     }
   })
 })
+
+/** Bundle the browser client separately from the Node runtime and plugin loader. */
+function browserBuild(): UserConfig {
+  return {
+    entry: { browser: 'src/client/browser.ts' },
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'browser',
+    target: 'es2024',
+    clean: false,
+    fixedExtension: false,
+    dts: false,
+    deps: { alwaysBundle: /.*/ },
+    define: { 'process.env': '{}' },
+    plugins: [bundledWorkspaceResolver, {
+      name: 'karaka-browser-declarations',
+      closeBundle() {
+        const result = spawnSync(process.execPath, [resolve(packageDir, 'scripts/build-public-types.mjs'), '--browser'], { stdio: 'inherit' })
+        if (result.status !== 0) throw new Error('Karaka browser declaration packaging failed')
+      },
+    }],
+  }
+}

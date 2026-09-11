@@ -7,9 +7,11 @@ import type {} from '@deepseek-ai/dsh-credentials'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { API_PATH } from './api-path.ts'
 import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
-import { assertTrustedAuthority } from './api-request-trust.ts'
+import { assertTrustedAuthority, isTrustedApiRequest, header } from './api-request-trust.ts'
 import { BrowserAuth } from './browser-auth.ts'
 import { HostConnectionService } from './rpc-host.ts'
+
+export type { ConnectionAuth, ConnectionCaller, ConnectionAuthentication } from './auth.ts'
 
 export type {
   ConnectionFetchMethod,
@@ -68,6 +70,10 @@ export const inject = ['webServer', 'credentials']
 
 /** Plugin config: the deployment's non-loopback serving authorities. */
 export interface ConnectionConfig {
+  /** Host login or a configured application-user credential provider. */
+  authentication?: 'host' | 'application'
+  /** Exact frontend origins accepted in application mode. */
+  frontendOrigins?: string[]
   /**
    * Authorities this deployment serves beyond loopback: exact `host:port`, or
    * port-less `host` matching any port. The /api trust fence refuses any
@@ -84,6 +90,8 @@ export interface ConnectionConfig {
 }
 
 export const Config: z<ConnectionConfig> = z.object({
+  authentication: z.union(['host', 'application']).default('host'),
+  frontendOrigins: z.array(String),
   trustedHosts: z.array(String).default([]),
   cookieMaxAgeDays: z.natural().min(1).default(30),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
@@ -105,23 +113,47 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
   // silently authorizing its hostname prefix at request time.
   for (const entry of trustedHosts) assertTrustedAuthority(entry)
   assertImageBodyCapacity(ctx, maxRequestBodyBytes)
+  const applicationMode = config?.authentication === 'application'
+  const origins = config?.frontendOrigins ?? []
+  const provider = applicationMode ? ctx.get('connectionAuth') : undefined
+  if (applicationMode && (provider === undefined || origins.length === 0)) {
+    throw new Error('connection: application authentication requires connectionAuth and frontendOrigins')
+  }
+  for (const origin of origins) {
+    const url = new URL(origin)
+    if (!['http:', 'https:'].includes(url.protocol) || url.origin !== origin) throw new Error('connection: frontendOrigins must contain exact HTTP origins')
+  }
   const connection = new HostConnectionService(
     ctx,
     trustedHosts,
-    await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+    applicationMode ? undefined : await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+    provider === undefined ? undefined : { origins },
   )
   const fetchHandler = connection.createSharedFetchHandler(API_PATH)
   const route: WebRoute = {
     kind: 'prefix',
     path: API_PATH,
     handler: async (req, res) => {
-      const rejection = connection.requestRejection(req)
-      if (rejection !== undefined) {
+      if (applicationMode && isTrustedApiRequest(req, trustedHosts, origins)) {
+        const origin = header(req.headers, 'origin')
+        if (origin !== undefined) {
+          res.setHeader('access-control-allow-origin', origin)
+          res.setHeader('vary', 'Origin')
+        }
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'authorization, content-type' })
+          res.end()
+          return
+        }
+      }
+      const authentication = await connection.authenticate(req)
+      if ('rejection' in authentication) {
+        const { rejection } = authentication
         res.writeHead(rejection)
         res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
         return
       }
-      await bridge(req, res, fetchHandler, maxRequestBodyBytes)
+      await bridge(req, res, { fetch: request => fetchHandler.fetch(request, authentication.caller) }, maxRequestBodyBytes)
     },
   }
   ctx.effect(() => ctx.webServer.register(route), 'client-connection: /api route')

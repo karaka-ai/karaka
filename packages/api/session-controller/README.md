@@ -46,6 +46,8 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 -----
 
+The generated `applicationAgents`, `applicationCreate`, `applicationPrompt`, `applicationHistory`, `applicationFollow`, and `applicationCancel` methods derive the complete owner from `connectionCaller`. Browser requests contain chat/message fields and cannot select an owner. These methods delegate to the same ownership-checked application controller used by backend ingress; the deployment selects accessible methods in [API Remotes](../remotes/README.md).
+
 <a id="model-experience"></a>
 ## Model Experience
 

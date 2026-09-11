@@ -1,5 +1,7 @@
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 
+import type {} from '@deepseek-ai/dsh-client-connection'
+import type {} from '@deepseek-ai/dsh-api-gateway'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { errorChain } from '@deepseek-ai/dsh-llm'
@@ -21,9 +23,10 @@ import { ApiSessionList, DEFAULT_COLD_BLANK_PROBE_MAX_BYTES } from './list.ts'
 import { buildModelCatalog } from './catalog.ts'
 import { installModelSelectionProjection } from './model-selection-projection.ts'
 import { SessionSkillCatalog } from './skill-catalog.ts'
-import { ApplicationChatController } from './application.ts'
+import { ApplicationChatController, type ApplicationChatAddress, type ApplicationChatCreate, type ApplicationChatPrompt, type ApplicationAgentRow } from './application.ts'
 import type {
   ModelCatalog,
+  SessionWireEvent,
   SessionAttachmentRequest,
   SessionAttachmentValue,
   SessionCancelRequest,
@@ -185,6 +188,81 @@ export class SessionController extends TypertRemoteService {
     })
     this.promotions.add(task)
     void task.finally(() => { this.promotions.delete(task) })
+  }
+
+  private applicationOwner(): ApplicationChatAddress['owner'] {
+    const caller = this.ctx.connectionCaller
+    if (caller?.kind !== 'application' || caller.expiresAt <= Date.now()) {
+      throw new RemoteError('gateway/forbidden', 'authenticated application user required', { endpoint: 'session/application' })
+    }
+    return caller.owner
+  }
+
+  /**
+   * List the deployment's application Agent Presets.
+   * @param signal - caller cancellation.
+   * @returns application-facing preset descriptions.
+   */
+  @Remote
+  applicationAgents(signal: AbortSignal): Promise<readonly ApplicationAgentRow[]> {
+    this.applicationOwner()
+    return this.application.listAgents(signal)
+  }
+
+  /**
+   * Create an application chat owned by the authenticated caller.
+   * @param request - chat and preset identities.
+   * @param signal - caller cancellation.
+   * @returns the accepted chat and preset identities.
+   */
+  @Remote
+  applicationCreate(request: Omit<ApplicationChatCreate, 'owner'>, signal: AbortSignal): Promise<{ readonly chatId: SessionId; readonly agentId: string }> {
+    return this.application.create({ ...request, owner: this.applicationOwner() }, signal)
+  }
+
+  /**
+   * Send an idempotent message to the caller's chat.
+   * @param request - chat, request id, and message content.
+   * @param signal - caller cancellation before admission.
+   * @returns admission receipt.
+   */
+  @Remote
+  applicationPrompt(request: Omit<ApplicationChatPrompt, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true; readonly duplicate: boolean }> {
+    return this.application.prompt({ ...request, owner: this.applicationOwner() }, signal)
+  }
+
+  /**
+   * Read the caller's durable chat history.
+   * @param request - chat identity.
+   * @param signal - caller cancellation.
+   * @returns persisted session events after ownership verification.
+   */
+  @Remote
+  applicationHistory(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<readonly SessionWireEvent[]> {
+    return this.application.events({ ...request, owner: this.applicationOwner() }, signal)
+      .then(events => events as unknown as readonly SessionWireEvent[])
+  }
+
+  /**
+   * Follow the caller's chat from a complete snapshot on each connection.
+   * @param request - chat identity.
+   * @param signal - stream lifetime.
+   * @returns snapshot and subsequent committed events.
+   */
+  @Remote({ mode: 'stream' })
+  applicationFollow(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): AsyncIterable<SessionFollowFrame> {
+    return this.application.follow({ ...request, owner: this.applicationOwner() }, signal)
+  }
+
+  /**
+   * Cancel the caller's active chat turn.
+   * @param request - chat identity.
+   * @param signal - caller cancellation.
+   * @returns cancellation acknowledgement.
+   */
+  @Remote
+  applicationCancel(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true }> {
+    return this.application.cancel({ ...request, owner: this.applicationOwner() }, signal)
   }
 
   /**

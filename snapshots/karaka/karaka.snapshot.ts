@@ -1,13 +1,16 @@
 /** Keyless application-SDK chat through the shipped persistent Karaka Agent. */
 
 import { existsSync } from 'node:fs'
+import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import type { TypertRemoteNamespace$73657373696f6e } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import SessionPersistenceSqlite from '@deepseek-ai/dsh-session-persistence-sqlite'
 import {
   formatSystemPromptSnapshot,
@@ -38,6 +41,12 @@ interface RunningKaraka {
   readonly child: ResultPromise
   readonly endpoint: string
   readonly database: string
+  readonly credential: string
+}
+
+interface BrowserSnapshotClient {
+  readonly chats: Pick<TypertRemoteNamespace$73657373696f6e, 'applicationCreate' | 'applicationPrompt' | 'applicationHistory'>
+  dispose(): Promise<void>
 }
 
 function records(log: string): JsonRecord[] {
@@ -182,9 +191,34 @@ async function prepareProject(project: string, readyFile: string): Promise<void>
 `)
 }
 
-async function startKaraka(project: string): Promise<RunningKaraka> {
+async function startKaraka(project: string, browser = false): Promise<RunningKaraka> {
   const readyFile = join(project, 'karaka-ready')
   await prepareProject(project, readyFile)
+  let credential = ''
+  if (browser) {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    const now = Math.floor(Date.now() / 1000)
+    const unsigned = [
+      { alg: 'RS256', kid: 'snapshot' },
+      { iss: 'snapshot-backend', aud: 'karaka', iat: now, exp: now + 120,
+        applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' },
+    ].map(value => Buffer.from(JSON.stringify(value)).toString('base64url')).join('.')
+    credential = `${unsigned}.${sign('RSA-SHA256', Buffer.from(unsigned), privateKey).toString('base64url')}`
+    const patch = await readFile(join(project, 'karaka.cordis.yml'), 'utf8')
+    await writeFile(join(project, 'karaka.cordis.yml'), `${patch}
+- insert:
+    - id: browser-auth
+      name: '@karaka-ai/agent/browser-auth'
+      config: ${JSON.stringify({ applicationId: 'billing', issuer: 'snapshot-backend', audience: 'karaka', maxTokenAgeSeconds: 300,
+        keys: [{ id: 'snapshot', algorithm: 'RS256', publicKey: publicKey.export({ type: 'spki', format: 'pem' }) }] })}
+    - id: browser-connection
+      name: '@karaka-ai/agent/client-connection'
+      config: { authentication: application, frontendOrigins: ['https://frontend.example'] }
+    - id: browser-remotes
+      name: '@karaka-ai/agent/api-remotes'
+      config: { applicationMethods: [applicationCreate, applicationPrompt, applicationHistory] }
+`)
+  }
   const prepared = prepareKarakaRuntime(project)
   const child = execa(process.execPath, [prepared.bin, '--config', join(project, 'karaka.cordis.yml')], {
     cwd: project,
@@ -208,6 +242,7 @@ async function startKaraka(project: string): Promise<RunningKaraka> {
     child,
     endpoint,
     database: join(prepared.home, 'karaka-sessions.sqlite'),
+    credential,
   }
 }
 
@@ -290,21 +325,36 @@ describe('Karaka recorded-session snapshot', () => {
     }
   })
 
-  it.skipIf(mode === 'record')('replays an authenticated application chat through @karaka-ai/agent', async () => {
+  it.skipIf(mode === 'record').each(['backend', 'browser'] as const)('replays an authenticated %s chat through @karaka-ai/agent', async (transport) => {
     const manifestPath = join(scenarioDir, 'snapshot.yml')
     const manifest = parseSnapshotManifest(await readFile(manifestPath, 'utf8'), manifestPath)
     expect(manifest).toMatchObject({ profile: 'karaka', recording: 'authored' })
     const project = await mkdtemp(join(tmpdir(), 'karaka-snapshot-'))
     let running: RunningKaraka | undefined
+    let browser: BrowserSnapshotClient | undefined
     try {
-      running = await startKaraka(project)
+      running = await startKaraka(project, transport === 'browser')
       const client = createKarakaClient({ endpoint: running.endpoint, chatToken: 'chat-secret' })
       const user = client.forUser({ tenantId: 'tenant-1', userId: 'user-1' })
       await expect(client.agents.list()).resolves.toContainEqual(expect.objectContaining({ id: 'support' }))
-      await expect(user.chats.create({ chatId: 'snapshot-chat', agentId: 'support' }))
-        .resolves.toEqual({ chatId: 'snapshot-chat', agentId: 'support' })
+      if (transport === 'browser') {
+        const module = await import(/* @vite-ignore */ pathToFileURL(join(repoRoot, 'packages/karaka/agent/lib/browser.js')).href) as {
+          createBrowserClient(config: { endpoint: string; credential: () => string }): Promise<BrowserSnapshotClient>
+        }
+        const token = running.credential
+        browser = await module.createBrowserClient({ endpoint: running.endpoint, credential: () => token })
+        expect(await browser.chats.applicationCreate({ chatId: SessionId('snapshot-chat'), agentId: 'support' })).toMatchObject({ ok: true })
+      } else {
+        await expect(user.chats.create({ chatId: 'snapshot-chat', agentId: 'support' }))
+          .resolves.toEqual({ chatId: 'snapshot-chat', agentId: 'support' })
+      }
       await user.chats.setModel('snapshot-chat', { provider: 'fixture', model: 'fixture-model' })
-      await user.chats.send({
+      if (browser !== undefined) {
+        expect(await browser.chats.applicationPrompt({
+          chatId: SessionId('snapshot-chat'), requestId: 'snapshot-request',
+          content: [{ type: 'text', text: 'Reply with exactly: KARAKA_SNAPSHOT_OK' }],
+        })).toMatchObject({ ok: true })
+      } else await user.chats.send({
         chatId: 'snapshot-chat',
         requestId: 'snapshot-request',
         content: 'Reply with exactly: KARAKA_SNAPSHOT_OK',
@@ -317,6 +367,12 @@ describe('Karaka recorded-session snapshot', () => {
         history = await user.chats.history('snapshot-chat')
       }
       expect(history.events).toContainEqual(expect.objectContaining({ type: 'assistant-message' }))
+      if (browser !== undefined) {
+        const history = await browser.chats.applicationHistory({ chatId: SessionId('snapshot-chat') })
+        expect(history).toMatchObject({ ok: true, value: expect.arrayContaining([expect.objectContaining({ type: 'turn/end' })]) })
+        await browser.dispose()
+        browser = undefined
+      }
       await stopKaraka(running)
       const log = await readPersistedSession(running.database)
       expect(records(log)[0]).toMatchObject({
@@ -325,6 +381,7 @@ describe('Karaka recorded-session snapshot', () => {
       })
       await compareOrRefresh(log)
     } finally {
+      await browser?.dispose()
       if (running !== undefined && running.child.exitCode === undefined) {
         running.child.kill('SIGKILL')
         await running.child

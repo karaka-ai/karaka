@@ -37,6 +37,34 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 
 以程序方式调用可执行文件时，`--config` 必须指定绝对部署 patch 路径。启动成功后，服务器在前台保持运行，直到收到 `SIGINT` 或 `SIGTERM`；参数无效、缺少 `KARAKA_HOME`、配置不可读、插件无法解析或插件激活失败都会以诊断信息终止进程。
 
+<a id="browser-clients"></a>
+### 浏览器客户端
+
+在前端导入 `@karaka-ai/agent/browser`。这个独立 ESM 入口打包现有 Typert 客户端和生成的类型声明。每个实例接受独立的 Karaka 地址和可续期的凭证回调：
+
+```js
+import { createBrowserClient, SessionId } from '@karaka-ai/agent/browser'
+
+const client = await createBrowserClient({
+  endpoint: 'https://karaka.example',
+  credential: async signal => {
+    const response = await fetch('/karaka-credential', { signal })
+    if (!response.ok) throw new Error('Credential request failed')
+    return response.text()
+  },
+})
+const chatId = SessionId('support-chat')
+const created = await client.chats.applicationCreate({ chatId, agentId: 'support' })
+if (!created.ok) throw new Error(created.error.message)
+client.forChat(chatId).$on('approval/request', async request => {
+  return window.confirm(request.reason) ? 'allowed-once' : 'rejected'
+})
+```
+
+应用后端负责 `/karaka-credential`、登录和凭证签发。为 [browser-auth](../browser-auth/README.zh.md) 配置后端的公开验证密钥、签发者、受众、应用 id 和最大凭证有效期。挂载 `@karaka-ai/agent/client-connection`，配置 `authentication: application`、精确 `frontendOrigins` 和所需 `trustedHosts`；挂载 `@karaka-ai/agent/api-remotes`，选择 `applicationMethods` 和 `applicationEvents`。将现有 `karaka-http` 行的 `handleQuestions` 设为 `false`。除现有 HTTP 行的覆盖外，这些部署 patch 行放在 `insert` 下。
+
+发送 prompt 前，为每个聊天注册审批或问题监听器。销毁时调用 `client.dispose()`。凭证过期会关闭 socket；重连会再次调用凭证回调。TLS 终止和公开服务器路由由部署负责。待处理交互在同一 Karaka 进程内可经连接中断恢复；SQLite 在进程重启后保留聊天所有权和历史。
+
 ### 扩展 Agent
 
 `agent.cordis.yml` 的 row 可以指定 `@karaka-ai/agent/persona` 或 `@karaka-ai/agent/agent-tool-presentation` 等内置别名。每个内置别名也是 Node 子路径，并具有与其源模块相同的具名导出和默认导出。替换提供方使用的 Service Definition 模块即使不是 Loader 插件，也具有匹配的扁平子路径；例如，本地存储提供方可以导入 `StorageBackend`，而无需安装 DSH 包：

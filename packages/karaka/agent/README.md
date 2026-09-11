@@ -37,6 +37,34 @@ KARAKA_HOME="$PWD/.karaka" npx karaka-agent --config "$PWD/karaka.cordis.yml"
 
 `--config` must name an absolute deployment patch when the executable is invoked programmatically. A successful launch keeps the server in the foreground until `SIGINT` or `SIGTERM`; invalid arguments, a missing `KARAKA_HOME`, unreadable configuration, unresolved plugins, and failed plugin activation terminate with a diagnostic.
 
+<a id="browser-clients"></a>
+### Browser clients
+
+Import `@karaka-ai/agent/browser` in a frontend. This standalone ESM entry bundles the existing Typert client and generated contracts. Each instance accepts its own Karaka endpoint and a renewable credential callback:
+
+```js
+import { createBrowserClient, SessionId } from '@karaka-ai/agent/browser'
+
+const client = await createBrowserClient({
+  endpoint: 'https://karaka.example',
+  credential: async signal => {
+    const response = await fetch('/karaka-credential', { signal })
+    if (!response.ok) throw new Error('Credential request failed')
+    return response.text()
+  },
+})
+const chatId = SessionId('support-chat')
+const created = await client.chats.applicationCreate({ chatId, agentId: 'support' })
+if (!created.ok) throw new Error(created.error.message)
+client.forChat(chatId).$on('approval/request', async request => {
+  return window.confirm(request.reason) ? 'allowed-once' : 'rejected'
+})
+```
+
+The application backend owns `/karaka-credential`, login, and credential issuance. Configure [browser-auth](../browser-auth/README.md) with its public verification keys, issuer, audience, application id, and maximum credential lifetime. Mount `@karaka-ai/agent/client-connection` with `authentication: application`, exact `frontendOrigins`, and any required `trustedHosts`; mount `@karaka-ai/agent/api-remotes` with selected `applicationMethods` and `applicationEvents`. Set the existing `karaka-http` row’s `handleQuestions` to `false`. These are deployment patch rows under `insert`, except the existing HTTP row override.
+
+Register each chat’s approval/question listeners before sending a prompt. Call `client.dispose()` on teardown. An expired credential closes the socket; reconnect invokes the credential callback again. TLS termination and public server routing belong to the deployment. Pending interactions survive connection loss within one Karaka process; SQLite retains chat ownership and history across process restarts.
+
 ### Extend an Agent
 
 An `agent.cordis.yml` row may name an embedded alias such as `@karaka-ai/agent/persona` or `@karaka-ai/agent/agent-tool-presentation`. Each embedded alias is also a Node subpath with the same named and default exports as its source module. Service Definition modules used by replacement providers have matching flat subpaths even when they are not Loader plugins; for example, a local storage provider can import `StorageBackend` without installing a DSH package:
