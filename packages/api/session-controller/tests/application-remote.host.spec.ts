@@ -74,7 +74,7 @@ describe('application Remote caller ownership', () => {
     ]
     for (const identity of identities) {
       for (const invoke of methods) {
-        await expect(Promise.resolve().then(() => invoke(scope(identity))))
+        await expect(Promise.resolve().then<unknown>(() => invoke(scope(identity))))
           .rejects.toMatchObject({ code: 'gateway/forbidden' })
       }
     }
