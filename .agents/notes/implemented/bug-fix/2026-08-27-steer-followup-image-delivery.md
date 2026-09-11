@@ -40,6 +40,8 @@ A steer or follow-up inserted after a running driver's final inbox check and bef
 
 ## Consequences
 
+Host inspection retains one copy of an identically printed type declaration shared across packages. Differing declarations with the same name remain excluded as ambiguous; comparison uses the complete declaration before display truncation. This preserves the shared upload fields in the Session Controller and subagent Host catalogs while the Client keeps its complete wire declaration. Generator regressions cover equal, conflicting, and long declarations; Host and Client inspection tests assert the prompt fields.
+
 Karaka application prompts use the shared image admission through the owner-verified `promptApplication` route. The application controller verifies the complete application, tenant, and user identity before storage admission; repeated request IDs do not store or deliver the image twice. A focused application test uses the real command controller to pin ordered content conversion and these ownership and retry guarantees.
 
 Slow image serialization leaves optimistic messages on their selected transcript, QueueDock, or pending-steering surface until the Host handoff. The subagent package depends on `dsh-attachment` and reads `ctx.llm` optionally. Images persisted by a batch whose delivery is later refused stay as unreachable content-addressed objects under the existing retention rules. Queue thumbnails add one authorized attachment read per queued image, shared with the transcript cache. The deferred closing-turn race can leave an accepted message pending as described above.

@@ -34,6 +34,8 @@ describe('Client Cordis inspect catalog', () => {
     expect(result.referencedTypes.length).toBeGreaterThan(0)
     const promptContentPart = result.referencedTypes.find(type => type.name === 'PromptContentPart')
     expect(promptContentPart?.declaration).toContain("readonly type: 'image'")
+    expect(promptContentPart?.declaration).toContain('readonly mediaType: ImageMediaType')
+    expect(promptContentPart?.declaration).toContain('readonly data: string')
     expect(result.referencedTypes.map(type => type.name)).not.toEqual(expect.arrayContaining([
       'ConversationSnapshot',
       'PendingInteraction',
