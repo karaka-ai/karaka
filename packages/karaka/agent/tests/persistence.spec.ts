@@ -95,12 +95,14 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
         try {
           expect(prepared.session.header).toEqual(item.meta)
           expect(prepared.session.inheritedEventCount).toBe(item.inheritedEventCount)
-          expect(prepared.session.ownEvents()).toEqual([
-            ...item.events.slice(item.inheritedEventCount),
-            ...(item.meta.id === parent.id
-              ? [expect.objectContaining({ type: 'session/end-seed', seq: 4, data: {} })]
-              : []),
-          ])
+          const ownEvents = prepared.session.ownEvents()
+          const persistedSuffix = item.events.slice(item.inheritedEventCount)
+          const hasRecoveryMarker = item.meta.id === parent.id
+          expect(ownEvents).toHaveLength(persistedSuffix.length + (hasRecoveryMarker ? 1 : 0))
+          expect(ownEvents.slice(0, persistedSuffix.length)).toEqual(persistedSuffix)
+          if (hasRecoveryMarker) {
+            expect(ownEvents.at(-1)).toMatchObject({ type: 'session/end-seed', seq: 4, data: {} })
+          }
         } finally {
           prepared[Symbol.dispose]()
         }
