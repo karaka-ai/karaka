@@ -12,7 +12,7 @@ The SQLite Session-query provider owns a separate rebuildable index. The generic
 
 ## Decision
 
-`@deepseek-ai/dsh-session-persistence-jsonl` is the sole first-party implementation of `ctx.sessionPersistence`, including Karaka's bundled composition. The Service Definition and `PersistenceCoordinator` remain backend-neutral. The authoritative SQLite package, schema resources, registry entry, public exports, dependencies, and backend-specific tests are removed. Shared persistence consumers exercise JSONL, while the Windows native lane retains JSONL durability coverage.
+`@deepseek-ai/dsh-session-persistence-jsonl` is the sole first-party implementation of `ctx.sessionPersistence`. The abstract Service Definition remains backend-neutral so an out-of-tree provider can implement the same service, but the repository owns and tests one authoritative physical Session format.
 
 JSONL headers preserve the atomic application/tenant/user owner and fork lineage. Events retain their logical order and request identities. Karaka keeps the cold-activation repair that loads preset projections before recreating an Agent. Real process restart and provider remount tests cover owner isolation, history, inherited events, and duplicate request admission.
 

@@ -30,7 +30,7 @@ function fixture() {
     flush: vi.fn(() => Promise.resolve()),
   }
   ctx.provide('sessions', sessions as never)
-  const sessionPersistence = { ensureMaterialized: vi.fn(() => Promise.resolve()) }
+  const sessionPersistence = { flush: vi.fn(() => Promise.resolve()) }
   ctx.provide('sessionPersistence', sessionPersistence as never)
   const commands = {
     promptApplication: vi.fn((_agent: unknown, request: { requestId: string }) => {
@@ -107,13 +107,47 @@ describe('ApplicationChatController', () => {
   })
 
   it('creates workspace-free chats with authenticated ownership', async () => {
-    const { controller, agents, agent, sessionPersistence } = fixture()
+    const { controller, agents, agent, sessions, sessionPersistence } = fixture()
 
     await expect(controller.create({ chatId: SessionId('chat-1'), agentId: 'support', owner }))
       .resolves.toEqual({ chatId: 'chat-1', agentId: 'support' })
     expect(agents.ensureSession).toHaveBeenCalledWith(SessionId('chat-1'), undefined, true, 'support', owner)
-    expect(sessionPersistence.ensureMaterialized).toHaveBeenCalledWith(agent.session)
+    expect(sessions.flush).toHaveBeenCalledWith(agent.session)
+    expect(sessionPersistence.flush).not.toHaveBeenCalled()
     expect(agents.touchApplication).toHaveBeenCalledWith(agent)
+  })
+
+  it.each(['success', 'failure'] as const)('holds creation acknowledgment and its pin until the flush settles: %s', async (result) => {
+    const { ctx, controller, agents, agent, sessions } = fixture()
+    const barrier = Promise.withResolvers<undefined>()
+    sessions.flush.mockReturnValue(barrier.promise)
+    const release = vi.fn()
+    agents.pinApplication.mockReturnValue(release)
+    const failure = new Error('durability failed')
+    let settled = false
+    const creating = controller.create({ chatId: agent.id, agentId: 'support', owner }).then(
+      (value) => { settled = true; return { value } },
+      (error: unknown) => { settled = true; return { error } },
+    )
+    try {
+      await vi.waitFor(() => { expect(sessions.flush).toHaveBeenCalledWith(agent.session) })
+      expect(settled).toBe(false)
+      expect(release).not.toHaveBeenCalled()
+      expect(agents.touchApplication).not.toHaveBeenCalled()
+
+      if (result === 'failure') barrier.reject(failure)
+      else barrier.resolve(undefined)
+      await expect(creating).resolves.toEqual(result === 'failure'
+        ? { error: failure }
+        : { value: { chatId: agent.id, agentId: 'support' } })
+      expect(release).toHaveBeenCalledOnce()
+      if (result === 'failure') expect(agents.touchApplication).not.toHaveBeenCalled()
+      else expect(agents.touchApplication).toHaveBeenCalledWith(agent)
+    } finally {
+      barrier.resolve(undefined)
+      await creating
+      await ctx.fiber.dispose()
+    }
   })
 
   it('deduplicates persisted request ids and rejects another owner', async () => {

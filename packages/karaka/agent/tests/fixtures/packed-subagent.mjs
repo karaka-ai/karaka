@@ -88,9 +88,14 @@ export async function verifyPackedSubagent(ctx) {
     ])
     release.resolve()
     await disposed.promise
-    const loaded = await ctx.sessionPersistence.load(childId)
-    const human = loaded.events.find(event => event.type === 'user/message' && event.data.source.rpcId === 'packed-human')
-    assert.deepEqual(human.data.source, { kind: 'user', rpcId: 'packed-human', clientTimeZone: 'UTC' })
+    const stored = await ctx.sessionPersistence.open(childId, 'read')
+    try {
+      const events = await stored.read()
+      const human = events.find(event => event.type === 'user/message' && event.data.source.rpcId === 'packed-human')
+      assert.deepEqual(human.data.source, { kind: 'user', rpcId: 'packed-human', clientTimeZone: 'UTC' })
+    } finally {
+      await stored.close()
+    }
     assert.equal(requests, 2)
   } finally {
     release.resolve()

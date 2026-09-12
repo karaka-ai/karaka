@@ -151,4 +151,4 @@ runtime 自身不添加固定的模型文本；改变 Agent 组合可能改变�
 
 </details>
 
-每个 Karaka home 和 Session 根目录只能运行一个活跃的 Karaka 写入进程。副本需要独立根目录，并通过路由将每个 Session 固定到其所属进程；JSONL 追加不会隔离并发写入者。新 Session 使用 JSONL。本次切换不会读取、迁移或删除原有的 `karaka-sessions.sqlite` 数据库。
+每个 Karaka home 和 Session 根目录只能运行一个活跃的 Karaka 写入进程。副本需要独立根目录，并通过路由将每个 Session 固定到其所属进程；JSONL 追加不会隔离并发写入者。AgentLoop 持有每个 Session 的写句柄，直到释放完成。应用聊天创建在返回前刷写该 Session，因此已接纳的空聊天可跨重启保留。新 Session 使用 JSONL。本次切换不会读取、迁移或删除原有的 `karaka-sessions.sqlite` 数据库。
