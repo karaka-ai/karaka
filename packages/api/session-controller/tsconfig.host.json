@@ -19,7 +19,8 @@
     "src/history.ts",
     "src/list.ts",
     "src/model-selection-projection.ts",
-    "src/skill-catalog.ts"
+    "src/skill-catalog.ts",
+    "src/wire-header.ts"
   ],
   "references": [
     { "path": "../../../vendor/cordis" },

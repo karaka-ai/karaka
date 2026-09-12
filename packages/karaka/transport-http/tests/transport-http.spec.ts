@@ -211,7 +211,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          seq: 0, eventAt: () => undefined,
+          snapshotEvents: () => [],
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -411,7 +411,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          seq: 0, eventAt: () => undefined,
+          snapshotEvents: () => [],
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -455,7 +455,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          seq: 0, eventAt: () => undefined,
+          snapshotEvents: () => [],
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -475,7 +475,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          seq: 0, eventAt: () => undefined,
+          snapshotEvents: () => [],
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -652,7 +652,7 @@ describe('Karaka HTTP transport', () => {
         id: 'other-chat',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          seq: 0, eventAt: () => undefined,
+          snapshotEvents: () => [],
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -694,7 +694,7 @@ describe('Karaka HTTP transport', () => {
           header: {
             applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' },
           },
-          seq: 5, eventAt: (seq: number) => seq === 4 ? { seq } : undefined,
+          snapshotEvents: () => [{ seq: 4 }],
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -739,7 +739,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          seq: 6, eventAt: (seq: number) => seq === 5 ? { seq } : undefined,
+          snapshotEvents: () => [{ seq: 5 }],
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],

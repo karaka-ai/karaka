@@ -249,7 +249,7 @@ describe('ApplicationChatController', () => {
   it('follows workspace-free application Sessions without the workspace history filter', async () => {
     const ctx = new Context()
     const chatId = SessionId('chat-1')
-    const session = Session.create(chatId, undefined, { version: 0, id: chatId, createdAt: 0, applicationOwner: owner })
+    const session = Session.create(chatId, undefined, { version: 0, id: chatId, createdAt: 0, isSeeded: false, applicationOwner: owner })
     ctx.provide('sessions', { get: (id: SessionId) => id === chatId ? session : undefined } as never)
     const controller = new ApplicationChatController(ctx, {} as never, {} as never)
     const abort = new AbortController()

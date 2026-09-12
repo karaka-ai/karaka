@@ -25,6 +25,7 @@ import { createKarakaClient } from '@karaka-ai/sdk'
 import { initKarakaProject, prepareKarakaRuntime } from '@karaka-ai/cli'
 import { execa, type ResultPromise } from 'execa'
 import { describe, expect, it } from 'vitest'
+import { toHeaderLine } from '../../packages/session/session-persistence-jsonl/src/format.ts'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const scenarioDir = fileURLToPath(new URL('./application-chat/', import.meta.url))
@@ -293,7 +294,7 @@ async function readPersistedSession(root: string): Promise<string> {
     if (loaded === undefined) throw new Error('Karaka snapshot session has no stored JSONL')
     expect(loaded.tornMarker).toBeUndefined()
     await expect(readFile(location.path)).resolves.toEqual(physical)
-    return [JSON.stringify({ type: 'session', ...loaded.meta }), ...loaded.events.map(event => JSON.stringify(event)), ''].join('\n')
+    return [JSON.stringify(toHeaderLine(loaded.meta, loaded.inheritedEventCount)), ...loaded.events.map(event => JSON.stringify(event)), ''].join('\n')
   } finally {
     await ctx.fiber.dispose()
   }

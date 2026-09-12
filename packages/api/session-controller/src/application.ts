@@ -4,6 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets'
+import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { SessionFollowFrame, SessionRequestId, SessionWireEvent } from './types.ts'
@@ -15,6 +16,7 @@ import {
 } from './agent.ts'
 import { SessionCommandController } from './commands.ts'
 import { SessionEventFollower } from './follow.ts'
+import { wireHeader } from './wire-header.ts'
 
 export type { ApplicationAgentRow, ApplicationChatCreate, ApplicationChatPrompt, ApplicationChatAddress } from './types.ts'
 import type { ApplicationAgentRow, ApplicationChatCreate, ApplicationChatPrompt, ApplicationChatAddress } from './types.ts'
@@ -231,13 +233,13 @@ export class ApplicationChatController {
     follower.snapshotAt(cursor)
     yield {
       type: 'snapshot',
-      header: source.header,
+      header: wireHeader(source.header, source.inheritedEventCount),
       cursor,
       records: source.events.map(eventEntry),
       hasMore: false,
       projections: { asOfSeq: cursor, values: {} },
     }
-    for await (const event of follower.eventsAfter(cursor + 1)) {
+    for await (const event of follower.eventsAfter(SessionLogOffset(cursor + 1))) {
       yield eventEntry(event)
     }
   }
@@ -282,13 +284,13 @@ export class ApplicationChatController {
   private async ownedSession(
     request: ApplicationChatAddress,
     signal?: AbortSignal,
-  ): Promise<{ readonly header: SessionHeader; readonly events: readonly SessionEvent[] }> {
+  ): Promise<{ readonly header: SessionHeader; readonly inheritedEventCount: SessionLogOffset; readonly events: readonly SessionEvent[] }> {
     const live = this.sessions.get(request.chatId)
     if (live !== undefined) {
       if (!applicationOwnerEquals(live.header.applicationOwner, request.owner)) {
         throw unauthorizedChat(request.chatId)
       }
-      return { header: live.header, events: live.snapshotEvents() }
+      return { header: live.header, inheritedEventCount: live.inheritedEventCount, events: live.snapshotEvents() }
     }
     const observed = await this.sessionQuery.observeSession(request.chatId, {
       ...(signal === undefined ? {} : { signal }),
@@ -298,7 +300,7 @@ export class ApplicationChatController {
       if (!applicationOwnerEquals(observed.header.applicationOwner, request.owner)) {
         throw unauthorizedChat(request.chatId)
       }
-      return { header: observed.header, events: [...observed.events] }
+      return { header: observed.header, inheritedEventCount: observed.inheritedEventCount, events: [...observed.events] }
     } finally {
       observed[Symbol.dispose]()
     }

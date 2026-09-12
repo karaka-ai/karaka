@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import * as workspaceContext from '@deepseek-ai/dsh-agent-instructions'
 import LlmRuntime, { createUserMessage, ToolCallId, type Message, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import SessionStore, { Session, SessionId, SESSION_FORMAT_VERSION, type SessionEvent, type UserMessage } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionSeq, SESSION_FORMAT_VERSION, type SessionEvent, type UserMessage } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentRegistry, { agentEvents, Inbox, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop, { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
@@ -191,7 +191,9 @@ async function mountFileToolsAndWorkspaceContext(ctx: Context, config: workspace
 
 function stubAgent(cwd?: string, seed: readonly SessionEvent[] = []): Agent {
   const id = SessionId('s1')
-  const session = Session.create(id, seed, cwd === undefined ? undefined : { version: SESSION_FORMAT_VERSION, id, createdAt: 0, cwd })
+  const session = Session.create(id, seed, cwd === undefined
+    ? undefined
+    : { version: SESSION_FORMAT_VERSION, id, createdAt: 0, cwd, isSeeded: false })
   return {
     ctx: new Context(),
     id: SessionId('a1'),
@@ -254,9 +256,9 @@ function baselineEvents(agent: Agent): SessionEvent[] {
     && event.data.source.baseline === true)
 }
 
-async function appendAdditionalContexts(ctx: Context, agent: Agent): Promise<number | undefined> {
+async function appendAdditionalContexts(ctx: Context, agent: Agent): Promise<SessionSeq | undefined> {
   await syncedWorkspaceContext(ctx, agent)
-  let lastSeq: number | undefined
+  let lastSeq: SessionSeq | undefined
   for (const claimed of agent.inbox.claim('next-step', 1)) {
     if (claimed.source.kind !== 'agent-instructions') continue
     const event = agent.session.append('user/message', claimed, { surfaceOp: 'append' })
@@ -3759,8 +3761,8 @@ describe('dynamic nested workspace context injection', () => {
         content: [{ type: 'text', text: 'compacted summary' }],
         source: { kind: 'plugin', plugin: 'compact' },
       }), {
-        surfaceOp: { op: 'replace', start: contextSeq, end: contextSeq },
-        sourceEventSeqs: [contextSeq],
+        surfaceOp: { op: 'replace', start: SessionSeq(contextSeq), end: SessionSeq(contextSeq) },
+        sourceEventSeqs: [SessionSeq(contextSeq)],
       })
 
       const afterCompact = await ctx.tools.execute({
