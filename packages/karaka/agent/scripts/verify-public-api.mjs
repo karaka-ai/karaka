@@ -111,6 +111,25 @@ declare const backend: StorageBackend
 declare const persistence: SessionPersistence
 void [defineTool, Storage, storageBackendServiceKey, defineDomain, backend, persistence]
 `)
+  verifyTypes(project, 'session-handle-consumer.ts', `import type { SessionPersistence, SessionHandle } from '@karaka-ai/agent/session-persistence'
+import { SessionId, SessionLogOffset, type SessionHeader, type SessionEvent } from '@karaka-ai/agent/session'
+declare const persistence: SessionPersistence
+declare const header: SessionHeader
+const writer: SessionHandle = await persistence.create(header)
+try {
+  await writer.append([])
+  await writer.flush()
+} finally { await writer.close() }
+const reader: SessionHandle = await persistence.open(SessionId('stored'), 'read')
+try {
+  const events: readonly SessionEvent[] = await reader.read(SessionLogOffset(0), SessionLogOffset(1))
+  void [events, reader.header, reader.inheritedEventCount]
+} finally { await reader.close() }
+type Retired = Extract<keyof SessionPersistence, 'load' | 'inspect' | 'prepare' | 'append' | 'readFrom' | 'borrow' | 'locate' | 'readRaw' | 'listSnapshots' | 'ensureMaterialized'>
+declare const retired: Retired
+const absent: never = retired
+void absent
+`)
   verifyTypes(project, 'session-reader-consumer.ts', `import { Session, SessionId, SessionSeq, SessionLogOffset, type SessionEvent } from '@karaka-ai/agent/session'
 import type ApprovalService from '@karaka-ai/agent/user-approval'
 // @ts-expect-error the chronological approval helper is not part of the public API.

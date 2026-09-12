@@ -1,6 +1,7 @@
 # Agent Note: 共享持久化写入协调器
 
 Status: implemented
+Archived: 2026-08-31
 
 [English](2026-06-18-shared-persistence-write-coordinator.md) | 中文
 
@@ -10,7 +11,7 @@ JSONL provider 需要在其存储原语周围执行对正确性要求很高的�
 
 ## 决策
 
-将一个后端无关的 `PersistenceCoordinator` 提取到 `dsh-session-persistence` 中。协调器统一拥有编排逻辑；每个第一方后端组合一个协调器实例（`new PersistenceCoordinator(ctx, this)`），实现一个小型 `PersistenceBackend` 钩子接口，并将其有状态的公开方法（`create`/`append`/`prepare`/`load`/`inspect`/`readFrom`）委托给协调器。由后端拥有的元数据与修订版本列举会绕过协调器。
+`dsh-session-persistence` 导出后端无关的 `PersistenceCoordinator`。JSONL provider 组合一个协调器实例（`new PersistenceCoordinator(ctx, this)`）、实现小型 `PersistenceBackend` 钩子接口，并把有状态公开方法（`create`/`append`/`prepare`/`load`/`inspect`/`readFrom`）委托给协调器。由后端拥有的元数据与修订版本列举会绕过协调器。
 
 组合，而非继承。协调器是后端持有的具体类，不是后端继承的基类。协调器让非常规后端与继承层级作斗争的风险由此规避：后端只暴露钩子，无法触及协调器的私有编排状态。第三方后端仍然可以完全不使用协调器、直接实现抽象服务，包括不可变逻辑检查，以及通过 `load` 实现的默认准备回退。
 
@@ -49,4 +50,4 @@ JSONL provider 需要在其存储原语周围执行对正确性要求很高的�
 
 ## 后果
 
-协调器增加了一层间接、一个不透明的 torn marker、脱离会话生命周期的退役任务，以及有界的已准备 Session 状态，但将此前每个后端重复的、对正确性要求很高的编排逻辑集中到一处。会话 dispose 仍是仅观察事件，因此会话所有者不会等待持久化退役；协调器会收容失败、在存活控制器中保留待处理事件，并以后端 teardown 为完全停稳边界。其钩子面保持窄小：标识校验、接管、碰撞检查、准备与不可变检查共用 `loadStored`；物化保持在 `appendBatch` 内原子完成；列举绕过协调器。读模型使用 `inspect` 而非 `load`，因此观察已持久化但仍开放的轮次时不会提交中断收尾事件；复用、预留与发布由 [Session 准备阶段决策](2026-08-05-session-preparation.zh.md)定义。新后端只需实现存储原语，而无需复制有界写入生命周期。
+协调器增加一层间接、一个不透明 torn marker、脱离 Session 生命周期的退役任务，以及有界的已准备 Session 状态，但为 JSONL provider 与未来实现集中管理对正确性要求很高的编排。Session dispose 仍是仅观察事件，因此 Session owner 不等待持久化退役；协调器收容失败、在存活控制器中保留待处理事件，并以 provider teardown 为完全停稳边界。其钩子面保持窄小：标识校验、接管、碰撞检查、准备与不可变检查共用 `loadStored`；物化保持在 `appendBatch` 内原子完成；列举绕过协调器。读模型使用 `inspect` 而非 `load`，因此观察已持久化但仍开放的轮次时不会提交中断收尾事件；复用、预留与发布由 [Session 准备阶段决策](2026-08-05-session-preparation.zh.md)定义。新 provider 只需实现存储原语，而无需复制有界写入生命周期。

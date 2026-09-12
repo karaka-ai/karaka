@@ -12,7 +12,7 @@ SQLite Session-query provider 拥有独立、可重建的索引。通用 SQLite 
 
 ## 决策
 
-`@deepseek-ai/dsh-session-persistence-jsonl` 是 `ctx.sessionPersistence` 唯一的第一方实现，Karaka 的内置组合也使用它。Service Definition 和 `PersistenceCoordinator` 保持后端中立。移除权威 SQLite package、schema 资源、registry 条目、公开导出、依赖及后端专属测试。共享持久化消费者测试 JSONL，Windows 原生测试通道继续覆盖 JSONL 持久性。
+`@deepseek-ai/dsh-session-persistence-jsonl` 是 `ctx.sessionPersistence` 唯一的 first-party 实现。抽象 Service Definition 保持后端无关，使仓库外 provider 仍可实现同一服务，但仓库只拥有并测试一种权威 Session 物理格式。
 
 JSONL header 保留原子的应用/租户/用户 owner 及 fork 谱系。事件保留逻辑顺序与请求标识。Karaka 保留冷态激活修复，在重建 Agent 前加载 preset 投影。真实进程重启及 provider 重新挂载测试覆盖所有权隔离、历史、继承事件和重复请求接收。
 

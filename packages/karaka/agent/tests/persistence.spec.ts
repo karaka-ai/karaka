@@ -3,6 +3,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { ApplicationId, SessionId, SessionLogOffset, TenantId, UserId } from '@deepseek-ai/dsh-session'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { SessionReadOnlyError } from '@deepseek-ai/dsh-session-persistence'
+import { logPath } from '../../../session/session-persistence-jsonl/src/format.ts'
 import { SessionObservationReader } from '@deepseek-ai/dsh-session-query/src/observation.ts'
 import { ApplicationChatController } from '@deepseek-ai/dsh-api-session-controller/src/application.ts'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -44,9 +46,14 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
       meta: { delegationDepth: 0, ...structuredClone(session.header) },
       inheritedEventCount: session.inheritedEventCount, events: session.snapshotEvents(),
     }))
-    for (const session of [parent, child]) {
-      await writer.sessionPersistence.ensureMaterialized(session)
-      await writer.sessions.flush(session)
+    for (const item of stored) {
+      const handle = await writer.sessionPersistence.create(item.meta, { inheritedEventCount: item.inheritedEventCount })
+      try {
+        await handle.append(item.events)
+        await handle.flush()
+      } finally {
+        await handle.close()
+      }
     }
     await writer.fiber.dispose()
 
@@ -58,21 +65,26 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
     const backend = reader.sessionPersistence as SessionPersistenceJsonl
     const headers = await backend.list()
     expect(headers).toHaveLength(2)
-    expect(headers).toEqual(expect.arrayContaining(stored.map(item => item.meta)))
-    const locations = stored.map(item => backend.locate(item.meta).path)
+    expect(headers.map(snapshot => snapshot.header)).toEqual(expect.arrayContaining(stored.map(item => item.meta)))
+    const locations = stored.map(item => logPath(root, item.meta.cwd, item.meta.id, 'zstd'))
     expect(locations[0]).not.toBe(locations[1])
     for (const item of stored) {
       expect(reader.sessions.get(item.meta.id)).toBeUndefined()
-      const location = backend.locate(item.meta)
-      expect(location.kind).toBe('jsonl')
-      expect(location.path).toMatch(/\.jsonl\.zstd$/u)
-      const bytes = await readFile(location.path)
+      const path = logPath(root, item.meta.cwd, item.meta.id, 'zstd')
+      const bytes = await readFile(path)
       expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x28, 0xb5, 0x2f, 0xfd]))
-      const prefix = await backend.loadStored(item.meta.id)
-      expect(prefix).toMatchObject(item)
-      expect(prefix?.events).toEqual(item.events)
-      expect(prefix?.tornMarker).toBeUndefined()
-      await expect(readFile(location.path)).resolves.toEqual(bytes)
+      const handle = await backend.open(item.meta.id, 'read')
+      try {
+        expect(handle.header).toEqual(item.meta)
+        expect(handle.inheritedEventCount).toBe(item.inheritedEventCount)
+        await expect(handle.read()).resolves.toEqual(item.events)
+        await expect(handle.read(item.inheritedEventCount)).resolves.toEqual(item.events.slice(item.inheritedEventCount))
+        await expect(handle.append([])).rejects.toBeInstanceOf(SessionReadOnlyError)
+        await expect(handle.flush()).rejects.toBeInstanceOf(SessionReadOnlyError)
+      } finally {
+        await handle.close()
+      }
+      await expect(readFile(path)).resolves.toEqual(bytes)
       expect(reader.sessions.get(item.meta.id)).toBeUndefined()
       const abort = new AbortController()
       const frames = controller.follow({ chatId: item.meta.id, owner: applicationOwner }, abort.signal)
@@ -91,21 +103,6 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
           projections: { asOfSeq: item.events.at(-1)?.seq ?? -1, values: {} },
         })
         expect(reader.sessions.get(item.meta.id)).toBeUndefined()
-        const prepared = await backend.prepare(item.meta.id)
-        try {
-          expect(prepared.session.header).toEqual(item.meta)
-          expect(prepared.session.inheritedEventCount).toBe(item.inheritedEventCount)
-          const ownEvents = prepared.session.ownEvents()
-          const persistedSuffix = item.events.slice(item.inheritedEventCount)
-          const hasRecoveryMarker = item.meta.id === parent.id
-          expect(ownEvents).toHaveLength(persistedSuffix.length + (hasRecoveryMarker ? 1 : 0))
-          expect(ownEvents.slice(0, persistedSuffix.length)).toEqual(persistedSuffix)
-          if (hasRecoveryMarker) {
-            expect(ownEvents.at(-1)).toMatchObject({ type: 'session/end-seed', seq: 4, data: {} })
-          }
-        } finally {
-          prepared[Symbol.dispose]()
-        }
         for (const wrongOwner of [
           { ...applicationOwner, applicationId: ApplicationId('another-application') },
           { ...applicationOwner, tenantId: TenantId('another-tenant') },
@@ -123,6 +120,7 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
         abort.abort()
         await frames.return?.()
       }
+      await expect(readFile(path)).resolves.toEqual(bytes)
     }
   } finally {
     try {

@@ -25,7 +25,7 @@ import { createKarakaClient } from '@karaka-ai/sdk'
 import { initKarakaProject, prepareKarakaRuntime } from '@karaka-ai/cli'
 import { execa, type ResultPromise } from 'execa'
 import { describe, expect, it } from 'vitest'
-import { toHeaderLine } from '../../packages/session/session-persistence-jsonl/src/format.ts'
+import { logPath, toHeaderLine } from '../../packages/session/session-persistence-jsonl/src/format.ts'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const scenarioDir = fileURLToPath(new URL('./application-chat/', import.meta.url))
@@ -279,22 +279,24 @@ async function readPersistedSession(root: string): Promise<string> {
     await ctx.plugin(SessionPersistenceJsonl, { root })
     const headers = await ctx.sessionPersistence.list()
     expect(headers).toHaveLength(1)
-    const header = headers[0]
-    if (header === undefined) throw new Error('Karaka snapshot JSONL root has no session')
+    const snapshot = headers[0]
+    if (snapshot === undefined) throw new Error('Karaka snapshot JSONL root has no session')
+    const header = snapshot.header
     const backend = ctx.sessionPersistence as SessionPersistenceJsonl
-    const location = backend.locate(header)
-    expect(location.kind).toBe('jsonl')
-    expect(location.path.startsWith(`${root}${sep}`)).toBe(true)
-    expect(location.path).toMatch(/\.jsonl\.zstd$/u)
-    const physical = await readFile(location.path)
+    const path = logPath(root, header.cwd, header.id, 'zstd')
+    expect(path.startsWith(`${root}${sep}`)).toBe(true)
+    expect(path).toMatch(/\.jsonl\.zstd$/u)
+    const physical = await readFile(path)
     expect(physical.subarray(0, 4)).toEqual(Buffer.from([0x28, 0xb5, 0x2f, 0xfd]))
     expect(existsSync(join(dirname(root), 'karaka-sessions.sqlite'))).toBe(false)
-    // Read stored events directly: load/inspect may synthesize crash-recovery events.
-    const loaded = await backend.loadStored(header.id)
-    if (loaded === undefined) throw new Error('Karaka snapshot session has no stored JSONL')
-    expect(loaded.tornMarker).toBeUndefined()
-    await expect(readFile(location.path)).resolves.toEqual(physical)
-    return [JSON.stringify(toHeaderLine(loaded.meta, loaded.inheritedEventCount)), ...loaded.events.map(event => JSON.stringify(event)), ''].join('\n')
+    const stored = await backend.open(header.id, 'read')
+    try {
+      const events = await stored.read()
+      await expect(readFile(path)).resolves.toEqual(physical)
+      return [JSON.stringify(toHeaderLine(stored.header, stored.inheritedEventCount)), ...events.map(event => JSON.stringify(event)), ''].join('\n')
+    } finally {
+      await stored.close()
+    }
   } finally {
     await ctx.fiber.dispose()
   }

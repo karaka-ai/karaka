@@ -1,6 +1,7 @@
 # Agent Note: Shared persistence write coordinator
 
 Status: implemented
+Archived: 2026-08-31
 
 English | [中文](2026-06-18-shared-persistence-write-coordinator.zh.md)
 
@@ -10,7 +11,7 @@ The JSONL provider needs correctness-heavy write orchestration around its storag
 
 ## Decision
 
-Extract a backend-agnostic `PersistenceCoordinator` into `dsh-session-persistence`. The coordinator owns the orchestration once; each first-party backend composes one (`new PersistenceCoordinator(ctx, this)`), implements a small `PersistenceBackend` hook interface, and delegates its stateful public methods (`create`/`append`/`prepare`/`load`/`inspect`/`readFrom`) to it. Backend-owned metadata and revision listing bypass the coordinator.
+`dsh-session-persistence` exports a backend-agnostic `PersistenceCoordinator`. The JSONL provider composes one (`new PersistenceCoordinator(ctx, this)`), implements the small `PersistenceBackend` hook interface, and delegates its stateful public methods (`create`/`append`/`prepare`/`load`/`inspect`/`readFrom`) to it. Backend-owned metadata and revision listing bypass the coordinator.
 
 Composition, not inheritance. The coordinator is a concrete class the backend holds, not a base class the backend extends. The risk that a coordinator makes unusual backends fight an inheritance hierarchy is avoided: a backend exposes only the hooks and cannot reach the coordinator's private orchestration state. A third-party backend MAY still implement the abstract service directly without the coordinator, including immutable logical inspection and the default preparation fallback through `load`.
 
@@ -49,4 +50,4 @@ The shared `runPersistenceContract` proves that JSONL `inspect` balances an inte
 
 ## Consequences
 
-The coordinator adds one indirection, an opaque torn marker, detached session-retirement tasks, and bounded prepared Session state, but centralizes correctness-heavy orchestration previously duplicated by every backend. Session disposal remains an observe-only event, so the session owner does not await persistence retirement; the coordinator contains failures, preserves pending events in the live controller, and makes backend teardown the quiescence boundary. Its hook surface stays narrow: identity, adoption, collision checks, preparation, and immutable inspection reuse `loadStored`; materialization stays atomic inside `appendBatch`; and listing bypasses the coordinator. Read models use `inspect` rather than `load`, so observing a persisted open turn does not commit interruption closers; the [Session preparation decision](2026-08-05-session-preparation.md) owns reuse, reservation, and publication. New backends implement storage primitives rather than copy the bounded write lifecycle.
+The coordinator adds one indirection, an opaque torn marker, detached Session-retirement tasks, and bounded prepared Session state, but centralizes correctness-heavy orchestration for the JSONL provider and future implementations. Session disposal remains an observe-only event, so the Session owner does not await persistence retirement; the coordinator contains failures, preserves pending events in the live controller, and makes provider teardown the quiescence boundary. Its hook surface stays narrow: identity, adoption, collision checks, preparation, and immutable inspection reuse `loadStored`; materialization stays atomic inside `appendBatch`; and listing bypasses the coordinator. Read models use `inspect` rather than `load`, so observing a persisted open turn does not commit interruption closers; the [Session preparation decision](2026-08-05-session-preparation.md) owns reuse, reservation, and publication. A new provider implements storage primitives rather than copy the bounded write lifecycle.

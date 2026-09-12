@@ -88,7 +88,7 @@ export class ApplicationChatController {
         )
         const release = this.agents.pinApplication(agent)
         try {
-          await persistence.ensureMaterialized(agent.session)
+          await this.ctx.sessions.flush(agent.session)
           this.agents.touchApplication(agent)
         } finally {
           release()

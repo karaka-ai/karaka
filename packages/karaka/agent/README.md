@@ -151,4 +151,4 @@ None.
 
 </details>
 
-Run one active Karaka writer process per Karaka home and Session root. Replicas need separate roots and routing that keeps each Session with its owner process; JSONL append does not fence concurrent writers. New sessions use JSONL. This cutover does not read, migrate, or delete the former `karaka-sessions.sqlite` database.
+Run one active Karaka writer process per Karaka home and Session root. Replicas need separate roots and routing that keeps each Session with its owner process; JSONL append does not fence concurrent writers. AgentLoop owns each Session write handle through disposal. Application chat creation flushes that Session before returning, so an accepted empty chat survives restart. New sessions use JSONL. This cutover does not read, migrate, or delete the former `karaka-sessions.sqlite` database.
