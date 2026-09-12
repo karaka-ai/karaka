@@ -110,6 +110,8 @@ export const karakaMcpHandler = toolHost.expressHandler()
 
 -----
 
+不发布运行时不变量伴生入口，因为调用方在 Cordis 之外管理 SDK 客户端与工具服务。
+
 <a id="model-experience"></a>
 ## 模型体验
 

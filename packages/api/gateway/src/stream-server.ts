@@ -19,11 +19,13 @@ export type RemoteStreamOpener = (
 /** Convert an invocation or carrier failure to a stable wire value. */
 export type RemoteStreamFailureMapper = (error: unknown) => RemoteStreamFailure
 
+const MAX_MISSED_HEARTBEATS = 2
+
 /** Own the no-server WebSocket acceptor and every active logical stream. */
 export class RemoteStreamMuxServer {
   private readonly server = new WebSocketServer({ noServer: true, handleProtocols: protocols => protocols.has('dsh') ? 'dsh' : false })
   private readonly connections = new Set<Promise<void>>()
-  private readonly heartbeatAlive = new WeakMap<WebSocket, boolean>()
+  private readonly missedHeartbeats = new WeakMap<WebSocket, number>()
   private heartbeatTimer: NodeJS.Timeout | undefined
 
   /**
@@ -45,8 +47,8 @@ export class RemoteStreamMuxServer {
    */
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, open: RemoteStreamOpener, expiresAt?: number): void {
     this.server.handleUpgrade(req, socket, head, (websocket) => {
-      this.heartbeatAlive.set(websocket, true)
-      websocket.on('pong', () => { this.heartbeatAlive.set(websocket, true) })
+      this.missedHeartbeats.set(websocket, 0)
+      websocket.on('pong', () => { this.missedHeartbeats.set(websocket, 0) })
       this.startHeartbeat()
       const connection = new RemoteStreamMuxConnection(websocket, open, this.failure)
       const expiry = expiresAt === undefined ? undefined : setTimeout(() => { websocket.terminate() }, Math.max(0, expiresAt - Date.now()))
@@ -76,11 +78,16 @@ export class RemoteStreamMuxServer {
     this.heartbeatTimer = setInterval(() => {
       for (const socket of this.server.clients) {
         if (socket.readyState !== WebSocket.OPEN) continue
-        if (this.heartbeatAlive.get(socket) === false) {
-          socket.terminate()
+        const missed = this.missedHeartbeats.get(socket) as number
+        if (missed >= MAX_MISSED_HEARTBEATS) {
+          setImmediate(() => {
+            if ((this.missedHeartbeats.get(socket) as number) >= MAX_MISSED_HEARTBEATS) {
+              socket.terminate()
+            }
+          })
           continue
         }
-        this.heartbeatAlive.set(socket, false)
+        this.missedHeartbeats.set(socket, missed + 1)
         socket.ping()
       }
     }, this.heartbeatIntervalMs)

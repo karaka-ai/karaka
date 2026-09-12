@@ -6,7 +6,6 @@
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
     { "path": "../../core/session" },
-    { "path": "../../credentials/credentials" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../credentials/credentials" }
   ]
 }

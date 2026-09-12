@@ -66,6 +66,9 @@ try {
   }
   const archive = resolve(archiveDir, archives[0])
   const members = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n')
+  if (members.some(member => member.includes('tool-subagent-report'))) {
+    throw new Error('packed Agent contains the removed report plugin')
+  }
   if (members.some(member => member.includes('/public-entries/') || member.endsWith('.ts') && !member.endsWith('.d.ts'))) {
     throw new Error('packed Agent contains build-only TypeScript sources')
   }
@@ -108,6 +111,69 @@ declare const backend: StorageBackend
 declare const persistence: SessionPersistence
 void [defineTool, Storage, storageBackendServiceKey, defineDomain, backend, persistence]
 `)
+  verifyTypes(project, 'session-reader-consumer.ts', `import { Session, SessionId, type SessionEvent } from '@karaka-ai/agent/session'
+import type ApprovalService from '@karaka-ai/agent/user-approval'
+// @ts-expect-error the chronological approval helper is not part of the public API.
+import { effectiveApprovalPolicy } from '@karaka-ai/agent/user-approval'
+
+const session = Session.create(SessionId('public-reader'))
+const event: SessionEvent | undefined = session.eventAt(0)
+const snapshot: readonly SessionEvent[] = session.snapshotEvents(0, session.seq)
+declare const approval: ApprovalService
+void approval.overrideOf(session)
+// @ts-expect-error Session exposes explicit indexed/snapshot reads, not a live events property.
+void session.events
+// @ts-expect-error published snapshots cannot be mutated.
+snapshot.push(event!)
+void [event, snapshot, effectiveApprovalPolicy]
+`)
+  writeFileSync(resolve(project, 'session-reader.mjs'), `import assert from 'node:assert/strict'
+import { Session, SessionId } from '@karaka-ai/agent/session'
+import * as approval from '@karaka-ai/agent/user-approval'
+
+const session = Session.create(SessionId('public-reader'))
+const first = session.append('turn/start', { turn: 1 })
+const cut = session.snapshotEvents()
+assert.equal(session.eventAt(0), first)
+assert.equal(cut[0], first)
+assert.equal(session.snapshotEvents(), cut)
+assert.equal(session.eventAt(session.seq), undefined)
+assert.ok(Object.isFrozen(cut))
+assert.ok(Object.isFrozen(first))
+assert.ok(Object.isFrozen(first.data))
+const last = session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+assert.equal(cut.length, 1)
+assert.equal(cut[0], first)
+assert.notEqual(session.snapshotEvents(), cut)
+assert.deepEqual(session.snapshotEvents(0, 1), [first])
+assert.deepEqual(session.snapshotEvents(1, 2), [last])
+assert.deepEqual(session.snapshotEvents(1, 1), [])
+assert.equal('events' in session, false)
+assert.equal('effectiveApprovalPolicy' in approval, false)
+`)
+  execFileSync(process.execPath, [resolve(project, 'session-reader.mjs')], { cwd: project, stdio: 'inherit' })
+
+  if (publicEntries.includes('tool-subagent-report') || aliases.includes('tool-subagent-report')) {
+    throw new Error('removed report tool remains in the packed public surface')
+  }
+  verifyTypes(project, 'subagent-consumer.ts', `import SubagentRuntime from '@karaka-ai/agent/subagent'
+import type { Agent } from '@karaka-ai/agent/agent'
+import { SessionId } from '@karaka-ai/agent/session'
+// @ts-expect-error report plugin is not a public entry.
+import '@karaka-ai/agent/tool-subagent-report'
+// @ts-expect-error removed reporting type must not be re-exported.
+import type { SubagentReportRequest } from '@karaka-ai/agent/subagent'
+declare const runtime: SubagentRuntime
+declare const sender: Agent
+void runtime.sendMessage(sender, SessionId('child'), [{ type: 'text', text: 'message' }], { signal: new AbortController().signal })
+// @ts-expect-error model messaging has no legacy followup operation.
+void runtime.followup
+// @ts-expect-error reporting uses the adjacent-Agent tool.
+void runtime.reportFrom
+// @ts-expect-error continuable composition has no setup registry.
+void runtime.registerContinuableSetup
+`)
+
   verifyTypes(project, 'session-projection-consumer.ts', `import type {
   SessionProjectionMap,
   SessionProjectionStateMap,
@@ -132,7 +198,9 @@ void [packages, sessionLog]
 
   const pluginPath = resolve(project, 'plugins/storage-memory.mjs')
   mkdirSync(dirname(pluginPath), { recursive: true })
-  writeFileSync(pluginPath, `import { storageBackendServiceKey } from '@karaka-ai/agent/storage'
+  writeFileSync(resolve(project, 'plugins/packed-subagent.mjs'), readFileSync(resolve(packageDir, 'tests/fixtures/packed-subagent.mjs')))
+  writeFileSync(pluginPath, `import { verifyPackedSubagent } from './packed-subagent.mjs'
+import { storageBackendServiceKey } from '@karaka-ai/agent/storage'
 import { writeFileSync } from 'node:fs'
 
 export const name = 'storage-memory'
@@ -165,7 +233,11 @@ export function apply(ctx) {
   })
   ctx.provide(storageBackendServiceKey('memory'), backend)
   if (process.env.KARAKA_PLUGIN_READY) {
-    ctx.inject(['webServer'], () => {
+    ctx.inject(['webServer', 'subagents', 'agents', 'sessionPersistence', 'llm', 'tools'], async (injectedCtx) => {
+      await verifyPackedSubagent(injectedCtx).catch(error => {
+        console.error('packed subagent verification failed:', error)
+        throw error
+      })
       writeFileSync(process.env.KARAKA_PLUGIN_READY, 'ready')
     })
   }

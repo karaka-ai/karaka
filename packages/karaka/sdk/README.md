@@ -110,6 +110,8 @@ The client validates every JSON response and SSE event before returning it. `for
 
 -----
 
+No runtime invariant companion is published because callers own SDK clients and tool hosts outside Cordis.
+
 <a id="model-experience"></a>
 ## Model Experience
 

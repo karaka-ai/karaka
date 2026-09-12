@@ -26,10 +26,6 @@
       "types": "./lib/types/cordis.d.ts",
       "default": "./lib/cordis.js"
     },
-    "./invariant": {
-      "types": "./lib/types/invariant.d.ts",
-      "default": "./lib/invariant.js"
-    },
     "./*": {
       "types": "./lib/public/*.d.ts",
       "default": "./lib/public/*.js"
@@ -45,7 +41,6 @@
     "lib/public/**/*.js",
     "lib/public/**/*.d.ts",
     "lib/public-types/**/*.d.ts",
-    "lib/invariant.js",
     "lib/types/**/*.d.ts",
     "base.cordis.patch.yml",
     "cordis.patch.yml",
@@ -132,7 +127,6 @@
     "@deepseek-ai/dsh-goal": "workspace:^",
     "@deepseek-ai/dsh-goal-round-driver": "workspace:^",
     "@deepseek-ai/dsh-host-webserver": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-jobs": "workspace:^",
     "@deepseek-ai/dsh-jobs-local": "workspace:^",
     "@deepseek-ai/dsh-launch-environment": "workspace:^",
@@ -195,7 +189,6 @@
     "@deepseek-ai/dsh-tool-str-replace-editor": "workspace:^",
     "@deepseek-ai/dsh-tool-subagent": "workspace:^",
     "@deepseek-ai/dsh-tool-subagent-control": "workspace:^",
-    "@deepseek-ai/dsh-tool-subagent-report": "workspace:^",
     "@deepseek-ai/dsh-tool-todo": "workspace:^",
     "@deepseek-ai/dsh-tool-web": "workspace:^",
     "@deepseek-ai/dsh-tool-workflow": "workspace:^",

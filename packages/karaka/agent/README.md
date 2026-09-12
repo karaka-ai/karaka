@@ -73,6 +73,8 @@ An `agent.cordis.yml` row may name an embedded alias such as `@karaka-ai/agent/p
 import type { StorageBackend } from '@karaka-ai/agent/storage'
 ```
 
+`@karaka-ai/agent/session` exposes `Session.eventAt(seq)` for canonical indexed reads and `Session.snapshotEvents(fromSeq, toSeqExclusive)` for immutable half-open snapshots. A full current snapshot is reused until append; an earlier snapshot remains stable. See the [Session contract](../../core/session/README.md).
+
 An Agent project keeps application-specific plugins in its root `plugins/` directory. The deployment file is a patch layer, so a new row belongs under `insert`; this example also selects the backend that the local plugin registers:
 
 ```yaml
@@ -110,6 +112,8 @@ The build emits one runtime chunk set shared by `lib/bin.js`, the Loader registr
 </details>
 
 -----
+
+No runtime invariant companion is published because the bundle composes packages that own their runtime relationships.
 
 <a id="further-exploration"></a>
 ## Further Exploration

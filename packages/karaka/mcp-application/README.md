@@ -34,6 +34,8 @@ Mount one row in the deployment composition for each application tool endpoint. 
 
 The Agent Preset selects individual qualified names through its existing tool `allow` list. A tool remains hidden from other applications and from presets that do not select it.
 
+No runtime invariant companion is published because endpoint identity is checked during tool presentation and invocation.
+
 <a id="model-experience"></a>
 ## Model Experience
 

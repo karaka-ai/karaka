@@ -6,18 +6,19 @@
  * The geometry itself needs real layout, which jsdom does not provide — the
  * browser layout scenario in `apps/web/tests/message-feedback-layout.e2e.ts`
  * owns that. What is asserted here is the wiring the clamp depends on: the
- * listeners and the panel-size observer are attached while open and released on
+ * listeners and the panel/anchor-ancestry observer are attached while open and released on
  * close, a size change replays the placement, and the hook still works where
  * `ResizeObserver` does not exist.
  */
 import { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { useAnchoredPosition } from '../src/useAnchoredPosition.ts'
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 /** One recorded `ResizeObserver` instance, so a test can drive its callback. */
@@ -65,17 +66,65 @@ function Host({ open }: { open: boolean }) {
 }
 
 describe('useAnchoredPosition', () => {
-  it('observes the panel while open and disconnects when it closes', () => {
+  it('observes the panel and anchor ancestry while open and disconnects when it closes', () => {
     const made = stubResizeObserver()
     const ui = render(<Host open />)
 
     expect(made).toHaveLength(1)
-    expect(made[0]?.observed).toEqual([ui.getByTestId('panel')])
+    const anchor = ui.getByRole('button', { name: 'anchor' })
+    expect(made[0]?.observed).toEqual([
+      ui.getByTestId('panel'), anchor, ui.container, document.body, document.documentElement,
+    ])
     expect(made[0]?.disconnected).toBe(false)
 
     ui.rerender(<Host open={false} />)
 
     expect(made[0]?.disconnected).toBe(true)
+  })
+
+  it('remeasures when a containing element moves an unchanged-size anchor', () => {
+    const made = stubResizeObserver()
+    const ui = render(<Host open />)
+    const anchor = ui.getByRole('button', { name: 'anchor' })
+    const panel = ui.getByTestId('panel')
+    const rect = vi.spyOn(anchor, 'getBoundingClientRect')
+    rect.mockReturnValue(new DOMRect(100, 20, 40, 24))
+    act(() => { made[0]?.callback([], {} as ResizeObserver) })
+    expect(panel.style.left).toBe('100px')
+
+    expect(made[0]?.observed).toContain(ui.container)
+    rect.mockReturnValue(new DOMRect(324, 20, 40, 24))
+    act(() => { made[0]?.callback([], {} as ResizeObserver) })
+    expect(panel.style.left).toBe('324px')
+    expect(panel.style.top).toBe('48px')
+    rect.mockRestore()
+  })
+
+  it('retains equal coordinates and follows vertical-only anchor movement', () => {
+    const made = stubResizeObserver()
+    const anchor = document.createElement('button')
+    const panel = document.createElement('div')
+    const rect = vi.spyOn(anchor, 'getBoundingClientRect')
+    rect.mockReturnValue(new DOMRect(100, 20, 40, 24))
+    const anchorRef = { current: anchor }
+    const panelRef = { current: panel }
+    const { result } = renderHook(() => useAnchoredPosition({
+      open: true,
+      anchorRef,
+      panelRef,
+      gap: 4,
+      margin: 12,
+    }))
+    const initial = result.current
+    expect(initial).toEqual({ left: 100, top: 48 })
+
+    act(() => { made[0]?.callback([], {} as ResizeObserver) })
+    expect(result.current).toBe(initial)
+
+    rect.mockReturnValue(new DOMRect(100, 60, 40, 24))
+    act(() => { made[0]?.callback([], {} as ResizeObserver) })
+    expect(result.current).toEqual({ left: 100, top: 88 })
+    expect(result.current).not.toBe(initial)
   })
 
   it('replaces the panel when its own size changes', () => {

@@ -23,6 +23,7 @@ export default defineConfig({
   ],
   test: {
     execArgv: vitestExecArgv,
+    setupFiles: ['./scripts/test-browser-observers.ts'],
     include: [
       'apps/web/tests/**/*.e2e.ts',
       'apps/web/tests/**/*.snapshot.ts',

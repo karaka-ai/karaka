@@ -281,7 +281,6 @@ export default defineConfig(({ env }) => {
         index: 'lib/types/index.js',
         bin: 'lib/types/bin.js',
         cordis: 'lib/types/cordis.js',
-        invariant: 'lib/types/invariant.js',
         ...Object.fromEntries(
           Object.entries(publicEntries).map(([subpath, entry]) => [`public/${subpath}`, entry]),
         ),

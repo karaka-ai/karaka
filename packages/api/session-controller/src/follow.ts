@@ -33,7 +33,7 @@ export class SessionEventFollower implements Disposable {
     }, { global: true })
     this.disposeCreated = ctx.on('session/created', (session) => {
       if (session.id !== target) return
-      const suffix = session.events.slice(this.snapshotCursor === undefined
+      const suffix = session.snapshotEvents(this.snapshotCursor === undefined
         ? session.firstLiveSeq
         : this.snapshotCursor + 1)
       for (let index = suffix.length - 1; index >= 0; index -= 1) {

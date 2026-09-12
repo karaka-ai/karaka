@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 
 Agent Presets can load bundled `@karaka-ai/agent/*` plugins, relative JavaScript files from the project `plugins/` directory, or optional reusable packages installed by the project. Local and installed plugins import their service and plugin APIs from the same flat `@karaka-ai/agent/*` subpaths.
 
+No runtime invariant companion is published because the CLI owns a child process outside Cordis runtime state.
+
 ## Model Experience
 
 None, as the CLI selects the Agent executable and deployment patch but contributes no prompt or tool definition.

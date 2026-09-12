@@ -132,6 +132,15 @@ const LANG_ALIASES = new Map<string, string>([
   ['lua', 'lua'],
 ])
 
+/**
+ * Whether a language hint can use the shared syntax highlighter.
+ * @param lang - Language hint from a code surface.
+ * @returns Whether the hint resolves to a supported grammar.
+ */
+export function supportsHighlighting(lang: string | undefined): boolean {
+  return lang !== undefined && LANG_ALIASES.has(lang.toLowerCase())
+}
+
 /** All token colors resolve through `--shiki-*` custom properties (theme package sheets). */
 const cssVariablesTheme = createCssVariablesTheme({
   name: 'css-variables',
@@ -332,32 +341,32 @@ function lineSpans(line: ThemedToken[]): HighlightSpan[] {
  * Incremental highlighter for one growing streaming fence. TextMate
  * tokenization is line-based and forward-only — a line's tokens depend only on
  * its own text and the grammar state entering it — so appended text never
- * changes a completed line's tokens. The session caches the spans of every
- * completed line together with the grammar state after them; each
- * {@link update} tokenizes newly completed text from that state, plus the
- * still-growing last line. Per-call cost therefore excludes the completed
- * prefix, and the result equals a from-scratch tokenization of the same code.
+ * changes a completed line's tokens. The session retains the source prefix
+ * and grammar state after completed lines; {@link updateFrame} reports only
+ * newly completed lines plus the still-growing last line. Per-call
+ * tokenization cost therefore excludes the completed prefix,
+ * and the result equals a from-scratch tokenization of the same code.
  * Non-append input and a change of resolved grammar reset the cache and
  * re-tokenize fully, so any input stays correct.
  */
 export class StreamingHighlightSession {
   /** Grammar id the cache was built with; a different resolution resets it. */
   private resolved: string | undefined
-  /** Newline-terminated source prefix covered by {@link spans}. */
+  /** Newline-terminated source prefix covered by the saved grammar state. */
   private prefix = ''
-  /** Cached spans, one entry per completed line of {@link prefix}. */
-  private spans: HighlightSpan[][] = []
   /** Grammar state after {@link prefix}; undefined = the grammar's initial state. */
   private state: GrammarState | undefined
   private lastCode: string | undefined
   private lastLang: string | undefined
-  private lastResult: HighlightSpan[][] | undefined
+  private generation = 0
+  private lastFrame: StreamingHighlightFrame | undefined
 
   private reset(resolved: string | undefined): void {
     this.resolved = resolved
     this.prefix = ''
-    this.spans = []
     this.state = undefined
+    this.generation += 1
+    this.lastFrame = undefined
   }
 
   /** Tokenize `text` with `resolved`, resuming from the cached grammar state when one exists. */
@@ -370,52 +379,53 @@ export class StreamingHighlightSession {
   }
 
   /**
-   * Tokenize the fence's current text into per-line highlighted runs;
-   * `undefined` means the caller renders its plain fallback. Idempotent per
-   * (`code`, `lang`) input — repeated calls return the identical result array —
-   * and a retained line keeps its span-array identity across growing calls, so
-   * a React caller can reuse cached line elements. A lazy grammar not yet
-   * loaded returns `undefined` and loads in the background exactly as
-   * {@link highlightToHtml} does; the next call after it registers highlights.
-   * @param code - the fence text accumulated so far (display-trimmed, no synthetic trailing newline).
-   * @param lang - the language hint (a markdown fence info string).
-   * @returns one entry per line of `code` (each an array of runs), or `undefined` for unknown or not-yet-loaded languages.
+   * Tokenize one update as a delta for a retained renderer.
+   * Repeated input returns the identical frame. An unloaded lazy grammar
+   * starts loading and returns `undefined`; the next call after registration
+   * highlights. Unknown or absent languages also return `undefined`.
+   * @param code - the fence text accumulated so far.
+   * @param lang - the language hint.
+   * @returns Newly completed lines plus the current tail, or `undefined` for the plain arm.
    */
-  update(code: string, lang: string | undefined): readonly HighlightSpan[][] | undefined {
-    if (code === this.lastCode && lang === this.lastLang && this.lastResult !== undefined) {
-      return this.lastResult
+  updateFrame(code: string, lang: string | undefined): StreamingHighlightFrame | undefined {
+    if (code === this.lastCode && lang === this.lastLang && this.lastFrame !== undefined) {
+      return this.lastFrame
     }
     this.lastCode = code
     this.lastLang = lang
     const resolved = lang === undefined ? undefined : LANG_ALIASES.get(lang.toLowerCase())
     if (resolved === undefined || !ensureGrammar(resolved)) {
       this.reset(undefined)
-      this.lastResult = undefined
       return undefined
     }
     if (resolved !== this.resolved || !code.startsWith(this.prefix)) this.reset(resolved)
+    const appended: HighlightSpan[][] = []
     const rest = code.slice(this.prefix.length)
     const lastNewline = rest.lastIndexOf('\n')
-    // Everything before the last newline is newly completed lines: tokenize
-    // them once from the cached state and retain their spans. What follows is
-    // the still-growing line, re-tokenized per call but never retained.
     if (lastNewline >= 0) {
-      // Tokenize what shiki's own line splitting would see: splitLines strips
-      // the \r of a \r\n terminator (interior pairs are shiki's to split), so
-      // a CRLF cut must not leak its \r into the last completed line — a bash
-      // continuation's grammar state, for example, differs with it.
       const grownEnd = rest[lastNewline - 1] === '\r' ? lastNewline - 1 : lastNewline
       const tokens = this.tokenize(resolved, rest.slice(0, grownEnd))
-      // Per-line push, not one spread call: a reconnect can deliver the whole
-      // accumulated fence as one update, and spreading tens of thousands of
-      // lines into arguments can exceed the engine's argument limit.
-      for (const line of tokens) this.spans.push(lineSpans(line))
+      for (const line of tokens) appended.push(lineSpans(line))
       this.state = highlighter().getLastGrammarState(tokens)
       this.prefix = code.slice(0, this.prefix.length + lastNewline + 1)
     }
-    this.lastResult = [...this.spans, ...this.tokenize(resolved, rest.slice(lastNewline + 1)).map(lineSpans)]
-    return this.lastResult
+    this.lastFrame = {
+      generation: this.generation,
+      appended,
+      tail: this.tokenize(resolved, rest.slice(lastNewline + 1)).map(lineSpans),
+    }
+    return this.lastFrame
   }
+}
+
+/** One retained-renderer update from {@link StreamingHighlightSession.updateFrame}. */
+export interface StreamingHighlightFrame {
+  /** Changes whenever prior completed lines must be discarded. */
+  readonly generation: number
+  /** Completed lines added since the preceding frame in this generation. */
+  readonly appended: readonly HighlightSpan[][]
+  /** The still-growing final line or lines, replaced by the next frame. */
+  readonly tail: readonly HighlightSpan[][]
 }
 
 /**

@@ -23,6 +23,8 @@ kind: "package-reference"
 
 每个 `applications` 条目包含稳定的 `id`、`chatCredential` 和 `toolCredential`。两个凭据引用可独立轮换。其他 provider 可在同一 service 后实现 `authenticate()` 与 `authorizeTools()`。
 
+不发布运行时不变量伴生入口，因为凭据在每次请求边界解析并校验。
+
 <a id="model-experience"></a>
 ## 模型体验
 

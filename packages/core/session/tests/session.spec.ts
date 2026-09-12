@@ -68,7 +68,7 @@ describe('Session', () => {
     session.append('turn/start', { turn: 1 })
     session.append('turn/end', { turn: 1, reason: { kind: 'max-tokens' } })
 
-    const turnEnd = session.events.findLast(e => e.type === 'turn/end')!
+    const turnEnd = session.snapshotEvents().findLast(e => e.type === 'turn/end')!
     expect(turnEnd.data.reason).toEqual({ kind: 'max-tokens' })
     // survives a structuredClone (the persistence-serialization boundary)
     expect(structuredClone(turnEnd.data.reason)).toEqual({ kind: 'max-tokens' })
@@ -78,9 +78,9 @@ describe('Session', () => {
     const session = Session.create(SessionId('aborted'))
     session.append('turn/start', { turn: 1 })
     session.append('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } })
-    const replayed = Session.create(SessionId('aborted-replay'), structuredClone(session.events))
-    expect(replayed.events.slice(0, -1)).toEqual(session.events)
-    const turnEnd = replayed.events.findLast(event => event.type === 'turn/end')
+    const replayed = Session.create(SessionId('aborted-replay'), structuredClone(session.snapshotEvents()))
+    expect(replayed.snapshotEvents().slice(0, -1)).toEqual(session.snapshotEvents())
+    const turnEnd = replayed.snapshotEvents().findLast(event => event.type === 'turn/end')
     expect(turnEnd?.type === 'turn/end' && turnEnd.data.reason)
       .toEqual({ kind: 'aborted', reason: { kind: 'user' } })
   })
@@ -112,7 +112,7 @@ describe('Session', () => {
     session.append('user/message', message, { surfaceOp: 'append' })
 
     expect(session.deriveMessages()).toEqual([message])
-    const event = session.events[0]
+    const event = session.snapshotEvents()[0]
     expect(event?.type === 'user/message' && event.data.source).toEqual({ kind: 'plugin', plugin: 'agent-instructions' })
   })
 
@@ -135,27 +135,27 @@ describe('Session', () => {
     }, { surfaceOp: 'append' })
     original.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
 
-    const replayed = Session.create(SessionId('s3-replay'), [...original.events])
+    const replayed = Session.create(SessionId('s3-replay'), original.snapshotEvents())
     expect(replayed.deriveMessages()).toEqual(original.deriveMessages())
     // The seed verbatim, plus the end-seed event the constructor appends.
-    expect(replayed.events.slice(0, original.seq)).toEqual(original.events)
+    expect(replayed.snapshotEvents().slice(0, original.seq)).toEqual(original.snapshotEvents())
     expect(replayed.seq).toBe(original.seq + 1)
     expect(replayed.firstLiveSeq).toBe(original.seq)
   })
 
   it('marks an explicitly empty seed without marking a fresh session', () => {
     const fresh = Session.create(SessionId('fresh-empty'))
-    expect(fresh.events).toEqual([])
+    expect(fresh.snapshotEvents()).toEqual([])
 
     const resumed = Session.create(SessionId('resumed-empty'), [])
     expect(resumed.firstLiveSeq).toBe(0)
-    expect(resumed.events).toMatchObject([
+    expect(resumed.snapshotEvents()).toMatchObject([
       { type: 'session/end-seed', seq: 0, data: {} },
     ])
 
-    const reopened = Session.create(SessionId('reopened-empty'), resumed.events)
+    const reopened = Session.create(SessionId('reopened-empty'), resumed.snapshotEvents())
     expect(reopened.firstLiveSeq).toBe(1)
-    expect(reopened.events).toEqual(resumed.events)
+    expect(reopened.snapshotEvents()).toEqual(resumed.snapshotEvents())
   })
 
   it('rejects pre-provider request headers and assistant messages on seed/load', () => {
@@ -184,7 +184,7 @@ describe('Session', () => {
     const unrelatedPrimitiveData = {
       type: 'plugin/event', seq: 0, time: 1, data: null,
     } as unknown as SessionEvent
-    expect(Session.create(SessionId('primitive-plugin-data'), [unrelatedPrimitiveData]).events.slice(0, 1))
+    expect(Session.create(SessionId('primitive-plugin-data'), [unrelatedPrimitiveData]).snapshotEvents().slice(0, 1))
       .toEqual([unrelatedPrimitiveData])
   })
 
@@ -390,7 +390,7 @@ describe('Session', () => {
         reason: 'initial',
       },
     } as const
-    expect(Session.create(SessionId('reasoning-effort'), [valid]).events[0])
+    expect(Session.create(SessionId('reasoning-effort'), [valid]).snapshotEvents()[0])
       .toEqual(valid)
 
     for (const reasoningEffort of ['', 1]) {
@@ -420,7 +420,7 @@ describe('Session', () => {
         reason: 'initial',
       },
     } as const
-    expect(Session.create(SessionId('adapter-defaults'), [valid]).events[0]).toEqual(valid)
+    expect(Session.create(SessionId('adapter-defaults'), [valid]).snapshotEvents()[0]).toEqual(valid)
 
     for (const adapterDefaults of [
       null,
@@ -450,7 +450,7 @@ describe('Session', () => {
         isError: false,
       }),
     }, { surfaceOp: 'append' })
-    const before = structuredClone(session.events)
+    const before = structuredClone(session.snapshotEvents())
 
     // A misbehaving consumer tries to mutate the messages it was handed.
     const messages = session.deriveMessages()
@@ -466,7 +466,7 @@ describe('Session', () => {
     messages.reverse()
 
     // The log is unchanged: deep-equal to the snapshot taken before mutation.
-    expect(session.events).toEqual(before)
+    expect(session.snapshotEvents()).toEqual(before)
     // And a fresh derivation still reflects the original content and order.
     expect(session.deriveMessages()[0]!.content).toEqual([{ type: 'text', text: 'original' }])
   })
@@ -495,7 +495,7 @@ describe('Session', () => {
     cyclic['self'] = cyclic
     expect(bad(cyclic)).toThrow(/non-JSON-serializable/)
     // The rejected appends never entered the log.
-    expect(session.events).toHaveLength(0)
+    expect(session.snapshotEvents()).toHaveLength(0)
   })
 
   it('rejects a surface-eligible append with no surfaceOp marker (runtime guard for the union-widening loophole)', () => {
@@ -509,13 +509,13 @@ describe('Session', () => {
     })))
       .toThrow(/surface-eligible and requires a surfaceOp marker/)
     // The rejected append never entered the log (only turn/start is present).
-    expect(session.events).toHaveLength(1)
+    expect(session.snapshotEvents()).toHaveLength(1)
   })
 
   it('accepts dense arrays and nested plain objects', () => {
     const session = Session.create(SessionId('s6'))
     expect(() => session.append('user/message', { content: [{ type: 'text', text: 'x' }], source: { kind: 'user' }, extra: [1, 2, [3, { a: null, b: true }]] } as never, { surfaceOp: 'append' })).not.toThrow()
-    expect(session.events).toHaveLength(1)
+    expect(session.snapshotEvents()).toHaveLength(1)
   })
 
   it('validates seed events: rejects a non-JSON-serializable seed', () => {
@@ -559,7 +559,7 @@ describe('Session', () => {
       { type: 'turn/end' as const, seq: 2, time: 3, data: { turn: 1, reason: { kind: 'completed' as const } } },
     ] as SessionEvent[]
     const session = Session.create(SessionId('seed-ok'), goodSeed)
-    expect(session.events.slice(0, 3)).toEqual(goodSeed)
+    expect(session.snapshotEvents().slice(0, 3)).toEqual(goodSeed)
     expect(session.firstLiveSeq).toBe(3)
   })
 
@@ -584,7 +584,7 @@ describe('Session', () => {
     const session = Session.create(SessionId('seed-entry-snapshot'), seed)
 
     expect(reads).toBe(1)
-    expect(session.events.slice(0, 1)).toEqual([accepted])
+    expect(session.snapshotEvents().slice(0, 1)).toEqual([accepted])
   })
 
   it('reads a nested seed-data getter once and stores its first JSON value', () => {
@@ -601,7 +601,7 @@ describe('Session', () => {
     const session = Session.create(SessionId('seed-nested-drift'), seed)
 
     expect(reads).toBe(1)
-    expect(session.events[0]!.data).toEqual({ value: 'accepted' })
+    expect(session.snapshotEvents()[0]!.data).toEqual({ value: 'accepted' })
   })
 
   it('rejects non-JSON surface metadata in a seed event', () => {
@@ -662,7 +662,7 @@ describe('Session', () => {
 
     const session = Session.create(SessionId('seed-null-prototype'), [event])
 
-    expect(session.events.slice(0, 1)).toEqual([{ ...event }])
+    expect(session.snapshotEvents().slice(0, 1)).toEqual([{ ...event }])
   })
 
   it('reads a nested seed-metadata getter once and stores its first JSON value', () => {
@@ -694,7 +694,7 @@ describe('Session', () => {
     }] as unknown as SessionEvent[]
 
     const session = Session.create(SessionId('seed-unstable-metadata'), seed)
-    const event = session.events[1]!
+    const event = session.snapshotEvents()[1]!
     if (event.type !== 'user/message') throw new Error('test fixture must remain a user/message')
 
     expect(reads).toBe(1)
@@ -737,7 +737,7 @@ describe('Session', () => {
     }
   })
 
-  it('snapshots the seed: mutating the original after construction does not affect session.events', () => {
+  it('snapshots the seed: mutating the original after construction does not affect session.snapshotEvents()', () => {
     const seed = [
       { type: 'turn/start' as const, seq: 0, time: 1, data: { turn: 1 } },
       { type: 'user/message' as const, seq: 1, time: 2, data: {
@@ -750,16 +750,16 @@ describe('Session', () => {
     const session = Session.create(SessionId('seed-snapshot'), seed)
     // Mutate the ORIGINAL seed objects after construction: a shared reference
     // would let this rewrite the forked log (or reintroduce non-serializable
-    // data past validation). The snapshot must shield session.events.
+    // data past validation). The snapshot must shield session.snapshotEvents().
     const um = seed[1]!
     ;(um.data as { content: { type: 'text'; text: string }[] }).content[0]!.text = 'HACKED'
     ;(um.data as Record<string, unknown>)['injected'] = 1n // would have failed validation
-    const logged = session.events[1]!
+    const logged = session.snapshotEvents()[1]!
     expect(logged.type === 'user/message' && (logged.data.content[0] as { text: string }).text).toBe('original')
     expect((logged.data as Record<string, unknown>)['injected']).toBeUndefined()
   })
 
-  it('snapshots append data: mutating the passed object after append does not affect session.events', () => {
+  it('snapshots append data: mutating the passed object after append does not affect session.snapshotEvents()', () => {
     const session = Session.create(SessionId('append-snapshot'))
     const data = {
       id: MessageId('append-input'),
@@ -769,10 +769,10 @@ describe('Session', () => {
     }
     const event = session.append('user/message', data, { surfaceOp: 'append' })
     // Mutate the caller's object after append returns. A shared reference would
-    // make session.events diverge from the value that passed validation.
+    // make session.snapshotEvents() diverge from the value that passed validation.
     data.content[0]!.text = 'HACKED'
     ;(data as Record<string, unknown>)['injected'] = 1n
-    const logged = session.events[0]!
+    const logged = session.snapshotEvents()[0]!
     expect(logged.type === 'user/message' && (logged.data.content[0] as { text: string }).text).toBe('original')
     expect((logged.data as Record<string, unknown>)['injected']).toBeUndefined()
     // The returned event carries the same snapshot, not the caller's input.
@@ -794,7 +794,7 @@ describe('Session', () => {
 
     expect(reads).toBe(1)
     expect(event.data).toEqual({ value: 'accepted' })
-    expect(session.events).toEqual([event])
+    expect(session.snapshotEvents()).toEqual([event])
   })
 
   it('rejects non-JSON surface metadata before appending the event', () => {
@@ -807,7 +807,7 @@ describe('Session', () => {
       }),
       { surfaceOp: { op: 'replace', start: 1n, end: 2 } } as never,
     )).toThrow(/non-JSON-serializable surface metadata/)
-    expect(session.events).toEqual([])
+    expect(session.snapshotEvents()).toEqual([])
   })
 
   it('rejects exotic surface metadata before cloning can erase its prototype', () => {
@@ -825,7 +825,7 @@ describe('Session', () => {
       }),
       { surfaceOp: new ReplaceOp() },
     )).toThrow(/non-JSON-serializable surface metadata/)
-    expect(session.events).toEqual([])
+    expect(session.snapshotEvents()).toEqual([])
   })
 
   it('reads a nested append-metadata getter once and stores its first JSON value', () => {
@@ -856,7 +856,7 @@ describe('Session', () => {
 
     expect(reads).toBe(1)
     expect(event.surfaceOp).toEqual({ op: 'replace', start: 0, end: 0 })
-    expect(session.events).toEqual([source, event])
+    expect(session.snapshotEvents()).toEqual([source, event])
   })
 
   it('rejects invalid plain surface metadata shapes at append', () => {
@@ -877,7 +877,7 @@ describe('Session', () => {
       surfaceOp: 'append',
       sourceEventSeqs: [0, -1],
     })).toThrow(/non-negative safe integers/)
-    expect(session.events).toEqual([])
+    expect(session.snapshotEvents()).toEqual([])
   })
 
   it('rejects surface metadata on non-surface append and seed events', () => {
@@ -900,7 +900,7 @@ describe('Session', () => {
       data: { turn: 1 },
       surfaceOp: 'append',
     } as unknown as SessionEvent])).toThrow(/invalid seed event.*not surface-eligible/)
-    expect(session.events).toEqual([])
+    expect(session.snapshotEvents()).toEqual([])
   })
 
   it('deep-freezes seeded and appended event snapshots', () => {
@@ -910,7 +910,7 @@ describe('Session', () => {
       time: 1,
       data: { turn: 1 },
     }])
-    const seededEvent = seeded.events[0]!
+    const seededEvent = seeded.snapshotEvents()[0]!
     if (seededEvent.type !== 'turn/start') throw new Error('test fixture must remain a turn/start')
     expect(Object.isFrozen(seededEvent)).toBe(true)
     expect(Object.isFrozen(seededEvent.data)).toBe(true)
@@ -960,21 +960,38 @@ describe('Session', () => {
   it('returns cached frozen event-array snapshots that do not grow after append', () => {
     const session = Session.create(SessionId('events-snapshot'))
     session.append('turn/start', { turn: 1 })
-    const before = session.events
+    const before = session.snapshotEvents()
     const beforeEvent = before[0]!
     if (beforeEvent.type !== 'turn/start') throw new Error('test fixture must remain a turn/start')
 
-    expect(session.events).toBe(before)
+    expect(session.snapshotEvents()).toBe(before)
     expect(Object.isFrozen(before)).toBe(true)
     expect(() => { (before as SessionEvent[]).push(beforeEvent) }).toThrow(TypeError)
     expect(() => { beforeEvent.data.turn = 99 }).toThrow(TypeError)
 
     session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-    const after = session.events
+    const after = session.snapshotEvents()
     expect(before).toHaveLength(1)
     expect(after).toHaveLength(2)
     expect(after).not.toBe(before)
-    expect(session.events).toBe(after)
+    expect(session.snapshotEvents()).toBe(after)
+  })
+
+  it('reads one event without materializing an array and snapshots half-open ranges', () => {
+    const session = Session.create(SessionId('event-reads'))
+    const start = session.append('turn/start', { turn: 1 })
+    const end = session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+
+    expect(session.eventAt(0)).toBe(start)
+    expect(session.eventAt(1)).toBe(end)
+    expect(session.eventAt(2)).toBeUndefined()
+
+    const range = session.snapshotEvents(1, 2)
+    expect(range).toEqual([end])
+    expect(Object.isFrozen(range)).toBe(true)
+
+    session.append('turn/start', { turn: 2 })
+    expect(range).toEqual([end])
   })
 
   it('detaches and freezes an explicitly supplied session header', () => {
@@ -1117,7 +1134,7 @@ describe('Session', () => {
     const marked = Session.create(SessionId('ignorable-envelope'), [
       { ...base, ignorable: true } as SessionEvent,
     ])
-    expect(marked.events[0]?.ignorable).toBe(true)
+    expect(marked.snapshotEvents()[0]?.ignorable).toBe(true)
   })
 })
 
@@ -1161,7 +1178,7 @@ describe('SessionStore', () => {
     a.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'q' }], source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    const forked = ctx.sessions.create(SessionId('fork'), { seed: [...a.events] })
+    const forked = ctx.sessions.create(SessionId('fork'), { seed: a.snapshotEvents() })
     expect(forked.deriveMessages()).toEqual(a.deriveMessages())
   })
 
@@ -1441,7 +1458,7 @@ describe('SessionStore', () => {
     const heard: SessionEvent[] = []
     let committedBeforeNotify = false
     ctx.on('session/event', (observedSession, event) => {
-      committedBeforeNotify = observedSession.events.at(-1) === event
+      committedBeforeNotify = observedSession.snapshotEvents().at(-1) === event
       throw new Error('sync event observer')
     })
     ctx.on('session/event', () => Promise.reject(new Error('async event observer')) as never)
@@ -1454,7 +1471,7 @@ describe('SessionStore', () => {
       })
     }).not.toThrow()
     expect(committedBeforeNotify).toBe(true)
-    expect(session.events).toEqual([appended])
+    expect(session.snapshotEvents()).toEqual([appended])
     expect(heard).toEqual([appended])
     await Promise.resolve()
     await Promise.resolve()
@@ -1477,7 +1494,7 @@ describe('SessionStore', () => {
       const [observedSession, event] = args as [Session, SessionEvent]
       validations.push({
         event,
-        logLength: observedSession.events.length,
+        logLength: observedSession.snapshotEvents().length,
         frozen: Object.isFrozen(event) && Object.isFrozen(event.data),
       })
       if (reject) {
@@ -1490,7 +1507,7 @@ describe('SessionStore', () => {
     expect(() => session.append('turn/start', {
       turn: 1,
     })).toThrow('reject first candidate')
-    expect(session.events).toEqual([])
+    expect(session.snapshotEvents()).toEqual([])
     expect(observed).toEqual([])
 
     const appended = session.append('turn/start', {
@@ -1502,7 +1519,7 @@ describe('SessionStore', () => {
     ])
     expect(validations.map(({ event }) => event.seq)).toEqual([0, 0])
     expect(validations[1]!.event).toBe(appended)
-    expect(session.events).toEqual([appended])
+    expect(session.snapshotEvents()).toEqual([appended])
     expect(observed).toEqual([appended])
   })
 
@@ -1541,7 +1558,7 @@ describe('SessionStore', () => {
       sourceEventSeqs: [2],
     })).toThrow('reject surface candidate')
 
-    expect(session.events).toHaveLength(3)
+    expect(session.snapshotEvents()).toHaveLength(3)
     expect(surface.nodes).toEqual([2])
     expect(surface.replaceGeneration).toBe(0)
 
@@ -1566,7 +1583,7 @@ describe('SessionStore', () => {
     expect(() => session.append('turn/start', {
       turn: 1,
     })).toThrow('dispatch instrumentation rejected the carrier')
-    expect(session.events).toEqual([])
+    expect(session.snapshotEvents()).toEqual([])
     expect(observed).toEqual([])
   })
 
@@ -1585,7 +1602,7 @@ describe('SessionStore', () => {
     const appended = session.append('turn/start', {
       turn: 1,
     })
-    expect(session.events).toEqual([appended])
+    expect(session.snapshotEvents()).toEqual([appended])
     expect(heard).toEqual([appended])
     expect(warnings).toEqual([
       'session "reentrant-observer": session/event listener threw: Error: session append cannot reenter while another append is being published',
@@ -1616,7 +1633,7 @@ describe('SessionStore', () => {
       turn: 1,
     })
 
-    expect(session.events).toEqual([appended])
+    expect(session.snapshotEvents()).toEqual([appended])
     expect(order).toEqual(['resolve:live', 'observe:live', 'dispose:detached'])
     expect(ctx.sessions.get(session.id)).toBeUndefined()
   })

@@ -21,6 +21,7 @@ import type {
   FsWriteIntent,
   FsWriteOutcome,
 } from '@deepseek-ai/dsh-fs'
+import { CompactionId, compactCheckpointSource } from '@deepseek-ai/dsh-compaction'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
@@ -188,7 +189,7 @@ async function mountFileToolsAndWorkspaceContext(ctx: Context, config: workspace
   return mountWorkspaceContextPlugin(ctx, config)
 }
 
-function stubAgent(cwd?: string, seed: SessionEvent[] = []): Agent {
+function stubAgent(cwd?: string, seed: readonly SessionEvent[] = []): Agent {
   const id = SessionId('s1')
   const session = Session.create(id, seed, cwd === undefined ? undefined : { version: SESSION_FORMAT_VERSION, id, createdAt: 0, cwd })
   return {
@@ -247,7 +248,7 @@ async function syncedWorkspaceContext(ctx: Context, agent: Agent): Promise<UserM
 }
 
 function baselineEvents(agent: Agent): SessionEvent[] {
-  return agent.session.events.filter(event =>
+  return agent.session.snapshotEvents().filter(event =>
     event.type === 'user/message'
     && event.data.source.kind === 'agent-instructions'
     && event.data.source.baseline === true)
@@ -1097,7 +1098,7 @@ describe('workspace context request injection', () => {
       const second = await composeBaselinePrefix(ctx, agent)
 
       expect(second).toEqual(first)
-      expect(agent.session.events.filter(event => event.type === 'user/message' && event.data.source.kind !== 'user')).toHaveLength(1)
+      expect(agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind !== 'user')).toHaveLength(1)
       expect(derivedText(agent)).toContain('repo rule')
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1116,14 +1117,14 @@ describe('workspace context request injection', () => {
       const original = stubAgent(root)
       await composeBaselinePrefix(ctx, original)
 
-      const firstResume = stubAgent(root, [...original.session.events])
+      const firstResume = stubAgent(root, original.session.snapshotEvents())
       await composeBaselinePrefix(ctx, firstResume)
-      const secondResume = stubAgent(root, [...firstResume.session.events])
+      const secondResume = stubAgent(root, firstResume.session.snapshotEvents())
       await composeBaselinePrefix(ctx, secondResume)
 
       expect(baselineEvents(firstResume)).toHaveLength(1)
       expect(baselineEvents(secondResume)).toHaveLength(1)
-      expect(secondResume.session.events.filter(event => event.type === 'user/message'
+      expect(secondResume.session.snapshotEvents().filter(event => event.type === 'user/message'
         && event.data.source.kind === 'agent-instructions')).toHaveLength(1)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1145,11 +1146,11 @@ describe('workspace context request injection', () => {
       await composeBaselinePrefix(ctx, original)
 
       fs.throwOnStat.add(join(root, 'AGENTS.md'))
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
       await composeBaselinePrefix(ctx, resumed)
 
       expect(baselineEvents(resumed)).toHaveLength(1)
-      expect(resumed.session.events.filter(event => event.type === 'user/message'
+      expect(resumed.session.snapshotEvents().filter(event => event.type === 'user/message'
         && event.data.source.kind === 'agent-instructions')).toHaveLength(1)
     } finally {
       await ctx.fiber.dispose()
@@ -1171,13 +1172,13 @@ describe('workspace context request injection', () => {
       const original = stubAgent(cwd)
       await composeBaselinePrefix(ctx, original)
 
-      const firstResume = stubAgent(cwd, [...original.session.events])
+      const firstResume = stubAgent(cwd, original.session.snapshotEvents())
       await composeBaselinePrefix(ctx, firstResume)
-      const secondResume = stubAgent(cwd, [...firstResume.session.events])
+      const secondResume = stubAgent(cwd, firstResume.session.snapshotEvents())
       await composeBaselinePrefix(ctx, secondResume)
 
       expect(baselineEvents(secondResume)).toHaveLength(1)
-      expect(secondResume.session.events.filter(event => event.type === 'user/message'
+      expect(secondResume.session.snapshotEvents().filter(event => event.type === 'user/message'
         && event.data.source.kind === 'agent-instructions')).toHaveLength(1)
       expect(blocksText(secondResume.session.deriveMessages()[0]?.content)).toContain('omitted AGENTS.md')
       expect(blocksText(secondResume.session.deriveMessages()[0]?.content)).not.toContain('root root')
@@ -1201,11 +1202,11 @@ describe('workspace context request injection', () => {
       await composeBaselinePrefix(ctx, original)
 
       await write(join(cwd, 'AGENTS.md'), 'package rule')
-      const resumed = stubAgent(cwd, [...original.session.events])
+      const resumed = stubAgent(cwd, original.session.snapshotEvents())
       await composeBaselinePrefix(ctx, resumed)
 
       expect(baselineEvents(resumed)).toHaveLength(1)
-      const update = resumed.session.events.findLast(event => event.type === 'user/message'
+      const update = resumed.session.snapshotEvents().findLast(event => event.type === 'user/message'
         && event.data.source.kind === 'agent-instructions'
         && event.data.source.baseline !== true)
       expect(update?.type === 'user/message' && update.data.source.kind === 'agent-instructions'
@@ -1238,7 +1239,7 @@ describe('workspace context request injection', () => {
         maxBytes: 65536,
         instructionFileCandidates: ['CLAUDE.md', 'AGENTS.md'],
       })
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
       await composeBaselinePrefix(resumedCtx, resumed)
 
       const baselines = baselineEvents(resumed)
@@ -1257,7 +1258,7 @@ describe('workspace context request injection', () => {
         : [])
       expect(new Set(baselineIdentities).size).toBe(2)
 
-      const repeated = stubAgent(root, [...resumed.session.events])
+      const repeated = stubAgent(root, resumed.session.snapshotEvents())
       await composeBaselinePrefix(resumedCtx, repeated)
       expect(baselineEvents(repeated)).toHaveLength(2)
     } finally {
@@ -1291,7 +1292,7 @@ describe('workspace context request injection', () => {
         maxBytes: 65536,
         instructionFileCandidates: ['CLAUDE.md'],
       })
-      const claudeResume = stubAgent(root, [...original.session.events])
+      const claudeResume = stubAgent(root, original.session.snapshotEvents())
       await composeBaselinePrefix(claudeCtx, claudeResume)
       const claudeBaseline = baselineEvents(claudeResume).at(-1)
       expect(claudeBaseline?.type === 'user/message' && claudeBaseline.data.source.kind === 'agent-instructions'
@@ -1306,7 +1307,7 @@ describe('workspace context request injection', () => {
         maxBytes: 65536,
         instructionFileCandidates: ['AGENTS.md'],
       })
-      const restored = stubAgent(root, [...claudeResume.session.events])
+      const restored = stubAgent(root, claudeResume.session.snapshotEvents())
       await composeBaselinePrefix(restoredCtx, restored)
       const restoredBaseline = baselineEvents(restored).at(-1)
       expect(restoredBaseline?.type === 'user/message' && restoredBaseline.data.source.kind === 'agent-instructions'
@@ -1341,7 +1342,7 @@ describe('workspace context request injection', () => {
         maxBytes: 65536,
         instructionFileCandidates: ['POLICY.md'],
       })
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
       await composeBaselinePrefix(resumedCtx, resumed)
 
       const baselines = baselineEvents(resumed)
@@ -1355,7 +1356,7 @@ describe('workspace context request injection', () => {
         { action: 'remove', scope: sk('.', 'AGENTS.md'), path: 'AGENTS.md' },
       ])
 
-      const repeated = stubAgent(root, [...resumed.session.events])
+      const repeated = stubAgent(root, resumed.session.snapshotEvents())
       await composeBaselinePrefix(resumedCtx, repeated)
       expect(baselineEvents(repeated)).toHaveLength(2)
     } finally {
@@ -1385,7 +1386,7 @@ describe('workspace context request injection', () => {
 
       await fiber.dispose()
       await mountWorkspaceContextPlugin(ctx, { dshHome: home, maxBytes: 65536 })
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
       agentEvents(ctx, resumed).emit('agent/session-start', { source: 'resume' })
       const claimed = resumed.inbox.claim('next-step', 1)
       const decision = await agentEvents(ctx, resumed).waterfall(
@@ -1401,7 +1402,7 @@ describe('workspace context request injection', () => {
 
       expect(decision.messages.map(message => message.id)).toEqual([inserted?.id])
       expect(resumed.inbox.nextStep).toEqual([])
-      expect(resumed.session.events.filter(event => event.type === 'agent/inbox/spliced'
+      expect(resumed.session.snapshotEvents().filter(event => event.type === 'agent/inbox/spliced'
         && event.data.inserted.some(message => message.source.kind === 'agent-instructions'
           && message.source.baseline === true))).toHaveLength(1)
       expect(baselineEvents(resumed)).toHaveLength(1)
@@ -1431,7 +1432,7 @@ describe('workspace context request injection', () => {
       await write(join(root, 'AGENTS.md'), 'new repo rule')
       await fiber.dispose()
       await mountWorkspaceContextPlugin(ctx, { dshHome: home, maxBytes: 65536 })
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
       agentEvents(ctx, resumed).emit('agent/session-start', { source: 'resume' })
       const staleClaim = resumed.inbox.claim('next-step', 1)
       const staleDecision = await agentEvents(ctx, resumed).waterfall(
@@ -1484,7 +1485,7 @@ describe('workspace context request injection', () => {
       await originalCtx.fiber.dispose()
       if (provideFs) await resumedCtx.plugin(LocalFileSystem, { cwd: '/' })
       await mountWorkspaceContextPlugin(resumedCtx, { dshHome: home, maxBytes })
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
       agentEvents(resumedCtx, resumed).emit('agent/session-start', { source: 'resume' })
       const claimed = resumed.inbox.claim('next-step', 1)
       const decision = await agentEvents(resumedCtx, resumed).waterfall(
@@ -1525,7 +1526,7 @@ describe('workspace context request injection', () => {
 
       await composeBaselinePrefix(ctx, agent)
 
-      const removal = agent.session.events.find(event => event.type === 'user/message'
+      const removal = agent.session.snapshotEvents().find(event => event.type === 'user/message'
         && event.data.source.kind === 'agent-instructions'
         && event.data.source.changes.some(change => change.action === 'remove'))
       expect(removal?.type === 'user/message' ? removal.data.source : undefined).toMatchObject({
@@ -1559,7 +1560,7 @@ describe('workspace context request injection', () => {
 
       await composeBaselinePrefix(ctx, agent)
 
-      const workspaceEvents = agent.session.events.filter(event => event.type === 'user/message'
+      const workspaceEvents = agent.session.snapshotEvents().filter(event => event.type === 'user/message'
         && event.data.source.kind === 'agent-instructions')
       expect(workspaceEvents).toHaveLength(2)
       expect(workspaceEvents.some(event => event.type === 'user/message'
@@ -1568,7 +1569,7 @@ describe('workspace context request injection', () => {
       expect(baselineEvents(agent)).toHaveLength(1)
 
       await composeBaselinePrefix(ctx, agent)
-      expect(agent.session.events.filter(event => event.type === 'user/message'
+      expect(agent.session.snapshotEvents().filter(event => event.type === 'user/message'
         && event.data.source.kind === 'agent-instructions')).toHaveLength(2)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1791,7 +1792,7 @@ describe('workspace context request injection', () => {
       // The first resumed pre-step retains the compatible visible baseline and
       // appends only the offline file transition needed to reach current state.
       await write(join(root, 'AGENTS.md'), 'new root rule after offline edit')
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
 
       // Resume announces its lifecycle start before the first step.
       agentEvents(ctx, resumed).emit('agent/session-start', { source: 'resume' })
@@ -1799,7 +1800,7 @@ describe('workspace context request injection', () => {
 
       const baselines = baselineEvents(resumed)
       expect(baselines).toHaveLength(1)
-      const latest = resumed.session.events.findLast(event =>
+      const latest = resumed.session.snapshotEvents().findLast(event =>
         event.type === 'user/message' && event.data.source.kind === 'agent-instructions')
       expect(latest?.type === 'user/message' ? latest.data.source : undefined).toMatchObject({
         changes: [{ action: 'replace', scope: sk('.', 'AGENTS.md'), path: 'AGENTS.md' }],
@@ -1980,7 +1981,7 @@ describe('workspace context request injection', () => {
 
       await composeBaselinePrefix(ctx, agent)
 
-      const contexts = agent.session.events.filter(event =>
+      const contexts = agent.session.snapshotEvents().filter(event =>
         event.type === 'user/message' && event.data.source.kind !== 'user',
       )
       expect(contexts).toHaveLength(1)
@@ -2559,14 +2560,14 @@ describe('dynamic nested workspace context injection', () => {
 
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'read and abort' }], source: { kind: 'user' } }))
       await agent.whenIdle()
-      expect(agent.session.events.filter(event =>
+      expect(agent.session.snapshotEvents().filter(event =>
         event.type === 'user/message' && event.data.source.kind !== 'user',
       )).toHaveLength(0)
 
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'retry the read' }], source: { kind: 'user' } }))
       await agent.whenIdle()
 
-      const contexts = agent.session.events.filter(event => event.type === 'user/message' && event.data.source.kind !== 'user')
+      const contexts = agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind !== 'user')
       expect(contexts).toHaveLength(1)
       expect(adapter.requests).toHaveLength(3)
       expect(adapter.requests.at(-1)?.messages.map(blocks => blocksText(blocks.content)).join('\n'))
@@ -3099,6 +3100,144 @@ describe('dynamic nested workspace context injection', () => {
     }
   })
 
+  describe('instruction authority in model-visible surface order', () => {
+    function instructionSurface(fs: RecordingFileSystem, removed = false) {
+      const root = resolve('/instruction-surface/repo')
+      const path = join('pkg', 'AGENTS.md')
+      const scope = sk('pkg', 'AGENTS.md')
+      const version = FsVersion('current-instruction')
+      const content = 'current nested rule'
+      fs.entries.set(join(root, '.git'), { type: 'directory' })
+      fs.entries.set(join(root, path), { type: 'file', content, version })
+      const loaded = baselineInstructionState([{
+        absolutePath: join(root, path), displayPath: path, content, version,
+      }])
+      const current = createUserMessage({
+        content: [{ type: 'text', text: content }],
+        source: { kind: 'agent-instructions', form: 'instructions', changes: [...loaded.changes.values()] },
+      })
+      const removal = createUserMessage({
+        content: [{ type: 'text', text: 'nested rule removed' }],
+        source: { kind: 'agent-instructions', form: 'instructions', changes: [{ action: 'remove', scope, path }] },
+      })
+      const older = createUserMessage({
+        content: [{ type: 'text', text: 'older nested rule' }],
+        source: {
+          kind: 'agent-instructions', form: 'instructions',
+          changes: [...baselineInstructionState([{
+            absolutePath: join(root, path), displayPath: path, content: 'older nested rule',
+          }]).changes.values()],
+        },
+      })
+      const agent = stubAgent(root)
+      const first = agent.session.append('user/message', older, { surfaceOp: 'append' })
+      const last = agent.session.append('user/message', removed ? removal : current, { surfaceOp: 'append' })
+      const replacement = agent.session.append('user/message', createUserMessage({
+        content: older.content, source: older.source,
+      }), {
+        surfaceOp: { op: 'replace', start: first.seq, end: first.seq },
+        sourceEventSeqs: [first.seq],
+      })
+      expect(replacement.seq).toBeGreaterThan(last.seq)
+      expect(agent.session.surface.nodes).toEqual([replacement.seq, last.seq])
+      expect(agent.session.deriveMessages().map(message => message.id)).toEqual([replacement.data.id, last.data.id])
+      const config = resolveConfig({
+        dshHome: resolve('/instruction-surface/home'), maxBytes: 65536,
+        instructionFileCandidates: ['AGENTS.md'], localInstructionFileCandidates: [],
+      })
+      const options = {
+        authorityMessages: [] as UserMessage[], scopeMessages: [], touchedPaths: [],
+        includeBaselineScopes: false, signal: testToolSignal,
+      }
+      return { root, agent, config, options, loaded, current, removal, replacement, last, scope, path }
+    }
+
+    it.each(['cold', 'warm', 'restored'] as const)(
+      'uses the last visible instruction after a positional replacement (%s state)',
+      async (cacheMode) => {
+        const ctx = new Context()
+        try {
+          await ctx.plugin(RecordingFileSystem)
+          const fs = ctx.fs as RecordingFileSystem
+          const fixture = instructionSurface(fs)
+          const { config, options, loaded, replacement, last } = fixture
+          const agent = cacheMode === 'restored'
+            ? stubAgent(fixture.root, fixture.agent.session.snapshotEvents())
+            : fixture.agent
+          const cache: InstructionVersionCache = new WeakMap()
+          if (cacheMode === 'warm') cache.set(agent.session, new Map(loaded.versions))
+
+          expect(agent.session.surface.nodes).toEqual([replacement.seq, last.seq])
+          expect(agent.session.deriveMessages().map(message => message.id)).toEqual([replacement.data.id, last.data.id])
+          expect(await reconcileInstructionContext(agent, config, cache, fs, options)).toBeUndefined()
+        } finally {
+          await ctx.fiber.dispose()
+        }
+      },
+    )
+
+    it.each(['none', 'set', 'remove'] as const)(
+      'reconciles a visible removal after a positional replacement with claimed authority %s',
+      async (claimed) => {
+        const ctx = new Context()
+        try {
+          await ctx.plugin(RecordingFileSystem)
+          const fs = ctx.fs as RecordingFileSystem
+          const { agent, config, options, current, removal, scope, path } = instructionSurface(fs, true)
+          // The final claimed change has authority after the whole durable surface.
+          options.authorityMessages = claimed === 'set' ? [removal, current] : claimed === 'remove' ? [current, removal] : []
+          const result = await reconcileInstructionContext(agent, config, new WeakMap(), fs, options)
+
+          if (claimed === 'set') expect(result).toBeUndefined()
+          else expect(result?.context.source).toMatchObject({ changes: [{ action: 'set', scope, path }] })
+        } finally {
+          await ctx.fiber.dispose()
+        }
+      },
+    )
+
+    it('retains instruction authority in the compacted tail and re-arms it once fully shadowed', async () => {
+      const ctx = new Context()
+      try {
+        await ctx.plugin(RecordingFileSystem)
+        const fs = ctx.fs as RecordingFileSystem
+        const { agent, config, options, loaded, replacement, last, scope, path } = instructionSurface(fs)
+        const cache: InstructionVersionCache = new WeakMap()
+        cache.set(agent.session, new Map(loaded.versions))
+        const retainedTail = agent.session.append('user/message', createUserMessage({
+          content: [{ type: 'text', text: 'summary of earlier instructions' }],
+          source: compactCheckpointSource(CompactionId('instruction-prefix')),
+        }), {
+          surfaceOp: { op: 'replace', start: replacement.seq, end: replacement.seq },
+          sourceEventSeqs: [replacement.seq],
+        })
+        expect(agent.session.surface.nodes).toEqual([retainedTail.seq, last.seq])
+        expect(agent.session.deriveMessages().map(message => message.id)).toEqual([retainedTail.data.id, last.data.id])
+        expect(await reconcileInstructionContext(agent, config, cache, fs, options)).toBeUndefined()
+
+        const checkpoint = agent.session.append('user/message', createUserMessage({
+          content: [{ type: 'text', text: 'summary mentions the current nested rule' }],
+          source: compactCheckpointSource(CompactionId('instruction-whole-surface')),
+        }), {
+          surfaceOp: { op: 'replace', start: retainedTail.seq, end: last.seq },
+          sourceEventSeqs: [retainedTail.seq, last.seq],
+        })
+        expect(retainedTail.seq).toBeGreaterThan(last.seq)
+        expect(agent.session.surface.nodes).toEqual([checkpoint.seq])
+        expect(agent.session.deriveMessages().map(message => message.id)).toEqual([checkpoint.data.id])
+        const touched = { ...options, touchedPaths: [join('pkg', 'file.ts')] }
+        const rearmed = await reconcileInstructionContext(agent, config, cache, fs, touched)
+        expect(rearmed?.context.source).toMatchObject({ changes: [{ action: 'set', scope, path }] })
+        if (rearmed === undefined) throw new Error('expected nested instructions after compaction')
+        agent.session.append('user/message', rearmed.context, { surfaceOp: 'append' })
+        applyInstructionVersionUpdates(agent.session, rearmed.versionUpdates, cache)
+        expect(await reconcileInstructionContext(agent, config, cache, fs, touched)).toBeUndefined()
+      } finally {
+        await ctx.fiber.dispose()
+      }
+    })
+  })
+
   it.each(['visible', 'claimed'] as const)(
     'keeps unavailable active candidate groups unchanged with cold and warm caches when authority is $s',
     async (authority) => {
@@ -3541,7 +3680,7 @@ describe('dynamic nested workspace context injection', () => {
         agent,
       })
       await appendAdditionalContexts(ctx, agent)
-      const resumed = stubAgent(root, [...agent.session.events])
+      const resumed = stubAgent(root, agent.session.snapshotEvents())
 
       const afterResume = await ctx.tools.execute({
         signal: testToolSignal,
@@ -3575,11 +3714,11 @@ describe('dynamic nested workspace context injection', () => {
       })
       await appendAdditionalContexts(ctx, original)
       await write(join(root, 'pkg/AGENTS.md'), 'new nested rule after resume')
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
 
       await composeBaselinePrefix(ctx, resumed)
 
-      const update = resumed.session.events.findLast(event => event.type === 'user/message' && event.data.source.kind !== 'user')
+      const update = resumed.session.snapshotEvents().findLast(event => event.type === 'user/message' && event.data.source.kind !== 'user')
       expect(update?.type === 'user/message' && update.data.source).toMatchObject({
         changes: [{ action: 'replace', scope: sk('pkg', 'AGENTS.md'), path: join('pkg', 'AGENTS.md') }],
       })
@@ -4609,7 +4748,7 @@ describe('workspace context inbox synchronization', () => {
         callId: ToolCallId('recover-pending-a'), name: 'read', arguments: { file_path: join('a', 'file.txt') }, agent: original,
       })
       await syncWorkspaceContext(ctx, original)
-      const resumed = stubAgent(root, [...original.session.events])
+      const resumed = stubAgent(root, original.session.snapshotEvents())
 
       await ctx.tools.execute({
         signal: testToolSignal,

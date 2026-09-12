@@ -51,7 +51,7 @@ describe('Remote stream mux server carrier lifecycle', () => {
     await closed
   })
 
-  it('terminates a socket that does not answer the previous heartbeat', async () => {
+  it('requires two missed heartbeats before terminating an unresponsive socket', async () => {
     const entry = await startMux(async (_endpoint, _payload, signal) => waitForAbort(signal), 20)
     const client = await connect(entry.url)
     const serverSocket = acceptedSocket(entry.mux)
@@ -59,8 +59,37 @@ describe('Remote stream mux server carrier lifecycle', () => {
     const terminated = vi.spyOn(serverSocket, 'terminate')
     const closed = once(client, 'close')
 
+    await once(client, 'ping')
+    await once(client, 'ping')
+    expect(terminated).not.toHaveBeenCalled()
     await vi.waitFor(() => { expect(terminated).toHaveBeenCalledOnce() })
     await closed
+  })
+
+  it('keeps the socket when a delayed Pong arrives before the final check', async () => {
+    const entry = await startMux(async (_endpoint, _payload, signal) => waitForAbort(signal), 20)
+    const client = await connect(entry.url, false)
+    const serverSocket = acceptedSocket(entry.mux)
+    const terminated = vi.spyOn(serverSocket, 'terminate')
+    let finalCheck: (() => void) | undefined
+    const immediate = vi.spyOn(globalThis, 'setImmediate').mockImplementation((callback) => {
+      finalCheck = callback
+      return 0 as unknown as NodeJS.Immediate
+    })
+
+    try {
+      await once(client, 'ping')
+      await once(client, 'ping')
+      await vi.waitFor(() => { expect(finalCheck).toBeDefined() })
+      serverSocket.emit('pong', Buffer.alloc(0))
+      finalCheck?.()
+      expect(terminated).not.toHaveBeenCalled()
+    } finally {
+      immediate.mockRestore()
+      const closed = once(client, 'close')
+      client.close()
+      await closed
+    }
   })
 
   it('rejects binary, malformed, and duplicate logical-stream messages', async () => {
@@ -224,8 +253,8 @@ async function startMux(open: RemoteStreamOpener, heartbeatIntervalMs = 2_000, e
   return entry
 }
 
-async function connect(url: string): Promise<WebSocket> {
-  const socket = new WebSocket(url)
+async function connect(url: string, autoPong = true): Promise<WebSocket> {
+  const socket = new WebSocket(url, { autoPong })
   await once(socket, 'open')
   return socket
 }
@@ -288,7 +317,13 @@ describe('Remote stream credential lifetime', () => {
   it('terminates an accepted connection at credential expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
     const entry = await startMux(async (_endpoint, _payload, signal) => waitForAbort(signal), 2_000, Date.now() + 60_000)
-    const client = await connect(entry.url)
+    const client = new WebSocket(entry.url, ['dsh', 'dsh.bearer.fixture-credential'])
+    await once(client, 'open')
+    expect(client.protocol).toBe('dsh')
+    const server = acceptedSocket(entry.mux)
+    const pong = once(server, 'pong')
+    server.ping()
+    await pong
     const closed = once(client, 'close')
     await vi.advanceTimersByTimeAsync(60_000)
     expect((await closed)[0]).toBe(1006)

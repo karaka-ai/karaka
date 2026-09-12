@@ -79,7 +79,6 @@ import * as plugin70 from '@deepseek-ai/dsh-tool-str-replace-editor'
 import * as plugin71 from '@deepseek-ai/dsh-tool-subagent'
 import * as plugin72 from '@deepseek-ai/dsh-tool-subagent-control'
 import * as plugin73 from '@deepseek-ai/dsh-tool-subagent-control/list-agents'
-import * as plugin74 from '@deepseek-ai/dsh-tool-subagent-report'
 import * as plugin75 from '@deepseek-ai/dsh-tool-todo'
 import * as plugin76 from '@deepseek-ai/dsh-tool-web'
 import * as plugin77 from '@deepseek-ai/dsh-tool-workflow'
@@ -174,7 +173,6 @@ export const bundledPlugins: Readonly<Record<string, unknown>> = Object.freeze({
   '@karaka-ai/agent/tool-subagent': plugin71,
   '@karaka-ai/agent/tool-subagent-control': plugin72,
   '@karaka-ai/agent/tool-subagent-control/list-agents': plugin73,
-  '@karaka-ai/agent/tool-subagent-report': plugin74,
   '@karaka-ai/agent/tool-todo': plugin75,
   '@karaka-ai/agent/tool-web': plugin76,
   '@karaka-ai/agent/tool-workflow': plugin77,
