@@ -12,7 +12,7 @@
  */
 import { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { useAnchoredPosition } from '../src/useAnchoredPosition.ts'
 
 afterEach(() => {
@@ -98,6 +98,33 @@ describe('useAnchoredPosition', () => {
     expect(panel.style.left).toBe('324px')
     expect(panel.style.top).toBe('48px')
     rect.mockRestore()
+  })
+
+  it('retains equal coordinates and follows vertical-only anchor movement', () => {
+    const made = stubResizeObserver()
+    const anchor = document.createElement('button')
+    const panel = document.createElement('div')
+    const rect = vi.spyOn(anchor, 'getBoundingClientRect')
+    rect.mockReturnValue(new DOMRect(100, 20, 40, 24))
+    const anchorRef = { current: anchor }
+    const panelRef = { current: panel }
+    const { result } = renderHook(() => useAnchoredPosition({
+      open: true,
+      anchorRef,
+      panelRef,
+      gap: 4,
+      margin: 12,
+    }))
+    const initial = result.current
+    expect(initial).toEqual({ left: 100, top: 48 })
+
+    act(() => { made[0]?.callback([], {} as ResizeObserver) })
+    expect(result.current).toBe(initial)
+
+    rect.mockReturnValue(new DOMRect(100, 60, 40, 24))
+    act(() => { made[0]?.callback([], {} as ResizeObserver) })
+    expect(result.current).toEqual({ left: 100, top: 88 })
+    expect(result.current).not.toBe(initial)
   })
 
   it('replaces the panel when its own size changes', () => {
