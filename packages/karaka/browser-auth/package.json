@@ -1,0 +1,39 @@
+{
+  "name": "@karaka-ai/browser-auth",
+  "private": true,
+  "description": "Signed application-user credentials for the DSH browser connection",
+  "version": "0.1.2-alpha.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karaka-ai/karaka.git",
+    "directory": "packages/karaka/browser-auth"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "lib/**/*.js"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@karaka-ai/identity": "workspace:^"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:^",
+    "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@karaka-ai/identity": "workspace:^"
+  }
+}

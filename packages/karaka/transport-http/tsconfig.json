@@ -1,0 +1,66 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../host/webserver"
+    },
+    {
+      "path": "../../interaction/user-questions"
+    },
+    {
+      "path": "../server-auth"
+    },
+    {
+      "path": "../identity"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../core/agent-default-model"
+    },
+    {
+      "path": "../../preset/agent-presets"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../session-query/session-query"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../browser-auth"
+    },
+    {
+      "path": "../../api/session-controller/tsconfig.host.json"
+    },
+    {
+      "path": "../../boot/cmdline"
+    },
+    {
+      "path": "../../interaction/user-approval"
+    }
+  ]
+}

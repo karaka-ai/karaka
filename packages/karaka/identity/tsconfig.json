@@ -1,0 +1,19 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../../native/system/packages/entry" },
+    { "path": "../../util/brand" },
+    { "path": "../../core/session" },
+    { "path": "../../core/agent" },
+    { "path": "../../llm/llm" },
+    { "path": "../../context/session-reference" },
+    { "path": "../../session/session-persistence" },
+    { "path": "../../storage/storage" },
+    { "path": "../../storage/storage-domain" },
+    { "path": "../../storage/storage-json" }
+  ]
+}

@@ -1,0 +1,100 @@
+# Karaka application ingress uses original DSH engine and storage implementations.
+- insert:
+    - id: timer
+      name: '@deepseek-ai/cordis-plugin-timer'
+    - id: credentials
+      name: '@deepseek-ai/dsh-credentials-local'
+    - id: llm
+      name: '@deepseek-ai/dsh-llm'
+    - id: deepseek-extensions
+      name: '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+    - id: session-log-deepseek
+      name: '@deepseek-ai/dsh-session-log-deepseek'
+    - id: llm-deepseek
+      name: '@deepseek-ai/dsh-llm-deepseek'
+      config:
+        baseURL: !!js process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com'
+        apiKeyEnv: DEEPSEEK_API_KEY
+        thinking: disabled
+    - id: llm-retry
+      name: '@deepseek-ai/dsh-llm-retry'
+    - id: session
+      name: '@deepseek-ai/dsh-session'
+    - id: session-projection
+      name: '@deepseek-ai/dsh-session-projection'
+    - id: sessions
+      name: '@deepseek-ai/dsh-session-persistence-jsonl'
+      config:
+        root: !!js dshHomePath('sessions')
+        compression: none
+    - id: session-query
+      name: '@deepseek-ai/dsh-session-query-sqlite'
+      config:
+        path: ':memory:'
+        openAt: never
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+    - id: tools
+      name: '@deepseek-ai/dsh-tools'
+    - id: system-prompt
+      name: '@deepseek-ai/dsh-system-prompt'
+      config:
+        includeHarnessIdentity: false
+        includeRuntimeContext: false
+        personaPrefix: !!js process.env.KARAKA_SYSTEM_PROMPT ?? 'You are a helpful assistant. Use application tools when they can answer the request.'
+    - id: agent
+      name: '@deepseek-ai/dsh-agent'
+    - id: agent-default-model
+      name: '@deepseek-ai/dsh-agent-default-model'
+      config:
+        provider: deepseek-official
+        model: !!js process.env.KARAKA_MODEL ?? 'deepseek-flash'
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: application
+        includeShippedRoot: false
+        includeUserRoot: true
+        roots:
+          - path: !!js process.env.KARAKA_PRESET_ROOT
+            trust: system
+          - path: !!js process.env.KARAKA_AGENTS_DIR ?? process.env.KARAKA_PRESET_ROOT
+            trust: user
+    - id: agent-loop
+      name: '@deepseek-ai/dsh-agent-loop'
+      config:
+        agents: []
+    - id: identity
+      name: '@karaka-ai/identity'
+      config:
+        root: !!js dshHomePath('karaka-identity')
+    - id: server-auth
+      name: '@karaka-ai/server-auth'
+      config:
+        applications: !!js JSON.parse(process.env.KARAKA_APPLICATIONS ?? '[]')
+    - id: application-mcp
+      name: '@karaka-ai/mcp-application'
+      disabled: !!js "!process.env.KARAKA_MCP_URL"
+      config:
+        applicationId: !!js process.env.KARAKA_MCP_APPLICATION_ID
+        serverName: !!js process.env.KARAKA_MCP_SERVER_NAME ?? 'application'
+        url: !!js process.env.KARAKA_MCP_URL
+        allow: !!js JSON.parse(process.env.KARAKA_MCP_ALLOW ?? '[]')
+        deny: !!js JSON.parse(process.env.KARAKA_MCP_DENY ?? '[]')
+        failOnStartupError: true
+    - id: webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      config:
+        host: !!js process.env.KARAKA_HOST ?? '127.0.0.1'
+        port: !!js Number(process.env.KARAKA_PORT ?? 8787)
+    - id: browser-auth
+      name: '@karaka-ai/browser-auth'
+      disabled: !!js "!process.env.KARAKA_BROWSER_AUTH"
+      config: !!js JSON.parse(process.env.KARAKA_BROWSER_AUTH ?? '{}')
+    - id: application-http
+      name: '@karaka-ai/transport-http'
+      inject: [agentPresets]
+      config:
+        path: /v1
+        browserPath: !!js "process.env.KARAKA_BROWSER_AUTH ? '/karaka/browser' : undefined"
+        browserOrigins: !!js JSON.parse(process.env.KARAKA_BROWSER_ORIGINS ?? '[]')
