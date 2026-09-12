@@ -87,9 +87,9 @@ describe('child Session metadata', () => {
     const parent = {
       ...parentAgent(),
       id,
-      session: Session.create(id, undefined, { version: 0, id, createdAt: 1, applicationOwner }),
+      session: Session.create(id, undefined, { version: 0, id, createdAt: 1, isSeeded: false, applicationOwner }),
     } as Agent
 
-    expect(childSessionMeta(parent, 1, 0).applicationOwner).toEqual(applicationOwner)
+    expect(childSessionMeta(parent, 1, false).applicationOwner).toEqual(applicationOwner)
   })
 })

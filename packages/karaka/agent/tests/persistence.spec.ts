@@ -1,8 +1,10 @@
 /** Application-owned lineage survives the JSONL provider used by Karaka. */
 
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore, { ApplicationId, SessionId, TenantId, UserId } from '@deepseek-ai/dsh-session'
+import SessionStore, { ApplicationId, SessionId, SessionLogOffset, TenantId, UserId } from '@deepseek-ai/dsh-session'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { SessionObservationReader } from '@deepseek-ai/dsh-session-query/src/observation.ts'
+import { ApplicationChatController } from '@deepseek-ai/dsh-api-session-controller/src/application.ts'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,10 +28,11 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
     const inherited = parent.snapshotEvents()
     const child = writer.sessions.fork(parent, undefined, SessionId('owned-child'))
     expect(child.header).toMatchObject({
-      applicationOwner, parentSession: parent.id, seedLength: inherited.length,
+      applicationOwner, parentSession: parent.id, isSeeded: true,
     })
-    expect(child.snapshotEvents(0, inherited.length)).toEqual(inherited)
-    expect(child.snapshotEvents(inherited.length).map(({ time, ...event }) => {
+    expect(child.inheritedEventCount).toBe(inherited.length)
+    expect(child.snapshotEvents(SessionLogOffset(0), SessionLogOffset(inherited.length))).toEqual(inherited)
+    expect(child.snapshotEvents(SessionLogOffset(inherited.length)).map(({ time, ...event }) => {
       expect(typeof time).toBe('number')
       return event
     })).toEqual([{
@@ -38,7 +41,8 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
     parent.append('turn/start', { turn: 2 })
     parent.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
     const stored = [parent, child].map(session => ({
-      meta: { delegationDepth: 0, ...structuredClone(session.header) }, events: session.snapshotEvents(),
+      meta: { delegationDepth: 0, ...structuredClone(session.header) },
+      inheritedEventCount: session.inheritedEventCount, events: session.snapshotEvents(),
     }))
     for (const session of [parent, child]) {
       await writer.sessionPersistence.ensureMaterialized(session)
@@ -48,6 +52,9 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
 
     await reader.plugin(SessionStore)
     await reader.plugin(SessionPersistenceJsonl, { root })
+    const observations = new SessionObservationReader(reader)
+    reader.provide('sessionQuery', { observeSession: observations.read.bind(observations) } as never)
+    const controller = new ApplicationChatController(reader, {} as never, {} as never)
     const backend = reader.sessionPersistence as SessionPersistenceJsonl
     const headers = await backend.list()
     expect(headers).toHaveLength(2)
@@ -67,6 +74,53 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
       expect(prefix?.tornMarker).toBeUndefined()
       await expect(readFile(location.path)).resolves.toEqual(bytes)
       expect(reader.sessions.get(item.meta.id)).toBeUndefined()
+      const abort = new AbortController()
+      const frames = controller.follow({ chatId: item.meta.id, owner: applicationOwner }, abort.signal)
+        [Symbol.asyncIterator]()
+      try {
+        const opening = await frames.next()
+        expect(opening.value).toEqual({
+          type: 'snapshot',
+          header: {
+            ...Object.fromEntries(Object.entries(item.meta).filter(([key]) => key !== 'isSeeded')),
+            ...(item.meta.isSeeded ? { seedLength: item.inheritedEventCount } : {}),
+          },
+          cursor: item.events.at(-1)?.seq ?? -1,
+          records: item.events.map(event => ({ type: 'event', event })),
+          hasMore: false,
+          projections: { asOfSeq: item.events.at(-1)?.seq ?? -1, values: {} },
+        })
+        expect(reader.sessions.get(item.meta.id)).toBeUndefined()
+        const prepared = await backend.prepare(item.meta.id)
+        try {
+          expect(prepared.session.header).toEqual(item.meta)
+          expect(prepared.session.inheritedEventCount).toBe(item.inheritedEventCount)
+          expect(prepared.session.ownEvents()).toEqual([
+            ...item.events.slice(item.inheritedEventCount),
+            ...(item.meta.id === parent.id
+              ? [expect.objectContaining({ type: 'session/end-seed', seq: 4, data: {} })]
+              : []),
+          ])
+        } finally {
+          prepared[Symbol.dispose]()
+        }
+        for (const wrongOwner of [
+          { ...applicationOwner, applicationId: ApplicationId('another-application') },
+          { ...applicationOwner, tenantId: TenantId('another-tenant') },
+          { ...applicationOwner, userId: UserId('another-user') },
+        ]) {
+          const denied = controller.follow({ chatId: item.meta.id, owner: wrongOwner }, abort.signal)
+            [Symbol.asyncIterator]()
+          try {
+            await expect(denied.next()).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+          } finally {
+            await denied.return?.()
+          }
+        }
+      } finally {
+        abort.abort()
+        await frames.return?.()
+      }
     }
   } finally {
     try {

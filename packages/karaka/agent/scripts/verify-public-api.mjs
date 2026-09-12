@@ -111,33 +111,39 @@ declare const backend: StorageBackend
 declare const persistence: SessionPersistence
 void [defineTool, Storage, storageBackendServiceKey, defineDomain, backend, persistence]
 `)
-  verifyTypes(project, 'session-reader-consumer.ts', `import { Session, SessionId, type SessionEvent } from '@karaka-ai/agent/session'
+  verifyTypes(project, 'session-reader-consumer.ts', `import { Session, SessionId, SessionSeq, SessionLogOffset, type SessionEvent } from '@karaka-ai/agent/session'
 import type ApprovalService from '@karaka-ai/agent/user-approval'
 // @ts-expect-error the chronological approval helper is not part of the public API.
 import { effectiveApprovalPolicy } from '@karaka-ai/agent/user-approval'
 
 const session = Session.create(SessionId('public-reader'))
-const event: SessionEvent | undefined = session.eventAt(0)
-const snapshot: readonly SessionEvent[] = session.snapshotEvents(0, session.seq)
+const event: SessionEvent | undefined = session.eventAt(SessionSeq(0))
+const snapshot: readonly SessionEvent[] = session.snapshotEvents(SessionLogOffset(0), session.seq)
 declare const approval: ApprovalService
 void approval.overrideOf(session)
 // @ts-expect-error Session exposes explicit indexed/snapshot reads, not a live events property.
 void session.events
 // @ts-expect-error published snapshots cannot be mutated.
 snapshot.push(event!)
+// @ts-expect-error event positions and read offsets are distinct public types.
+session.eventAt(SessionLogOffset(0))
+// @ts-expect-error a sequence is not a prefix offset.
+session.snapshotEvents(SessionSeq(0))
+// @ts-expect-error logical headers expose lineage without the physical seedLength field.
+void session.header.seedLength
 void [event, snapshot, effectiveApprovalPolicy]
 `)
   writeFileSync(resolve(project, 'session-reader.mjs'), `import assert from 'node:assert/strict'
-import { Session, SessionId } from '@karaka-ai/agent/session'
+import { Session, SessionId, SessionSeq, SessionLogOffset } from '@karaka-ai/agent/session'
 import * as approval from '@karaka-ai/agent/user-approval'
 
 const session = Session.create(SessionId('public-reader'))
 const first = session.append('turn/start', { turn: 1 })
 const cut = session.snapshotEvents()
-assert.equal(session.eventAt(0), first)
+assert.equal(session.eventAt(SessionSeq(0)), first)
 assert.equal(cut[0], first)
 assert.equal(session.snapshotEvents(), cut)
-assert.equal(session.eventAt(session.seq), undefined)
+assert.equal(session.eventAt(SessionSeq(session.seq)), undefined)
 assert.ok(Object.isFrozen(cut))
 assert.ok(Object.isFrozen(first))
 assert.ok(Object.isFrozen(first.data))
@@ -145,9 +151,9 @@ const last = session.append('turn/end', { turn: 1, reason: { kind: 'completed' }
 assert.equal(cut.length, 1)
 assert.equal(cut[0], first)
 assert.notEqual(session.snapshotEvents(), cut)
-assert.deepEqual(session.snapshotEvents(0, 1), [first])
-assert.deepEqual(session.snapshotEvents(1, 2), [last])
-assert.deepEqual(session.snapshotEvents(1, 1), [])
+assert.deepEqual(session.snapshotEvents(SessionLogOffset(0), SessionLogOffset(1)), [first])
+assert.deepEqual(session.snapshotEvents(SessionLogOffset(1), SessionLogOffset(2)), [last])
+assert.deepEqual(session.snapshotEvents(SessionLogOffset(1), SessionLogOffset(1)), [])
 assert.equal('events' in session, false)
 assert.equal('effectiveApprovalPolicy' in approval, false)
 `)

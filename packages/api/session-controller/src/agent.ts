@@ -9,7 +9,8 @@ import type {
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { ApplicationOwner, Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { ApplicationOwner, Session, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-typert-registry'
@@ -167,7 +168,7 @@ export async function inspectApiSession(
   ctx: Context,
   sessionId: SessionId,
   signal?: AbortSignal,
-): Promise<{ meta: SessionHeader; events: SessionEvent[] }> {
+): Promise<SessionInspection> {
   try {
     using observation = await ctx.sessionQuery.observeSession(sessionId, {
       ...(signal === undefined ? {} : { signal }),
@@ -179,7 +180,11 @@ export async function inspectApiSession(
     if (observation.header.applicationOwner !== undefined) {
       throw new ApiSessionApplicationOwnership(sessionId)
     }
-    return { meta: observation.header, events: [...observation.events] }
+    return {
+      meta: observation.header,
+      inheritedEventCount: observation.inheritedEventCount,
+      events: [...observation.events],
+    }
   } catch (error: unknown) {
     if (error instanceof SessionQueryError
       && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') {
