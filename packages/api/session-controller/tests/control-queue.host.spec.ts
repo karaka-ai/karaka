@@ -4,6 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { ApplicationId, SessionId, TenantId, UserId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import * as SessionTurnOutline from '@deepseek-ai/dsh-session-turn-outline'
 import { describe, expect, it } from 'vitest'
 import { SessionControlController } from '../src/control.ts'
 
@@ -115,44 +116,60 @@ describe('Session control queue projection', () => {
     await iterator.next()
   })
 
-  it('excludes application-owned sessions from baselines and live frames', async () => {
-    const { ctx, control, inbox } = await harness()
-    const application = ctx.sessions.create(SessionId('application-chat'), {
-      meta: {
-        applicationOwner: {
-          applicationId: ApplicationId('billing'),
-          tenantId: TenantId('tenant-1'),
-          userId: UserId('user-1'),
-        },
-      },
-    })
-    const applicationInbox = new Inbox(application, {
-      inserted: () => {}, discarded: () => {}, claimed: () => {},
-    })
-    ctx.agents.register({
-      id: application.id,
-      session: application,
-      inbox: applicationInbox,
-      status: 'running',
-      ctx,
-    } as Agent)
-
+  it('excludes application-owned queues and turn outlines from baselines and live frames', async () => {
+    const { ctx, control, agent, inbox } = await harness()
     const abort = new AbortController()
     const iterator = control.control(abort.signal)[Symbol.asyncIterator]()
-    const opened = await iterator.next()
-    if (opened.done || opened.value.type !== 'baseline') throw new Error('missing baseline')
-    expect(opened.value.value.queues).not.toHaveProperty(application.id)
-    expect(opened.value.value.jobs).not.toHaveProperty(application.id)
-    expect(opened.value.value.projections).not.toHaveProperty(application.id)
+    try {
+      await ctx.plugin(SessionTurnOutline)
+      const application = ctx.sessions.create(SessionId('application-chat'), {
+        meta: {
+          applicationOwner: {
+            applicationId: ApplicationId('billing'),
+            tenantId: TenantId('tenant-1'),
+            userId: UserId('user-1'),
+          },
+        },
+      })
+      const applicationInbox = new Inbox(application, {
+        inserted: () => {}, discarded: () => {}, claimed: () => {},
+      })
+      ctx.agents.register({
+        id: application.id, session: application, inbox: applicationInbox, status: 'running', ctx,
+      } as Agent)
+      application.append('turn/start', { turn: 1 })
+      application.append('user/message', message('private prompt'), { surfaceOp: 'append' })
+      agent.session.append('turn/start', { turn: 1 })
+      const opened = await iterator.next()
+      if (opened.done || opened.value.type !== 'baseline') throw new Error('missing baseline')
+      expect(opened.value.value.queues).not.toHaveProperty(application.id)
+      expect(opened.value.value.jobs).not.toHaveProperty(application.id)
+      expect(opened.value.value.projections).not.toHaveProperty(application.id)
+      expect(opened.value.value.projections[agent.id]?.values.turnOutline)
+        .toEqual([{ turn: 1, seq: 0, prompt: '', response: '' }])
+      expect(ctx.sessionProjections.snapshot(application).values.turnOutline)
+        .toEqual([{ turn: 1, seq: 0, prompt: 'private prompt', response: '' }])
 
-    applicationInbox.append('next-turn', message('private'))
-    inbox.append('next-turn', message('ordinary'))
-    await expect(iterator.next()).resolves.toMatchObject({
-      value: { type: 'queue', sessionId: 'queue-session' },
-    })
-
-    abort.abort()
-    await iterator.next()
+      application.append('turn/start', { turn: 2 })
+      application.append('user/message', message('another private prompt'), { surfaceOp: 'append' })
+      applicationInbox.append('next-turn', message('private'))
+      inbox.append('next-turn', message('ordinary'))
+      // The ordinary queue is a barrier after every private projection notification.
+      await expect(iterator.next()).resolves.toMatchObject({
+        value: { type: 'queue', sessionId: 'queue-session' },
+      })
+      agent.session.append('user/message', message('public prompt'), { surfaceOp: 'append' })
+      await expect(iterator.next()).resolves.toMatchObject({
+        value: {
+          type: 'projection', sessionId: 'queue-session', key: 'turnOutline',
+          value: [{ turn: 1, seq: 0, prompt: 'public prompt', response: '' }],
+        },
+      })
+    } finally {
+      abort.abort()
+      await iterator.return?.()
+      await ctx.fiber.dispose()
+    }
   })
 
   it('drops broadcasts after cancellation has ended its queue', async () => {
