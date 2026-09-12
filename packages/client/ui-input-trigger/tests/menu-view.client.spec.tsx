@@ -123,13 +123,17 @@ describe('MenuView', () => {
     expect(screen.getByRole('status', { name: '正在加载…' })).toBeTruthy()
   })
 
-  it('renders retained items instead of skeletons while a refinement is pending', () => {
-    mount(openState({
-      groups: [{ source: 'command', status: 'pending', items: [{ name: 'goal' }] }],
-      highlight: null,
-    }))
-    expect(screen.getAllByRole('option').map(o => o.textContent)).toEqual(['goal'])
+  it('marks retained options disabled until their group is ready', () => {
+    const groups = [{ source: 'command', status: 'pending' as const, items: [{ name: 'goal', drill: true }] }]
+    const { menu } = mount(openState({ groups }))
+    const option = screen.getByRole('option')
+    expect(option.textContent).toContain('goal')
+    expect(option.getAttribute('aria-selected')).toBe('true')
+    expect(option.getAttribute('aria-disabled')).toBe('true')
     expect(screen.queryByRole('status')).toBeNull()
+    act(() => { menu.set(openState({ groups: [{ ...groups[0]!, status: 'ready' }] })) })
+    expect(screen.getByRole('option')).toBe(option)
+    expect(option.getAttribute('aria-disabled')).toBeNull()
   })
 
   it('titles each group with the localized source name, raw name for unknown sources, none for empty ready groups', () => {

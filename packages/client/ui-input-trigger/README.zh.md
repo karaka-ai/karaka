@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 键盘与鼠标
 
-菜单打开期间 composer 表面保持焦点：行在 mousedown 时完成 pick，高亮由 `aria-activedescendant` 承载，指针落在菜单与所在 composer 卡片之外即关闭菜单。空格与回车裁决按注册序轮询可选的 `matchSpace`／`matchEnter` 钩子；第一个非 undefined 的应答胜出，source 也可以拒绝它无法整体消费的提交。Tab 会作用于高亮补全项：声明 `drill: true` 的候选项以 `action: 'drill'` 进入 `onPick`，普通候选项则以 `action: 'pick'` 完成选定；没有高亮项时 Tab 原样放行，原生焦点遍历不受影响。可下钻行尾的 chevron 向指针用户提供同一个动词。实现可选 `header` 钩子的 source 还会在其分组上方发布面包屑：管线在每次命中时用实时查询、以及该查询由下钻还是由键入产生这一事实重新询问它，点击面包屑经 `onPick` 以 `action: 'drill'` 回到该 source。
+处于 pending 状态的分组保留旧选项供显示，并以 `aria-disabled="true"` 标记；分组就绪后才可选取。菜单打开期间 composer 表面保持焦点：行在 mousedown 时完成 pick，高亮由 `aria-activedescendant` 承载，指针落在菜单与所在 composer 卡片之外即关闭菜单。空格与回车裁决按注册序轮询可选的 `matchSpace`／`matchEnter` 钩子；第一个非 undefined 的应答胜出，source 也可以拒绝它无法整体消费的提交。Tab 会作用于高亮补全项：声明 `drill: true` 的候选项以 `action: 'drill'` 进入 `onPick`，普通候选项则以 `action: 'pick'` 完成选定；没有高亮项时 Tab 原样放行，原生焦点遍历不受影响。可下钻行尾的 chevron 向指针用户提供同一个动词。实现可选 `header` 钩子的 source 还会在其分组上方发布面包屑：管线在每次命中时用实时查询、以及该查询由下钻还是由键入产生这一事实重新询问它，点击面包屑经 `onPick` 以 `action: 'drill'` 回到该 source。
 
 -----
 
