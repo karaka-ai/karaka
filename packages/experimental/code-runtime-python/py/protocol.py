@@ -81,10 +81,11 @@ class LogMessage(_LogMessageRequired, total=False):
 
     ``truncated`` is set only on the frame that IS the child ledger's truncation
     marker (not program output), so the host stops capturing at the same point
-    the child did — mirrors the TS `truncated?`.
+    the child did — mirrors the TS `truncated?`. ``open`` is set on a flushed unterminated line the host appends the next frame to (mirrors `open?`).
     """
 
     truncated: bool
+    open: bool
 
 
 class DoneErrorField(TypedDict):

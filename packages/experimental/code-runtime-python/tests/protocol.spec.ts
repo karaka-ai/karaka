@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkDoneValue, encodeJsonPlain, hasNonLosslessNumber, hasUnsafeIntegerToken, logTruncationMarker, validateChildFrame } from '../src/index.ts'
+import { checkDoneValue, encodeJsonPlain, hasNonLosslessNumber, hasUnsafeIntegerToken, hostFrameParseCeiling, logTruncationMarker, validateChildFrame } from '../src/index.ts'
 
 describe('logTruncationMarker', () => {
   it('names the configured byte budget', () => {
@@ -300,5 +300,47 @@ describe('checkDoneValue', () => {
     const v = JSON.parse('[1152921504606846976]') as unknown
     expect(encodeJsonPlain(v)).toBe('[1152921504606846976]')
     expect(checkDoneValue(v, 100)).toEqual({ ok: true, bytes: Buffer.byteLength('[1152921504606846976]', 'utf8') })
+  })
+
+  it('walks wide arrays and objects one member at a time', () => {
+    // A completion value has a seam byte budget, but the budget alone does not
+    // bound the traversal's AUXILIARY state: a wide value near the frame cap
+    // (millions of members) must not have every member's reference copied onto
+    // a work stack — that O(width) allocation would OOM the host after the
+    // parse already succeeded. The walk holds one cursor per nesting level, so
+    // a wide value meters exactly and a violation anywhere in it is found
+    // wherever it sits.
+    const wideArray = new Array(2_000_000).fill(0) as unknown[]
+    const arrayJson = `[${wideArray.join(',')}]`
+    const arrayExact = Buffer.byteLength(arrayJson, 'utf8')
+    expect(checkDoneValue(wideArray, arrayExact)).toEqual({ ok: true, bytes: arrayExact })
+    expect(checkDoneValue(wideArray, arrayExact - 1)).toEqual({ ok: false, reason: 'over-budget' })
+    // Last element, so the cursor must run the whole breadth lazily to find it.
+    wideArray[wideArray.length - 1] = -0
+    expect(checkDoneValue(wideArray, arrayExact)).toEqual({ ok: false, reason: 'non-lossless' })
+    wideArray[wideArray.length - 1] = 0
+    const wideObject: Record<string, unknown> = {}
+    for (let i = 0; i < 100_000; i++) wideObject[`k${i}`] = i
+    const objectExact = Buffer.byteLength(JSON.stringify(wideObject), 'utf8')
+    expect(checkDoneValue(wideObject, objectExact)).toEqual({ ok: true, bytes: objectExact })
+    expect(checkDoneValue(wideObject, objectExact - 1)).toEqual({ ok: false, reason: 'over-budget' })
+    wideObject.last = -0
+    expect(checkDoneValue(wideObject, Buffer.byteLength(JSON.stringify(wideObject), 'utf8'))).toEqual({ ok: false, reason: 'non-lossless' })
+  })
+})
+
+describe('hostFrameParseCeiling', () => {
+  it('caps the parse at the protocol limit on a default heap and lower on a constrained one', () => {
+    // The raw-byte frame cap does not protect the host heap: JSON.parse of a
+    // wide-object frame materializes several times the raw bytes in property
+    // storage, so the effective cap is min(protocol cap, heap-derived
+    // ceiling). A default Node heap (~4 GiB) never binds.
+    expect(hostFrameParseCeiling(4 * 1024 * 1024 * 1024)).toBe(64 * 1024 * 1024)
+    // A constrained host (--max-old-space-size=256 reports a ~304 MiB limit)
+    // derives floor((304 - 64) / 16) = 15 MiB: a 50 MiB budget would be
+    // rejected at load, where the address-space gate alone would admit it.
+    expect(hostFrameParseCeiling(304 * 1024 * 1024)).toBe(15 * 1024 * 1024)
+    // A tiny heap leaves almost no parse room — the load gate fails loud.
+    expect(hostFrameParseCeiling(128 * 1024 * 1024)).toBe(4 * 1024 * 1024)
   })
 })
