@@ -31,6 +31,7 @@ interface ListingServer {
  */
 async function listingServer(behavior: {
   status?: number
+  location?: string
   body?: string
   chunks?: string[]
   holdOpenMs?: number
@@ -52,6 +53,7 @@ async function listingServer(behavior: {
     }
     const body = behavior.body ?? '{}'
     response.writeHead(behavior.status ?? 200, {
+      ...behavior.location === undefined ? {} : { location: behavior.location },
       'content-type': 'application/json',
       'content-length': String(Buffer.byteLength(body)),
     })
@@ -190,6 +192,18 @@ describe('draft-provider model discovery', () => {
       .toEqual(['Bearer stored-key', 'Bearer typed', undefined, 'Bearer plain-typed'])
     expect(server.headers.map(headers => headers['x-company-code']))
       .toEqual(['private-tenant', 'private-tenant', undefined, undefined])
+  })
+
+  it('rejects a redirect without forwarding deployment credentials to its target', async () => {
+    const target = await listingServer({ body: JSON.stringify({ data: [{ id: 'leaked' }] }) })
+    const source = await listingServer({ status: 302, location: `${target.url}/models` })
+    const result = await discoverModels({ baseURL: source.url }, () => ({
+      headers: { 'X-Api-Key': 'redirect-test-sentinel' },
+      resolveApiKey: async () => undefined,
+    })).then(value => ({ value }), (error: unknown) => ({ error }))
+    expect(source.headers[0]?.['x-api-key']).toBe('redirect-test-sentinel')
+    expect(target.headers).toEqual([])
+    expect(result).toMatchObject({ error: { code: 'DISCOVERY_FAILED' } })
   })
 
   it('leaves a catalog route\'s credential unresolved, having never reached the network', async () => {

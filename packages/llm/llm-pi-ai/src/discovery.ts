@@ -252,6 +252,8 @@ export async function discoverModels(
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     response = await fetch(url, {
       method: 'GET',
+      // Deployment headers may contain credentials; never forward them through a redirect.
+      redirect: 'error',
       headers,
       ...request.signal === undefined ? {} : { signal: request.signal },
     })
