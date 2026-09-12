@@ -247,9 +247,6 @@
       "path": "../../subagent/tool-subagent-control"
     },
     {
-      "path": "../../subagent/tool-subagent-report"
-    },
-    {
       "path": "../../subprocess/subprocess-local"
     },
     {
