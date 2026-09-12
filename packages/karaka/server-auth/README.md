@@ -22,6 +22,8 @@ English | [中文](README.zh.md)
 
 Each `applications` row has a stable `id`, `chatCredential`, and `toolCredential`. The two credential references rotate independently. Alternative providers implement `authenticate()` and `authorizeTools()` behind the same service.
 
+No runtime invariant companion is published because credentials are resolved and checked at each request boundary.
+
 ## Model Experience
 
 None, as authentication metadata is not added to prompts, messages, or tool schemas.

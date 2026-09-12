@@ -113,6 +113,8 @@ The build emits one runtime chunk set shared by `lib/bin.js`, the Loader registr
 
 -----
 
+No runtime invariant companion is published because the bundle composes packages that own their runtime relationships.
+
 <a id="further-exploration"></a>
 ## Further Exploration
 

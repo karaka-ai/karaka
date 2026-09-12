@@ -8,7 +8,6 @@
     { "path": "../../core/session" },
     { "path": "../../core/tools" },
     { "path": "../../mcp/mcp-client" },
-    { "path": "../../runtime-diagnostics/invariants" },
     { "path": "../../util/timeout" },
     { "path": "../server-auth" }
   ]

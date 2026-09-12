@@ -84,7 +84,7 @@ function facts(manifest: PackageDependencyManifest): PackageDependencyFacts {
     peerRequiredHostDependencies: new Set(),
     configurationOnlyDevDependencies: new Set(),
     clientInject: new Set(),
-    cordisDevelopmentOnly: false,
+    cordisIndependent: false,
   }
 }
 
@@ -117,7 +117,7 @@ function hostRuntimeFixture(): {
     peerRequiredHostDependencies: new Set(),
     configurationOnlyDevDependencies: new Set(),
     clientInject: new Set(),
-    cordisDevelopmentOnly: false,
+    cordisIndependent: false,
   }
   return { provider, workspaceNames, consumerFacts }
 }
@@ -135,7 +135,7 @@ describe('package dependency scope', () => {
       '@karaka-ai/cli',
       '@karaka-ai/sdk',
     ])
-    expect(PACKAGE_DEPENDENCY_POLICY.cordisDevelopmentOnlyPackages).toEqual([
+    expect(PACKAGE_DEPENDENCY_POLICY.cordisIndependentPackages).toEqual([
       '@karaka-ai/cli',
       '@karaka-ai/sdk',
     ])
@@ -434,6 +434,27 @@ describe('dependency sections', () => {
     expect(collectPackageDependencyViolations({
       facts: [facts(manifest)], packages: [], policyViolations: [], workspaceNames: facts(manifest).workspaceNames,
     })).toEqual([])
+  })
+
+  it('keeps plain libraries Cordis-free while rejecting a new import or dependency', () => {
+    const subject = {
+      ...facts({ name: '@karaka-ai/sdk' }),
+      cordisIndependent: true,
+      allSourceUses: new Map(),
+      hostRuntimeSourceUses: new Map(),
+      hostRuntimeExportUses: [],
+    }
+    const state = { facts: [subject], packages: [], policyViolations: [], workspaceNames: subject.workspaceNames }
+    expect(collectPackageDependencyViolations(state)).toEqual([])
+    subject.allSourceUses.set(CORDIS, ['packages/karaka/sdk/src/index.ts'])
+    expect(collectPackageDependencyViolations(state)).toContain(
+      'packages/core/probe/package.json: Cordis-independent libraries must omit Cordis imports and dependencies',
+    )
+    subject.allSourceUses.clear()
+    subject.manifest.devDependencies = { [CORDIS]: 'workspace:^' }
+    expect(collectPackageDependencyViolations(state)).toContain(
+      'packages/core/probe/package.json: Cordis-independent libraries must omit Cordis imports and dependencies',
+    )
   })
 
   it('lists managed Host runtime dependencies for fix review', () => {
