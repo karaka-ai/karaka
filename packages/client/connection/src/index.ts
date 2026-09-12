@@ -7,12 +7,10 @@ import type {} from '@deepseek-ai/dsh-credentials'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { API_PATH } from './api-path.ts'
 import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
-import { assertTrustedAuthority, isTrustedApiRequest, header } from './api-request-trust.ts'
+import { assertTrustedAuthority } from './api-request-trust.ts'
 import { BrowserAuth } from './browser-auth.ts'
 import { HostConnectionService } from './rpc-host.ts'
 import { ConnectionRecoveryConfigSchema, resolveConnectionConfig, type ConnectionRecoveryConfig } from './recovery-config.ts'
-
-export type { ConnectionAuth, ConnectionCaller, ConnectionAuthentication } from './auth.ts'
 
 export type {
   ConnectionFetchMethod,
@@ -25,6 +23,7 @@ export type {
   ConnectionRpcHandler,
   ConnectionRequestRejection,
   ConnectionRpcResult,
+  ConnectionRequestBodyMode,
   ConnectionTrustRequest,
   ClientRequest,
   HostConnectionHandle,
@@ -67,14 +66,10 @@ function assertImageBodyCapacity(ctx: Context, maxRequestBodyBytes: number): voi
 }
 
 /** Services required before providing Connection. */
-export const inject = ['webServer', 'credentials']
+export const inject = ['credentials']
 
 /** Browser authentication, request limits, and connection recovery configuration. */
 export interface ConnectionConfig {
-  /** Host login or a configured application-user credential provider. */
-  authentication?: 'host' | 'application'
-  /** Exact frontend origins accepted in application mode. */
-  frontendOrigins?: string[]
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
   /**
@@ -93,8 +88,6 @@ export interface ConnectionConfig {
 }
 
 export const Config: z<ConnectionConfig> = z.object({
-  authentication: z.union(['host', 'application']).default('host'),
-  frontendOrigins: z.array(String),
   recovery: ConnectionRecoveryConfigSchema.default({}),
   trustedHosts: z.array(String).default([]),
   cookieMaxAgeDays: z.natural().min(1).default(30),
@@ -102,9 +95,9 @@ export const Config: z<ConnectionConfig> = z.object({
 })
 
 /**
- * Mounts the API gateway under the browser transport prefix. Every request on
- * the prefix passes the Host/Origin browser-trust fence and persistent browser
- * authentication before dispatch.
+ * Provides carrier-neutral RPC and Fetch registries. When `webServer` is
+ * present, the plugin also mounts the `/api` browser transport with Host/Origin
+ * checks and persistent browser authentication.
  * @param ctx - Host plugin context.
  * @param config - resolved plugin config (schema defaults applied).
  */
@@ -118,53 +111,32 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
   // silently authorizing its hostname prefix at request time.
   for (const entry of trustedHosts) assertTrustedAuthority(entry)
   assertImageBodyCapacity(ctx, maxRequestBodyBytes)
-  const applicationMode = config?.authentication === 'application'
-  const origins = config?.frontendOrigins ?? []
-  const provider = applicationMode ? ctx.get('connectionAuth') : undefined
-  if (applicationMode && (provider === undefined || origins.length === 0)) {
-    throw new Error('connection: application authentication requires connectionAuth and frontendOrigins')
-  }
-  for (const origin of origins) {
-    const url = new URL(origin)
-    if (!['http:', 'https:'].includes(url.protocol) || url.origin !== origin) throw new Error('connection: frontendOrigins must contain exact HTTP origins')
-  }
   const connection = new HostConnectionService(
     ctx,
     trustedHosts,
-    applicationMode ? undefined : await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
-    provider === undefined ? undefined : { origins },
+    await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
   )
-  ctx.on('webserver/index-inject', (table) => {
-    table.push({ kind: 'global', name: '__DSH_CONNECTION_RECOVERY__', value: recovery })
-  })
-  const fetchHandler = connection.createSharedFetchHandler(API_PATH)
-  const route: WebRoute = {
-    kind: 'prefix',
-    path: API_PATH,
-    handler: async (req, res) => {
-      if (applicationMode && isTrustedApiRequest(req, trustedHosts, origins)) {
-        const origin = header(req.headers, 'origin')
-        if (origin !== undefined) {
-          res.setHeader('access-control-allow-origin', origin)
-          res.setHeader('vary', 'Origin')
-        }
-        if (req.method === 'OPTIONS') {
-          res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'authorization, content-type' })
-          res.end()
+  ctx.inject(['webServer'], (webCtx) => {
+    assertImageBodyCapacity(webCtx, maxRequestBodyBytes)
+    webCtx.on('webserver/index-inject', (table) => {
+      table.push({ kind: 'global', name: '__DSH_CONNECTION_RECOVERY__', value: recovery })
+    })
+    const fetchHandler = connection.createSharedFetchHandler(API_PATH)
+    const route: WebRoute = {
+      kind: 'prefix',
+      path: API_PATH,
+      handler: async (req, res) => {
+        const rejection = connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.writeHead(rejection)
+          res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
-      }
-      const authentication = await connection.authenticate(req)
-      if ('rejection' in authentication) {
-        const { rejection } = authentication
-        res.writeHead(rejection)
-        res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
-        return
-      }
-      await bridge(req, res, { fetch: request => fetchHandler.fetch(request, authentication.caller) }, maxRequestBodyBytes)
-    },
-  }
-  ctx.effect(() => ctx.webServer.register(route), 'client-connection: /api route')
+        await bridge(req, res, fetchHandler, maxRequestBodyBytes)
+      },
+    }
+    webCtx.effect(() => webCtx.webServer.register(route), 'client-connection: /api route')
+  })
   ctx.inject(['attachments'], (attachmentCtx) => {
     assertImageBodyCapacity(attachmentCtx, maxRequestBodyBytes)
   })

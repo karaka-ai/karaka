@@ -8,12 +8,12 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Group from '@deepseek-ai/cordis-plugin-group'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentRegistry, { assembleContextFor, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AgentPresets, {
   COMPOSITION_FILE, leakedServices, livePresetMounts, mountPreset, serviceForAgent,
 } from '@deepseek-ai/dsh-agent-presets'
@@ -40,14 +40,10 @@ const ROOTS = [
  * @param roster - roster config, defaulting to the fixture roots.
  * @returns the booted context.
  */
-async function harness(
-  roster: Config = { default: 'standard', roots: ROOTS, includeShippedRoot: false, includeUserRoot: false },
-  bareModuleBaseUrl?: string,
-): Promise<Context> {
+async function harness(roster: Config = { default: 'standard', roots: ROOTS, includeShippedRoot: false, includeUserRoot: false }): Promise<Context> {
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(FIXTURES).href + '/'
   await ctx.plugin(Loader)
-  if (bareModuleBaseUrl !== undefined) ctx.provide('loaderBareModuleBaseUrl', bareModuleBaseUrl)
   ctx.loader.builtins.include = Include
   // A preset outside this workspace cannot resolve `cordis-plugin-group` by
   // name, so the app registers it as a builtin; the fixtures compose the same
@@ -55,10 +51,10 @@ async function harness(
   ctx.loader.builtins.group = Group
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
-  await ctx.plugin(SystemPrompt, { persona: '' })
+  await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(SystemPrompt, { personaPrefix: '' })
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
-  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(AgentPresets, roster)
   return ctx
@@ -90,54 +86,21 @@ function rootResolves(ctx: Context, name: string): boolean {
 }
 
 let ctx: Context
+
+/** Every temp preset root created by this file, removed after each test. */
+const roots: string[] = []
+afterEach(async () => {
+  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+})
+
 beforeEach(async () => {
   ctx = await harness()
 })
 
 describe('composing an agent from a preset', () => {
-  it('resolves a bare plugin package from the server project', async () => {
-    const project = await mkdtemp(join(tmpdir(), 'dsh-preset-project-plugin-'))
-    let scoped: Context | undefined
-    try {
-      const packageDir = join(project, 'node_modules', '@acme', 'customer-tools')
-      const presetRoot = join(project, 'presets')
-      const presetDir = join(presetRoot, 'customer')
-      await mkdir(packageDir, { recursive: true })
-      await mkdir(presetDir, { recursive: true })
-      await writeFile(join(packageDir, 'package.json'), JSON.stringify({
-        name: '@acme/customer-tools',
-        type: 'module',
-        exports: './index.js',
-      }))
-      await writeFile(join(packageDir, 'index.js'), [
-        'export function apply(ctx, config) {',
-        '  globalThis.__PRESET_PROJECT_PLUGIN__ = config.value',
-        '  ctx.effect(() => () => { delete globalThis.__PRESET_PROJECT_PLUGIN__ })',
-        '}',
-        '',
-      ].join('\n'))
-      await writeFile(
-        join(presetDir, COMPOSITION_FILE),
-        '- id: customer-tools\n  name: "@acme/customer-tools"\n  config:\n    value: mounted\n',
-      )
-      const projectBase = pathToFileURL(join(project, 'package.json')).href
-      scoped = await harness({
-        default: 'customer',
-        roots: [{ path: presetRoot, trust: 'user' }],
-        includeShippedRoot: false,
-        includeUserRoot: false,
-      }, projectBase)
-      await agentOn(scoped, 'sess-project-plugin')
-      expect((globalThis as { __PRESET_PROJECT_PLUGIN__?: string }).__PRESET_PROJECT_PLUGIN__).toBe('mounted')
-    } finally {
-      await scoped?.fiber.dispose()
-      delete (globalThis as { __PRESET_PROJECT_PLUGIN__?: string }).__PRESET_PROJECT_PLUGIN__
-      await rm(project, { recursive: true, force: true })
-    }
-  })
-
   it('hands an absolute plugin path to Node as a file URL', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-preset-absolute-plugin-'))
+    roots.push(root)
     const presetDir = join(root, 'absolute')
     const plugin = join(FIXTURES, 'plugins', 'contribute.js')
     await mkdir(presetDir)
@@ -405,6 +368,7 @@ describe('composing from a broken preset', () => {
   /** A roster whose only user preset carries `composition`. */
   async function rosterWith(composition: string): Promise<Context> {
     const root = await mkdtemp(join(tmpdir(), 'dsh-preset-broken-'))
+    roots.push(root)
     await mkdir(join(root, 'damaged'))
     await writeFile(join(root, 'damaged', COMPOSITION_FILE), composition)
     return await harness({ default: 'damaged', roots: [{ path: root, trust: 'user' as const }], includeShippedRoot: false, includeUserRoot: false })
@@ -473,6 +437,7 @@ describe('the preset file is an input, never a persistence target', () => {
     // committed fixture would be mutated by the very run that proves the bug
     // and every later run would compare against the damaged file and pass.
     const root = await mkdtemp(join(tmpdir(), 'dsh-preset-write-'))
+    roots.push(root)
     const dir = join(root, 'self-disposing')
     await mkdir(dir)
     const path = join(dir, COMPOSITION_FILE)
@@ -494,10 +459,10 @@ describe('the preset file is an input, never a persistence target', () => {
     scoped.loader.builtins.group = Group
     await scoped.plugin(LlmRuntime)
     await scoped.plugin(SessionStore)
-    await scoped.plugin(SystemPrompt, { persona: '' })
+    await scoped.plugin(SessionProjectionRegistry)
+    await scoped.plugin(SystemPrompt, { personaPrefix: '' })
     await scoped.plugin(ToolRuntime)
     await scoped.plugin(AgentRegistry)
-    await scoped.plugin(SessionProjectionRegistry)
     await scoped.plugin(AgentLoop, { agents: [] })
     await scoped.plugin(AgentPresets, { default: 'self-disposing', roots: [{ path: root, trust: 'user' as const }], includeShippedRoot: false, includeUserRoot: false })
 
@@ -670,6 +635,7 @@ describe('replacing a composition', () => {
     // A preset root this test owns, so removing the composition mid-flight
     // cannot disturb the shipped fixtures.
     const root = await mkdtemp(join(tmpdir(), 'dsh-preset-restore-'))
+    roots.push(root)
     const seeded: [string, string][] = [['first', `- id: only\n  name: ${join(FIXTURES, 'plugins', 'contribute.js')}\n  config:\n    tool: only\n`], ['broken', `- id: nope\n  name: ${join(FIXTURES, 'plugins', 'throws.js')}\n  config:\n    message: refuses\n`]]
     for (const [id, body] of seeded) {
       await mkdir(join(root, id))
@@ -682,10 +648,10 @@ describe('replacing a composition', () => {
     scoped.loader.builtins.group = Group
     await scoped.plugin(LlmRuntime)
     await scoped.plugin(SessionStore)
-    await scoped.plugin(SystemPrompt, { persona: '' })
+    await scoped.plugin(SessionProjectionRegistry)
+    await scoped.plugin(SystemPrompt, { personaPrefix: '' })
     await scoped.plugin(ToolRuntime)
     await scoped.plugin(AgentRegistry)
-    await scoped.plugin(SessionProjectionRegistry)
     await scoped.plugin(AgentLoop, { agents: [] })
     await scoped.plugin(AgentPresets, { default: 'first', roots: [{ path: root, trust: 'user' as const }], includeShippedRoot: false, includeUserRoot: false })
     const handle = await scoped.agents.create({
@@ -724,6 +690,7 @@ describe('editing a composition file', () => {
    */
   async function editable(id: string): Promise<{ scoped: Context; path: string }> {
     const root = await mkdtemp(join(tmpdir(), 'dsh-preset-edit-'))
+    roots.push(root)
     await mkdir(join(root, id))
     const path = join(root, id, COMPOSITION_FILE)
     await writeFile(path, rowFor('before'))

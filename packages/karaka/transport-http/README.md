@@ -1,49 +1,17 @@
----
-description: "Authenticated JSON and SSE ingress from application backends to the persistent Karaka process."
-kind: "package-reference"
----
+# Karaka application HTTP transport
 
-# @karaka-ai/transport-http
+Backend applications authenticate through `serverAuth`, supply tenant/user identity, and call the standalone SDK's `/v1` JSON and SSE API. This package owns application operations; it does not mount DSH Host remotes or replace DSH Session, Agent, query, persistence or the loop.
 
-English | [中文](README.zh.md)
+Chat creation reserves durable Karaka identity before creating an original DSH Agent. Unpublished setup binds the original header, mounts the chosen preset, and installs original model-selection hooks. Creation is acknowledged after JSONL flush and authority publication. Resume authorizes persisted data before activating the original Agent and checks its reconstructed Session again during setup.
 
-## Summary
+Mutating operations serialize per chat. Prompt admission checks durable inbox/user history for the SDK request id and flushes before acknowledging either new or duplicate requests. History and snapshot-first SSE authorize the requested owner. Cancellation retains the inbox; model changes use DSH's existing model-selection event and request routing.
 
-`@karaka-ai/transport-http` mounts the application Chat API on `ctx.webServer`. It authenticates the calling server through `ctx.serverAuth`, combines that application identity with trusted tenant and user values, and calls `ctx.sessionController.application`. JSON routes admit commands and read history; SSE streams stable chat events and structured user questions.
+Optional `browserPath` mounts the existing applicationAgents/Create/Prompt/History/Follow/Cancel facade under a separate path, together with an owner-filtered approval/question event channel and response route. `browserMethods` and `browserEvents` select the server capabilities. The browser-safe `./browser` entry preserves `createBrowserClient`, per-instance renewable credentials, `forChat().$on`, state/generation observers, explicit reconnect and disposal. Its default route is `/karaka/browser`. `browserOrigins` must explicitly list allowed origins, and `@karaka-ai/browser-auth` verifies JWT claims. The request identity must equal the signed owner, and a stream closes when its credential expires. This endpoint does not implement the DSH browser Connection protocol.
 
-## Table of Contents
-
-- [Configuration](#configuration)
-- [Model Experience](#model-experience)
-- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
-- [Dev Note](#dev-note)
-
-## Configuration
-
-`path` selects the route prefix and defaults to `/v1`. `maxBodyBytes` limits JSON request bodies and defaults to 1 MiB. A stream verifies chat ownership before committing SSE headers and aborts its Session follower when the client disconnects. Every route registration, pending interaction, and active stream is owned by the plugin effect and ends during disposal.
-
-`handleQuestions` defaults to `true`. Set it to `false` when the authenticated DSH Remote connection owns human interactions. This disables only this plugin’s question-handler registration; backend chat routes remain available.
-
-No runtime invariant companion is published because request validation and ownership checks run at ingress.
-
-<a id="model-experience"></a>
 ## Model Experience
 
-None, as this package transports application input and projects Session events without assembling model requests.
-
-#### KV Cache effect
-
-No direct effect; the Agent and its preset own request construction.
+Application identity changes authorization, not model input. Presets supply the model-facing tools and persona. HTTP prompts enter DSH's normal durable inbox; model selection uses DSH's existing request hooks and switch notices.
 
 ## Known Limitations and Deferred Work
 
-- **Single-process interaction state** — unanswered structured questions do not survive a Karaka process restart.
-- **No distributed admission lock** — one process serializes a chat; deployments with several replicas require external routing or coordination.
-
-### Dev Note
-
-<details><summary>Working context for maintainers — click to expand</summary>
-
-None.
-
-</details>
+The selected validation is one end-to-end flow. Browser client integration, image admission, interaction responses, model changes and concurrency are not separately verified. Streams project durable complete assistant messages and transient text deltas from original DSH assistant-stream events. Transient deltas share the current durable cursor and are preview data: they do not advance replay position, and the complete settled message is authoritative. The existing SDK has no per-attempt rollback/reset event, so cancelled/retried partial previews require consumer reconciliation. Pending questions remain process-local, as in the existing transport. The application profile must not expose unfiltered Host remotes against this data store.

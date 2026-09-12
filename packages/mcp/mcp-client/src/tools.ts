@@ -22,10 +22,9 @@ import { isImageAdmissionError } from '@deepseek-ai/dsh-attachment'
 import type { AttachmentStore, ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolDefinition, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { assertObjectJsonSchema, assertSupportedJsonSchema, ToolArgsError, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
-import type { JsonSchemaNode, ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
+import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { McpClientExtension } from './extension.ts'
 
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
@@ -33,7 +32,6 @@ export interface ToolBridgeOptions {
   registrationFailure: 'contain' | 'throw'
   serverName: string
   toolCallTimeoutMs: number
-  extension?: McpClientExtension
 }
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
@@ -87,16 +85,8 @@ function callToolUncached(
   exec: ToolExecution,
   opts: ToolBridgeOptions,
 ) {
-  const meta = opts.extension?.invocationMeta?.(exec)
   return client.request(
-    {
-      method: 'tools/call',
-      params: {
-        name: rawName,
-        arguments: args,
-        ...(meta === undefined ? {} : { _meta: meta }),
-      },
-    },
+    { method: 'tools/call', params: { name: rawName, arguments: args } },
     RawCallToolResultSchema,
     {
       signal: exec.signal,
@@ -134,8 +124,8 @@ export function publicToolName(serverName: string, rawName: string): string {
  *
  * 1. Fetch: drain uncached `tools/list` pagination and build the full next
  *    generation of `ToolDefinition`s under public names. Any failure here
- *    (network error, duplicate raw name in the server's list) rejects and
- *    leaves the previous generation registered untouched.
+ *    (network error, duplicate raw name, repeated continuation cursor) rejects
+ *    and leaves the previous generation registered untouched.
  * 2. Swap: dispose the previous generation, register the new one. A registry
  *    conflict here can only mean a foreign registration squats on this
  *    server's `mcp__<serverName>__` namespace — the partial generation is
@@ -159,6 +149,7 @@ export async function syncTools(
 ): Promise<ToolDisposers> {
   // Phase 1: fetch and build the next generation without touching the registry.
   const definitions = new Map<string, ToolDefinition>()
+  const seenCursors = new Set<string>()
   let cursor: string | undefined
   do {
     const response = await listToolsUncached(client, cursor)
@@ -182,6 +173,14 @@ export async function syncTools(
       ))
     }
     cursor = response.nextCursor
+    if (cursor) {
+      if (seenCursors.has(cursor)) {
+        throw new Error(
+          `mcp-client(${opts.serverName}): server repeated a tools/list continuation cursor — invalid tool list`,
+        )
+      }
+      seenCursors.add(cursor)
+    }
   } while (cursor)
 
   // Phase 2: swap generations.
@@ -263,18 +262,13 @@ function createDefinition(
   taskRequired: boolean,
   opts: ToolBridgeOptions,
 ): ToolDefinition {
-  const inputSchema = withoutSchemaDialect(parameters)
-  assertObjectJsonSchema(inputSchema)
   const projections = new WeakMap<ToolExecution, PreparedProjection>()
   return {
     name: publicName,
     description,
-    parameters: inputSchema,
+    parameters,
     output: createOutput(rawName, structuredSchema),
-    ...(opts.extension?.isToolVisible === undefined ? {} : {
-      isVisible: visibility => opts.extension?.isToolVisible?.(publicName, visibility) ?? true,
-    }),
-    execute: createExecutor(client, ctx, rawName, inputSchema, taskRequired, opts, projections),
+    execute: createExecutor(client, ctx, rawName, taskRequired, opts, projections),
     finalizeContent(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>) {
       const projection = projections.get(exec)
       if (projection === undefined) return undefined
@@ -285,17 +279,6 @@ function createDefinition(
       return projection.content
     },
   }
-}
-
-/**
- * MCP servers may identify an otherwise supported root schema's JSON Schema
- * dialect. The Harness validator owns a fixed supported subset, so the dialect
- * marker is metadata rather than a validation instruction.
- */
-function withoutSchemaDialect(parameters: Record<string, unknown>): Record<string, unknown> {
-  if (!('$schema' in parameters)) return parameters
-  const { $schema: _dialect, ...schema } = parameters
-  return schema
 }
 
 /** Build the canonical result schema and existing Native text projection. */
@@ -331,7 +314,6 @@ function createExecutor(
   client: Client,
   ctx: Context,
   rawName: string,
-  parameters: ObjectJsonSchema,
   taskRequired: boolean,
   opts: ToolBridgeOptions,
   projections: WeakMap<ToolExecution, PreparedProjection>,
@@ -340,9 +322,11 @@ function createExecutor(
     if (taskRequired) {
       throw new Error(`Tool "${rawName}" requires task-based execution, which this bridge does not support`)
     }
-    const violations = validateJsonSchemaValue(parameters, args, '')
-    if (violations.length > 0) throw new ToolArgsError(violations)
-    const argsObj = args as Record<string, unknown>
+    // The agent loop passes `JSON.parse(model_arguments)` which is usually an
+    // object, but can be any JSON value if the model misbehaves (outputs a bare
+    // string/number/null). Fallback to {} lets the MCP server produce a
+    // specific "missing required param" error the model can learn from.
+    const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
     const result = await callToolUncached(client, rawName, argsObj, exec, opts)
 
     // The SDK may return a legacy `toolResult` shape; normalize to content array.

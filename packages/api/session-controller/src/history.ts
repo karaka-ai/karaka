@@ -1,8 +1,13 @@
 /** Cold Session history pagination and live-event source. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { isAppendSurfaceEvent, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
-import { isChunkRow, packChunkRuns, type ChunkRow } from '@deepseek-ai/dsh-session/chunk-rows'
+import { Deque } from '@deepseek-ai/dsh-deque'
+import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
+import {
+  isAppendSurfaceEvent,
+  SessionLogOffset,
+  SessionSeq,
+} from '@deepseek-ai/dsh-session'
 import type {
   SessionEvent,
   SessionHeader,
@@ -13,9 +18,10 @@ import type {
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {
   SessionAddress,
-  SessionChunkRun,
+  SessionAssistantStreamFrame,
   SessionEventEntry,
   SessionFollowRequest,
   SessionFollowFrame,
@@ -24,10 +30,10 @@ import type {
   SessionPageRequest,
   SessionProjectionBaseline,
   SessionProjectionValues,
+  SessionWireHeader,
   SessionWireEvent,
 } from './types.ts'
-import { SessionEventFollower } from './follow.ts'
-import { wireHeader } from './wire-header.ts'
+import { SessionAssistantStreamAccumulator } from './assistant-stream.ts'
 
 const DEFAULT_MAX_MESSAGES = 50
 const MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
@@ -35,6 +41,7 @@ const MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
 /** Implements cold-safe history operations delegated by the Session Controller. */
 export class SessionHistoryController {
   private readonly closeFollowers = new Set<() => void>()
+  private readonly assistantStreams = new Map<SessionId, SessionAssistantStreamAccumulator>()
 
   /**
    * @param ctx - Host context carrying Session query and projection services.
@@ -44,6 +51,17 @@ export class SessionHistoryController {
     private readonly ctx: Context,
     private readonly promote: (observation: SessionObservation) => void,
   ) {
+    ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+      let stream = this.assistantStreams.get(agent.session.id)
+      if (stream === undefined) {
+        stream = new SessionAssistantStreamAccumulator()
+        this.assistantStreams.set(agent.session.id, stream)
+      }
+      stream.accept(frame, cursorBeforeNext(agent.session.seq))
+    }, { global: true })
+    ctx.on('agent/disposed', ({ agent }) => {
+      this.assistantStreams.delete(agent.session.id)
+    }, { global: true })
     ctx.effect(() => () => {
       for (const close of this.closeFollowers) close()
       this.closeFollowers.clear()
@@ -96,46 +114,128 @@ export class SessionHistoryController {
    * Follow events appended after an initial cursor on one durable address.
    * @param request - durable address and last committed sequence already held by the caller.
    * @param signal - stream cancellation owned by the Remote carrier.
-   * @returns a complete opening snapshot followed by gap-free event frames.
+   * @returns a complete opening snapshot followed by gap-free durable events and opted-in assistant frames.
    */
   async *follow(request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<SessionFollowFrame> {
     validateFollowRequest(request)
     const { address } = request
     const target = addressId(address)
-    using follower = new SessionEventFollower(
-      this.ctx,
-      target,
-      signal,
-      this.closeFollowers,
-      nextSeq => new RemoteError('gateway/internal', `session event stream skipped seq ${String(nextSeq)}`, {}),
-    )
-    using source = await this.sourceFor(address, signal, true)
-    const events = source.events
-    signal.throwIfAborted()
-    const cursor = source.cursor
-    follower.snapshotAt(cursor)
-    const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES)
-    yield {
-      type: 'snapshot',
-      header: wireHeader(source.header, source.inheritedEventCount),
-      cursor,
-      records: pageRecords(page.events),
-      hasMore: page.hasMore,
-      projections: source.projections === undefined
-        ? { asOfSeq: cursor, values: {} }
-        : projectionBlock(source.projections),
-    }
-    if (address.kind === 'session' && source.source === 'prepared') {
-      const promotion = source.retain()
-      try {
-        this.promote(promotion)
-      } catch (error: unknown) {
-        promotion[Symbol.dispose]()
-        throw error
+    const buffered = new Deque<
+      | { readonly type: 'event'; readonly event: SessionEvent }
+      | {
+        readonly type: 'assistant-stream'
+        readonly frame: SessionAssistantStreamFrame
+        readonly ordinal: number
       }
+    >()
+    let snapshotCursor: SessionSeqCursor | undefined
+    let assistantStreamOrdinal = 0
+    let wake: (() => void) | undefined
+    const notify = (): void => {
+      const resume = wake
+      wake = undefined
+      resume?.()
     }
-    for await (const event of follower.eventsAfter(SessionLogOffset(cursor + 1))) {
-      yield entryFor(event)
+    const follower = { closed: false }
+    const close = (): void => {
+      follower.closed = true
+      notify()
+    }
+    this.closeFollowers.add(close)
+    const disposeEvent = this.ctx.on('session/event', (session, event) => {
+      if (session.id !== target) return
+      buffered.pushBack({ type: 'event', event })
+      notify()
+    }, { global: true })
+    const disposeCreated = this.ctx.on('session/created', (session) => {
+      if (session.id !== target) return
+      // Constructor seed events have no session/event notification. Normally
+      // only the end-seed suffix is new; if persistence advanced after the
+      // opening observation, replay everything beyond that snapshot cursor.
+      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+      const suffix = session.snapshotEvents(snapshotCursor === undefined
+        ? session.firstLiveSeq
+        : SessionLogOffset(snapshotCursor + 1))
+      for (let index = suffix.length - 1; index >= 0; index -= 1) {
+        buffered.pushFront({ type: 'event', event: suffix[index] as SessionEvent })
+      }
+      notify()
+    }, { global: true })
+    const disposeAssistantStream = request.assistantStream !== true
+      ? undefined
+      : this.ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+        if (agent.session.id !== target) return
+        buffered.pushBack({
+          type: 'assistant-stream',
+          frame: wireAssistantStreamFrame(frame, cursorBeforeNext(agent.session.seq)),
+          ordinal: ++assistantStreamOrdinal,
+        })
+        notify()
+      }, { global: true })
+    const onAbort = (): void => { notify() }
+    signal.addEventListener('abort', onAbort, { once: true })
+    try {
+      using source = await this.sourceFor(address, signal, true)
+      const events = source.events
+      signal.throwIfAborted()
+      const cursor = source.cursor
+      snapshotCursor = cursor
+      const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES)
+      const assistantStream = request.assistantStream === true
+        ? this.assistantStreams.get(target)?.snapshot() ?? { revision: 0 }
+        : undefined
+      // The accumulator snapshot and this watermark are synchronous. Frames
+      // through the cut are represented or superseded by that baseline,
+      // including larger revisions from a retired Agent; later revision
+      // resets reach Client continuity validation.
+      const assistantStreamOrdinalCut = assistantStreamOrdinal
+      yield {
+        type: 'snapshot',
+        header: wireHeader(source.header),
+        cursor,
+        records: pageRecords(page.events),
+        hasMore: page.hasMore,
+        projections: source.projections === undefined
+          ? { asOfSeq: cursor, values: {} }
+          : projectionBlock(source.projections),
+        ...assistantStream === undefined ? {} : { assistantStream },
+      }
+      if (address.kind === 'session' && source.source === 'prepared') {
+        const promotion = source.retain()
+        try {
+          this.promote(promotion)
+        } catch (error: unknown) {
+          promotion[Symbol.dispose]()
+          throw error
+        }
+      }
+      let nextOffset = SessionLogOffset(cursor + 1)
+      while (!follower.closed && !signal.aborted) {
+        const item = buffered.popFront()
+        if (item === undefined) {
+          await new Promise<void>((resolve) => { wake = resolve })
+          continue
+        }
+        if (item.type === 'assistant-stream') {
+          if (item.ordinal > assistantStreamOrdinalCut) {
+            yield { type: 'assistant-stream', frame: item.frame }
+          }
+          continue
+        }
+        const expectedSeq = SessionSeq(nextOffset)
+        if (item.event.seq < expectedSeq) continue
+        if (item.event.seq !== expectedSeq) {
+          throw new RemoteError('gateway/internal', `session event stream skipped seq ${String(expectedSeq)}`, {})
+        }
+        nextOffset = SessionLogOffset(nextOffset + 1)
+        yield entryFor(item.event)
+      }
+    } finally {
+      this.closeFollowers.delete(close)
+      signal.removeEventListener('abort', onAbort)
+      disposeCreated()
+      disposeEvent()
+      disposeAssistantStream?.()
     }
   }
 
@@ -150,7 +250,7 @@ export class SessionHistoryController {
         signal,
         projectionMode: withProjections || address.kind === 'subagent' ? 'all' : 'none',
       })
-      if (observation.header.cwd === undefined || observation.header.applicationOwner !== undefined) {
+      if (observation.header.cwd === undefined) {
         observation[Symbol.dispose]()
         rejectNotFound(address)
       }
@@ -173,6 +273,22 @@ export class SessionHistoryController {
     }
   }
 
+}
+
+function cursorBeforeNext(nextSeq: SessionLogOffsetType): SessionSeqCursor {
+  return nextSeq === 0 ? -1 : SessionSeq(nextSeq - 1)
+}
+
+function wireAssistantStreamFrame(
+  frame: AssistantStreamFrame,
+  durableCursor: SessionSeqCursor,
+): SessionAssistantStreamFrame {
+  if (frame.type === 'start') return { ...frame, startedAfterSeq: durableCursor }
+  if (frame.type === 'end') return frame
+  return {
+    ...frame,
+    chunk: frame.chunk as JsonValue,
+  }
 }
 
 function projectionBlock(
@@ -293,6 +409,11 @@ function paginate(
   return { events: events.slice(cut, end), hasMore: cut > 0 }
 }
 
+/** Translate current logical Session metadata to the browser wire. */
+function wireHeader(header: SessionHeader): SessionWireHeader {
+  return { ...header }
+}
+
 function entryFor(event: SessionEvent): SessionEventEntry {
   return {
     type: 'event',
@@ -301,29 +422,7 @@ function entryFor(event: SessionEvent): SessionEventEntry {
   }
 }
 
-function chunkEntryFor(row: ChunkRow): SessionChunkRun {
-  switch (row.type) {
-    case 'text-chunks':
-      return {
-        type: 'chunks',
-        event: { type: 'chunkrow/text-chunks', seq: row.seq0, time: row.time0, data: row.data },
-      }
-    case 'reasoning-chunks':
-      return {
-        type: 'chunks',
-        event: { type: 'chunkrow/reasoning-chunks', seq: row.seq0, time: row.time0, data: row.data },
-      }
-    case 'tool-call-chunks':
-      return {
-        type: 'chunks',
-        event: { type: 'chunkrow/tool-call-chunks', seq: row.seq0, time: row.time0, data: row.data },
-      }
-  }
-}
-
 /** Encode one bounded logical page without changing its pagination cut. */
 function pageRecords(events: readonly SessionEvent[]): SessionHistoryRecord[] {
-  return packChunkRuns(events).map(record => isChunkRow(record)
-    ? chunkEntryFor(record)
-    : entryFor(record))
+  return events.map(entryFor)
 }

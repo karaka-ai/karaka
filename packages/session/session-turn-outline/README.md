@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-session-turn-outline` serves the whole-log turn outline — every started turn with its `turn/start` seq and bounded prompt and final-response previews — as the `turnOutline` projection unit. A client that pages history in windows reads the outline to offer every turn of the session (loaded or not) and to target its backwards paging at the exact seq that brings a turn's events in. Choose it in compositions that already mount the projection registry, such as the web app bundle whose chat turn rail is the reference consumer; assemblies without the registry are unaffected and their consumers fall back to loaded-window navigation. Setup and entry semantics come first; the fold internals live in a collapsible developer section below.
+This package gives history clients a whole-session outline of every started turn, including bounded prompt and settled-response previews. Clients can navigate turns that are not yet loaded and page backward from the exact event sequence needed to load a selected turn. It fits assemblies that provide session projections; elsewhere, clients continue using loaded-window navigation. Previews exclude injected context and tool results, and a response appears only after its turn settles.
 
 ## Table of Contents
 
@@ -44,7 +44,7 @@ Mount the plugin beside the session store and the projection registry when clien
 | `prompt` | Preview of the turn's first human prompt (space-joined text blocks, collapsed whitespace, 50-character cap with a trailing ellipsis when clipped — one rail-card line); `''` until an eligible prompt lands |
 | `response` | Preview of the turn's final text-bearing assistant message (same normalization, 120-character cap — up to three rail-card lines); `''` until the turn ends with assistant text |
 
-The wire value is the complete entry array, strictly increasing by `turn` (whole-value rule): consumers replace, never merge. Prompts fill only from `user/message` events with the human `user` source, so injected context and tool results never leak into navigation; a turn whose prompt is images-only keeps `''` and consumers label it by number. The response buffers as a draft while its turn streams and commits at `turn/end`; the change feed's raw-view identity gate keeps draft-only changes quiet, so the outline pushes at most three times per continuously observed turn — boundary, prompt, settled response. A restored cell publishes its first live state change to establish the comparison. Preview budgets match the chat rail's loaded-turn previews, so a turn shows the same words before and after its events load.
+The wire value is the complete entry array, strictly increasing by `turn` (whole-value rule): consumers replace, never merge. Prompts fill only from `user/message` events with the human `user` source, so injected context and tool results never leak into navigation; a turn whose prompt is images-only keeps `''` and consumers label it by number. The response buffers as a draft while its turn streams and commits at `turn/end`; the change feed's raw-view identity gate keeps draft-only changes quiet, so the outline pushes at most three times per turn — boundary, prompt, settled response. Preview budgets match the chat rail's loaded-turn previews, so a turn shows the same words before and after its events load.
 
 ### Failures and recovery
 
@@ -75,7 +75,7 @@ The unit is a pure fold over committed session events. `turn/start` — not the 
 
 ### Fold rules
 
-- Uninteresting events return the same state reference, and draft-only changes keep the `turns` array's identity; the registry's two `Object.is` gates then hold the feed to at most three pushes per continuously observed turn.
+- Uninteresting events return the same state reference, and draft-only changes keep the `turns` array's identity; the registry's two `Object.is` gates then hold the feed to at most three pushes per turn.
 - A `turn/start` that does not advance the turn number is skipped, keeping the outline sorted; a retried boundary's previews then land on the standing entry.
 - The wire view projects `state.turns`; the persisted-cache state schema wraps the wire schema with the draft field.
 

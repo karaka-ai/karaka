@@ -1,6 +1,7 @@
 /** Session-log download command and Host-owned streaming route. */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { CommandDefinitionId } from '@deepseek-ai/dsh-commands/brand'
 import Schema from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-attachment'
@@ -58,6 +59,7 @@ interface SessionLogConnection {
     register(route: {
       readonly path: string
       readonly methods: readonly ('GET' | 'HEAD')[]
+      readonly requestBody: 'buffered'
       readonly fetch: (request: Request) => Promise<Response>
     }): () => Promise<void>
   }
@@ -75,6 +77,7 @@ const REQUESTED: CommandResult = {
  */
 export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => ctx.commands.register({
+    definitionId: brandString<CommandDefinitionId>('@deepseek-ai/dsh-session-log-export'),
     name: 'export',
     description: 'Download this Session log as a ZIP archive',
     handler: invocation => Promise.resolve(invocation.rawInput.trim() === ''
@@ -84,6 +87,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   connectionOf(ctx).fetch.register({
     path: SESSION_LOG_EXPORT_PATH,
     methods: ['GET', 'HEAD'],
+    requestBody: 'buffered',
     fetch: async (request) => {
       const response = await sessionLogExportResponse(
         ctx,

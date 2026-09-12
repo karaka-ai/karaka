@@ -16,13 +16,7 @@
 import { isLoopbackHostname } from './loopback-hostname.ts'
 import type { ConnectionTrustRequest } from './rpc.ts'
 
-/**
- * Read one single-valued carrier header.
- * @param headers - Node or Fetch headers.
- * @param name - lowercase header name.
- * @returns the header value when present exactly once.
- */
-export function header(headers: ConnectionTrustRequest['headers'], name: string): string | undefined {
+function header(headers: ConnectionTrustRequest['headers'], name: string): string | undefined {
   if (headers instanceof Headers) return headers.get(name) ?? undefined
   const value = headers[name]
   return typeof value === 'string' ? value : undefined
@@ -92,12 +86,9 @@ function isTrustedAuthority(hostUrl: URL, trustedHosts: readonly string[]): bool
  * Decide whether one /api request may reach the RPC bridge.
  * @param request - Node HTTP or Fetch request facts (headers).
  * @param trustedHosts - non-loopback authorities this deployment serves: exact `host:port`, or port-less `host` matching any port.
- * @param frontendOrigins - exact allowed application origins; omitted in Host mode.
  * @returns true when the Host is ours (loopback or trusted) and any attached browser markers are same-origin.
  */
-export function isTrustedApiRequest(
-  request: ConnectionTrustRequest, trustedHosts: readonly string[], frontendOrigins?: readonly string[],
-): boolean {
+export function isTrustedApiRequest(request: ConnectionTrustRequest, trustedHosts: readonly string[]): boolean {
   // Host fence (DNS-rebinding defense), applied to every request: the browser
   // fills Host from the URL it believes it is talking to, so a rebound page
   // carries the attacker's domain here even though the socket lands on this
@@ -110,12 +101,6 @@ export function isTrustedApiRequest(
   const hostUrl = parseAuthority(host)
   if (hostUrl === undefined) return false
   if (!isLoopbackHostname(hostUrl.hostname) && !isTrustedAuthority(hostUrl, trustedHosts)) return false
-  if (frontendOrigins !== undefined) {
-    const origin = header(request.headers, 'origin')
-    return origin === undefined
-      ? header(request.headers, 'sec-fetch-site') !== 'cross-site'
-      : frontendOrigins.includes(origin)
-  }
   // Cross-site fence: modern browsers label the initiator relationship on
   // every fetch; an explicit cross-site marker is refused regardless of Origin.
   if (header(request.headers, 'sec-fetch-site') === 'cross-site') return false

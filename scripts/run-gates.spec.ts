@@ -1,10 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi, type MockInstance } from 'vitest'
 import {
   cliGateOptions,
-  collectDescendants,
   defaultConcurrency,
   formatGateResultReason,
   gatesForMode,
@@ -84,78 +81,11 @@ async function abortAndExpectTreeStopped(promise: Promise<GateResult>, controlle
   controller.abort()
   const result = await promise
   expect(result.aborted).toBe(true)
-  expect(procStopped(pid)).toBe(true)
-}
-
-
-/** Run real detached descendants with explicit release and sampler barriers. */
-async function withSampledTree(
-  kind: 'late-abort' | 'sampler-merge',
-  inspect: (fixture: {
-    writes: string[]
-    release: () => void
-    sample: () => Promise<void>
-    promise: Promise<GateResult>
-    controller: AbortController
-  }) => Promise<void>,
-): Promise<void> {
-  const directory = mkdtempSync(join(tmpdir(), 'dsh-gate-tree-'))
-  const releaseFile = join(directory, 'release')
-  const { writes, write } = captureStreamedOutput()
-  const controller = new AbortController()
-  const originalInterval = globalThis.setInterval
-  let sampleTick: (() => Promise<void> | undefined) | undefined
-  const interval = vi.spyOn(globalThis, 'setInterval').mockImplementation((callback, delay, ...args) => {
-    if (delay !== 5000) return originalInterval(callback, delay, ...args)
-    sampleTick = callback as () => Promise<void> | undefined
-    // The fixture owns sampler ticks; real time cannot start an overlapping enumeration.
-    return originalInterval(() => {}, delay)
-  })
-  let promise: Promise<GateResult> | undefined
-  try {
-    const wrapper = [
-      "const { spawn } = require('node:child_process')",
-      "const { existsSync } = require('node:fs')",
-      "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'inherit' })",
-      "process.stdout.write('grandchild:' + grandchild.pid + '\\n')",
-      `setInterval(() => { if (existsSync(${JSON.stringify(releaseFile)})) { process.stdout.write('child-exit\\n'); process.exit(0) } }, 10)`,
-    ].join(';')
-    const script = kind === 'late-abort'
-      ? `process.stdout.write('root:' + process.pid + '\\n');${wrapper}`
-      : [
-        "const { spawn } = require('node:child_process')",
-        `const wrapper = spawn(process.execPath, ['-e', ${JSON.stringify(wrapper)}], { stdio: 'inherit' })`,
-        "wrapper.on('exit', () => process.stdout.write('wrapper-exited\\n'))",
-        'setInterval(() => {}, 1000)',
-      ].join(';')
-    promise = runGate(gate(kind, { args: ['-e', script], streamOutput: true }), controller.signal)
-    await inspect({
-      writes,
-      release: () => { writeFileSync(releaseFile, '') },
-      sample: async () => {
-        expect(sampleTick).toBeDefined()
-        // Wait for the real process-table read and cache update on every POSIX host.
-        await sampleTick!()
-      },
-      promise,
-      controller,
-    })
-  } finally {
-    controller.abort()
-    // Cleanup owns the descendant even when the runner under test loses it.
-    const pid = Number(writes.join('').match(/grandchild:(\d+)/)?.[1])
-    if (pid > 0 && !procStopped(pid)) {
-      try { process.kill(pid, 'SIGKILL') } catch { /* The descendant exited after the probe. */ }
-    }
-    try {
-      await promise
-      if (pid > 0) await expect.poll(() => procStopped(pid)).toBe(true)
-    } finally {
-      interval.mockRestore()
-      write.mockRestore()
-      rmSync(directory, { recursive: true, force: true })
-    }
+  const stopDeadline = Date.now() + 8000
+  while (!procStopped(pid) && Date.now() < stopDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 50))
   }
+  expect(procStopped(pid)).toBe(true)
 }
 
 
@@ -211,6 +141,7 @@ describe('gate graph validation', () => {
     'ci-static',
     'ci-lint-contracts-ready',
     'ci-coverage',
+    'ci-bench',
     'ci-snapshot',
     'ci-artifacts',
     'ci-consumers',
@@ -229,6 +160,27 @@ describe('gate graph validation', () => {
     await expect(runGates(subject, subject.length, execute)).resolves.toHaveLength(subject.length)
   })
 
+  it('builds the native addon before benchmarks through the ci-bench script chain', () => {
+    const subject = withPnpmEntrypoint(() => gatesForMode('ci-bench'))
+    const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      scripts: Record<string, string>
+    }
+
+    expect(scripts['check:ci:bench']).toBe('tsx scripts/run-gates.ts ci-bench')
+    expect(subject).toHaveLength(1)
+    expect(subject[0]).toMatchObject({
+      id: 'bench',
+      displayCommand: 'pnpm run test:bench',
+      args: ['/private/pnpm.cjs', 'run', 'test:bench'],
+    })
+    expect(scripts['test:bench']).toBe('npm run build:bench && npm run build:web && npm run test:bench:built')
+    expect(scripts['build:bench']).toBe(
+      'npm run build:native-system && npm run build:lib && tsdown --config benchmarks/tsdown.config.ts',
+    )
+    expect(scripts['build:native-system']).toBe('tsx native/system/scripts/build.ts --host-addon-only')
+    expect(scripts['test:bench:built']).toBe('vitest run --config vitest.bench.config.ts')
+  })
+
   it('keeps the public repository link policy in the documentation gate', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
@@ -239,6 +191,12 @@ describe('gate graph validation', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
     expect(ids).toContain('subsystem-pages')
+  })
+
+  it('keeps the package README Summary limit in the documentation gate', () => {
+    const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
+
+    expect(ids).toContain('package-readme-summaries')
   })
 
   it('derives the quick documentation aggregate from marked doc-sync leaves', () => {
@@ -253,8 +211,8 @@ describe('gate graph validation', () => {
 
     expect(ids).toEqual([
       'rescope-vendor', 'publint', 'constraints', 'package-dependencies', 'application-entrypoints',
-      'dsh-package-licenses', 'package-invariants', 'built-package-invariants', 'karaka-agent-public-api', 'node-next-types',
-      'optional-dependency-imports', 'client-packages', 'client-ui-i18n', 'cordis-config',
+      'dsh-package-licenses', 'package-invariants', 'built-package-invariants', 'node-next-types',
+      'optional-dependency-imports', 'client-packages', 'client-ui-i18n', 'no-bare-dispatcher', 'cordis-config',
       'runtime-closure', 'vendored-links',
     ])
     expect(defaultConcurrency('hygiene', ids.length, 8)).toEqual({
@@ -306,6 +264,15 @@ describe('gate graph validation', () => {
       const ids = withPnpmEntrypoint(() => gatesForMode(mode).map(subject => subject.id))
 
       expect(ids).toContain('client-packages')
+    },
+  )
+
+  it.each(['ci-primary', 'ci-static', 'check-all'] as const)(
+    'keeps weighted approval policy tests in %s',
+    (mode) => {
+      const ids = withPnpmEntrypoint(() => gatesForMode(mode).map(subject => subject.id))
+
+      expect(ids).toContain('approval-policy')
     },
   )
 
@@ -575,7 +542,7 @@ describe('Node 24 lane ownership', () => {
     const subject = withPnpmEntrypoint(() => gatesForMode('ci-consumers'))
 
     expect(defaultConcurrency('ci-consumers', subject.length, 4)).toEqual({
-      workers: 12,
+      workers: 11,
       source: 'ci-consumers gate count',
     })
     expect(subject.map(item => item.id)).toEqual([
@@ -589,7 +556,6 @@ describe('Node 24 lane ownership', () => {
       'web-snapshot',
       'doc-typecheck',
       'node-next-types',
-      'karaka-agent-public-api',
       'built-bin-smoke',
     ])
     expect(subject.find(item => item.id === 'publint')?.needs).toEqual(['build'])
@@ -607,7 +573,6 @@ describe('Node 24 lane ownership', () => {
       'web-snapshot',
       'doc-typecheck',
       'node-next-types',
-      'karaka-agent-public-api',
       'built-bin-smoke',
     ]) {
       expect(subject.find(item => item.id === id)?.needs).toEqual(['built-package-invariants'])
@@ -619,6 +584,7 @@ describe('Node 24 lane ownership', () => {
     })
     expect(subject.find(item => item.id === 'built-bin-smoke')?.args).toEqual(
       expect.arrayContaining([
+        'packages/subprocess/subprocess-local/tests/spawn-runner-built.e2e.ts',
         'packages/subagent/subagent-codex/tests/loader-composition.e2e.ts',
         'packages/subagent/subagent-claude-code/tests/loader-composition.e2e.ts',
         'packages/experimental/agent-team/tests/built-lib.e2e.ts',
@@ -634,20 +600,9 @@ describe('Node 24 lane ownership', () => {
         'expected-output',
         'doc-typecheck',
         'node-next-types',
-        'karaka-agent-public-api',
         'built-bin-smoke',
       ],
     })
-  })
-
-  it('runs the packed Karaka Agent consumer after the artifact build', () => {
-    for (const mode of ['ci-primary', 'ci-artifacts', 'ci-consumers'] as const) {
-      expect(withPnpmEntrypoint(() => gatesForMode(mode))
-        .find(item => item.id === 'karaka-agent-public-api')).toMatchObject({
-        displayCommand: 'pnpm run verify-karaka-agent-public-api',
-        needs: mode === 'ci-consumers' ? ['built-package-invariants'] : ['build'],
-      })
-    }
   })
 })
 
@@ -885,27 +840,80 @@ describe('fail-fast scheduling', () => {
   })
 
   it.skipIf(process.platform === 'win32')('kills a detached descendant that outlived the child when the abort arrives later', async () => {
-    await withSampledTree('late-abort', async ({ writes, release, sample, promise, controller }) => {
-      const pid = await waitForGrandchildPid(writes, 'grandchild:', Date.now() + 10000)
-      await sample()
-      release()
-      await waitForGrandchildPid(writes, 'child-exit', Date.now() + 10000)
-      const rootPid = Number(writes.join('').match(/root:(\d+)/)?.[1])
-      await expect.poll(() => procStopped(rootPid)).toBe(true)
-      await abortAndExpectTreeStopped(promise, controller, pid)
+    const writes: string[] = []
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk))
+      return true
     })
-  })
+    const controller = new AbortController()
+    let promise: Promise<GateResult> | undefined
+    try {
+      const script = [
+        "const { spawn } = require('node:child_process')",
+        // Detached with inherited stdio: the grandchild leads its own process
+        // group (the gate group signal misses it) and holds the gate's
+        // stdout write end (so `close` stays pending past the child exit).
+        "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'inherit' })",
+        "process.stdout.write('grandchild:' + grandchild.pid + '\\n')",
+        // Outlive the first descendant-sampler tick with margin so the cache
+        // holds the grandchild even on a loaded runner, then exit normally
+        // before the abort arrives.
+        "setTimeout(() => { process.stdout.write('child-exit\\n'); process.exit(0) }, 8000)",
+      ].join(';')
+      promise = runGate(gate('late-abort', { args: ['-e', script], streamOutput: true }), controller.signal)
+      const pid = await waitForGrandchildPid(writes, 'child-exit', Date.now() + 10000)
+      // terminate must not re-enumerate over the sampler cache now that the
+      // child is gone; the detached grandchild is killed from the cached list.
+      await abortAndExpectTreeStopped(promise, controller, pid)
+    } finally {
+      // A failed wait or assertion must not leave the forever-looping detached
+      // grandchild behind on the host: abort the gate and wait for the
+      // process tree to settle before restoring the spy.
+      controller.abort()
+      await promise
+      write.mockRestore()
+    }
+  }, 20000)
 
   it.skipIf(process.platform === 'win32')('keeps a reparented detached descendant tracked across a sampler tick', async () => {
-    await withSampledTree('sampler-merge', async ({ writes, release, sample, promise, controller }) => {
-      const pid = await waitForGrandchildPid(writes, 'grandchild:', Date.now() + 10000)
-      await sample()
-      release()
-      await waitForGrandchildPid(writes, 'wrapper-exited', Date.now() + 10000)
-      await sample()
+    const { writes, write } = captureStreamedOutput()
+    const controller = new AbortController()
+    let promise: Promise<GateResult> | undefined
+    try {
+      const script = [
+        "const { spawn } = require('node:child_process')",
+        // Wrapper spawns a detached grandchild with inherited stdio (its own
+        // process group, holding the gate's stdout write end), prints the pid,
+        // then exits after 7 seconds — after the first sampler tick, before
+        // the second. From then on the grandchild is reparented and
+        // unreachable by parent id.
+        "const wrapper = spawn(process.execPath, ['-e', \"const { spawn } = require('node:child_process'); const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'inherit' }); process.stdout.write('grandchild:' + grandchild.pid + '\\\\n'); setTimeout(() => process.exit(0), 7000)\"], { stdio: 'inherit' })",
+        "wrapper.on('exit', () => process.stdout.write('wrapper-exited\\n'))",
+        // Keep the root child alive past the abort with a heartbeat so the
+        // test can abort while it is still running.
+        "setInterval(() => process.stdout.write('hb\\n'), 1000)",
+      ].join(';')
+      promise = runGate(gate('sampler-merge', { args: ['-e', script], streamOutput: true }), controller.signal)
+      const pid = await waitForGrandchildPid(writes, 'wrapper-exited', Date.now() + 15000)
+      // Wait past the second sampler tick (t=10) with margin: a replacing tick
+      // would drop the reparented grandchild from the cache, after which the
+      // abort cannot reach it. The root child keeps running throughout.
+      const tickDeadline = Date.now() + 10000
+      const wrapperExitedAt = Date.now()
+      while (Date.now() - wrapperExitedAt < 5000 && Date.now() < tickDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      expect(Date.now() - wrapperExitedAt).toBeGreaterThanOrEqual(5000)
       await abortAndExpectTreeStopped(promise, controller, pid)
-    })
-  })
+    } finally {
+      // A failed wait or assertion must not leave the forever-looping detached
+      // grandchild behind on the host: abort the gate and wait for the
+      // process tree to settle before restoring the spy.
+      controller.abort()
+      await promise
+      write.mockRestore()
+    }
+  }, 30000)
 })
 
 describe('process-table parsing', () => {
@@ -919,37 +927,6 @@ describe('process-table parsing', () => {
 
   it('drops blank and malformed lines', () => {
     expect(parsePidPpidLines('  123   1\n\ncommand not found\n999 abc\n')).toEqual([[123, 1]])
-  })
-})
-
-describe('process-table traversal', () => {
-  it('preserves breadth-first order without changing the observed rows', () => {
-    const rows = Object.freeze([
-      Object.freeze([3, 2] as const),
-      Object.freeze([2, 1] as const),
-      Object.freeze([4, 1] as const),
-      Object.freeze([5, 4] as const),
-    ])
-    expect(collectDescendants(1, rows)).toEqual([2, 4, 3, 5])
-    expect(collectDescendants(2, rows)).toEqual([3])
-    expect(collectDescendants(1, rows)).toEqual([2, 4, 3, 5])
-    expect(collectDescendants(99, rows)).toEqual([])
-  })
-
-  it('terminates cycles and repeated edges without treating the root as a descendant', () => {
-    expect(collectDescendants(1, [
-      [1, 1], [2, 1], [2, 1], [1, 2], [3, 2], [2, 3], [4, 3], [4, 2],
-    ])).toEqual([2, 3, 4])
-  })
-
-  it('walks a wide child list without passing it as function arguments', () => {
-    const rows = Array.from({ length: 200_000 }, (_, index): [number, number] => [index + 3, 2])
-    rows.unshift([2, 1])
-    const descendants = collectDescendants(1, rows)
-    expect(descendants).toHaveLength(200_001)
-    expect(descendants[0]).toBe(2)
-    expect(descendants.at(-1)).toBe(200_002)
-    expect(new Set(descendants).size).toBe(descendants.length)
   })
 })
 

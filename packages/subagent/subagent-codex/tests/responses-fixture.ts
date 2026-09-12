@@ -14,10 +14,9 @@ interface RecordedResponsesRequest {
   readonly body: Record<string, unknown>
 }
 
-/** Scripted response action; command completion can span several requests. */
+/** Behavior consumed by one Responses request. */
 export type ResponsesBehavior =
   | { readonly kind: 'complete'; readonly text: string }
-  | { readonly kind: 'completeAfterCommand'; readonly text: string }
   | { readonly kind: 'error'; readonly status: number; readonly message: string }
   | {
     readonly kind: 'functionCall'
@@ -95,7 +94,7 @@ function responseObject(text: string): Record<string, unknown> {
 }
 
 /**
- * Build the minimal Responses SSE event sequence consumed by Codex 0.149.1.
+ * Build the minimal Responses SSE event sequence consumed by Codex 0.153.4.
  * @param text - exact assistant answer.
  * @returns ordered response lifecycle events.
  */
@@ -155,16 +154,15 @@ export function completeResponsesEvents(text: string): Record<string, unknown>[]
 function functionCallEvents(
   name: string,
   argumentsValue: Record<string, unknown>,
-  sequence: number,
 ): Record<string, unknown>[] {
   const argumentsText = JSON.stringify(argumentsValue)
   const item = {
-    id: `fc_fixture_${sequence}`,
+    id: 'fc_fixture',
     type: 'function_call',
     status: 'completed',
     name,
     arguments: argumentsText,
-    call_id: `call_fixture_${sequence}`,
+    call_id: 'call_fixture',
   }
   const completed = {
     ...responseObject(''),
@@ -242,7 +240,7 @@ function advertisedFunctionNames(body: Record<string, unknown>): Set<string> {
 
 /**
  * Start a loopback-only Responses SSE fixture.
- * @param script - ordered response actions, including collection of live commands.
+ * @param script - one behavior per expected Responses request.
  * @returns the running fixture and its observed requests.
  */
 export async function startResponsesFixture(
@@ -264,31 +262,11 @@ export async function startResponsesFixture(
         body: parsedBody,
       })
       started.resolve(undefined)
-      let behavior = behaviors.shift()
+      const behavior = behaviors.shift()
       if (behavior === undefined) {
         response.writeHead(500, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ error: { message: 'fixture script exhausted' } }))
         return
-      }
-      if (behavior.kind === 'completeAfterCommand') {
-        const input: unknown[] = Array.isArray(parsedBody.input) ? parsedBody.input : []
-        const output = input.findLast((item): item is Record<string, unknown> => (
-          item !== null && typeof item === 'object'
-          && (item as Record<string, unknown>).type === 'function_call_output'
-        ))?.output
-        const running = typeof output === 'string' ? /Process running with session ID (\d+)/.exec(output) : null
-        if (running !== null && advertisedFunctionNames(parsedBody).has('write_stdin')) {
-          behaviors.unshift(behavior)
-          behavior = {
-            kind: 'functionCall',
-            name: 'write_stdin',
-            arguments: { session_id: Number(running[1]), chars: '', yield_time_ms: 1_000 },
-          }
-        } else if (typeof output === 'string' && /(?:Process exited with code|Exit code:) 0(?:\s|$)/.test(output)) {
-          behavior = { kind: 'complete', text: behavior.text }
-        } else {
-          behavior = { kind: 'error', status: 400, message: `fixture command did not complete successfully: ${String(output)}` }
-        }
       }
       const advertisedCall = behavior.kind === 'advertisedFunctionCall'
         ? behavior.choices.find(choice => advertisedFunctionNames(parsedBody).has(choice.name))
@@ -317,7 +295,7 @@ export async function startResponsesFixture(
         const call = behavior.kind === 'functionCall'
           ? behavior
           : advertisedCall!
-        events = functionCallEvents(call.name, call.arguments, requests.length)
+        events = functionCallEvents(call.name, call.arguments)
       }
       for (const event of events) {
         response.write(`data: ${JSON.stringify(event)}\n\n`)

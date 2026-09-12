@@ -1,18 +1,17 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-presets'
-import SessionStore, { ApplicationId, TenantId, UserId, SessionLogOffset, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionLogOffset, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiSessionAgentController,
-  ApiSessionApplicationOwnership,
   ApiSessionCwdConflict,
   ApiSessionNotFound,
   ApiSessionSubagentOwnership,
@@ -23,11 +22,15 @@ import { installSessionReadTestServices, testSessionPersistence } from './test-r
 
 const roots: Context[] = []
 
+/** Session cwd roots created per test, removed after their context settles. */
+const tempDirs: string[] = []
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(ctx => ctx.fiber.dispose()))
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-async function harness(applicationIdleMs = 300_000): Promise<{ ctx: Context; agents: ApiSessionAgentController }> {
+async function harness(): Promise<{ ctx: Context; agents: ApiSessionAgentController }> {
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(TypertRegistry)
@@ -40,12 +43,12 @@ async function harness(applicationIdleMs = 300_000): Promise<{ ctx: Context; age
     currentSelection: () => ({ provider: 'fixture', model: 'fixture-model' }),
     saveSelection: () => Promise.resolve(),
   } as never)
-  return { ctx, agents: new ApiSessionAgentController(ctx, applicationIdleMs) }
+  return { ctx, agents: new ApiSessionAgentController(ctx) }
 }
 
 function header(id: string, cwd: string | null = '/workspace'): SessionHeader {
   return {
-    version: 0,
+    version: SESSION_FORMAT_VERSION,
     id: SessionId(id),
     createdAt: 1,
     isSeeded: false,
@@ -136,203 +139,6 @@ describe('ApiSession identity failures', () => {
 })
 
 describe('ApiSession Agent lookup and recovery', () => {
-  it('evicts an idle application Agent through its retained handle', async () => {
-    vi.useFakeTimers()
-    try {
-      const { ctx, agents } = await harness(10)
-      const meta = {
-        ...header('application-idle', null),
-        applicationOwner: {
-          applicationId: ApplicationId('billing'),
-          tenantId: TenantId('tenant-1'),
-          userId: UserId('user-1'),
-        },
-      }
-      const created = Object.assign(unpublishedAgent(ctx, meta), { whenIdle: () => Promise.resolve() })
-      const dispose = vi.fn(() => Promise.resolve())
-      vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: created, dispose })
-
-      await agents.ensureSession(
-        meta.id,
-        undefined,
-        false,
-        undefined,
-        meta.applicationOwner,
-      )
-      await vi.advanceTimersByTimeAsync(10)
-
-      expect(dispose).toHaveBeenCalledOnce()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('cancels idle eviction while internal Agent work is running', async () => {
-    vi.useFakeTimers()
-    try {
-      const { ctx, agents } = await harness(10)
-      const meta = {
-        ...header('application-internal-work', null),
-        applicationOwner: {
-          applicationId: ApplicationId('billing'),
-          tenantId: TenantId('tenant-1'),
-          userId: UserId('user-1'),
-        },
-      }
-      let status: Agent['status'] = 'idle'
-      const created = Object.assign(unpublishedAgent(ctx, meta), { whenIdle: () => Promise.resolve() })
-      Object.defineProperty(created, 'status', { get: () => status })
-      const dispose = vi.fn(() => Promise.resolve())
-      vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: created, dispose })
-
-      await agents.ensureSession(meta.id, undefined, false, undefined, meta.applicationOwner)
-      status = 'running'
-      agentEvents(ctx, created).emit('agent/status', { status })
-      await vi.advanceTimersByTimeAsync(20)
-      expect(dispose).not.toHaveBeenCalled()
-
-      status = 'idle'
-      agentEvents(ctx, created).emit('agent/status', { status })
-      await vi.advanceTimersByTimeAsync(10)
-      expect(dispose).toHaveBeenCalledOnce()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('pins an idle application Agent until an authenticated operation settles', async () => {
-    vi.useFakeTimers()
-    try {
-      const { ctx, agents } = await harness(10)
-      const meta = {
-        ...header('application-operation', null),
-        applicationOwner: {
-          applicationId: ApplicationId('billing'),
-          tenantId: TenantId('tenant-1'),
-          userId: UserId('user-1'),
-        },
-      }
-      const created = Object.assign(unpublishedAgent(ctx, meta), { whenIdle: () => Promise.resolve() })
-      const dispose = vi.fn(() => Promise.resolve())
-      vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: created, dispose })
-
-      await agents.ensureSession(meta.id, undefined, false, undefined, meta.applicationOwner)
-      const release = agents.pinApplication(created)
-      await vi.advanceTimersByTimeAsync(20)
-      expect(dispose).not.toHaveBeenCalled()
-
-      release()
-      await vi.advanceTimersByTimeAsync(10)
-      expect(dispose).toHaveBeenCalledOnce()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('contains failed idle eviction and retains a still-live Agent', async () => {
-    vi.useFakeTimers()
-    try {
-      const { ctx, agents } = await harness(10)
-      const meta = {
-        ...header('application-idle-failure', null),
-        applicationOwner: {
-          applicationId: ApplicationId('billing'),
-          tenantId: TenantId('tenant-1'),
-          userId: UserId('user-1'),
-        },
-      }
-      const created = Object.assign(unpublishedAgent(ctx, meta), { whenIdle: () => Promise.resolve() })
-      const failure = new Error('dispose failed')
-      const dispose = vi.fn(() => Promise.reject(failure))
-      vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: created, dispose })
-
-      await agents.ensureSession(meta.id, undefined, false, undefined, meta.applicationOwner)
-      vi.spyOn(ctx.agents, 'get').mockImplementation(id => id === created.id ? created : undefined)
-      await vi.advanceTimersByTimeAsync(10)
-
-      await expect(agents.resolveApplicationAgent(meta.id)).resolves.toEqual({ agent: created })
-      expect(dispose).toHaveBeenCalledOnce()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('reserves application Agents for authenticated application routing', async () => {
-    const { ctx, agents } = await harness()
-    const meta = {
-      ...header('application-owned', null),
-      applicationOwner: {
-        applicationId: ApplicationId('billing'),
-        tenantId: TenantId('tenant-1'),
-        userId: UserId('user-1'),
-      },
-    }
-    const live = agent(ctx, meta)
-    ctx.agents.register(live)
-
-    await expect(agents.resolveAgent(meta.id)).resolves.toMatchObject({
-      error: { code: 'session/agent-busy' },
-    })
-    await expect(agents.resolveApplicationAgent(meta.id)).resolves.toEqual({ agent: live })
-  })
-
-  it.each(['live', 'cold'] as const)('rejects generic inspection of a %s application Session with a cwd', async (source) => {
-    const { ctx } = await harness()
-    const meta = {
-      ...header(`application-inspect-${source}`),
-      applicationOwner: {
-        applicationId: ApplicationId('billing'),
-        tenantId: TenantId('tenant-1'),
-        userId: UserId('user-1'),
-      },
-    }
-    if (source === 'live') ctx.sessions.create(meta.id, { meta })
-    else providePersistence(ctx, {
-      list: () => Promise.resolve([meta]),
-      inspect: () => Promise.resolve({ meta, inheritedEventCount: SessionLogOffset(0), events: [] }),
-    })
-
-    await expect(inspectApiSession(ctx, meta.id)).rejects.toBeInstanceOf(ApiSessionApplicationOwnership)
-    if (source === 'cold') expect(ctx.sessions.get(meta.id)).toBeUndefined()
-  })
-
-  it('retries an authorized cold resume after a concurrent generic ownership rejection', async () => {
-    const { ctx, agents } = await harness()
-    const meta = {
-      ...header('application-cold-race', null),
-      applicationOwner: {
-        applicationId: ApplicationId('billing'),
-        tenantId: TenantId('tenant-1'),
-        userId: UserId('user-1'),
-      },
-    }
-    let releaseInspection!: () => void
-    const inspectionGate = new Promise<void>((resolve) => { releaseInspection = resolve })
-    const inspect = vi.fn(async () => {
-      if (inspect.mock.calls.length === 1) await inspectionGate
-      return { meta, inheritedEventCount: SessionLogOffset(0), events: [] }
-    })
-    providePersistence(ctx, {
-      list: () => Promise.resolve([meta]),
-      inspect,
-    })
-    const resumed = unpublishedAgent(ctx, meta)
-    const resume = vi.spyOn(ctx.agents, 'resume').mockResolvedValue({
-      agent: resumed,
-      dispose: () => Promise.resolve(),
-    })
-
-    const generic = agents.resolveAgent(meta.id)
-    await vi.waitFor(() => { expect(inspect).toHaveBeenCalledOnce() })
-    const application = agents.resolveApplicationAgent(meta.id)
-    releaseInspection()
-
-    await expect(generic).resolves.toMatchObject({ error: { code: 'session/agent-busy' } })
-    await expect(application).resolves.toEqual({ agent: resumed })
-    expect(inspect).toHaveBeenCalledOnce()
-    expect(resume).toHaveBeenCalledOnce()
-  })
-
   it('resumes directly from a retained observation and rejects an invalid observed header', async () => {
     const { ctx, agents } = await harness()
     const meta = header('observed-resume')
@@ -458,7 +264,7 @@ describe('ApiSession model selection', () => {
     expect(() => agents.selectionFor(live)).toThrow('required modelSelection projection')
   })
 
-  it('reads a reasoning-free request and keeps the exact consumed selection for later requests', async () => {
+  it('reads a reasoning-free request and consumes only the exact pending selection', async () => {
     const { ctx, agents } = await harness()
     const logged = agent(ctx, header('logged-model'))
     logged.session.append('request/header', {
@@ -483,33 +289,8 @@ describe('ApiSession model selection', () => {
     expect(agents.consumeSelection(pending, 'other-provider', 'selected-model', 'high')).toBe(false)
     expect(agents.consumeSelection(pending, 'selected-provider', 'other-model', 'high')).toBe(false)
     expect(agents.consumeSelection(pending, 'selected-provider', 'selected-model', 'low')).toBe(false)
-    pending.session.append('request/header', {
-      header: {
-        config: {
-          provider: 'selected-provider',
-          model: 'selected-model',
-          reasoningEffort: 'high' as never,
-        },
-      },
-      reason: 'initial',
-    })
     expect(agents.consumeSelection(pending, 'selected-provider', 'selected-model', 'high')).toBe(true)
-    expect(selection.current).toEqual({
-      provider: 'selected-provider', model: 'selected-model', reasoningEffort: 'high',
-    })
-    pending.session.append('request/header', {
-      header: {
-        config: {
-          provider: 'selected-provider',
-          model: 'selected-model',
-          reasoningEffort: 'high' as never,
-        },
-      },
-      reason: 'series',
-    })
-    expect(selection.current).toEqual({
-      provider: 'selected-provider', model: 'selected-model', reasoningEffort: 'high',
-    })
+    expect(selection.current).toEqual({ provider: 'fixture', model: 'fixture-model' })
 
     const untouched = agent(ctx, header('uninstalled-model'))
     expect(agents.consumeSelection(untouched, 'fixture', 'fixture-model', undefined)).toBe(false)
@@ -520,6 +301,7 @@ describe('ApiSession create or adoption', () => {
   it('shares one in-flight creation between concurrent callers', async () => {
     const { ctx, agents } = await harness()
     const cwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-concurrent-'))
+    tempDirs.push(cwd)
     const meta = header('concurrent-create', cwd)
     const created = unpublishedAgent(ctx, meta)
     let release!: () => void
@@ -540,6 +322,7 @@ describe('ApiSession create or adoption', () => {
   it('accepts a raced ordinary creation and rejects a raced attached child', async () => {
     const ordinary = await harness()
     const cwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-create-'))
+    tempDirs.push(cwd)
     const ordinaryMeta = header('create-race', cwd)
     const winner = agent(ordinary.ctx, ordinaryMeta)
     vi.spyOn(ordinary.ctx.agents, 'create').mockImplementation(async () => {
@@ -551,6 +334,7 @@ describe('ApiSession create or adoption', () => {
 
     const child = await harness()
     const childCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-child-'))
+    tempDirs.push(childCwd)
     const childId = SessionId('create-child-race')
     vi.spyOn(child.ctx.agents, 'create').mockImplementation(async () => {
       child.ctx.sessions.create(childId, {
@@ -565,6 +349,7 @@ describe('ApiSession create or adoption', () => {
   it('validates ownership and cwd on the Agent returned by creation', async () => {
     const child = await harness()
     const childCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-returned-child-'))
+    tempDirs.push(childCwd)
     const childMeta = {
       ...header('returned-child', childCwd),
       parentSession: SessionId('parent'),
@@ -580,6 +365,7 @@ describe('ApiSession create or adoption', () => {
 
     const wrong = await harness()
     const requestedCwd = mkdtempSync(join(tmpdir(), 'dsh-session-controller-wrong-cwd-'))
+    tempDirs.push(requestedCwd)
     const wrongAgent = unpublishedAgent(wrong.ctx, header('wrong-returned-cwd', '/other'))
     vi.spyOn(wrong.ctx.agents, 'create').mockResolvedValue({
       agent: wrongAgent,
@@ -657,15 +443,13 @@ describe('ApiSession create or adoption', () => {
       .rejects.toBeInstanceOf(ApiSessionCwdConflict)
   })
 
-  it('surfaces directory creation failure and rejects setup without a scoped Agent', async () => {
+  it('surfaces directory creation failure', async () => {
     const { agents } = await harness()
     const parent = mkdtempSync(join(tmpdir(), 'dsh-session-controller-file-'))
+    tempDirs.push(parent)
     const file = join(parent, 'file')
     writeFileSync(file, 'not a directory')
     await expect(agents.ensureSession(SessionId('mkdir-failure'), join(file, 'child'), false))
       .rejects.toThrow('failed to ensure project directory')
-
-    const composition = await agents.composeAgent(undefined)
-    expect(() => composition.setup(new Context())).toThrow('Agent setup has no scoped Agent')
   })
 })

@@ -6,7 +6,7 @@
  * one concern: measure the anchor, offset the panel below or above it, clamp
  * the result inside the viewport, and re-run on scroll (capture phase, so
  * scrollers nested inside the page are caught too), on resize, and on the
- * panel, anchor, and containing elements' size changes while the element is open.
+ * panel's own size changes while the element is open.
  * @module @deepseek-ai/dsh-client-ui-primitives/useAnchoredPosition
  */
 
@@ -55,7 +55,7 @@ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProper
       if (width > 0) left = Math.min(Math.max(left, margin), window.innerWidth - width - margin)
       if (height > 0) top = Math.min(Math.max(top, margin), window.innerHeight - height - margin)
       /* v8 ignore stop */
-      setPosition(previous => previous?.left === left && previous.top === top ? previous : { left, top })
+      setPosition({ left, top })
     }
     // The first run measures the panel in the same commit that opened it, so
     // the clamp uses real dimensions before anything paints.
@@ -72,11 +72,6 @@ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProper
     if (typeof ResizeObserver !== 'undefined' && panel !== null) {
       observer = new ResizeObserver(place)
       observer.observe(panel)
-      // A containing column can resize after the window event (for example,
-      // an animated sidebar), moving an unchanged-size anchor and panel.
-      for (let element = anchorRef.current; element !== null; element = element.parentElement) {
-        observer.observe(element)
-      }
     }
     return () => {
       observer?.disconnect()

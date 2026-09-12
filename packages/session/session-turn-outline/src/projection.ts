@@ -14,8 +14,7 @@
  * load. The response commits at `turn/end` from a draft of the newest
  * text-bearing assistant message; draft-only applies keep the `turns` array's
  * identity, so the identity-gated change feed pushes at most three times per
- * continuously observed turn (boundary, prompt, response). A restored cell
- * publishes its first live state change to establish the comparison.
+ * turn (boundary, prompt, response).
  *
  * @module @deepseek-ai/dsh-session-turn-outline/projection
  */

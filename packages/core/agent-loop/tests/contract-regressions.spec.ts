@@ -7,7 +7,6 @@ import ToolRuntime, { defineContentToolFixture, type PostToolDecision } from '@d
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { ReactLoopAgent } from '../src/agent.ts'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as SessionInvariant from '@deepseek-ai/dsh-session/invariant'
 import * as AgentInvariant from '@deepseek-ai/dsh-agent/invariant'
@@ -249,7 +248,11 @@ describe('abort during tool execution ends the turn', () => {
         ? [event.data.content]
         : []))
       .toEqual([])
-    expect(agent.inbox.nextStep.map(inboxText))
+    expect(agent.session.snapshotEvents()
+      .flatMap(event => event.type === 'agent/inbox/spliced' && event.data.target === 'next-step'
+        ? [event.data.inserted.map(inboxText)]
+        : [])
+      .at(-1))
       .toEqual(['accepted result context during disposal'])
     expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start'))
       .toHaveLength(1)
@@ -583,10 +586,11 @@ describe('turn numbering continues across seeded sessions', () => {
     await ctx2.plugin(AgentLoop, { agents: [] })
     ctx2.llm.registerAdapter(['mock'], second)
 
-    const seeded = ctx2.sessions.create(SessionId('forked'), { seed: agent.session.snapshotEvents() })
-    const forked = new ReactLoopAgent(
-      ctx2, SessionId('forked-agent'), { provider: 'mock', model: 'mock' }, seeded,
-    )
+    const { agent: forked } = await ctx2.agents.create({
+      sessionId: SessionId('forked'),
+      seed: agent.session.snapshotEvents(),
+      agentOptions: { provider: 'mock', model: 'mock' },
+    })
 
     const turns: number[] = []
     ctx2.on('session/event', (_s, event) => { if (event.type === 'turn/start') turns.push(event.data.turn) })
@@ -1200,7 +1204,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
       .toEqual(['turn/start', 'turn/end'])
     expect(e.some(x => x.type === 'step/start')).toBe(false)
     expect(e.some(x => x.type === 'step/end')).toBe(false)
-    expect(e.some(x => x.type === 'assistant/chunk')).toBe(false)
+    expect(e.some(x => x.type === 'assistant/attempt')).toBe(false)
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'disposed' } }])
   })
 
@@ -1248,7 +1252,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
       .toEqual(['turn/start', 'turn/end'])
     expect(e.some(x => x.type === 'step/start')).toBe(false)
     expect(e.some(x => x.type === 'step/end')).toBe(false)
-    expect(e.some(x => x.type === 'assistant/chunk')).toBe(false)
+    expect(e.some(x => x.type === 'assistant/attempt')).toBe(false)
     expect(e.some(x => x.type === 'assistant/message')).toBe(false)
     expect(adapter.requests).toHaveLength(0)
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'user' } }])
@@ -1297,7 +1301,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     expect(e.filter(x => x.type === 'turn/start' || x.type === 'turn/end').map(x => x.type))
       .toEqual(['turn/start', 'turn/end'])
     expect(e.some(x => x.type === 'step/start')).toBe(false)
-    expect(e.some(x => x.type === 'assistant/chunk')).toBe(false)
+    expect(e.some(x => x.type === 'assistant/attempt')).toBe(false)
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'disposed' } }])
   })
 
@@ -1344,13 +1348,13 @@ describe('disposal and cancellation during pre-step assembly', () => {
     expect(e.filter(x => x.type === 'turn/start' || x.type === 'turn/end').map(x => x.type))
       .toEqual(['turn/start', 'turn/end'])
     expect(e.some(x => x.type === 'step/start')).toBe(false)
-    expect(e.some(x => x.type === 'assistant/chunk')).toBe(false)
+    expect(e.some(x => x.type === 'assistant/attempt')).toBe(false)
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'user' } }])
   })
 
-  it('disposal during assembly does not leak an LLM call or append assistant/chunk', { timeout: 15000 }, async () => {
+  it('disposal during assembly does not leak an LLM call or append an Assistant settlement', { timeout: 15000 }, async () => {
     // The key assertion from the original bug report: after disposal, no
-    // assistant/chunk or assistant/message appears — the turn ends disposed
+    // assistant/attempt or assistant/message appears — the turn ends disposed
     // before any model interaction.
     const adapter = new MockAdapter([textResponse('should not appear')])
     let releaseAssemble!: () => void
@@ -1390,7 +1394,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
       .toEqual(['turn/start', 'turn/end'])
     expect(e.find(x => x.type === 'turn/end')?.data.reason)
       .toEqual({ kind: 'aborted', reason: { kind: 'disposed' } })
-    expect(e.some(x => x.type === 'assistant/chunk')).toBe(false)
+    expect(e.some(x => x.type === 'assistant/attempt')).toBe(false)
     expect(e.some(x => x.type === 'assistant/message')).toBe(false)
     expect(adapter.requests).toHaveLength(0)
   })

@@ -1,30 +1,33 @@
 import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
 import test from 'node:test'
 
-import config from './config.json' with { type: 'json' }
-
 import {
-  countVisibleUnits,
+  auditIssue,
   initializeIssueStartDate,
   initializePullRequestStartDates,
+  issueSnapshot,
   nextResolvingIssueStatus,
   parseReferences,
   projectDate,
+  repairIssueLabels,
   retainIssueReferences,
   resolvingIssueStatusCommand,
   requiresPullRequestPolicy,
-  runLifecycle,
-  validateBody,
   validateIssue,
   validatePullRequest,
 } from './policy.mjs'
 
 const projectGraphqlData = ({
   projectItem = true,
+  priority = null,
+  priorityField = true,
+  priorityType = 'SINGLE_SELECT',
+  priorityIsIssueField = false,
   startDate = null,
   startDateField = true,
   startDateType = 'DATE',
-  isIssueField = false,
+  startDateIsIssueField = false,
 } = {}) => ({
   organization: {
     projectV2: {
@@ -32,9 +35,33 @@ const projectGraphqlData = ({
       title: 'DSH Issue Management',
       fields: {
         nodes: [
-          { id: 'status-field-id', name: 'Status', dataType: 'SINGLE_SELECT', options: [] },
+          {
+            id: 'status-field-id',
+            name: 'Status',
+            dataType: 'SINGLE_SELECT',
+            isIssueField: false,
+            options: [],
+          },
+          ...(priorityField
+            ? [
+                {
+                  id: 'priority-project-field-id',
+                  name: 'Priority',
+                  dataType: priorityType,
+                  isIssueField: priorityIsIssueField,
+                  options: [],
+                },
+              ]
+            : []),
           ...(startDateField
-            ? [{ id: 'start-date-field-id', name: 'Start Date', dataType: startDateType, isIssueField }]
+            ? [
+                {
+                  id: 'start-date-field-id',
+                  name: 'Start Date',
+                  dataType: startDateType,
+                  isIssueField: startDateIsIssueField,
+                },
+              ]
             : []),
         ],
       },
@@ -50,6 +77,8 @@ const projectGraphqlData = ({
                 id: 'item-id',
                 project: { id: 'project-id' },
                 fieldValueByName: { name: 'Inbox', optionId: 'inbox-option-id' },
+                priorityValue:
+                  priority === null ? null : { name: priority, optionId: `${priority}-option-id` },
                 startDateValue: startDate === null ? null : { date: startDate },
               },
             ]
@@ -59,26 +88,11 @@ const projectGraphqlData = ({
   },
 })
 
-const configure = (t, values) => {
-  const previous = { ...config }
-  t.after(() => {
-    for (const key of Object.keys(config)) delete config[key]
-    Object.assign(config, previous)
-  })
-  Object.assign(config, values)
-}
-
-const enableStartDates = (t) => configure(t, { initializeStartDates: true })
-
 const mockGraphql = (t, resolve) => {
   const requests = []
   const previousToken = process.env.GH_TOKEN
-  const previousApiUrl = process.env.GITHUB_API_URL
   process.env.GH_TOKEN = 'test-token'
-  process.env.GITHUB_API_URL = 'https://api.github.com'
   t.after(() => {
-    if (previousApiUrl === undefined) delete process.env.GITHUB_API_URL
-    else process.env.GITHUB_API_URL = previousApiUrl
     if (previousToken === undefined) delete process.env.GH_TOKEN
     else process.env.GH_TOKEN = previousToken
   })
@@ -92,13 +106,7 @@ const mockGraphql = (t, resolve) => {
   return requests
 }
 
-const withDetails = (summary) =>
-  `${summary}\n\n<details><summary>验收与细节</summary>待补充。</details>`
-
 const legalIssue = {
-  title: '完成议题管理校验',
-  body: withDetails('完成议题管理校验。'),
-  assignees: [],
   labels: [],
   type: 'Idea',
   priority: null,
@@ -142,56 +150,80 @@ const reviewedPull = (labels) => ({
   issues: new Map([[2, { priority: null }]]),
 })
 
-test('counts only text outside details', () => {
-  assert.deepEqual(countVisibleUnits('支持 GitHub Project。<details>隐藏文字</details>'), {
-    units: 4,
-    balanced: true,
-    detailsCount: 1,
-    allCollapsed: true,
-  })
-})
+test('keeps only Bug, Feature, and Task Issue templates with used frontmatter', () => {
+  const directory = new URL('../ISSUE_TEMPLATE/', import.meta.url)
+  assert.deepEqual(readdirSync(directory).sort(), ['bug.md', 'config.yml', 'feature.md', 'task.md'])
 
-test('requires a balanced default-collapsed details region', () => {
-  assert.deepEqual(validateBody({ body: '完成工作。', assignees: [] }), [
-    '正文必须包含默认收起的 <details> 区域',
-  ])
-  assert.deepEqual(
-    validateBody({
-      body: '完成工作。\n\n<details open><summary>细节</summary>待补充。</details>',
-      assignees: [],
-    }),
-    ['details 必须默认收起，不得设置 open'],
-  )
-  assert.deepEqual(
-    validateBody({ body: '完成工作。\n\n<details><summary>细节</summary>', assignees: [] }),
-    ['details 标签必须成对闭合'],
+  for (const file of ['bug.md', 'feature.md', 'task.md']) {
+    const source = readFileSync(new URL(file, directory), 'utf8')
+    const frontmatter = source.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? ''
+    const keys = frontmatter
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.slice(0, line.indexOf(':')))
+      .sort()
+    assert.deepEqual(keys, ['about', 'name', 'type'], file)
+    assert.match(source, /^## /m, file)
+    assert.match(source, /<!-- [^\n]+ -->/, file)
+    assert.doesNotMatch(source, /<details\b/i, file)
+  }
+  assert.equal(
+    readFileSync(new URL('config.yml', directory), 'utf8'),
+    'blank_issues_enabled: false\n',
   )
 })
 
-test('requires Owner for multiple assignees', () => {
+test('keeps Feature Issues limited to motivation and behavior', () => {
+  const source = readFileSync(
+    new URL('../ISSUE_TEMPLATE/feature.md', import.meta.url),
+    'utf8',
+  )
   assert.deepEqual(
-    validateBody({
-      body: withDetails('完成工作。'),
-      assignees: ['tianyicui', 'tianyicui-bot'],
-    }),
-    ['多个 Assignees 时首个非空行必须是 Owner: @login'],
+    [...source.matchAll(/^## .+$/gm)].map(([heading]) => heading),
+    ['## Motivation', '## Behavior'],
   )
 })
 
-test('accepts an intended Owner while assignment permission is pending', () => {
+test('keeps Bug Issues limited to the problem report', () => {
+  const source = readFileSync(new URL('../ISSUE_TEMPLATE/bug.md', import.meta.url), 'utf8')
   assert.deepEqual(
-    validateBody({
-      body: withDetails('Owner: @octocat\n\n完成工作。'),
-      assignees: [],
+    [...source.matchAll(/^## .+$/gm)].map(([heading]) => heading),
+    ['## Summary', '## Reproduction', '## Current behavior', '## Expected behavior', '## Environment'],
+  )
+})
+
+test('keeps Task Issues limited to summary and deliverables', () => {
+  const source = readFileSync(new URL('../ISSUE_TEMPLATE/task.md', import.meta.url), 'utf8')
+  assert.deepEqual(
+    [...source.matchAll(/^## .+$/gm)].map(([heading]) => heading),
+    ['## Summary', '## Deliverables'],
+  )
+})
+
+test('structures the pull request template around motivation, changes, and testing', () => {
+  const source = readFileSync(new URL('../pull_request_template.md', import.meta.url), 'utf8')
+  for (const heading of ['## Motivation', '## Changes', '## Testing']) {
+    assert.match(source, new RegExp(`^${heading.replaceAll('#', '\\#')}$`, 'm'))
+  }
+  assert.doesNotMatch(source, /^### /m)
+  assert.match(
+    source,
+    /<!-- 高层次说明命令[^\n]+ -->\n<!-- 高层次说明用户[^\n]+ -->/,
+  )
+  assert.match(source, /- <!-- [^\n]+ -->\n\n  <details>\n  <summary>Proof<\/summary>/)
+  assert.equal(source.match(/<details>/g)?.length, 1)
+  assert.equal(source.match(/<\/details>/g)?.length, 1)
+})
+
+test('ignores Issue title, body presentation, and assignee ownership', () => {
+  assert.deepEqual(
+    validateIssue({
+      ...legalIssue,
+      title: '[Bug] English title',
+      body: `Owner: @octocat\n\n${'visible '.repeat(60)}<details open>unclosed`,
+      assignees: ['octocat', 'hubot'],
     }),
     [],
-  )
-  assert.deepEqual(
-    validateBody({
-      body: withDetails('Owner: @octocat\n\n完成工作。'),
-      assignees: ['hubot'],
-    }),
-    ['零或一个 Assignee 时不得写 Owner 行'],
   )
 })
 
@@ -200,11 +232,6 @@ test('allows optional metadata in every open Status', () => {
   for (const status of ['Inbox', 'Backlog', 'Ready', 'In progress', 'In review']) {
     assert.deepEqual(validateIssue({ ...legalIssue, status }), [])
   }
-})
-
-test('rejects metadata prefixes in an Issue title', () => {
-  const errors = validateIssue({ ...legalIssue, title: '[Bug] 修复恢复错误' })
-  assert.ok(errors.includes('Issue 标题不得带 Type、Priority、Status、area 或 Owner 前缀'))
 })
 
 test('reserves PR kind and legacy labels for pull requests', () => {
@@ -221,6 +248,101 @@ test('reserves PR kind and legacy labels for pull requests', () => {
     )
   }
   assert.deepEqual(validateIssue({ ...legalIssue, labels: ['area/web', 'source/member'] }), [])
+})
+
+test('removes reserved labels from Issues before validation', async (t) => {
+  const previousToken = process.env.GH_TOKEN
+  process.env.GH_TOKEN = 'test-token'
+  t.after(() => {
+    if (previousToken === undefined) delete process.env.GH_TOKEN
+    else process.env.GH_TOKEN = previousToken
+  })
+  const requests = []
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push({ url, method: options.method })
+    assert.equal(options.headers.Authorization, 'Bearer test-token')
+    if (url.endsWith('/labels/bug-fix')) {
+      return Response.json({ message: 'Label does not exist' }, { status: 404 })
+    }
+    return Response.json([])
+  })
+
+  const issue = {
+    ...legalIssue,
+    number: 42,
+    labels: ['area/web', 'kind/bug-fix', 'bug-fix', 'source/member'],
+  }
+  const repaired = await repairIssueLabels(issue)
+
+  assert.deepEqual(repaired.labels, ['area/web', 'source/member'])
+  assert.deepEqual(issue.labels, ['area/web', 'kind/bug-fix', 'bug-fix', 'source/member'])
+  assert.deepEqual(validateIssue(repaired), [])
+  assert.deepEqual(requests, [
+    {
+      url: 'https://api.github.com/repos/deepseek-harness/deepseek-harness/issues/42/labels/kind%2Fbug-fix',
+      method: 'DELETE',
+    },
+    {
+      url: 'https://api.github.com/repos/deepseek-harness/deepseek-harness/issues/42/labels/bug-fix',
+      method: 'DELETE',
+    },
+  ])
+})
+
+test('deletes a stale audit comment after repairing its only violation', async (t) => {
+  const previousToken = process.env.GH_TOKEN
+  process.env.GH_TOKEN = 'test-token'
+  t.after(() => {
+    if (previousToken === undefined) delete process.env.GH_TOKEN
+    else process.env.GH_TOKEN = previousToken
+  })
+  const requests = []
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push({ url, method: options.method ?? 'GET' })
+    if (url.endsWith('/issues/42')) {
+      return Response.json({
+        node_id: 'issue-id',
+        labels: [{ name: 'area/web' }, { name: 'kind/bug-fix' }],
+        type: { name: 'Bug' },
+        state: 'open',
+        state_reason: null,
+      })
+    }
+    if (url.endsWith('/graphql')) return Response.json({ data: projectGraphqlData() })
+    if (url.endsWith('/labels/kind%2Fbug-fix')) return Response.json([{ name: 'area/web' }])
+    if (url.endsWith('/issues/42/comments?per_page=100')) {
+      return Response.json([
+        {
+          id: 99,
+          user: { type: 'Bot' },
+          body: '<!-- dsh-issue-policy -->\nold audit',
+        },
+      ])
+    }
+    if (url.endsWith('/issues/comments/99')) return new Response(null, { status: 204 })
+    return Response.json({ message: 'unexpected request' }, { status: 500 })
+  })
+
+  assert.deepEqual(await auditIssue(42), [])
+  assert.deepEqual(
+    requests.map(({ url, method }) => ({ path: new URL(url).pathname + new URL(url).search, method })),
+    [
+      { path: '/repos/deepseek-harness/deepseek-harness/issues/42', method: 'GET' },
+      { path: '/graphql', method: 'POST' },
+      {
+        path: '/repos/deepseek-harness/deepseek-harness/issues/42/labels/kind%2Fbug-fix',
+        method: 'DELETE',
+      },
+      {
+        path: '/repos/deepseek-harness/deepseek-harness/issues/42/comments?per_page=100',
+        method: 'GET',
+      },
+      {
+        path: '/repos/deepseek-harness/deepseek-harness/issues/comments/99',
+        method: 'DELETE',
+      },
+    ],
+  )
 })
 
 test('keeps terminal Status aligned with the native close reason', () => {
@@ -250,17 +372,16 @@ test('separates resolving and informational references', () => {
   )
 })
 
-test('converts PR creation timestamps to Kolkata Project dates', () => {
-  assert.equal(projectDate('2026-08-27T18:29:59Z', 'Asia/Kolkata'), '2026-08-27')
-  assert.equal(projectDate('2026-08-27T18:30:00Z', 'Asia/Kolkata'), '2026-08-28')
-  assert.throws(() => projectDate('invalid', 'Asia/Kolkata'), /无效的 PR 创建时间/)
+test('converts PR creation timestamps to Shanghai Project dates', () => {
+  assert.equal(projectDate('2026-08-27T15:59:59Z', 'Asia/Shanghai'), '2026-08-27')
+  assert.equal(projectDate('2026-08-27T16:00:00Z', 'Asia/Shanghai'), '2026-08-28')
+  assert.throws(() => projectDate('invalid', 'Asia/Shanghai'), /无效的 PR 创建时间/)
 })
 
-test('initializes every referenced Issue only for a PR opened event', async (t) => {
-  enableStartDates(t)
+test('initializes every referenced Issue only for a PR opened event', async () => {
   const writes = []
   const pull = {
-    createdAt: '2026-08-27T18:30:00Z',
+    createdAt: '2026-08-27T16:00:00Z',
     references: { all: [4, 7, 12] },
   }
   const initialize = async (number, date) => writes.push({ number, date })
@@ -278,8 +399,53 @@ test('initializes every referenced Issue only for a PR opened event', async (t) 
   assert.equal(writes.length, 3)
 })
 
-test('writes an empty Project Start date with the configured field', async (t) => {
-  enableStartDates(t)
+test('reads Priority and Status from Project custom fields', async (t) => {
+  const previousGhToken = process.env.GH_TOKEN
+  const previousGithubToken = process.env.GITHUB_TOKEN
+  const previousProjectToken = process.env.PROJECT_TOKEN
+  delete process.env.GH_TOKEN
+  process.env.GITHUB_TOKEN = 'repository-token'
+  process.env.PROJECT_TOKEN = 'project-token'
+  t.after(() => {
+    if (previousGhToken === undefined) delete process.env.GH_TOKEN
+    else process.env.GH_TOKEN = previousGhToken
+    if (previousGithubToken === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = previousGithubToken
+    if (previousProjectToken === undefined) delete process.env.PROJECT_TOKEN
+    else process.env.PROJECT_TOKEN = previousProjectToken
+  })
+  const urls = []
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    urls.push(url)
+    if (url.endsWith('/issues/42')) {
+      assert.equal(options.headers.Authorization, 'Bearer repository-token')
+      return Response.json({
+        node_id: 'issue-id',
+        title: 'Project metadata',
+        body: null,
+        assignees: [],
+        labels: [],
+        type: { name: 'Task' },
+        state: 'open',
+        state_reason: null,
+      })
+    }
+    assert.equal(url, 'https://api.github.com/graphql')
+    assert.equal(options.headers.Authorization, 'Bearer project-token')
+    return Response.json({ data: projectGraphqlData({ priority: 'P1' }) })
+  })
+
+  const issue = await issueSnapshot(42)
+
+  assert.equal(issue.priority, 'P1')
+  assert.equal(issue.status, 'Inbox')
+  assert.deepEqual(urls, [
+    'https://api.github.com/repos/deepseek-harness/deepseek-harness/issues/42',
+    'https://api.github.com/graphql',
+  ])
+})
+
+test('writes an empty Project Start Date with the configured field', async (t) => {
   const requests = mockGraphql(t, (request) => {
     if (request.query.includes('query(')) return projectGraphqlData()
     return { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'item-id' } } }
@@ -288,6 +454,12 @@ test('writes an empty Project Start date with the configured field', async (t) =
   await initializeIssueStartDate(42, '2026-08-28')
 
   assert.equal(requests.length, 2)
+  assert.match(requests[0].query, /isIssueField/)
+  assert.doesNotMatch(requests[0].query, /issueField\s*\{/)
+  assert.match(requests[0].query, /priorityValue: fieldValueByName/)
+  assert.equal(requests[0].variables.priorityField, 'Priority')
+  assert.match(requests[0].query, /ProjectV2ItemFieldDateValue/)
+  assert.match(requests[1].query, /updateProjectV2ItemFieldValue/)
   assert.match(requests[1].query, /value: \{date: \$date\}/)
   assert.deepEqual(requests[1].variables, {
     projectId: 'project-id',
@@ -297,8 +469,7 @@ test('writes an empty Project Start date with the configured field', async (t) =
   })
 })
 
-test('preserves an existing Project Start date', async (t) => {
-  enableStartDates(t)
+test('preserves an existing Project Start Date', async (t) => {
   const requests = mockGraphql(t, () => projectGraphqlData({ startDate: '2026-08-01' }))
 
   await initializeIssueStartDate(42, '2026-08-28')
@@ -306,8 +477,7 @@ test('preserves an existing Project Start date', async (t) => {
   assert.equal(requests.length, 1)
 })
 
-test('adds a referenced Issue to the Project before setting Start date', async (t) => {
-  enableStartDates(t)
+test('adds a referenced Issue to the Project before setting Start Date', async (t) => {
   const requests = mockGraphql(t, (request) => {
     if (request.query.includes('query(')) return projectGraphqlData({ projectItem: false })
     if (request.query.includes('addProjectV2ItemById')) {
@@ -320,18 +490,45 @@ test('adds a referenced Issue to the Project before setting Start date', async (
 
   assert.equal(requests.length, 3)
   assert.deepEqual(requests[1].variables, { projectId: 'project-id', contentId: 'issue-id' })
-  assert.equal(requests[2].variables.itemId, 'new-item-id')
+  assert.deepEqual(requests[2].variables, {
+    projectId: 'project-id',
+    itemId: 'new-item-id',
+    fieldId: 'start-date-field-id',
+    date: '2026-08-28',
+  })
 })
 
-test('rejects a missing or non-Date Start date field', async (t) => {
-  enableStartDates(t)
+test('rejects a missing, non-Date, or Issue-level Start Date field', async (t) => {
   let response = projectGraphqlData({ startDateField: false })
   const requests = mockGraphql(t, () => response)
 
   await assert.rejects(initializeIssueStartDate(42, '2026-08-28'), /Project 缺少 Start Date 字段/)
   response = projectGraphqlData({ startDateType: 'TEXT' })
   await assert.rejects(initializeIssueStartDate(42, '2026-08-28'), /Start Date 字段必须为 Date/)
-  assert.equal(requests.length, 2)
+  response = projectGraphqlData({ startDateIsIssueField: true })
+  await assert.rejects(
+    initializeIssueStartDate(42, '2026-08-28'),
+    /Start Date 字段必须为 Project Date 字段/,
+  )
+  assert.equal(requests.length, 3)
+})
+
+test('rejects a missing, non-select, or Issue-level Priority field', async (t) => {
+  let response = projectGraphqlData({ priorityField: false })
+  const requests = mockGraphql(t, () => response)
+
+  await assert.rejects(initializeIssueStartDate(42, '2026-08-28'), /Project 缺少 Priority 字段/)
+  response = projectGraphqlData({ priorityType: 'TEXT' })
+  await assert.rejects(
+    initializeIssueStartDate(42, '2026-08-28'),
+    /Priority 字段必须为 Single Select/,
+  )
+  response = projectGraphqlData({ priorityIsIssueField: true })
+  await assert.rejects(
+    initializeIssueStartDate(42, '2026-08-28'),
+    /Priority 字段必须为 Project custom field/,
+  )
+  assert.equal(requests.length, 3)
 })
 
 test('does not treat pull request references as Issue associations', () => {
@@ -573,103 +770,4 @@ test('allows missing Priority only when resolving Issues are also unprioritized'
       '有 Priority 的解决型 PR 要求每个被解决 Issue 都设置 Priority',
     ),
   )
-})
-
-
-test('disabled date initialization ignores absent setup and performs no reads or writes', async (t) => {
-  configure(t, { initializeStartDates: false, startDateField: undefined, projectTimeZone: undefined })
-  const requests = mockGraphql(t, () => assert.fail('disabled date initialization contacted GitHub'))
-  await initializeIssueStartDate(42, 'invalid')
-  await initializePullRequestStartDates(
-    { createdAt: 'invalid', references: { all: [42] } },
-    'opened',
-    async () => assert.fail('disabled date initialization invoked its writer'),
-  )
-  assert.deepEqual(requests, [])
-})
-
-test('enabled date initialization rejects invalid setup before contacting GitHub', async (t) => {
-  enableStartDates(t)
-  const requests = mockGraphql(t, () => assert.fail('invalid setup contacted GitHub'))
-  config.startDateField = undefined
-  await assert.rejects(initializeIssueStartDate(42, '2026-08-28'), /startDateField/)
-  config.startDateField = 'Start Date'
-  config.projectTimeZone = undefined
-  await assert.rejects(initializeIssueStartDate(42, '2026-08-28'), /projectTimeZone/)
-  config.projectTimeZone = 'invalid/timezone'
-  await assert.rejects(initializeIssueStartDate(42, '2026-08-28'), /time zone/i)
-  assert.deepEqual(requests, [])
-})
-
-test('rejects Issue-level Date fields before adding an item or writing a date', async (t) => {
-  enableStartDates(t)
-  const requests = mockGraphql(t, () => projectGraphqlData({ isIssueField: true, projectItem: false }))
-  await assert.rejects(initializeIssueStartDate(42, '2026-08-28'), /不得为 Issue 字段/)
-  assert.equal(requests.length, 1)
-  assert.match(requests[0].query, /ProjectV2Field \{ id name dataType isIssueField \}/)
-})
-
-test('date dispatch retains only same-repository Issues outside ignored Markdown', async (t) => {
-  enableStartDates(t)
-  const references = retainIssueReferences(parseReferences({
-    repository: 'karaka-ai/karaka',
-    body: 'Fixes #42; Refs KARAKA-AI/KARAKA#43 and https://github.com/karaka-ai/karaka/issues/44. '
-      + 'Refs other/repo#45 and https://github.com/other/repo/issues/46; PR #47. '
-      + '`#48` <!-- #49 -->\n```text\n#50\n```',
-  }), new Map([[42, {}], [43, {}], [44, {}]]))
-  const writes = []
-  await initializePullRequestStartDates(
-    { createdAt: '2026-08-27T18:30:00Z', references },
-    'opened',
-    async (number, date) => writes.push({ number, date }),
-  )
-  assert.deepEqual(writes, [42, 43, 44].map((number) => ({ number, date: '2026-08-28' })))
-})
-
-test('disabled missing date setup leaves ordinary Issue status updates operational', async (t) => {
-  configure(t, { initializeStartDates: false, startDateField: undefined, projectTimeZone: undefined })
-  const previousToken = process.env.GH_TOKEN
-  const previousApiUrl = process.env.GITHUB_API_URL
-  process.env.GH_TOKEN = 'test-token'
-  process.env.GITHUB_API_URL = 'https://api.github.com'
-  t.after(() => {
-    if (previousToken === undefined) delete process.env.GH_TOKEN
-    else process.env.GH_TOKEN = previousToken
-    if (previousApiUrl === undefined) delete process.env.GITHUB_API_URL
-    else process.env.GITHUB_API_URL = previousApiUrl
-  })
-  const requests = []
-  let status = 'Ready'
-  t.mock.method(globalThis, 'fetch', async (url, options) => {
-    const path = new URL(url).pathname
-    if (path === '/graphql') {
-      const request = JSON.parse(options.body)
-      requests.push(request)
-      if (request.query.includes('query(')) {
-        assert.equal(request.variables.includeStartDate, false)
-        assert.equal(request.variables.startDateField, '')
-        const data = projectGraphqlData({ startDateField: false })
-        data.organization.projectV2.fields.nodes[0].options = [{ id: 'inbox-option-id', name: 'Inbox' }]
-        data.repository.issue.projectItems.nodes[0].fieldValueByName.name = status
-        return Response.json({ data })
-      }
-      assert.deepEqual(request.variables, {
-        projectId: 'project-id', itemId: 'item-id', fieldId: 'status-field-id', optionId: 'inbox-option-id',
-      })
-      status = 'Inbox'
-      return Response.json({ data: { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'item-id' } } } })
-    }
-    assert.equal(options.method, undefined)
-    if (path === '/repos/karaka-ai/karaka/issues/42') {
-      return Response.json({ ...legalIssue, node_id: 'issue-id', type: { name: 'Idea' }, state_reason: null })
-    }
-    assert.ok([
-      '/repos/karaka-ai/karaka/issues/42/issue-field-values',
-      '/repos/karaka-ai/karaka/issues/42/comments',
-    ].includes(path))
-    return Response.json([])
-  })
-  await runLifecycle('issues', { action: 'reopened', issue: { number: 42 } })
-  assert.equal(status, 'Inbox')
-  assert.equal(requests.filter(({ query }) => query.includes('mutation(')).length, 1)
 })

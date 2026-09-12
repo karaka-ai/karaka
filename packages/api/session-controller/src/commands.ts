@@ -4,10 +4,14 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
-import { AttachmentError, admitPromptContent } from '@deepseek-ai/dsh-attachment'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import { AttachmentError } from '@deepseek-ai/dsh-attachment'
+import type {
+  AttachmentAdmissionPart, FileAttachmentRef, ImageAttachmentRef,
+} from '@deepseek-ai/dsh-attachment'
+import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/types'
+import type {} from '@deepseek-ai/dsh-client-file-upload'
 import {
-  ReasoningEffortId, createUserMessage, freezeMessage,
+  ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
@@ -15,17 +19,16 @@ import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deeps
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
+import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import {
   ApiSessionAgentController,
-  ApiSessionApplicationOwnership,
   ApiSessionCwdConflict,
   ApiSessionNotFound,
   ApiSessionPresetConflict,
   ApiSessionSubagentOwnership,
   apiSessionSubagentOwnershipError,
-  apiSessionApplicationOwnershipError,
   hasApiSessionSubagentOwner,
   inspectApiSession,
 } from './agent.ts'
@@ -46,12 +49,21 @@ import type {
   SessionSelectModelValue,
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
+  SessionRequestId,
 } from './types.ts'
 
 interface SessionReadState {
   readonly id: SessionId
   readonly header: SessionHeader
   readonly events: readonly SessionEvent[]
+}
+
+type PromptContentCandidate =
+  | SessionPromptRequest['content'][number]
+  | Extract<SessionUpdateQueueRequest['action'], { readonly kind: 'edit' }>['content'][number]
+
+function hasPromptContent(content: readonly PromptContentCandidate[]): boolean {
+  return content.some(part => part.type !== 'text' || part.text.trim().length > 0)
 }
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
@@ -120,30 +132,6 @@ export class SessionCommandController {
    */
   async selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
     const agent = await this.resolveAgent(request.sessionId)
-    return this.selectModelForAgent(agent, request, true)
-  }
-
-  /**
-   * Select a model for one application chat without changing the deployment default.
-   * @param agent - owner-verified application Agent.
-   * @param request - application chat identity and requested model selection.
-   * @returns the normalized selection installed for that chat.
-   */
-  async selectApplicationModel(
-    agent: Agent,
-    request: SessionSelectModelRequest,
-  ): Promise<SessionSelectModelValue> {
-    if (agent.id !== request.sessionId || agent.session.header.applicationOwner === undefined) {
-      throw new Error('session-controller: application model selection requires its owner-verified Agent')
-    }
-    return this.selectModelForAgent(agent, request, false)
-  }
-
-  private async selectModelForAgent(
-    agent: Agent,
-    request: SessionSelectModelRequest,
-    saveDeploymentDefault: boolean,
-  ): Promise<SessionSelectModelValue> {
     return this.agents.serializeImageAdmission(agent, async () => {
       try {
         const resolved = await this.ctx.llm.resolveCallConfig({
@@ -161,14 +149,12 @@ export class SessionCommandController {
             : { reasoningEffort: resolved.reasoningEffort }),
         }
         this.agents.selectForNextRequest(agent, selected)
-        if (saveDeploymentDefault) {
-          try {
-            await this.ctx.agentDefaultModel.saveSelection(selected)
-          } catch (error) {
-            this.ctx.logger.warn(
-              `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
-            )
-          }
+        try {
+          await this.ctx.agentDefaultModel.saveSelection(selected)
+        } catch (error) {
+          this.ctx.logger.warn(
+            `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
+          )
         }
         return { selected: { ...selected } }
       } catch (error) {
@@ -237,7 +223,6 @@ export class SessionCommandController {
       )
     }
     using source = observed
-    this.rejectApplicationOwnership(source.header)
     const lastSeq = source.events.at(-1)?.seq ?? -1
     const anchoredBoundary = atSeq === undefined
       ? undefined
@@ -310,28 +295,18 @@ export class SessionCommandController {
   }
 
   /**
-   * Admit one browser prompt after explicit Agent resume and image validation.
+   * Reject empty content, then admit one prompt after Agent and attachment validation.
    * @param request - Session identity, prompt content, source metadata, and delivery mode.
    * @returns acknowledgement that the Agent accepted the prompt.
    */
   async prompt(request: SessionPromptRequest): Promise<SessionPromptValue> {
-    return this.promptAgent(await this.resolveAgent(request.sessionId), request)
-  }
-
-  /**
-   * Admit a prompt to one owner-verified application Agent.
-   * @param agent - owner-verified application Agent.
-   * @param request - prompt content, source metadata, and delivery mode.
-   * @returns acknowledgement that the Agent accepted the prompt.
-   */
-  async promptApplication(agent: Agent, request: SessionPromptRequest): Promise<SessionPromptValue> {
-    if (agent.id !== request.sessionId || agent.session.header.applicationOwner === undefined) {
-      throw new Error('session-controller: application prompt requires its owner-verified Agent')
+    if (!hasPromptContent(request.content)) {
+      throw new RemoteError(
+        'gateway/bad-request',
+        'prompt content must include non-whitespace text or an attachment',
+        {},
+      )
     }
-    return this.promptAgent(agent, request)
-  }
-
-  private async promptAgent(agent: Agent, request: SessionPromptRequest): Promise<SessionPromptValue> {
     const clientTimeZone = request.clientTimeZone === undefined
       ? undefined
       : canonicalClientTimeZone(request.clientTimeZone)
@@ -342,6 +317,8 @@ export class SessionCommandController {
         { value: request.clientTimeZone },
       )
     }
+    const agent = await this.resolveAgent(request.sessionId)
+    if (hasPromptRequest(agent, request.requestId)) return { accepted: true }
     const selection = this.agents.selectionFor(agent).current
     if (!routeServed(this.ctx, selection.provider)) {
       throw new RemoteError(
@@ -369,10 +346,23 @@ export class SessionCommandController {
             )
           }
         }
-        const content = await admitPromptContent(this.ctx.attachments, request.content)
+        const admission = resolvePromptFileReceipts(
+          request.content,
+          receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
+        )
+        const content = await this.ctx.attachments.admitPromptContent(admission.content)
         const message: UserMessage = createUserMessage({ content, source })
+        if (this.ctx.agents.get(agent.id) !== agent) {
+          throw new RemoteError(
+            'session/not-found',
+            `session "${agent.id}" was disposed during prompt admission`,
+            { sessionId: agent.id },
+          )
+        }
+        using binding = this.ctx.fileUploads.bindPrompt(agent, admission.receiptIds, request.requestId)
         if (request.mode === 'steer') agent.steer(message)
         else agent.followup(message)
+        binding.commit()
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
         if (error instanceof AttachmentError) {
@@ -398,7 +388,6 @@ export class SessionCommandController {
       if (error instanceof ApiSessionNotFound) {
         throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId })
       }
-      if (remoteErrorOf(error) !== undefined) throw error
       throw new RemoteError(
         'gateway/internal',
         `attachment authorization unavailable for session "${request.sessionId}": ${String(error)}`,
@@ -433,23 +422,34 @@ export class SessionCommandController {
    * @returns acknowledgement that the queue mutation was applied.
    */
   updateQueue(request: SessionUpdateQueueRequest): SessionUpdateQueueValue {
-    if (request.action.kind === 'edit'
-      && request.action.content.some(block => block.type !== 'text')) {
-      throw new RemoteError(
-        'session/attachment-invalid',
-        'queue edits accept text content only',
-        { reason: 'QUEUE_EDIT_NON_TEXT' },
-      )
+    if (request.action.kind === 'edit') {
+      if (request.action.content.some(block => block.type !== 'text')) {
+        throw new RemoteError(
+          'session/attachment-invalid',
+          'queue edits accept text content only',
+          { reason: 'QUEUE_EDIT_NON_TEXT' },
+        )
+      }
+      if (!hasPromptContent(request.action.content)) {
+        throw new RemoteError(
+          'gateway/bad-request',
+          'queue edit content must include non-whitespace text',
+          {},
+        )
+      }
     }
     const agent = this.ctx.agents.get(request.sessionId)
-    if (agent !== undefined && hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
-      throw apiSessionSubagentOwnershipError(request.sessionId)
-    }
-    if (agent?.session.header.applicationOwner !== undefined) {
-      throw apiSessionApplicationOwnershipError(request.sessionId)
-    }
     if (agent === undefined) {
       throw new RemoteError('session/queue-item-not-found', 'queued item is no longer pending', { itemId: request.itemId })
+    }
+    if (hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
+      const identity = this.ctx.sessionProjections
+        .snapshot(agent.session, ['subagent'])
+        .values.subagent
+      if (identity?.mode !== 'continuable'
+        || !agent.session.isOwnSeq(identity.seq)) {
+        throw apiSessionSubagentOwnershipError(request.sessionId)
+      }
     }
     const nextTurn = agent.inbox.nextTurn.find(message => message.id === request.itemId)
     const nextStep = agent.inbox.nextStep.find(message => message.id === request.itemId)
@@ -463,14 +463,28 @@ export class SessionCommandController {
     if (request.action.kind === 'steer' && (target !== 'next-turn' || agent.status !== 'running')) {
       throw new RemoteError('session/steer-unavailable', 'current turn no longer accepts steering', { itemId: request.itemId })
     }
-    if (request.action.kind === 'edit') {
-      agent.inbox.replace(request.itemId, freezeMessage<UserMessage>({
-        ...message,
-        content: [...request.action.content],
-      }))
-    } else {
-      agent.inbox.remove(request.itemId)
-      if (request.action.kind === 'steer') agent.steer(message)
+    switch (request.action.kind) {
+      case 'edit':
+        agent.inbox.replace(request.itemId, freezeMessage<UserMessage>({
+          ...message,
+          content: [...request.action.content],
+        }))
+        break
+      case 'remove': {
+        agent.inbox.remove(request.itemId)
+        const source = message.source
+        if (source.kind === 'user' && 'rpcId' in source) {
+          this.ctx.fileUploads.retirePrompt(agent, source.rpcId)
+        }
+        break
+      }
+      case 'steer':
+        agent.inbox.remove(request.itemId)
+        agent.steer(message)
+        break
+      /* v8 ignore next 2 -- closed-union exhaustiveness guard */
+      default:
+        assertNever(request.action, 'queue action')
     }
     return { accepted: true }
   }
@@ -491,22 +505,6 @@ export class SessionCommandController {
     }
     if (hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) {
       throw apiSessionSubagentOwnershipError(request.sessionId)
-    }
-    if (agent.session.header.applicationOwner !== undefined) {
-      throw apiSessionApplicationOwnershipError(request.sessionId)
-    }
-    agent.cancel({ kind: 'user' }, { keepInbox: true })
-    return { accepted: true }
-  }
-
-  /**
-   * Cancel one owner-verified application Agent without entering generic routing.
-   * @param agent - owner-verified application Agent.
-   * @returns acknowledgement that cancellation was requested.
-   */
-  cancelApplication(agent: Agent): SessionCancelValue {
-    if (agent.session.header.applicationOwner === undefined) {
-      throw new Error('session-controller: application cancellation requires its owner-verified Agent')
     }
     agent.cancel({ kind: 'user' }, { keepInbox: true })
     return { accepted: true }
@@ -537,26 +535,17 @@ export class SessionCommandController {
     if (error instanceof ApiSessionSubagentOwnership) {
       throw apiSessionSubagentOwnershipError(error.sessionId)
     }
-    if (error instanceof ApiSessionApplicationOwnership) {
-      throw apiSessionApplicationOwnershipError(error.sessionId)
-    }
     throw new RemoteError('gateway/internal', `failed to create session "${sessionId}": ${String(error)}`, {})
   }
 
   private async readSessionState(sessionId: SessionId): Promise<SessionReadState> {
     const attached = this.ctx.sessions.get(sessionId)
     if (attached !== undefined) {
-      this.rejectApplicationOwnership(attached.header)
+      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
       return { id: attached.id, header: attached.header, events: attached.snapshotEvents() }
     }
     const inspected = await inspectApiSession(this.ctx, sessionId)
     return { id: inspected.meta.id, header: inspected.meta, events: inspected.events }
-  }
-
-  private rejectApplicationOwnership(header: SessionHeader): void {
-    if (header.applicationOwner !== undefined) {
-      throw apiSessionApplicationOwnershipError(header.id)
-    }
   }
 
   private async forkWorkspace(source: SessionHeader): Promise<Workspace | undefined> {
@@ -572,6 +561,40 @@ export class SessionCommandController {
   }
 }
 
+function resolvePromptFileReceipts(
+  content: SessionPromptRequest['content'],
+  stagedFile: (receiptId: FileUploadReceiptId) => FileAttachmentRef | undefined,
+): { readonly content: AttachmentAdmissionPart[]; readonly receiptIds: readonly FileUploadReceiptId[] } {
+  const receiptIds = new Set<FileUploadReceiptId>()
+  const resolved = content.map((part): AttachmentAdmissionPart => {
+    if (part.type !== 'file') return part
+    const attachment = stagedFile(part.receiptId)
+    if (attachment === undefined) {
+      throw new RemoteError(
+        'session/attachment-invalid',
+        'File was not uploaded for this session.',
+        { reason: 'FILE_NOT_STAGED' },
+      )
+    }
+    receiptIds.add(part.receiptId)
+    return { type: 'file', attachment }
+  })
+  return { content: resolved, receiptIds: [...receiptIds] }
+}
+
+function hasPromptRequest(agent: Agent, requestId: SessionRequestId): boolean {
+  const matches = (message: UserMessage): boolean => {
+    const source = message.source
+    return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId
+  }
+  if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches)) return true
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+  return agent.session.snapshotEvents().some((event) => {
+    if (event.type !== 'user/message') return false
+    const source = event.data.source
+    return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId
+  })
+}
 function imageBlockIn(
   content: unknown,
   match: (ref: ImageAttachmentRef) => boolean,
@@ -600,7 +623,6 @@ function imageInEvent(
     readonly content?: unknown
     readonly message?: { readonly content?: unknown }
     readonly inserted?: readonly { readonly content?: unknown }[]
-    readonly chunk?: { readonly type?: unknown; readonly block?: unknown }
   }
   const direct = imageBlockIn(data.content, match)
   if (direct !== undefined) return direct
@@ -610,9 +632,13 @@ function imageInEvent(
     const found = imageBlockIn(inserted.content, match)
     if (found !== undefined) return found
   }
-  return event.type === 'assistant/chunk' && data.chunk?.type === 'block-end'
-    ? imageBlockIn([data.chunk.block], match)
-    : undefined
+  if (event.type === 'assistant/message' || event.type === 'assistant/attempt') {
+    for (const chunk of assistantStreamChunks(event.data.stream, 'block-end')) {
+      const found = imageBlockIn([chunk.block], match)
+      if (found !== undefined) return found
+    }
+  }
+  return undefined
 }
 
 function referencedImage(

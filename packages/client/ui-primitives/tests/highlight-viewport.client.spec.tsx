@@ -119,6 +119,12 @@ describe('viewport-activated syntax highlighting', () => {
     expect(observer.disconnected).toBe(true)
   })
 
+  it('highlights immediately when IntersectionObserver is unavailable', () => {
+    vi.stubGlobal('IntersectionObserver', undefined)
+    const view = render(<CodeBlock code="const fallback = true" lang="ts" {...markdownLabels.code} />)
+    expect(view.container.querySelector('pre.shiki')).not.toBeNull()
+  })
+
   it('keeps an intersecting streaming block plain until its lazy grammar loads', async () => {
     const view = render(
       <CodeBlock code="print(1)" lang="python" streaming {...markdownLabels.code} />,
@@ -130,38 +136,6 @@ describe('viewport-activated syntax highlighting', () => {
     expect(block.querySelector('pre.shiki')).toBeNull()
 
     await waitFor(() => { expect(block.querySelector('pre.shiki')).not.toBeNull() }, { timeout: 5_000 })
-  })
-
-  it('starts a newly visible stream from all accumulated text and retains activation across language changes', async () => {
-    const view = render(<CodeBlock code="const start = 1" lang="cobol" streaming {...markdownLabels.code} />)
-    const block = view.container.querySelector('.md-code-block')!
-    expect(IntersectionObserverStub.instances).toHaveLength(0)
-    view.rerender(<CodeBlock code="const start = 1" lang="ts" streaming {...markdownLabels.code} />)
-    const observer = IntersectionObserverStub.instances[0]!
-    view.rerender(<CodeBlock code={'const start = 1\nconst grown = 2'} lang="ts" streaming {...markdownLabels.code} />)
-    expect(block.querySelector('pre.shiki')).toBeNull()
-    act(() => { observer.intersect(block, true) })
-    await waitFor(() => { expect(block.querySelector('pre.shiki')?.textContent).toBe('const start = 1\nconst grown = 2') })
-    view.rerender(<CodeBlock code="plain" lang="cobol" streaming {...markdownLabels.code} />)
-    expect(block.querySelector('pre.shiki')).toBeNull()
-    view.rerender(<CodeBlock code="const restored = 3" lang="ts" streaming {...markdownLabels.code} />)
-    expect(block.querySelector('pre.shiki')?.textContent).toBe('const restored = 3')
-    expect(IntersectionObserverStub.instances).toHaveLength(1)
-  })
-
-  it('ignores a queued entry after unmount and observes a fresh root', async () => {
-    const first = render(<CodeBlock code="const first = 1" lang="ts" {...markdownLabels.code} />)
-    const oldBlock = first.container.querySelector('.md-code-block')!
-    const previous = IntersectionObserverStub.instances[0]!
-    first.unmount()
-    const next = render(<CodeBlock code="const next = 2" lang="ts" {...markdownLabels.code} />)
-    const nextBlock = next.container.querySelector('.md-code-block')!
-    const current = IntersectionObserverStub.instances[1]!
-    act(() => { previous.intersect(oldBlock, true) })
-    expect(nextBlock.querySelector('pre.shiki')).toBeNull()
-    expect(current.observed.has(nextBlock)).toBe(true)
-    act(() => { current.intersect(nextBlock, true) })
-    await waitFor(() => { expect(nextBlock.querySelector('pre.shiki')?.textContent).toBe('const next = 2') })
   })
 
   it('keeps a read card plain until that card intersects', async () => {

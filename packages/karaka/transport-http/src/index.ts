@@ -4,9 +4,10 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { ApplicationId, ApplicationOwner, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { SessionId as sessionId, TenantId, UserId } from '@deepseek-ai/dsh-session'
-import type { SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { TenantId, UserId, type ApplicationId, type ApplicationOwner } from '@karaka-ai/identity'
+import { SessionId as sessionId } from '@deepseek-ai/dsh-session'
+import { ApplicationChatController, type FollowFrame as SessionFollowFrame } from './application.ts'
 import type { AskUserQuestionAnswer, AskUserQuestionRequestEvent } from '@deepseek-ai/dsh-user-questions/types'
 import {
   ApplicationAddressRequestSchema,
@@ -18,13 +19,15 @@ import {
   type ApplicationChatEvent,
   type ApplicationIdentity,
 } from '@karaka-ai/sdk'
-import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import type {} from '@deepseek-ai/dsh-cmdline'
 import type {} from '@karaka-ai/server-auth'
+import type {} from '@karaka-ai/browser-auth'
+import { mountBrowserRoutes } from './browser-routes.ts'
 import { json, readObject, writeEvent } from './http.ts'
 
 export const name = 'karaka-transport-http'
-export const inject = ['serverAuth', 'sessionController', 'webServer']
+export const inject = ['serverAuth', 'karakaIdentity', 'agents', 'sessions', 'sessionQuery', 'sessionPersistence', 'agentDefaultModel', 'llm', 'webServer']
 
 /** HTTP transport configuration. */
 export interface Config {
@@ -34,12 +37,22 @@ export interface Config {
   readonly path?: string
   /** Maximum accepted JSON request body size in bytes. */
   readonly maxBodyBytes?: number
+  /** Optional JWT-authenticated browser endpoint; requires browser-auth and explicit origins. */
+  readonly browserPath?: string
+  /** Exact browser origins allowed on browserPath. */
+  readonly browserOrigins?: string[]
+  readonly browserMethods?: ('applicationAgents' | 'applicationCreate' | 'applicationPrompt' | 'applicationHistory' | 'applicationFollow' | 'applicationCancel')[]
+  readonly browserEvents?: ('approval/request' | 'user-questions/request')[]
 }
 
 export const Config: z<Config> = z.object({
   handleQuestions: z.boolean().default(true),
   path: z.string().default(KARAKA_APPLICATION_API_PATH),
   maxBodyBytes: z.natural().default(1_048_576),
+  browserPath: z.string(),
+  browserOrigins: z.array(z.string()),
+  browserMethods: z.array(z.union(['applicationAgents', 'applicationCreate', 'applicationPrompt', 'applicationHistory', 'applicationFollow', 'applicationCancel'])).default(['applicationAgents', 'applicationCreate', 'applicationPrompt', 'applicationHistory', 'applicationFollow', 'applicationCancel']),
+  browserEvents: z.array(z.union(['approval/request', 'user-questions/request'])).default(['approval/request', 'user-questions/request']),
 })
 
 interface PendingInteraction {
@@ -60,6 +73,11 @@ interface ActiveHttpRequest {
 
 /** Mount authenticated application routes onto the shared Host web server. */
 export function apply(ctx: Context, config: Config): void {
+  const appReady = ctx.get('appReady')
+  if (appReady === undefined) throw new Error('Karaka HTTP transport requires launcher readiness')
+  let ready = false
+  ctx.effect(() => appReady.onReady(() => { ready = true }))
+  new ApplicationChatController(ctx)
   const base = normalizeBase(config.path ?? KARAKA_APPLICATION_API_PATH)
   const maxBodyBytes = config.maxBodyBytes ?? 1_048_576
   const pending = new Map<string, PendingInteraction>()
@@ -79,31 +97,44 @@ export function apply(ctx: Context, config: Config): void {
     await Promise.allSettled(activeRequests.keys())
   }, 'karaka-transport-http.pending')
 
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'prefix',
-    path: base,
-    handler: (request, response) => {
-      const controller = new AbortController()
-      const abort = (): void => { controller.abort(new Error('HTTP peer disconnected')) }
-      request.once('aborted', abort)
-      response.once('close', abort)
-      const operation = handleRequest(
-        ctx, base, maxBodyBytes, pending, subscribers, controller, request, response,
-      ).finally(() => {
-        request.off('aborted', abort)
-        response.off('close', abort)
-        activeRequests.delete(operation)
-      })
-      activeRequests.set(operation, { controller, request, response })
-      return operation
-    },
-  }))
+  const mount = (routeBase: string): void => {
+    ctx.effect(() => ctx.webServer.register({
+      kind: 'prefix',
+      path: routeBase,
+      handler: (request, response) => {
+        if (!ready) {
+          json(response, 503, { code: 'STARTING', message: 'Application is starting' })
+          return
+        }
+        const controller = new AbortController()
+        const abort = (): void => { controller.abort(new Error('HTTP peer disconnected')) }
+        request.once('aborted', abort)
+        response.once('close', abort)
+        const operation = handleRequest(
+          ctx, routeBase, maxBodyBytes, pending, subscribers, controller, request, response,
+        ).finally(() => {
+          request.off('aborted', abort)
+          response.off('close', abort)
+          activeRequests.delete(operation)
+        })
+        activeRequests.set(operation, { controller, request, response })
+        return operation
+      },
+    }))
+  }
+  mount(base)
+  if (config.browserPath !== undefined) {
+    if (config.browserOrigins === undefined || config.browserOrigins.length === 0) throw new Error('Browser transport requires explicit origins')
+    const browserBase = normalizeBase(config.browserPath)
+    if (browserBase === base || browserBase.startsWith(`${base}/`) || base.startsWith(`${browserBase}/`)) throw new Error('Browser and backend paths must be disjoint')
+    mountBrowserRoutes(ctx, config, () => ready)
+  }
 
   if (config.handleQuestions === false) return
 
   ctx.on('user-questions/request', async (request, next) => {
     const agent = request.agent
-    const owner = agent?.session.header.applicationOwner
+    const owner = agent === undefined ? undefined : await ctx.karakaIdentity.ownerOf(agent.session)
     if (agent === undefined || owner === undefined) return next()
     const id = randomUUID()
     const deferred: PromiseWithResolvers<AskUserQuestionAnswer> = Promise.withResolvers()
@@ -129,6 +160,7 @@ export function apply(ctx: Context, config: Config): void {
         questions: request.questions,
       })
       request.signal?.addEventListener('abort', abort, { once: true })
+      if (request.signal?.aborted) abort()
       return await deferred.promise
     } finally {
       request.signal?.removeEventListener('abort', abort)
@@ -187,16 +219,20 @@ async function route(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
+  const ownerFor = (body: ApplicationIdentity): ApplicationOwner => {
+    const owner = ownerFrom(applicationId, body)
+    return owner
+  }
   const url = new URL(request.url ?? '/', 'http://karaka.local')
   const relative = url.pathname.slice(base.length)
   if (request.method === 'GET' && relative === '/agents') {
-    json(response, 200, await ctx.sessionController.application.listAgents(controller.signal))
+    json(response, 200, await ctx.karakaApplication.listAgents(controller.signal))
     return
   }
   if (request.method === 'POST' && relative === '/chats') {
     const body = ApplicationCreateChatRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
-    const owner = ownerFrom(applicationId, body)
-    json(response, 201, await ctx.sessionController.application.create({
+    const owner = ownerFor(body)
+    json(response, 201, await ctx.karakaApplication.create({
       chatId: sessionId(body.chatId),
       agentId: body.agentId,
       owner,
@@ -213,8 +249,8 @@ async function route(
   switch (operation) {
     case 'messages': {
       const body = ApplicationPromptRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
-      const owner = ownerFrom(applicationId, body)
-      const result = await ctx.sessionController.application.prompt({
+      const owner = ownerFor(body)
+      const result = await ctx.karakaApplication.prompt({
         chatId,
         requestId: body.requestId,
         owner,
@@ -232,21 +268,21 @@ async function route(
     }
     case 'history': {
       const body = ApplicationAddressRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
-      const owner = ownerFrom(applicationId, body)
-      const events = await ctx.sessionController.application.events({ chatId, owner }, controller.signal)
+      const owner = ownerFor(body)
+      const events = await ctx.karakaApplication.events({ chatId, owner }, controller.signal)
       json(response, 200, { chatId, events: events.flatMap(projectEvent) })
       return
     }
     case 'cancel': {
       const body = ApplicationAddressRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
-      const owner = ownerFrom(applicationId, body)
-      json(response, 200, await ctx.sessionController.application.cancel({ chatId, owner }, controller.signal))
+      const owner = ownerFor(body)
+      json(response, 200, await ctx.karakaApplication.cancel({ chatId, owner }, controller.signal))
       return
     }
     case 'model': {
       const body = ApplicationModelRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
-      const owner = ownerFrom(applicationId, body)
-      json(response, 200, await ctx.sessionController.application.selectModel({
+      const owner = ownerFor(body)
+      json(response, 200, await ctx.karakaApplication.selectModel({
         chatId,
         owner,
         provider: body.provider,
@@ -257,7 +293,7 @@ async function route(
     }
     case 'responses': {
       const body = ApplicationRespondRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
-      const owner = ownerFrom(applicationId, body)
+      const owner = ownerFor(body)
       const interaction = pending.get(body.interactionId)
       if (interaction === undefined || interaction.chatId !== chatId || !sameOwner(interaction.owner, owner)) {
         throw Object.assign(new Error('Interaction is not pending for this chat'), { code: 'CHAT_FORBIDDEN' })
@@ -275,7 +311,7 @@ async function route(
     }
     case 'stream': {
       const body = ApplicationAddressRequestSchema.parse(await readObject(request, maxBodyBytes, controller.signal))
-      const owner = ownerFrom(applicationId, body)
+      const owner = ownerFor(body)
       await stream(ctx, chatId, owner, body.cursor, pending, subscribers, controller, response)
       return
     }
@@ -303,7 +339,7 @@ async function stream(
     directWake.resolve()
   }
   const set = subscribers.get(chatId) ?? new Set()
-  const frames = ctx.sessionController.application.follow({ chatId, owner }, controller.signal)[Symbol.asyncIterator]()
+  const frames = ctx.karakaApplication.follow({ chatId, owner }, controller.signal)[Symbol.asyncIterator]()
   let completed = false
   try {
     const first = await frames.next()
@@ -347,7 +383,7 @@ async function stream(
       if (next.frame.done) break
       durableCursor = next.frame.value.type === 'snapshot'
         ? next.frame.value.cursor
-        : next.frame.value.event.seq
+        : next.frame.value.type === 'event' ? next.frame.value.event.seq : durableCursor
       await writeFollowFrame(response, next.frame.value, cursor, controller.signal)
       nextFrame = frames.next()
     }
@@ -385,6 +421,10 @@ async function writeFollowFrame(
   cursor: number | undefined,
   signal: AbortSignal,
 ): Promise<void> {
+  if (frame.type === 'text-delta') {
+    await writeEvent(response, frame, signal)
+    return
+  }
   if (frame.type === 'snapshot') {
     for (const record of frame.records) {
       if (record.type !== 'event' || (cursor !== undefined && record.event.seq <= cursor)) continue
@@ -463,6 +503,8 @@ function errorCode(error: unknown): string | undefined {
 
 function exposeError(error: unknown): { readonly status: number; readonly code: string; readonly message: string } {
   const code = errorCode(error)
+  if (code === 'forbidden') return { status: 403, code: 'CHAT_FORBIDDEN', message: 'Chat access is forbidden' }
+  if (code === 'unavailable') return { status: 503, code: 'CHAT_UNAVAILABLE', message: 'Chat storage is unavailable' }
   if (code === 'CHAT_FORBIDDEN') return { status: 403, code, message: 'Chat access is forbidden' }
   if (code === 'SESSION_QUERY_SESSION_NOT_FOUND' || code === 'session/not-found') {
     return { status: 404, code: 'CHAT_NOT_FOUND', message: 'Chat not found' }

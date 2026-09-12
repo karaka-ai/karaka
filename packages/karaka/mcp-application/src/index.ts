@@ -1,108 +1,122 @@
-/** Authenticated MCP bridge from Karaka Agent sessions to application-owned tools. */
-
+/** Application MCP bridge, derived from DSH c291e796 with an owned scoped catalog. */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import * as McpClient from '@deepseek-ai/dsh-mcp-client'
-import { ApplicationId } from '@deepseek-ai/dsh-session'
-import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import type { ToolExecution, ToolVisibilityContext } from '@deepseek-ai/dsh-tools'
+import { policyAllows, registerCatalog, watchPolicy } from './policy.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools'
+import { ApplicationId } from '@karaka-ai/identity'
 import type {} from '@karaka-ai/server-auth'
+import { resolveReconnectPolicy, startConnection, type ReconnectConfig } from './connection.ts'
 
-/** Cordis plugin name used by loader diagnostics. */
 export const name = 'karaka-mcp-application'
-
-/** Services required by the authenticated application bridge. */
-export const inject = ['tools', 'serverAuth']
-
-/** One authenticated application MCP endpoint. */
+export const inject = ['tools', 'agents', 'karakaIdentity', 'serverAuth']
 export interface Config {
-  /** Application allowed to receive calls through this endpoint. */
   applicationId: string
-  /** Stable namespace for model-facing tool names. */
   serverName: string
-  /** Streamable HTTP MCP endpoint URL. */
   url: string
-  /** Static headers attached before dynamic authorization. */
   headers: Record<string, string>
-  /** Per-tool-call timeout in milliseconds. */
   toolCallTimeoutMs: number
-  /** Fail activation when initial connection or discovery fails. */
   failOnStartupError: boolean
-  /** Automatic reconnect policy after a lost connection. */
-  reconnect?: McpClient.ReconnectConfig
+  reconnect?: ReconnectConfig
+  /** Only these public MCP tool names are exposed to this application's Agents. */
+  allow: string[]
+  /** Deny overrides the explicit allow list. */
+  deny: string[]
 }
-
-type ConfigInput = Omit<Config, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError'>
-  & Partial<Pick<Config, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError'>>
-
-/** Configuration for one authenticated application MCP endpoint. */
 export const Config = z.object({
   applicationId: z.string().required(),
   serverName: z.string().required().pattern(/^[A-Za-z0-9_-]{1,32}$/),
   url: z.string().required(),
   headers: z.dict(String).default({}),
-  toolCallTimeoutMs: z.number().default(60_000),
-  failOnStartupError: z.boolean().default(false),
+  toolCallTimeoutMs: z.number().min(1).default(60_000),
+  failOnStartupError: z.boolean().default(true),
+  allow: z.array(String).default([]),
+  deny: z.array(String).default([]),
   reconnect: z.object({
     enabled: z.boolean().default(true),
-    initialDelayMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(500),
-    maxDelayMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(30_000),
-    maxAttempts: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(10),
+    initialDelayMs: z.number().min(1).default(500),
+    maxDelayMs: z.number().min(1).default(30_000),
+    maxAttempts: z.number().step(1).min(1).default(10),
   }),
-}) as unknown as z<ConfigInput, Config>
+}) as z<Config>
 
-/**
- * Connect one application MCP endpoint through the shared generic bridge.
- * @param ctx - plugin context carrying tools and server authentication.
- * @param config - resolved application identity and MCP endpoint configuration.
- * @returns startup readiness after authenticated discovery completes.
- */
+/** Hooks owned by this bridge rather than added to upstream Tools or MCP. */
+export interface ApplicationBridge {
+  headers(signal?: AbortSignal): Promise<Record<string, string>>
+  metadata(execution: ToolExecution): Promise<Record<string, unknown>>
+  register(definition: ToolDefinition): () => void
+}
+
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  if (config.applicationId.length === 0) throw new Error('mcp-application: applicationId must not be empty')
   const applicationId = ApplicationId(config.applicationId)
-  const { applicationId: _applicationId, ...endpoint } = config
-  await McpClient.apply(ctx, { transport: 'streamable-http', ...endpoint }, {
-    requestHeaders: async signal => ({
-      authorization: await ctx.serverAuth.authorizeTools(applicationId, signal),
-    }),
-    invocationMeta: execution => ({ karaka: invocationIdentity(execution, applicationId, config.serverName) }),
-    isToolVisible: (_publicName, visibility) => isApplicationToolVisible(visibility, applicationId),
-  })
-}
+  const allowed = new Set(config.allow)
+  const denied = new Set(config.deny)
+  const catalog = new Map<string, ToolDefinition>()
+  const agents = new Map<Agent, Map<string, () => void>>()
 
-function invocationIdentity(
-  execution: Readonly<ToolExecution>,
-  applicationId: ApplicationId,
-  serverName: string,
-): Record<string, string> {
-  const session = execution.agent?.session
-  const owner = session?.header.applicationOwner
-  if (session === undefined || owner === undefined) {
-    throw new Error(`mcp-application(${serverName}): application tool requires an application-owned Agent session`)
+  function registerFor(agent: Agent, definition: ToolDefinition): void {
+    const registrations = agents.get(agent)!
+    if (!allowed.has(definition.name) || denied.has(definition.name) || !policyAllows(agent, definition.name)) return
+    registrations.set(definition.name, agent.ctx.tools.register(definition))
   }
-  if (owner.applicationId !== applicationId) {
-    throw new Error(`mcp-application(${serverName}): session application "${owner.applicationId}" does not match endpoint application "${applicationId}"`)
+  function attach(agent: Agent): void {
+    if (agents.has(agent)) return
+    const owner = ctx.karakaIdentity.ownerOfCached(agent.session)
+    if (owner?.applicationId !== applicationId) return
+    const registrations = new Map<string, () => void>()
+    agents.set(agent, registrations)
+    agent.ctx.effect(() => () => {
+      for (const dispose of registrations.values()) dispose()
+      agents.delete(agent)
+    }, 'karaka-mcp-application.agent')
+    for (const definition of catalog.values()) registerFor(agent, definition)
   }
-  return {
-    applicationId: owner.applicationId,
-    tenantId: owner.tenantId,
-    userId: owner.userId,
-    chatId: session.id,
+  const bridge: ApplicationBridge = {
+    async headers(signal) {
+      return { authorization: await ctx.serverAuth.authorizeTools(applicationId, signal) }
+    },
+    async metadata(execution) {
+      if (execution.agent === undefined) throw new Error('Application tool requires an Agent')
+      const owner = await ctx.karakaIdentity.ownerOf(execution.agent.session)
+      if (owner?.applicationId !== applicationId) throw new Error('Application tool owner does not match endpoint')
+      if (!allowed.has(execution.name) || denied.has(execution.name) || !policyAllows(execution.agent, execution.name)) throw new Error('Application tool is not allowed')
+      return { karaka: { ...owner, chatId: execution.agent.session.id } }
+    },
+    register(definition) {
+      if (catalog.has(definition.name)) throw new Error(`Duplicate application MCP tool: ${definition.name}`)
+      catalog.set(definition.name, definition)
+      const unregisterCatalog = registerCatalog(ctx, definition.name)
+      try {
+        for (const agent of agents.keys()) registerFor(agent, definition)
+      } catch (error) {
+        remove()
+        throw error
+      }
+      function remove() {
+        unregisterCatalog()
+        catalog.delete(definition.name)
+        for (const registrations of agents.values()) {
+          registrations.get(definition.name)?.()
+          registrations.delete(definition.name)
+        }
+      }
+      return remove
+    },
   }
-}
-
-function isApplicationToolVisible(
-  visibility: Readonly<ToolVisibilityContext>,
-  applicationId: ApplicationId,
-): boolean {
-  if (!visibility.inherited || !visibility.explicitlyAllowed) return false
-  const scope = visibility.scope
-  if (scope === undefined || !('session' in scope)) return false
-  const session = scope.session
-  if (typeof session !== 'object' || session === null || !('header' in session)) return false
-  const header = session.header
-  if (typeof header !== 'object' || header === null || !('applicationOwner' in header)) return false
-  const owner = header.applicationOwner
-  return typeof owner === 'object' && owner !== null
-    && 'applicationId' in owner && owner.applicationId === applicationId
+  ctx.effect(() => watchPolicy(ctx, () => {
+    for (const [agent, registrations] of agents) {
+      for (const dispose of registrations.values()) dispose()
+      registrations.clear()
+      for (const definition of catalog.values()) registerFor(agent, definition)
+    }
+  }), 'karaka-mcp-application.policy')
+  ctx.on('agent/created', ({ agent }) => attach(agent), { global: true })
+  // Application roots and children are published only after their trusted identity setup.
+  for (const agent of ctx.agents.list()) attach(agent)
+  const connection = startConnection(ctx, config, resolveReconnectPolicy(config.reconnect, name), bridge)
+  ctx.effect(() => () => connection.dispose(), 'karaka-mcp-application.connection')
+  const outcome = await connection.ready
+  if (outcome.error !== undefined && config.failOnStartupError) {
+    throw new Error(`Application MCP ${config.serverName} could not start`, { cause: outcome.error })
+  }
 }

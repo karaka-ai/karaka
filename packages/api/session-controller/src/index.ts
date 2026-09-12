@@ -1,18 +1,17 @@
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 
-import type {} from '@deepseek-ai/dsh-client-connection'
-import type {} from '@deepseek-ai/dsh-api-gateway'
+import { hostname } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { errorChain } from '@deepseek-ai/dsh-llm'
-import { canOpenNativePath, openNativePath } from '@deepseek-ai/dsh-native-command'
+import type {} from '@deepseek-ai/dsh-client-file-upload'
+import { canOpenNativePath, nativeFileManager, openNativePath, revealNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import {
   ApiSessionAgentController,
-  apiSessionApplicationOwnershipError,
   inspectApiSession,
   type ApiSessionAgentResult,
 } from './agent.ts'
@@ -20,18 +19,13 @@ import { SessionCommandController } from './commands.ts'
 import { SessionControlController } from './control.ts'
 import { SessionHistoryController } from './history.ts'
 import { SessionFileReferences } from './file-references.ts'
-import {
-  ApiSessionList,
-  DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
-  DEFAULT_COLD_BLANK_PROBE_MAX_EVENTS,
-} from './list.ts'
+import { ApiSessionList } from './list.ts'
 import { buildModelCatalog } from './catalog.ts'
 import { installModelSelectionProjection } from './model-selection-projection.ts'
 import { SessionSkillCatalog } from './skill-catalog.ts'
-import { ApplicationChatController, type ApplicationChatAddress, type ApplicationChatCreate, type ApplicationChatPrompt, type ApplicationAgentRow } from './application.ts'
+import { SessionMediaReferences } from './media-references.ts'
 import type {
   ModelCatalog,
-  SessionWireEvent,
   SessionAttachmentRequest,
   SessionAttachmentValue,
   SessionCancelRequest,
@@ -65,7 +59,6 @@ export type * from './types.ts'
 export { ApiSessionNotFound } from './agent.ts'
 export { SessionFileReferences } from './file-references.ts'
 export { SessionSkillCatalog } from './skill-catalog.ts'
-export type * from './application.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -76,20 +69,16 @@ declare module '@deepseek-ai/cordis' {
 
 /** Session Controller deployment policy. */
 export interface Config {
-  /** Maximum stat-reported event count eligible for one full cold projection observation; `0` disables the event-count gate. */
-  readonly coldBlankProbeMaxEvents?: number
-  /** Maximum stat-reported artifact byte size eligible for one full cold projection observation; `0` disables the byte-size gate. */
-  readonly coldBlankProbeMaxBytes?: number
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
-  /** Milliseconds an idle application Agent remains live before cold-resume eviction. */
-  readonly applicationIdleMs?: number
 }
 
 /** Host integrations replaceable by direct unit tests. */
 export interface SessionControllerInternals {
   /** Native default-application handoff. */
   readonly openPath?: (path: string, signal: AbortSignal) => Promise<void>
+  /** Native file-manager handoff. */
+  readonly revealPath?: (path: string, signal: AbortSignal) => Promise<void>
   /** Native handoff availability probe. */
   readonly canOpenPath?: () => boolean
 }
@@ -100,6 +89,7 @@ export class SessionController extends TypertRemoteService {
     'agentDefaultModel',
     'agents',
     'attachments',
+    'fileUploads',
     'llm',
     'sessions',
     'sessionProjections',
@@ -109,33 +99,34 @@ export class SessionController extends TypertRemoteService {
   ]
 
   static Config: z<Config> = z.object({
-    coldBlankProbeMaxEvents: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_EVENTS),
-    coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     nativeOpen: z.boolean(),
-    applicationIdleMs: z.natural().min(1).default(300_000),
   })
 
   private readonly agents: ApiSessionAgentController
   private readonly commands: SessionCommandController
   private readonly controlState: SessionControlController
   private readonly history: SessionHistoryController
-  /** Host-only application chat operations used by authenticated transports. */
-  readonly application: ApplicationChatController
   private readonly listState: ApiSessionList
   private readonly openPath: (path: string, signal: AbortSignal) => Promise<void>
+  private readonly revealPath: (path: string, signal: AbortSignal) => Promise<void>
   private readonly canOpenPath: () => boolean
   private readonly promotions = new Set<Promise<void>>()
 
   /**
    * @param ctx - Host context containing the Session capability assembly.
-   * @param config - cold-list observation and native-opener deployment policy.
+   * @param config - native-opener deployment policy.
    * @param internals - host integrations replaceable by direct unit tests.
    */
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
     installModelSelectionProjection(ctx)
-    this.agents = new ApiSessionAgentController(ctx, config.applicationIdleMs ?? 300_000)
+    this.agents = new ApiSessionAgentController(ctx)
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
+    ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
+      const result = await this.agents.resolveAgent(sessionId)
+      if ('error' in result) throw result.error
+      return result.agent
+    }), 'session-controller: file-upload Agent resolver')
     this.controlState = new SessionControlController(ctx)
     // Registered before history so reverse-order teardown closes every
     // follower before waiting for already-admitted promotions.
@@ -143,31 +134,25 @@ export class SessionController extends TypertRemoteService {
       await Promise.allSettled([...this.promotions])
     }, 'session-controller.promotions')
     this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation) })
-    this.application = new ApplicationChatController(ctx, this.agents, this.commands)
-    this.listState = new ApiSessionList(ctx, {
-      coldBlankProbeMaxEvents: config.coldBlankProbeMaxEvents ?? DEFAULT_COLD_BLANK_PROBE_MAX_EVENTS,
-      coldBlankProbeMaxBytes: config.coldBlankProbeMaxBytes ?? DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
-    })
+    this.listState = new ApiSessionList(ctx)
     this.openPath = internals.openPath ?? openNativePath
+    this.revealPath = internals.revealPath ?? revealNativePath
     this.canOpenPath = internals.canOpenPath
       ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()))
     ctx.plugin(SessionFileReferences)
+    ctx.plugin(SessionMediaReferences)
     ctx.plugin(SessionSkillCatalog)
 
     ctx.on('session/created', (session) => {
-      if (session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/added', this.listState.summaryFor(session))
     })
     ctx.on('session/disposed', (session) => {
-      if (session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/removed', session.id)
     })
     ctx.on('agent/status', ({ agent, status }) => {
-      if (agent.session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/status', agent.id, status === 'running')
     })
     ctx.on('agent/error', ({ agent, error }) => {
-      if (agent.session.header.applicationOwner !== undefined) return
       ctx.emit('api-session/error', agent.id, errorChain(error))
     })
     ctx.on('session/event', (session, event) => {
@@ -180,7 +165,6 @@ export class SessionController extends TypertRemoteService {
           event.data.header.config.reasoningEffort,
         )
       }
-      if (session.header.applicationOwner !== undefined) return
       if (event.type !== 'user/message' || event.data.source.kind !== 'user') return
       ctx.emit('api-session/activity', session.id, event.time)
     })
@@ -197,81 +181,6 @@ export class SessionController extends TypertRemoteService {
     })
     this.promotions.add(task)
     void task.finally(() => { this.promotions.delete(task) })
-  }
-
-  private applicationOwner(): ApplicationChatAddress['owner'] {
-    const caller = this.ctx.connectionCaller
-    if (caller?.kind !== 'application' || caller.expiresAt <= Date.now()) {
-      throw new RemoteError('gateway/forbidden', 'authenticated application user required', { endpoint: 'session/application' })
-    }
-    return caller.owner
-  }
-
-  /**
-   * List the deployment's application Agent Presets.
-   * @param signal - caller cancellation.
-   * @returns application-facing preset descriptions.
-   */
-  @Remote
-  applicationAgents(signal: AbortSignal): Promise<readonly ApplicationAgentRow[]> {
-    this.applicationOwner()
-    return this.application.listAgents(signal)
-  }
-
-  /**
-   * Create an application chat owned by the authenticated caller.
-   * @param request - chat and preset identities.
-   * @param signal - caller cancellation.
-   * @returns the accepted chat and preset identities.
-   */
-  @Remote
-  applicationCreate(request: Omit<ApplicationChatCreate, 'owner'>, signal: AbortSignal): Promise<{ readonly chatId: SessionId; readonly agentId: string }> {
-    return this.application.create({ ...request, owner: this.applicationOwner() }, signal)
-  }
-
-  /**
-   * Send an idempotent message to the caller's chat.
-   * @param request - chat, request id, and message content.
-   * @param signal - caller cancellation before admission.
-   * @returns admission receipt.
-   */
-  @Remote
-  applicationPrompt(request: Omit<ApplicationChatPrompt, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true; readonly duplicate: boolean }> {
-    return this.application.prompt({ ...request, owner: this.applicationOwner() }, signal)
-  }
-
-  /**
-   * Read the caller's durable chat history.
-   * @param request - chat identity.
-   * @param signal - caller cancellation.
-   * @returns persisted session events after ownership verification.
-   */
-  @Remote
-  applicationHistory(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<readonly SessionWireEvent[]> {
-    return this.application.events({ ...request, owner: this.applicationOwner() }, signal)
-      .then(events => events as unknown as readonly SessionWireEvent[])
-  }
-
-  /**
-   * Follow the caller's chat from a complete snapshot on each connection.
-   * @param request - chat identity.
-   * @param signal - stream lifetime.
-   * @returns snapshot and subsequent committed events.
-   */
-  @Remote({ mode: 'stream' })
-  applicationFollow(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): AsyncIterable<SessionFollowFrame> {
-    return this.application.follow({ ...request, owner: this.applicationOwner() }, signal)
-  }
-
-  /**
-   * Cancel the caller's active chat turn.
-   * @param request - chat identity.
-   * @param signal - caller cancellation.
-   * @returns cancellation acknowledgement.
-   */
-  @Remote
-  applicationCancel(request: Omit<ApplicationChatAddress, 'owner'>, signal: AbortSignal): Promise<{ readonly accepted: true }> {
-    return this.application.cancel({ ...request, owner: this.applicationOwner() }, signal)
   }
 
   /**
@@ -295,12 +204,10 @@ export class SessionController extends TypertRemoteService {
   ): Promise<SessionInspection> {
     const attached = this.ctx.sessions.get(sessionId)
     if (attached !== undefined) {
-      if (attached.header.applicationOwner !== undefined) {
-        return Promise.reject(apiSessionApplicationOwnershipError(sessionId))
-      }
       return Promise.resolve({
         meta: attached.header,
         inheritedEventCount: attached.inheritedEventCount,
+        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
         events: attached.snapshotEvents(),
       })
     }
@@ -368,6 +275,15 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
+   * Describe the serving desktop for authenticated file-action routes.
+   * @returns Host name, configured availability, and platform-specific file-manager behavior.
+   */
+  workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 'explorer' | 'directory' | null } {
+    const fileManager = nativeFileManager()
+    return { name: hostname(), available: fileManager !== null && this.canOpenPath(), fileManager }
+  }
+
+  /**
    * Open one path prepared by a Session-aware caller on the Host desktop.
    * @param request - path after best-effort Session workspace resolution.
    * @param signal - caller lifetime; abort terminates the native command.
@@ -388,7 +304,8 @@ export class SessionController extends TypertRemoteService {
     }
     signal.throwIfAborted()
     try {
-      await this.openPath(request.path, signal)
+      if (request.action === 'reveal') await this.revealPath(request.path, signal)
+      else await this.openPath(request.path, signal)
       return { opened: true }
     } catch (error: unknown) {
       if (signal.aborted) throw new RemoteError('gateway/cancelled', 'path open was aborted', {})
@@ -477,7 +394,8 @@ export class SessionController extends TypertRemoteService {
    * Follow one Session log from its opening or resume cursor.
    * @param request - durable address and last committed sequence already held by the caller.
    * @param signal - cancellation owned by the Remote stream carrier.
-   * @returns a complete opening snapshot followed by gap-free event frames.
+   * @returns a complete opening snapshot followed by gap-free durable event
+   *   frames and optional cursorless assistant-stream frames.
    */
   @Remote({ mode: 'stream' })
   follow(request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<SessionFollowFrame> {

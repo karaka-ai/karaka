@@ -111,8 +111,8 @@ function validateEvent(
       nextStep += 1
       break
     }
-    case 'assistant/chunk': {
-      requireOpenStep(trace, 'assistant/chunk', event.data.turn, event.data.step, fail)
+    case 'assistant/attempt': {
+      requireOpenStep(trace, 'assistant/attempt', event.data.turn, event.data.step, fail)
       break
     }
     case 'assistant/message': {
@@ -140,6 +140,10 @@ function validateEvent(
         fail(`tool/result for ${callId} with no prior tool/call in this step`)
       }
       pendingCalls = { kind: 'delete', callId }
+      break
+    }
+    case 'system/message': {
+      requireOpenStep(trace, 'system/message', event.data.turn, event.data.step, fail)
       break
     }
     case 'user/message':
@@ -206,6 +210,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
   const seedSession = (session: Session): SessionTrace => {
     const trace = freshTrace()
     traces.set(session, trace)
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     for (const event of session.snapshotEvents()) {
       applyTransition(trace, validateEvent(trace, event, fail))
     }

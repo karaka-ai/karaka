@@ -9,6 +9,7 @@ import type {
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   SessionAddress,
+  SessionAssistantStreamBaseline,
   SessionControlBaseline,
   SessionControlFrame,
   SessionFollowFrame,
@@ -27,11 +28,7 @@ import {
   type RemoteStreamOptions,
 } from '@deepseek-ai/dsh-api-gateway/client'
 import type { SessionRemotes } from '../src/client/sessions/remotes.ts'
-import { historyRecordLastSeq } from '../src/client/sessions/history-records.ts'
-
-function applicationNotMounted(): never {
-  throw new Error('application browser methods are not mounted by the Host UI fixture')
-}
+import { followSnapshot, pageThrough } from './remote/history.client.ts'
 
 const AVAILABLE_STREAM_CONNECTION = {
   generation: {
@@ -162,6 +159,9 @@ export class FakeApiClient {
     jobs: {},
     projections: {},
   }
+  assistantStreamBaseline: SessionAssistantStreamBaseline = {
+    revision: 0,
+  }
   workspaceBaseline: Extract<WorkspaceFollowFrame, { type: 'baseline' }>['value'] = {
     items: [],
     archivedSessionIds: [],
@@ -204,12 +204,6 @@ export class FakeApiClient {
         execute: () => Promise.resolve({ ok: true, value: undefined }),
       },
       session: {
-        applicationAgents: applicationNotMounted,
-        applicationCreate: applicationNotMounted,
-        applicationPrompt: applicationNotMounted,
-        applicationHistory: applicationNotMounted,
-        applicationFollow: applicationNotMounted,
-        applicationCancel: applicationNotMounted,
         canOpenWorkspacePath: () => Promise.resolve(ok(true)),
         list: payload => this.record('session.list', payload, this.onList(payload)),
         modelCatalog: () => Promise.resolve({
@@ -286,7 +280,7 @@ export class FakeApiClient {
   /** Push one live Session event to every follower of that Session. */
   async pushFollow(
     sessionId: SessionId,
-    frame: Extract<SessionFollowFrame, { type: 'event' }>,
+    frame: Exclude<SessionFollowFrame, { type: 'snapshot' }>,
   ): Promise<void> {
     await Promise.all([...(this.followConns.get(sessionId) ?? [])].map(conn => new Promise<void>((resolve) => {
       conn.feed({ kind: 'frame', value: frame, delivered: resolve })
@@ -368,11 +362,7 @@ export class FakeApiClient {
     if (!result.ok) return result
     return {
       ok: true,
-      value: {
-        ...result.value,
-        records: result.value.records
-          .filter(record => historyRecordLastSeq(record) <= request.throughSeq),
-      },
+      value: pageThrough(result.value, request.throughSeq),
     }
   }
 
@@ -393,23 +383,7 @@ export class FakeApiClient {
       })
       if (!response.ok) throw response.error
       const page = response.value
-      const tail = page.records.at(-1)
-      const cursor = this.followCursor ?? (tail === undefined ? -1 : historyRecordLastSeq(tail))
-      yield {
-        type: 'snapshot',
-        header: {
-          version: 0,
-          id: sessionId,
-          createdAt: 0,
-          ...(request.address.kind === 'subagent'
-            ? { origin: 'subagent' as const, parentSession: request.address.parentSessionId }
-            : {}),
-        },
-        cursor,
-        records: page.records.filter(record => historyRecordLastSeq(record) <= cursor),
-        hasMore: page.hasMore,
-        projections: page.projections ?? { asOfSeq: cursor, values: {} },
-      }
+      yield followSnapshot(page, request, this.followCursor, this.assistantStreamBaseline)
       yield* stream.values
     } finally {
       stream.dispose()

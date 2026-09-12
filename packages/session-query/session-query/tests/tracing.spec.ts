@@ -12,6 +12,7 @@ import SessionPersistence, {
 import type {
   SessionAccess,
   SessionHandle,
+  SessionHandleReadResult,
   SessionPersistenceSnapshot,
 } from '@deepseek-ai/dsh-session-persistence'
 import { type SessionQueryErrorCode } from '@deepseek-ai/dsh-session-query'
@@ -49,12 +50,12 @@ class TraceHandle implements SessionHandle {
     readonly access: SessionAccess,
   ) {}
 
-  read(): Promise<readonly SessionEvent[]> {
+  read(): Promise<SessionHandleReadResult> {
     TracePersistence.readCalls += 1
     if (TracePersistence.readFailure !== undefined) return Promise.reject(TracePersistence.readFailure)
     const entry = TracePersistence.entries.get(this.id)
     if (entry === undefined) return Promise.reject(new SessionPersistenceNotFoundError(this.id))
-    return Promise.resolve(structuredClone(entry.events))
+    return Promise.resolve({ eventState: 'detached', events: structuredClone(entry.events) })
   }
 
   append(): Promise<void> {
@@ -141,10 +142,10 @@ function expectCode(code: SessionQueryErrorCode): Error {
 function appendTraceEvents(session: Session): void {
   session.append('turn/start', { turn: 1 })
   session.append('step/start', { turn: 1, step: 1 })
-  session.append('assistant/chunk', {
+  session.append('assistant/attempt', {
     turn: 1,
     step: 1,
-    chunk: { type: 'text-delta', index: 0, text: 'draft' },
+    stream: [{ type: 'text-chunks', time0: 0, index: 0, dt: [], texts: ['draft'] }],
   })
   session.append(
     'user/message',
@@ -154,19 +155,15 @@ function appendTraceEvents(session: Session): void {
     { surfaceOp: 'append', sourceEventSeqs: [SessionSeq(2)] },
   )
   session.append(
-    'assistant/message',
+    'user/message',
+    createUserMessage({
+      content: [{ type: 'text', text: 'summary one' }],
+      source: { kind: 'plugin', plugin: 'test' },
+    }),
     {
-      turn: 1, step: 1,
-      message: createMessage({
-        role: 'assistant',
-        content: [{ type: 'text', text: 'summary one' }],
-        source: {
-          kind: 'model',
-          ...{ provider: 'mock', model: 'mock' },
-        },
-      }),
+      surfaceOp: { op: 'replace', startSeq: SessionSeq(3), endSeq: SessionSeq(3) },
+      sourceEventSeqs: [SessionSeq(3), SessionSeq(2)],
     },
-    { surfaceOp: { op: 'replace', start: SessionSeq(3), end: SessionSeq(3) }, sourceEventSeqs: [SessionSeq(3), SessionSeq(2)] },
   )
   session.append(
     'user/message',
@@ -178,19 +175,15 @@ function appendTraceEvents(session: Session): void {
   session.append('step/end', { turn: 1, step: 1 })
   session.append('step/start', { turn: 1, step: 2 })
   session.append(
-    'assistant/message',
+    'user/message',
+    createUserMessage({
+      content: [{ type: 'text', text: 'summary two' }],
+      source: { kind: 'plugin', plugin: 'test' },
+    }),
     {
-      turn: 1, step: 2,
-      message: createMessage({
-        role: 'assistant',
-        content: [{ type: 'text', text: 'summary two' }],
-        source: {
-          kind: 'model',
-          ...{ provider: 'mock', model: 'mock' },
-        },
-      }),
+      surfaceOp: { op: 'replace', startSeq: SessionSeq(4), endSeq: SessionSeq(4) },
+      sourceEventSeqs: [SessionSeq(2), SessionSeq(4)],
     },
-    { surfaceOp: { op: 'replace', start: SessionSeq(4), end: SessionSeq(4) }, sourceEventSeqs: [SessionSeq(2), SessionSeq(4)] },
   )
 }
 
@@ -420,6 +413,7 @@ describe('session event tracing', () => {
       seq: SessionSeq(1),
       time: 2,
       data: {
+        stream: [],
         turn: 1, step: 1,
         message: createMessage({
           role: 'assistant',
@@ -430,8 +424,7 @@ describe('session event tracing', () => {
           },
         }),
       },
-      surfaceOp: { op: 'replace', start: SessionSeq(9), end: SessionSeq(9) },
-      sourceEventSeqs: [],
+      surfaceOp: { op: 'replace', startSeq: SessionSeq(9), endSeq: SessionSeq(9) },
     }]
     TracePersistence.reset([{ meta: bad, events: malformed }])
     const ctx = await queryContext()
@@ -470,12 +463,18 @@ describe('session event tracing', () => {
     ]],
     ['replacement without sources', [
       appendEvent(0),
-      { ...appendEvent(1), surfaceOp: { op: 'replace', start: 0, end: 0 } },
+      { ...appendEvent(1), surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 } },
     ]],
     ['replacement missing a shadowed source', [
-      { type: 'assistant/chunk', seq: SessionSeq(0), time: 1, data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'draft' } } },
-      appendEvent(1),
-      { ...appendEvent(2, [0]), surfaceOp: { op: 'replace', start: 1, end: 1 } },
+      {
+        type: 'assistant/attempt', seq: 0, time: 1,
+        data: {
+          turn: 1, step: 1,
+          stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['draft'] }],
+        },
+      },
+      appendEvent(SessionSeq(1)),
+      { ...appendEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 1, endSeq: 1 } },
     ]],
   ] as const)('rejects an invalid surface log: %s', async (_name, rawEvents) => {
     const durable = header('invalid-provenance')

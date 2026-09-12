@@ -145,9 +145,6 @@ export function childSessionMeta(
   return {
     ...parentHeader.cwd !== undefined ? { cwd: parentHeader.cwd } : {},
     ...agentPreset === undefined ? {} : { agentPreset },
-    ...parentHeader.applicationOwner === undefined
-      ? {}
-      : { applicationOwner: parentHeader.applicationOwner },
     parentSession: parentHeader.id,
     isSeeded,
     // Navigation classification only; the descriptor remains the authority
@@ -212,8 +209,8 @@ export function applyChildComposition(
   })
   if (composition.persona !== undefined) {
     childCtx.systemPrompt.section({
-      name: 'deployment:persona',
-      order: childCtx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA'),
+      name: 'deployment:persona-prefix',
+      order: childCtx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
       text: composition.persona,
     })
   }

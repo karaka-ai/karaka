@@ -7,7 +7,6 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
@@ -31,6 +30,7 @@ import {
   type ResponsesBehavior,
   type ResponsesFixture,
 } from './responses-fixture.ts'
+import { cleanupRealProduct } from './real-product-cleanup.ts'
 
 const execFileAsync = promisify(execFile)
 const packageRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -47,13 +47,7 @@ const roots: string[] = []
 const fixtures: ResponsesFixture[] = []
 const contexts: Context[] = []
 
-afterEach(async () => {
-  await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
-  await Promise.all(fixtures.splice(0).map(fixture => fixture.close()))
-  for (const root of roots.splice(0)) {
-    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
-  }
-})
+afterEach(() => cleanupRealProduct({ contexts, fixtures, roots }))
 
 interface RealHarness {
   readonly ctx: Context
@@ -214,18 +208,18 @@ function responseInputTexts(body: Record<string, unknown>): string[] {
   })
 }
 
-describe('real @openai/codex 0.149.1 product', () => {
+describe('real @openai/codex 0.153.4 product', () => {
   it('starts approve-for-me through the real app-server and returns exact text', async () => {
     const sentinel = 'REAL_CODEX_SENTINEL_0_149_1'
     const task = 'Return the fixture sentinel exactly.'
     const { harness, fixture } = await realHarness([
       { kind: 'complete', text: sentinel },
     ], 'approve-for-me')
-    expect(codexPackage.version).toBe('0.149.1')
+    expect(codexPackage.version).toBe('0.153.4')
     const version = await execFileAsync(process.execPath, [codexEntry, '--version'], {
       env: { ...process.env, ...harness.env },
     })
-    expect(version.stdout.trim()).toBe('codex-cli 0.149.1')
+    expect(version.stdout.trim()).toBe('codex-cli 0.153.4')
     const schemaRoot = mkdtempSync(join(tmpdir(), 'dsh-codex-schema-'))
     roots.push(schemaRoot)
     await execFileAsync(process.execPath, [
@@ -481,22 +475,26 @@ describe('real @openai/codex 0.149.1 product', () => {
     const sideEffect = 'bypass-side-effect'
     const { harness, fixture } = await realHarness((workspace): readonly ResponsesBehavior[] => {
       const target = join(workspace, sideEffect)
-      const release = join(workspace, 'release-command')
       const command = process.platform === 'win32'
-        ? `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "while (-not (Test-Path -LiteralPath '${release.replaceAll("'", "''")}')) { Start-Sleep -Milliseconds 20 }; Set-Content -LiteralPath '${target.replaceAll("'", "''")}' -Value 'bypass' -NoNewline"`
-        : `while [ ! -f ${JSON.stringify(release)} ]; do sleep 0.02; done; printf bypass > ${JSON.stringify(target)}`
+        ? `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "Set-Content -LiteralPath '${target.replaceAll("'", "''")}' -Value 'bypass' -NoNewline"`
+        : `printf bypass > ${JSON.stringify(target)}`
       const commandCalls = [
         {
           name: 'exec_command',
           arguments: {
             cmd: command,
-            yield_time_ms: 1,
+          },
+        },
+        {
+          name: 'shell_command',
+          arguments: {
+            command,
           },
         },
       ] as const
       return [
         { kind: 'advertisedFunctionCall', choices: commandCalls },
-        { kind: 'completeAfterCommand', text: 'bypass complete' },
+        { kind: 'complete', text: 'bypass complete' },
       ]
     }, 'dangerously-bypass-approvals-and-sandbox')
     const target = join(harness.workspace, sideEffect)
@@ -505,10 +503,6 @@ describe('real @openai/codex 0.149.1 product', () => {
       parent: harness.parent,
       signal: new AbortController().signal,
     })
-    // Both exec_command and its first write_stdin return while the write is blocked.
-    await expect.poll(() => fixture.requests.length, { timeout: 30_000 }).toBeGreaterThanOrEqual(3)
-    expect(existsSync(target)).toBe(false)
-    writeFileSync(join(harness.workspace, 'release-command'), '')
     await expect(run.result).resolves.toEqual({
       output: [{ type: 'text', text: 'bypass complete' }],
       stopReason: 'completed',

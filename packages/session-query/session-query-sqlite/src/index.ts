@@ -5,18 +5,11 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { DatabaseSync } from 'node:sqlite'
 import { Context, Service, type Fiber } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type {
-  ApplicationOwner,
-  Session,
-  SessionEvent,
-  SessionHeader,
-  SessionId,
-  SessionLogOffset,
-} from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type {
   SessionPersistenceRevision,
@@ -183,9 +176,6 @@ interface SessionHeaderRow {
   seed_length: number | null
   delegation_depth: number | null
   agent_preset: string | null
-  application_id: string | null
-  tenant_id: string | null
-  user_id: string | null
 }
 
 interface SearchRow extends SessionHeaderRow {
@@ -598,9 +588,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     db.prepare(`
       INSERT INTO persisted_sessions
-        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset,
-         application_id, tenant_id, user_id, revision, generation)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, revision, generation)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       ...headerBindings(entry.header, entry.inheritedEventCount),
       revision,
@@ -629,9 +618,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     db.prepare(`
       INSERT INTO temp.live_sessions
-        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset,
-         application_id, tenant_id, user_id, fingerprint, persisted, generation)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, fingerprint, persisted, generation)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       ...headerBindings(entry.header, entry.inheritedEventCount),
       entry.fingerprint,
@@ -728,8 +716,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     const live = db.prepare(
       `SELECT
-        id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth,
-        agent_preset, application_id, tenant_id, user_id, generation
+        id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, generation
       FROM temp.live_sessions
       WHERE id = ?`,
     ).get(sessionId) as (SessionHeaderRow & { generation: number }) | undefined
@@ -739,8 +726,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     if (persistenceBinding.service !== undefined) {
       const persisted = db.prepare(
         `SELECT
-          id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth,
-          agent_preset, application_id, tenant_id, user_id, generation
+          id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, generation
         FROM persisted_sessions
         WHERE id = ?`,
       ).get(sessionId) as (SessionHeaderRow & { generation: number }) | undefined
@@ -807,9 +793,6 @@ function headerBindings(
     header.isSeeded ? inheritedEventCount : null,
     header.delegationDepth ?? null,
     header.agentPreset ?? null,
-    header.applicationOwner?.applicationId ?? null,
-    header.applicationOwner?.tenantId ?? null,
-    header.applicationOwner?.userId ?? null,
   ]
 }
 
@@ -825,9 +808,6 @@ function selectedDocumentsSql(): { sql: string } {
         ps.seed_length AS seed_length,
         ps.delegation_depth AS delegation_depth,
         ps.agent_preset AS agent_preset,
-        ps.application_id AS application_id,
-        ps.tenant_id AS tenant_id,
-        ps.user_id AS user_id,
         0 AS live,
         1 AS persisted,
         CAST(pd.seq AS INTEGER) AS seq,
@@ -851,9 +831,6 @@ function selectedDocumentsSql(): { sql: string } {
         ls.seed_length AS seed_length,
         ls.delegation_depth AS delegation_depth,
         ls.agent_preset AS agent_preset,
-        ls.application_id AS application_id,
-        ls.tenant_id AS tenant_id,
-        ls.user_id AS user_id,
         1 AS live,
         CASE WHEN ? = 1 THEN ls.persisted ELSE 0 END AS persisted,
         CAST(ld.seq AS INTEGER) AS seq,
@@ -894,6 +871,7 @@ function selectedDocumentsParams(query: string, persistenceVisible: boolean): Ar
 }
 
 function observeLive(session: Session): ObservedSession {
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
   return observeSession(session.header, session.inheritedEventCount, session.snapshotEvents())
 }
 
@@ -960,22 +938,18 @@ function sameSessionIds(
 }
 
 function sameHeader(a: SessionHeader, b: SessionHeader): boolean {
-  return a.version === b.version
-    && a.id === b.id
+  return a.id === b.id
     && a.createdAt === b.createdAt
     && a.cwd === b.cwd
     && a.parentSession === b.parentSession
     && a.isSeeded === b.isSeeded
     && (a.delegationDepth ?? 0) === (b.delegationDepth ?? 0)
     && a.agentPreset === b.agentPreset
-    && a.applicationOwner?.applicationId === b.applicationOwner?.applicationId
-    && a.applicationOwner?.tenantId === b.applicationOwner?.tenantId
-    && a.applicationOwner?.userId === b.applicationOwner?.userId
 }
 
 function rowHeader(row: SessionHeaderRow): SessionHeader {
   return {
-    version: row.version,
+    version: SESSION_FORMAT_VERSION,
     id: row.session_id as SessionId,
     createdAt: row.created_at,
     ...row.cwd === null ? {} : { cwd: row.cwd },
@@ -983,13 +957,6 @@ function rowHeader(row: SessionHeaderRow): SessionHeader {
     isSeeded: row.seed_length !== null,
     ...row.delegation_depth === null ? {} : { delegationDepth: row.delegation_depth },
     ...row.agent_preset === null ? {} : { agentPreset: row.agent_preset },
-    ...row.application_id === null ? {} : {
-      applicationOwner: {
-        applicationId: row.application_id as ApplicationOwner['applicationId'],
-        tenantId: row.tenant_id as ApplicationOwner['tenantId'],
-        userId: row.user_id as ApplicationOwner['userId'],
-      },
-    },
   }
 }
 

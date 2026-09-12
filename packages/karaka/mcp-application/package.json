@@ -1,8 +1,10 @@
 {
   "name": "@karaka-ai/mcp-application",
-  "private": true,
-  "description": "Authenticated MCP bridge from Karaka agents to application tools",
-  "version": "0.1.2-alpha.2",
+  "description": "Application-owned MCP catalog with authenticated execution",
+  "version": "0.1.2-alpha.3",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/karaka-ai/karaka.git",
@@ -12,31 +14,54 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
-    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
-    "./package.json": "./package.json"
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./tool-policy": {
+      "types": "./lib/types/tool-policy.d.ts",
+      "default": "./lib/tool-policy.js"
+    }
   },
-  "files": ["lib/index.js", "lib/types/**/*.d.ts"],
+  "files": [
+    "lib/**/*.js",
+    "UPSTREAM.json",
+    "lib/types/**/*.d.ts"
+  ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-mcp-client": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@karaka-ai/server-auth": "workspace:^"
-  },
-  "dependencies": { "@deepseek-ai/schemastery": "workspace:^" },
-  "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-attachment": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-mcp-client": "workspace:^",
     "@deepseek-ai/dsh-scope": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
+    "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-timeout": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
-    "@karaka-ai/sdk": "workspace:^",
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@karaka-ai/identity": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
+    "@deepseek-ai/dsh-agent-tool-presentation": "workspace:^",
+    "@deepseek-ai/dsh-util-values": "workspace:^"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@deepseek-ai/schemastery": "workspace:^",
     "zod": "^4.4.3"
-  }
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-attachment": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-scope": "workspace:^",
+    "@deepseek-ai/dsh-subprocess": "workspace:^",
+    "@deepseek-ai/dsh-timeout": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@karaka-ai/identity": "workspace:^",
+    "@karaka-ai/server-auth": "workspace:^",
+    "@deepseek-ai/dsh-agent-tool-presentation": "workspace:^",
+    "@deepseek-ai/dsh-util-values": "workspace:^"
+  },
+  "private": true
 }

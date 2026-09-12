@@ -4,7 +4,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef, type CredentialRef } from '@deepseek-ai/dsh-credentials'
-import { ApplicationId } from '@deepseek-ai/dsh-session'
+import { ApplicationId } from '@karaka-ai/identity'
 
 /** Verified application server identity. */
 export interface AuthenticatedApplication {

@@ -87,7 +87,6 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
   /** While the pointer works the rail, follow must not move it under the hand. */
   const pointerInsideRef = useRef(false)
   const previewId = useId()
-  const visible = items.length >= 2
 
   const syncScrollState = (): void => {
     const scroller = scrollerRef.current
@@ -104,7 +103,7 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
     const observer = new ResizeObserver(syncScrollState)
     observer.observe(scroller)
     return () => { observer.disconnect() }
-  }, [visible])
+  }, [])
   useEffect(syncScrollState, [items.length])
 
   // Keep the active mark visible: centre it whenever it leaves the scrollport,
@@ -127,7 +126,7 @@ function TurnNavigatorRail({ items, activeTurn, busyTurn, onNavigate, t }: TurnN
     syncScrollState()
   }, [activeTurn, items])
 
-  if (!visible) return null
+  if (items.length < 2) return null
   const previewIndex = items.findIndex(item => item.turn === previewTurn)
   const preview = previewIndex < 0 ? undefined : items[previewIndex]
   const previewPosition = previewIndex < 0 ? undefined : itemPosition(previewIndex)

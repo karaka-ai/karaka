@@ -23,16 +23,18 @@ const MAX_MISSED_HEARTBEATS = 2
 
 /** Own the no-server WebSocket acceptor and every active logical stream. */
 export class RemoteStreamMuxServer {
-  private readonly server = new WebSocketServer({ noServer: true, handleProtocols: protocols => protocols.has('dsh') ? 'dsh' : false })
+  private readonly server = new WebSocketServer({ noServer: true })
   private readonly connections = new Set<Promise<void>>()
   private readonly missedHeartbeats = new WeakMap<WebSocket, number>()
   private heartbeatTimer: NodeJS.Timeout | undefined
 
   /**
+   * @param open - Gateway stream dispatcher.
    * @param failure - Gateway error-to-wire mapper.
    * @param heartbeatIntervalMs - interval between WebSocket Ping control frames.
    */
   constructor(
+    private readonly open: RemoteStreamOpener,
     private readonly failure: RemoteStreamFailureMapper,
     private readonly heartbeatIntervalMs: number,
   ) {}
@@ -42,17 +44,14 @@ export class RemoteStreamMuxServer {
    * @param req - authenticated HTTP upgrade request.
    * @param socket - carrier socket transferred to the WebSocket server.
    * @param head - bytes already read after the HTTP upgrade headers.
-   * @param open - stream opener retaining this socket’s authenticated caller.
-   * @param expiresAt - absolute credential expiry in milliseconds; omitted for Host sessions.
    */
-  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, open: RemoteStreamOpener, expiresAt?: number): void {
+  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     this.server.handleUpgrade(req, socket, head, (websocket) => {
       this.missedHeartbeats.set(websocket, 0)
       websocket.on('pong', () => { this.missedHeartbeats.set(websocket, 0) })
       this.startHeartbeat()
-      const connection = new RemoteStreamMuxConnection(websocket, open, this.failure)
-      const expiry = expiresAt === undefined ? undefined : setTimeout(() => { websocket.terminate() }, Math.max(0, expiresAt - Date.now()))
-      const done = connection.run().finally(() => { clearTimeout(expiry) })
+      const connection = new RemoteStreamMuxConnection(websocket, this.open, this.failure)
+      const done = connection.run()
       this.connections.add(done)
       void done.then(() => { this.connections.delete(done) })
     })

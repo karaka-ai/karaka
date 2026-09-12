@@ -1517,10 +1517,14 @@ describe('PythonCodeRuntime — programs and bindings', () => {
       const { runtime } = await setup({ maxLogBytes: 3072, maxWallMs: 30_000 })
       result = await runtime.run({
         program: [
-          'import os',
-          'for _ in range(6000):',
+          'import os, time',
+          // One byte per chunk on every host: a plain yield lets a loaded
+          // reader coalesce, and the coalesced chunk is what the bound below
+          // measures. The payload stays above the 2048 discriminator, so a
+          // raw-byte undercount still flushes the whole residual at EOF.
+          'for _ in range(3200):',
           '    os.write(1, b"\\xff")',
-          '    os.sched_yield()',
+          '    time.sleep(0.001)',
           'return None',
         ].join('\n'),
         bindings: [],
@@ -1534,7 +1538,10 @@ describe('PythonCodeRuntime — programs and bindings', () => {
     // merged buffer stays well under 2048. A raw-byte undercount would let it
     // reach ~3072 before flushing, so 2048 discriminates.
     expect(maxConcat).toBeLessThan(2048)
-  })
+    // The paced payload costs ~3.2s deterministically, which is above the
+    // 5000ms default the local unit entry grants, so the case carries its own
+    // bound instead of relying on the lane to widen it.
+  }, 20_000)
 
   it('charges a structurally-valid but illegal UTF-8 sequence its U+FFFD-decoded cost', async () => {
     // A CESU-8 lone surrogate `ED A0 80` is structurally well-formed (a 3-byte
@@ -1559,12 +1566,15 @@ describe('PythonCodeRuntime — programs and bindings', () => {
       const { runtime } = await setup({ maxLogBytes: 3072, maxWallMs: 30_000 })
       result = await runtime.run({
         program: [
-          'import os',
+          'import os, time',
           'seq = (0xed, 0xa0, 0x80)',
-          'for _ in range(2000):',
+          // 1100 sequences are 3300 raw bytes, past the 3072-byte budget a
+          // raw-byte undercount reaches, so the undercount flushes above the
+          // 2048 discriminator instead of only at EOF.
+          'for _ in range(1100):',
           '    for b in seq:',
           '        os.write(1, bytes((b,)))',
-          '        os.sched_yield()',
+          '        time.sleep(0.001)',
           'return None',
         ].join('\n'),
         bindings: [],
@@ -1579,7 +1589,10 @@ describe('PythonCodeRuntime — programs and bindings', () => {
     // largest merged buffer stays well under 2048. Charging the structural width
     // 3 would need ~1024 raw bytes, tripling the peak past 2048.
     expect(maxConcat).toBeLessThan(2048)
-  })
+    // The paced payload costs ~3.3s deterministically, which is above the
+    // 5000ms default the local unit entry grants, so the case carries its own
+    // bound instead of relying on the lane to widen it.
+  }, 20_000)
 
   it('charges a lone surrogate its full six escaped bytes, not three', async () => {
     // A forged `log` frame carrying `\ud800` escapes materializes lone
@@ -5199,32 +5212,34 @@ describe('PythonCodeRuntime — hostile peer', () => {
   }, 90_000)
 
   it('drops a late binding resolution before snapshotting it', async () => {
-    const entered = Promise.withResolvers<undefined>()
-    const late = Promise.withResolvers<CodeJsonValue>()
-    let reads = 0
-    const value = Object.defineProperty({}, 'payload', {
-      enumerable: true,
-      get: () => { reads += 1; return 'late value' },
+    // `sendReply` checks `settled`, but only after the resolution has been walked
+    // and copied by `snapshotJsonValue`. Binding resolution carries no seam-level
+    // byte cap, so a binding that resolves a wide value AFTER the run already
+    // settled (here on `maxWallMs`) spent host heap building a frame that is then
+    // discarded. The check now runs before the snapshot.
+    //
+    // The binding resolves well after the 1s wall clock with a 2M-element array;
+    // the run must still report `timeout`, and the late value must not appear.
+    let resolvedLate = false
+    const { runtime } = await setup({ maxWallMs: 1_000 })
+    const result = await runtime.run({
+      program: 'return await tools.slow({})',
+      bindings: [{
+        global: 'tools',
+        functions: {
+          slow: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2_500))
+            resolvedLate = true
+            return Array.from({ length: 2_000_000 }, () => 0)
+          },
+        },
+      }],
     })
-    const { runtime, fiber } = await setup({ maxWallMs: 1_000 })
-    try {
-      const running = runtime.run({
-        program: 'return await tools.slow({})',
-        bindings: tools({ slow: () => { entered.resolve(undefined); return late.promise } }),
-      })
-      await entered.promise
-      const result = await running
-      expect(result.error?.kind).toBe('timeout')
-      expect(result.value).toBeUndefined()
-      // The runtime registered its binding continuation before this release.
-      // Awaiting the same promise observes that continuation's synchronous work.
-      late.resolve(value)
-      await late.promise
-      expect(reads).toBe(0)
-    } finally {
-      late.resolve({})
-      await fiber.dispose()
-    }
+    expect(result.error?.kind).toBe('timeout')
+    expect(result.value).toBeUndefined()
+    // Pin that the late path actually ran, so the assertion above is not vacuous.
+    await new Promise(resolve => setTimeout(resolve, 2_000))
+    expect(resolvedLate).toBe(true)
   }, 90_000)
 
   it('paces concurrent binding replies instead of queueing every frame at once', async () => {

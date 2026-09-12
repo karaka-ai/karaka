@@ -17,10 +17,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const temporaryDirectories: string[] = []
-const contexts: Context[] = []
 
 afterEach(async () => {
-  for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   for (const directory of temporaryDirectories.splice(0)) {
     await rm(directory, { recursive: true, force: true })
   }
@@ -33,14 +31,16 @@ async function temporaryPath(name: string): Promise<string> {
 }
 
 describe('dsh-session-query-sqlite real Loader path', () => {
-  it('unwraps, mounts, and searches the real JSONL provider', async () => {
+  it('unwraps, mounts, and searches the real persistence backend', async () => {
     const persistenceRoot = await temporaryPath('canonical')
     const searchPath = await temporaryPath('derived.db')
     const ctx = new Context()
-    contexts.push(ctx)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SessionStore)
-    const persistence = await ctx.plugin(JsonlSessionPersistence, { root: persistenceRoot, compression: 'none' })
+    const persistence = await ctx.plugin(JsonlSessionPersistence, {
+      root: persistenceRoot,
+      compression: 'none',
+    })
 
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(queryModule) as Parameters<Context['plugin']>[0]

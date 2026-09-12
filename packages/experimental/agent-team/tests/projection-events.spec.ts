@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionEventMap, SessionEventType } from '@deepseek-ai/dsh-session'
 import { teamProjectionDefinition } from '../src/projection.ts'
 import type { TeamProjectionState, TeamState } from '../src/projection.ts'
@@ -10,12 +10,17 @@ const ROOT = SessionId('team-root')
 const TEAM = TeamId(ROOT)
 const CHILD = SessionId('child-a')
 
-function event<T extends SessionEventType>(type: T, data: SessionEventMap[T], seq: SessionSeq): SessionEvent<T> {
-  return { type, data, seq, time: seq } as SessionEvent<T>
+function event<T extends Extract<SessionEventType, `team/${string}`>>(type: T, data: SessionEventMap[T], seq: SessionSeq): SessionEvent<T> {
+  return { type, data, seq, time: seq } as unknown as SessionEvent<T>
 }
 
 function project(rootId: SessionId, events: readonly SessionEvent[]): TeamProjectionState {
-  let state = teamProjectionDefinition.init({ version: 0, id: rootId, createdAt: 0, isSeeded: false })
+  let state = teamProjectionDefinition.init({
+    version: SESSION_FORMAT_VERSION,
+    id: rootId,
+    createdAt: 0,
+    isSeeded: false,
+  })
   for (const event of events) state = teamProjectionDefinition.apply(state, event)
   return state
 }

@@ -155,18 +155,6 @@ describe('incremental parsing is actually in effect', () => {
     expect(totalParsed).toBeLessThan(text.length * 5)
   })
 
-  it.each([['whole characters', ['😀', 'x', '\r', '\n', '𐐀']], ['split surrogate', ['\uD83D', '\uDE00', 'x', '\n', '\uD801', '\uDC00']]])(
-    'keeps UTF-16 source positions while extending an open fence: %s', (_name, chunks) => {
-      const parser = new IncrementalMarkdownParser(parseGfm)
-      let text = '```ts\n'
-      parser.update(text)
-      for (const chunk of chunks) {
-        text += chunk
-        expect(parser.update(text).tail.at(-1)?.node).toEqual(parseGfm(text).children[0])
-      }
-    },
-  )
-
   it('parses an open fence through bounded grammar slices as completed lines accumulate', () => {
     const calls: string[] = []
     const recording = (text: string): Root => {

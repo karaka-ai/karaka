@@ -141,7 +141,7 @@ function containsClosingFence(text: string, marker: '`' | '~', markerLength: num
   return false
 }
 
-/** Advance UTF-16 mdast positions, treating a split CRLF as one line ending. */
+/** Advance an mdast point across one append while treating a split CRLF as one line ending. */
 function advancePoint(
   point: OpenFenceState['end'],
   appended: string,
@@ -163,7 +163,7 @@ function advancePoint(
       afterCarriageReturn = true
       continue
     }
-    column += char.length
+    column += 1
     afterCarriageReturn = false
   }
   return { line, column, offset: point.offset + appended.length }

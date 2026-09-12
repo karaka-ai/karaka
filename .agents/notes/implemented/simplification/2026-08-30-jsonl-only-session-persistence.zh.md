@@ -1,31 +1,31 @@
-# Agent Note: 仅保留 JSONL 的第一方 Session 持久化
+# Agent Note: JSONL-only first-party Session persistence
 
 Status: implemented
 
 [English](2026-08-30-jsonl-only-session-persistence.md) | 中文
 
-## 问题
+## Problem
 
-Karaka 此前选择 SQLite Session provider，并在上游移除该后端时保留了它。2026-09-11，操作者选择 JSONL，并确认没有现有 chat 需要迁移。部署需求结束后继续保留第二种权威格式，会使其 schema、资源、公开导出和跨 provider 测试继续存在。
+产品交付并实际使用 JSONL 作为权威 Session store，而可选的 SQLite Session persistence provider 用第二种物理格式重复实现同一逻辑服务。因此，每项 Session 约定、event envelope 变更、恢复规则、package graph、平台测试与格式迁移都要承担第二套实现和测试矩阵，即使交付 profile 并不选择它。已发布 Session 格式迁移还需要保持精确逐 Session 源 generation 不变，同时发布具名版本后继；单数据库 provider 需要另一套不可变 generation transaction 设计，却没有服务当前部署。
 
-SQLite Session-query provider 拥有独立、可重建的索引。通用 SQLite domain-KV provider 也独立于 Session 日志；两者均不在本次移除范围内。
+SQLite 全文 Session-query provider 不是另一种权威 store。它通过 `ctx.sessionPersistence` 观察持久化，并维护独立、可丢弃的派生索引。通用 SQLite domain-KV provider 也与 Session 日志无关。
 
-## 决策
+## Decision
 
 `@deepseek-ai/dsh-session-persistence-jsonl` 是 `ctx.sessionPersistence` 唯一的 first-party 实现。抽象 Service Definition 保持后端无关，使仓库外 provider 仍可实现同一服务，但仓库只拥有并测试一种权威 Session 物理格式。
 
-JSONL header 保留原子的应用/租户/用户 owner 及 fork 谱系。事件保留逻辑顺序与请求标识。Karaka 保留冷态激活修复，在重建 Agent 前加载 preset 投影。真实进程重启及 provider 重新挂载测试覆盖所有权隔离、历史、继承事件和重复请求接收。
+仓库不再包含 `@deepseek-ai/dsh-session-persistence-sqlite` package、其 schema resource、后端专用测试、配置接口与 Windows differential lane。跨 package 持久化测试使用真实 JSONL provider 或 owner-local fake。`@deepseek-ai/dsh-session-query-sqlite` 继续作为可选 FTS5 query provider 使用独立、可重建的数据库，`@deepseek-ai/dsh-storage-sqlite` 继续作为通用 domain-KV provider。
 
-新 Session 使用 Karaka home 下的 JSONL 根目录，并采用 provider 默认压缩。旧 `karaka-sessions.sqlite` 文件不会被读取、转换或删除。操作者已确认不需要迁移，因此本次部署切换不提供迁移工具。当前 runtime 不再使用数据库，并不意味着可以丢弃现有数据库文件。
+当前 build 不打开或迁移已删除 provider 写出的现有数据库。需要其中内容的 operator 必须先使用仍包含该 provider 的 build 导出逻辑 Session，再执行升级。
 
-`@deepseek-ai/dsh-session-query-sqlite` 继续作为独立派生数据库上的可选 FTS5 provider；`@deepseek-ai/dsh-storage-sqlite` 继续作为通用 domain-KV provider。
+## Alternatives considered
 
-## 考虑过的替代方案
+- **保留 SQLite 作为可选 differential backend。** 拒绝，因为未被选择的生产 provider 仍会成倍增加每项 durable format、lifecycle、平台与迁移义务；contract fake 与 JSONL provider 已能覆盖共享服务，无需保留第二种权威格式。
+- **保留只读 SQLite import package。** 拒绝，因为在没有实际部署需要时，它仍会保留 package graph 与 schema 维护成本。若真实保留数据库需要恢复，未来可单独设计 recovery tool。
+- **把 Session-query SQLite 数据库作为 persistence。** 拒绝，因为该数据库是拥有独立 ownership、schema 与重建语义的可丢弃 projection；把它当作权威来源会合并两种无关的存储职责。
 
-- **保留可选权威 SQLite provider。** 本次部署不采纳，因为没有当前需求，却会保留第二种物理格式和生命周期的维护责任。
-- **立即构建离线转换器。** 已确认没有 chat 需要保留的切换不需要它。未来有历史数据库的部署必须在切换前另行验证迁移；本次变更不宣称提供迁移支持。
-- **将查询索引作为权威存储。** 不采纳，因为可丢弃的投影不能替代权威 Session header 和事件。
+## Consequences
 
-## 后果
+Session persistence 只有一种 first-party 物理格式和一条 first-party durability path。迁移 stack 可以保持逐 Session JSONL generation 的路径、字节与 inode 不变，同时排他发布最终后继，而无需实现并行的数据库 transaction protocol。SQLite search 保持可用，其 integration test 证明它观察 JSONL，而不是共享权威数据库。
 
-Karaka 共享上游 JSONL 持久化路径，同时保留所有权与冷重启行为。SQLite 搜索和 domain-KV 仍可使用。Session 格式迁移和 handle 变更仍是独立工作；移除此后端并不意味着已纳入那些后续协议变更。
+删除 provider 是针对其可选数据库文件的明确 compatibility cut。该变更缩小实现与 CI surface，但也移除更强的 database/WAL 存储选项；未来 provider 需要当前 owner、部署需求、完整 shared-contract evidence，以及自身的 format-transition policy。

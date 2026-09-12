@@ -38,6 +38,7 @@ function appendPrompt(session: Session, text: string): SessionSeq {
 /** Append one assembled assistant message with a single text block. */
 function appendAssistant(session: Session, turn: number, step: number, text: string): void {
   session.append('assistant/message', {
+    stream: [],
     turn,
     step,
     message: createAssistantMessage({
@@ -232,41 +233,6 @@ describe('turn outline projection unit', () => {
     expect('turnOutline' in ctx.sessionProjections.snapshot(session).values).toBe(true)
     await fiber.dispose()
     expect('turnOutline' in ctx.sessionProjections.snapshot(session).values).toBe(false)
-  })
-
-  it('hydrates a checkpoint, suppresses later draft-only frames, and publishes the settled response', async () => {
-    const original = await harness(true)
-    const restored = await harness(false)
-    try {
-      original.session.append('turn/start', { turn: 1 })
-      appendPrompt(original.session, 'restored prompt')
-      const events = original.session.snapshotEvents()
-      const checkpoint = original.ctx.sessionProjections.checkpoint(original.session)
-      await restored.ctx.plugin(SessionTurnOutlinePlugin)
-      const session = restored.ctx.sessions.create(SessionId('restored-outline'), { seed: events })
-      const snapshot = restored.ctx.sessionProjections.hydrate(session, checkpoint, events, SessionLogOffset(0))
-      expect(snapshot.values.turnOutline)
-        .toEqual([{ turn: 1, seq: 0, prompt: 'restored prompt', response: '' }])
-      const changes: unknown[] = []
-      restored.ctx.sessionProjections.onChanged((changed, key, value) => {
-        if (changed === session && key === 'turnOutline') changes.push(value)
-      })
-      // Hydration leaves no observed raw-view baseline; the first live change seeds it.
-      appendAssistant(session, 1, 1, 'first draft')
-      expect(changes).toEqual([snapshot.values.turnOutline])
-      appendAssistant(session, 1, 2, 'final draft')
-      expect(changes).toHaveLength(1)
-      expect(restored.ctx.sessionProjections.checkpoint(session).turnOutline)
-        .toMatchObject({ seq: session.seq - 1, val: { draft: 'final draft' } })
-      endTurn(session, 1)
-      expect(changes).toHaveLength(2)
-      expect(changes.at(-1))
-        .toEqual([{ turn: 1, seq: 0, prompt: 'restored prompt', response: 'final draft' }])
-      expect(restored.ctx.sessionProjections.cachedSnapshot(session)?.asOfSeq).toBe(session.seq - 1)
-    } finally {
-      await restored.ctx.fiber.dispose()
-      await original.ctx.fiber.dispose()
-    }
   })
 
   it('rejects a persisted checkpoint whose turns are not strictly increasing', async () => {

@@ -50,8 +50,8 @@ const hasExtension = /\.[^/.]+$/
 function relativeSpecifiersMissingExtensions(): string[] {
   const errors: string[] = []
   const files = [
-    ...globSync('vendor/*/lib/**/*.d.ts', { cwd: root }),
-    ...globSync('packages/*/*/lib/**/*.d.ts', { cwd: root }),
+    ...globSync('vendor/*/lib/types/**/*.d.ts', { cwd: root }),
+    ...globSync('packages/*/*/lib/types/**/*.d.ts', { cwd: root }),
   ].sort()
 
   for (const file of files) {
@@ -77,12 +77,6 @@ function publicSpecifiers(pkg: WorkspacePackage): string[] {
     specifiers.add(key === '.' ? pkg.name : `${pkg.name}/${key.slice(2)}`)
   }
 
-  if (pkg.name === '@karaka-ai/agent') {
-    for (const entry of globSync('lib/public-entries/**/*.ts', { cwd: pkg.dir })) {
-      specifiers.add(`${pkg.name}/${entry.slice('lib/public-entries/'.length, -'.ts'.length)}`)
-    }
-  }
-
   return [...specifiers].sort()
 }
 
@@ -98,17 +92,6 @@ const badSpecifiers = relativeSpecifiersMissingExtensions()
 if (badSpecifiers.length > 0) {
   console.error('verify-node-next-types: declaration files still contain relative specifiers without file extensions.')
   console.error(badSpecifiers.join('\n'))
-  process.exit(1)
-}
-
-const privateKarakaDeclarations = globSync('packages/karaka/agent/lib/**/*.d.ts', {
-  cwd: root,
-  exclude: ['packages/karaka/agent/lib/types/**'],
-})
-  .filter(path => readFileSync(resolve(root, path), 'utf8').includes('@deepseek-ai/dsh-'))
-if (privateKarakaDeclarations.length > 0) {
-  console.error('verify-node-next-types: @karaka-ai/agent declarations expose private DSH module names.')
-  console.error(privateKarakaDeclarations.join('\n'))
   process.exit(1)
 }
 

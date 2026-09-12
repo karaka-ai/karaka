@@ -1,5 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
@@ -8,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import type { AgentHandle } from '@deepseek-ai/dsh-agent'
 import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import {
@@ -23,23 +22,15 @@ import {
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/minimal-preset', import.meta.url))
-const MINIMAL_PRESET = fileURLToPath(new URL('../../../packages/preset/agent-presets/presets/minimal', import.meta.url))
-const FIXTURE = join(SNAPSHOT_DIR, 'session.jsonl')
+const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const MODE = webSnapshotMode()
 const PROMPT = "Use the bash tool to run exactly: printf 'MINIMAL_BASH_CARD_OK\\n'. Then reply exactly MINIMAL_PRESET_REQUEST_OK and stop."
 
-function applicationTool(name: string) {
-  return defineTool({
-    name,
-    description: 'Read application data.',
-    parameters: {},
-    output: {
-      schema: { type: 'string' },
-      render: (_args, value) => [{ type: 'text', text: value }],
-    },
-    execute: () => Promise.resolve('ok'),
-  })
+/** Rendered text of the system prompt surface node, or undefined when the surface carries none. */
+function systemPromptText(session: Session): string | undefined {
+  const message = session.deriveMessages().find(candidate => candidate.role === 'system')
+  return message?.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
 }
 
 describe('minimal agent preset', () => {
@@ -49,43 +40,9 @@ describe('minimal agent preset', () => {
   let browser: Browser | undefined
   let page: Page | undefined
   let tripwire: ReturnType<typeof watchConsole> | undefined
-  let presetRoot: string | undefined
-  const disposeApplicationTools: Array<() => void> = []
 
   beforeAll(async () => {
-    presetRoot = await mkdtemp(join(tmpdir(), 'dsh-minimal-selected-'))
-    const selectedDir = join(presetRoot, 'minimal-selected')
-    await cp(MINIMAL_PRESET, selectedDir, { recursive: true })
-    await writeFile(
-      join(selectedDir, 'preset.yml'),
-      'name: Minimal mode\ndescription: Selected application tools.\n',
-    )
-    const compositionPath = join(selectedDir, 'agent.cordis.yml')
-    const composition = await readFile(compositionPath, 'utf8')
-    await writeFile(compositionPath, `${composition.trimEnd()}
-
-- id: tool-selection
-  name: '@deepseek-ai/dsh-agent-tool-presentation'
-  config:
-    mode: native
-    allow:
-      - application_lookup
-      - bash
-`)
-    scaffold = await launchWebScaffold({
-      replayFixture: FIXTURE,
-      compareReplaySession: true,
-      paceMs: 10,
-      agentPresets: {
-        roots: [{ path: presetRoot, trust: 'user' }],
-        default: 'minimal-selected',
-      },
-    })
-    disposeApplicationTools.push(
-      scaffold.ctx.tools.register(applicationTool('application_lookup')),
-      scaffold.ctx.tools.register(applicationTool('application_private')),
-      scaffold.ctx.tools.register(applicationTool('bash')),
-    )
+    scaffold = await launchWebScaffold({ replayFixture: FIXTURE, compareReplaySession: true, paceMs: 10 })
     disposeInjectedPrompt = scaffold.ctx.systemPrompt.section({
       name: 'test:injected-prompt',
       order: 999,
@@ -93,9 +50,9 @@ describe('minimal agent preset', () => {
     })
     agentHandle = await scaffold.ctx.agents.create({
       sessionId: SessionId('minimal-preset-smoke'),
-      meta: { cwd: scaffold.workspaceCwd, agentPreset: 'minimal-selected' },
+      meta: { cwd: scaffold.workspaceCwd, agentPreset: 'minimal' },
       agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
-      setup: agentCtx => scaffold.ctx.agentPresets.mount(agentCtx, 'minimal-selected').then(() => undefined),
+      setup: agentCtx => scaffold.ctx.agentPresets.mount(agentCtx, 'minimal').then(() => undefined),
     })
     agentHandle.agent.followup(createUserMessage({
       content: [{ type: 'text', text: PROMPT }],
@@ -114,30 +71,20 @@ describe('minimal agent preset', () => {
     } catch (error: unknown) {
       failures.push(error)
     }
-    for (const dispose of disposeApplicationTools.splice(0)) {
-      try {
-        dispose()
-      } catch (error: unknown) {
-        failures.push(error)
-      }
-    }
     await scaffold?.close().catch((error: unknown) => failures.push(error))
-    if (presetRoot !== undefined) {
-      await rm(presetRoot, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
-    }
     if (failures.length === 1) throw failures[0]
     if (failures.length > 1) throw new AggregateError(failures, 'minimal preset smoke teardown failed')
   })
 
-  it('sends the selected schemas, then executes the persistent shell', async () => {
+  it('sends the exact RL prompt and shell schema, then executes the persistent shell', async () => {
     const requestHeader = agentHandle.agent.session.requestHeader()
     if (requestHeader === undefined) throw new Error('the minimal agent issued no model request')
+    const systemPrompt = systemPromptText(agentHandle.agent.session)
+    if (systemPrompt === undefined) throw new Error('the minimal agent issued no system prompt')
     expect(agentHandle.agent.session.snapshotEvents().some(event => event.type === 'user/message'
       && event.data.source.kind === 'plugin'
       && event.data.source.plugin === '@deepseek-ai/dsh-system-prompt')).toBe(false)
-    const presetFileSystem = scaffold.ctx.agentPresets.serviceFor(agentHandle.agent, 'fs')
-    expect(presetFileSystem).toBeDefined()
-    expect(presetFileSystem?.sandboxMode).toBeUndefined()
+    expect(scaffold.ctx.agentPresets.serviceFor(agentHandle.agent, 'fs')).toBeUndefined()
     expect(scaffold.ctx.agentPresets.serviceFor(agentHandle.agent, 'compaction')).toBeUndefined()
 
     const stateDir = join(scaffold.workspaceCwd, 'persistent-state')
@@ -165,17 +112,17 @@ describe('minimal agent preset', () => {
       .trimEnd()
 
     expect({
-      prompt: requestHeader.system,
+      prompt: systemPrompt,
       tools: requestHeader.tools?.map(tool => tool.name),
       goalCommand: scaffold.ctx.commands.find(agentHandle.agent, 'goal') !== undefined,
       bash: text(bash),
     }).toMatchInlineSnapshot(`
       {
-        "bash": "PERSISTED:{{cwd}}/persistent-state",
+        "bash": "PERSISTED:{{cwd}}/persistent-state
+      [Command finished with exit code 0]",
         "goalCommand": false,
         "prompt": "You are a helpful software engineer assistant.",
         "tools": [
-          "application_lookup",
           "bash",
         ],
       }
@@ -215,7 +162,7 @@ describe('minimal agent preset', () => {
     const call = row.locator('xpath=..')
     await call.getByText('IN', { exact: true }).waitFor()
     await call.getByText('OUT', { exact: true }).waitFor()
-    await call.getByText('MINIMAL_BASH_CARD_OK', { exact: true }).waitFor()
+    await call.getByText('MINIMAL_BASH_CARD_OK\n[Command finished with exit code 0]', { exact: true }).waitFor()
     await call.getByText(/"command": "printf 'MINIMAL_BASH_CARD_OK/).waitFor()
 
     const snapshot = await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd)
@@ -226,7 +173,7 @@ describe('minimal agent preset', () => {
 
   it('keeps its snapshot inventory closed', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, [
-      'session.jsonl',
+      'session.v3.jsonl',
       'system-prompt.expected.md',
       'tool-schemas.expected.json',
       'ui.expected.md',

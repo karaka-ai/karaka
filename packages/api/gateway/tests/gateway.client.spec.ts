@@ -238,7 +238,7 @@ class FakeWebSocket extends EventTarget {
   readonly closedWith: { readonly code?: number; readonly reason?: string }[] = []
   readyState = FakeWebSocket.CONNECTING
 
-  constructor(url: string | URL, readonly protocols?: string[]) {
+  constructor(url: string | URL) {
     super()
     this.url = String(url)
     FakeWebSocket.sockets.push(this)
@@ -644,89 +644,6 @@ describe('Client Remote transport readiness', () => {
         expect(vi.getTimerCount()).toBe(0)
       } finally {
         await ctx.fiber.dispose()
-        await vi.advanceTimersByTimeAsync(0)
-        warnSpy.mockRestore()
-        vi.unstubAllGlobals()
-        vi.useRealTimers()
-      }
-    })
-  })
-
-  it.each(['deadline', 'manual', 'dispose'] as const)('cancels stalled credentials on %s without accepting late results', async (action) => {
-    await withFakeWebSocket('https://frontend.example', async () => {
-      vi.useFakeTimers()
-      vi.stubGlobal('__DSH_CONNECTION_RECOVERY__', {
-        backoffBaseMs: 10, backoffMaxMs: 10, generationReadyTimeoutMs: 100,
-      })
-      Object.assign(globalThis.location, { hostname: 'frontend.example', search: '' })
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-      const clients = ['alice', 'bob'].map((user) => {
-        let resolveCredential!: (value: string) => void
-        const pending = new Promise<string>((resolve) => { resolveCredential = resolve })
-        const credential = vi.fn<(signal: AbortSignal) => Promise<string>>()
-          .mockImplementationOnce(() => pending)
-          .mockResolvedValue(`${user}-fresh`)
-        const ctx = new Context()
-        const reset = vi.fn()
-        ctx.on('connection/reset', reset)
-        return { ctx, user, credential, resolveCredential, reset }
-      })
-      try {
-        for (const client of clients) {
-          await client.ctx.plugin(TypertRegistry)
-          await client.ctx.plugin({ inject: [], apply: applyConnection }, {
-            endpoint: `https://${client.user}.example`, credential: client.credential,
-          })
-          await client.ctx.plugin({ inject, apply })
-        }
-        await vi.advanceTimersByTimeAsync(0)
-        expect(FakeWebSocket.sockets).toHaveLength(0)
-        for (const client of clients) {
-          expect(client.credential).toHaveBeenCalledOnce()
-          expect(client.credential.mock.calls[0]![0].aborted).toBe(false)
-        }
-        if (action === 'deadline') await vi.advanceTimersByTimeAsync(110)
-        else {
-          for (const client of clients) {
-            if (action === 'manual') (client.ctx.get('connection') as ConnectionHandle).reconnect()
-            else await client.ctx.fiber.dispose()
-          }
-          await vi.advanceTimersByTimeAsync(0)
-        }
-        for (const client of clients) {
-          expect(client.credential.mock.calls[0]![0].aborted).toBe(true)
-          client.resolveCredential(`${client.user}-obsolete`)
-        }
-        await vi.advanceTimersByTimeAsync(0)
-        if (action === 'dispose') {
-          expect(FakeWebSocket.sockets).toHaveLength(0)
-          for (const client of clients) {
-            expect(client.credential).toHaveBeenCalledOnce()
-            expect(client.reset).not.toHaveBeenCalled()
-          }
-        } else {
-          expect(FakeWebSocket.sockets).toHaveLength(2)
-          for (const client of clients) {
-            expect(client.credential).toHaveBeenCalledTimes(2)
-            expect(client.reset).not.toHaveBeenCalled()
-            const socket = FakeWebSocket.sockets.find(socket => socket.url === `wss://${client.user}.example/api/remote.mux`)!
-            expect(socket.protocols).toEqual(['dsh', `dsh.bearer.${client.user}-fresh`])
-            const opening = JSON.parse(socket.sent[0]!) as { streamId: string }
-            socket.receive({ type: 'item', streamId: opening.streamId, value: {
-              type: 'ready', clientId: client.user, host: { home: `/${client.user}` },
-            } })
-          }
-          await vi.advanceTimersByTimeAsync(0)
-          for (const client of clients) {
-            const connection = client.ctx.get('connection') as ConnectionHandle
-            expect(connection.state.getSnapshot()).toBe('connected')
-            expect(connection.generation.getSnapshot()?.host.home).toBe(`/${client.user}`)
-            expect(client.reset).toHaveBeenCalledOnce()
-          }
-        }
-        expect(vi.getTimerCount()).toBe(0)
-      } finally {
-        for (const client of clients) await client.ctx.fiber.dispose()
         await vi.advanceTimersByTimeAsync(0)
         warnSpy.mockRestore()
         vi.unstubAllGlobals()
@@ -2414,51 +2331,6 @@ describe('Client Typert API', () => {
 })
 
 describe('Remote stream client carrier lifecycle', () => {
-  it('renews asynchronous credentials on physical reconnect', async () => {
-    await withFakeWebSocket(undefined, async () => {
-      let token = 'first'
-      const client = new RemoteStreamMuxClient(async () => ({ url: 'wss://application.example/api/remote.mux', protocols: ['dsh', token] }))
-      try {
-        client.start()
-        await vi.waitFor(() => { expect(FakeWebSocket.sockets).toHaveLength(1) })
-        expect(FakeWebSocket.sockets[0]).toMatchObject({ url: 'wss://application.example/api/remote.mux', protocols: ['dsh', 'first'] })
-        token = 'second'
-        client.reconnect()
-        await vi.waitFor(() => { expect(FakeWebSocket.sockets).toHaveLength(2) })
-        expect(FakeWebSocket.sockets[1]!.protocols).toEqual(['dsh', 'second'])
-      } finally { await client.close() }
-    })
-  })
-
-  it('aborts pending credential acquisition on disposal and ignores its late result', async () => {
-    await withFakeWebSocket(undefined, async () => {
-      const credential = Promise.withResolvers<{ url: string; protocols: string[] }>()
-      let signal: AbortSignal | undefined
-      const client = new RemoteStreamMuxClient((_path, pendingSignal) => {
-        signal = pendingSignal
-        return credential.promise
-      })
-      client.start()
-      await client.close()
-      expect(signal?.aborted).toBe(true)
-      credential.resolve({ url: 'wss://application.example', protocols: ['dsh'] })
-      await Promise.resolve()
-      expect(FakeWebSocket.sockets).toHaveLength(0)
-    })
-  })
-
-  it('reports credential acquisition failures to pending streams', async () => {
-    await withFakeWebSocket(undefined, async () => {
-      const failure = new Error('credential backend unavailable')
-      const client = new RemoteStreamMuxClient(() => Promise.reject(failure))
-      try {
-        client.start()
-        await expect(client.open('feed/follow', {}, new AbortController().signal).next()).rejects.toBe(failure)
-        expect(FakeWebSocket.sockets).toHaveLength(0)
-      } finally { await client.close() }
-    })
-  })
-
   it('requires the transport owner to start the physical carrier', async () => {
     const client = new RemoteStreamMuxClient()
     await expect(client.open('feed/follow', {}, new AbortController().signal)

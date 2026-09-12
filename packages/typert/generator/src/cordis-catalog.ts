@@ -162,7 +162,6 @@ export class CordisCatalogProjector {
 
   /**
    * Render the model-facing static API consumed by `tool-cordis`.
-   * Identical printed type declarations share one catalog entry; conflicting names are omitted.
    * @param model - validated Cordis catalog projection from this projector.
    * @returns the model-facing TypeScript catalog source.
    */
@@ -338,17 +337,17 @@ export class CordisCatalogProjector {
       if (declaration.face !== this.face.face || declaration.kind === 'enum'
         || !/^packages\/[^/]+\/[^/]+\/src\/.+\.tsx?$/.test(declaration.location.file)) continue
       if (declarations.has(declaration.name)) {
-        if (declarations.get(declaration.name) !== declaration.text) ambiguous.add(declaration.name)
+        ambiguous.add(declaration.name)
         continue
       }
-      declarations.set(declaration.name, declaration.text)
+      declarations.set(
+        declaration.name,
+        declaration.text.length > MAX_DECL_CHARS
+          ? `${declaration.text.slice(0, MAX_DECL_CHARS)} /* …truncated — full shape in source */`
+          : declaration.text,
+      )
     }
     for (const name of ambiguous) declarations.delete(name)
-    for (const [name, declaration] of declarations) {
-      if (declaration.length > MAX_DECL_CHARS) {
-        declarations.set(name, `${declaration.slice(0, MAX_DECL_CHARS)} /* …truncated — full shape in source */`)
-      }
-    }
     return referencedTypes([
       ...services.flatMap(service => service.methods.map(method => method.signature)),
       ...events.map(event => event.signature),

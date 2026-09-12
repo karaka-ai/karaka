@@ -75,7 +75,6 @@ describe('next package benchmark graph', () => {
       peerRequiredHostDependencies: new Set(),
       configurationOnlyDevDependencies: new Set(),
       clientInject: new Set(),
-      cordisIndependent: false,
     }
     const index = new Map<string, Map<string, MutableRegistryManifest>>([
       ['@f/probe', new Map([['1.0.0', structuredClone(manifest) as MutableRegistryManifest]])],

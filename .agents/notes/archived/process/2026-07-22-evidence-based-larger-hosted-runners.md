@@ -1,7 +1,7 @@
 # Agent Note: Evidence-based larger hosted runners
 
 Status: implemented
-Archived: 2026-09-02
+Archived: 2026-09-04
 
 English | [中文](2026-07-22-evidence-based-larger-hosted-runners.zh.md)
 
