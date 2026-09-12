@@ -3,6 +3,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import { TurnNavigator } from '../src/client/chat/TurnNavigator.tsx'
 import type { TurnRailItem } from '../src/client/chat/turn-rail-items.ts'
 import { en } from '../src/client/locale.ts'
@@ -27,7 +28,7 @@ it('updates preview positioning on resize after the rail appears and reappears',
     }
   })
   const items: TurnRailItem[] = [1, 2, 3].map(turn => ({
-    turn, prompt: `Prompt ${String(turn)}`, response: '', anchor: { kind: 'unloaded', seq: turn * 10 },
+    turn, prompt: `Prompt ${String(turn)}`, response: '', anchor: { kind: 'unloaded', seq: SessionSeq(turn * 10) },
   }))
   const props = { activeTurn: null, busyTurn: null, onNavigate: vi.fn(), t: makeTranslate(en) }
   const view = render(<TurnNavigator {...props} items={items.slice(0, 1)} />)
