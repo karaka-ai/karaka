@@ -211,7 +211,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          events: [],
+          seq: 0, eventAt: () => undefined,
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -231,6 +231,7 @@ describe('Karaka HTTP transport', () => {
       body += decoder.decode(chunk.value, { stream: true })
     }
     const interactionId = /"interactionId":"([^"]+)"/u.exec(body)?.[1]
+    expect(body).toContain('"type":"interaction-required","cursor":-1')
     expect(interactionId).toBeDefined()
     const headers = { authorization: 'Bearer valid', 'content-type': 'application/json' }
     const wrong = await fetch(`${endpoint}/v1/chats/other/responses`, {
@@ -410,7 +411,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          events: [],
+          seq: 0, eventAt: () => undefined,
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -454,7 +455,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          events: [],
+          seq: 0, eventAt: () => undefined,
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -474,7 +475,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          events: [],
+          seq: 0, eventAt: () => undefined,
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -651,7 +652,7 @@ describe('Karaka HTTP transport', () => {
         id: 'other-chat',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          events: [],
+          seq: 0, eventAt: () => undefined,
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -693,7 +694,7 @@ describe('Karaka HTTP transport', () => {
           header: {
             applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' },
           },
-          events: [{ seq: 4 }],
+          seq: 5, eventAt: (seq: number) => seq === 4 ? { seq } : undefined,
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],
@@ -738,7 +739,7 @@ describe('Karaka HTTP transport', () => {
         id: 'chat-1',
         session: {
           header: { applicationOwner: { applicationId: 'billing', tenantId: 'tenant-1', userId: 'user-1' } },
-          events: [{ seq: 5 }],
+          seq: 6, eventAt: (seq: number) => seq === 5 ? { seq } : undefined,
         },
       } as never,
       questions: [{ id: 'confirm', question: 'Continue?' }],

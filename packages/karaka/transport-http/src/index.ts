@@ -117,7 +117,7 @@ export function apply(ctx: Context, config: Config): void {
         chatId: agent.id,
         owner,
         questions: request.questions,
-        cursor: agent.session.events.at(-1)?.seq ?? -1,
+        cursor: agent.session.eventAt(agent.session.seq - 1)?.seq ?? -1,
         resolve: deferred.resolve,
         reject: deferred.reject,
       }
