@@ -193,7 +193,7 @@ describe('dsh-tool-subagent-control', () => {
         signal: testToolSignal,
       })
       await waitNoActivation(ctx, started.childId)
-      const loaded = await ctx.sessionPersistence.load(started.childId)
+      const loaded = await loadStoredSession(ctx.sessionPersistence, started.childId)
       const prompt = loaded.events.find(event => event.type === 'user/message'
         && event.data.content.some(block => block.type === 'text' && block.text === 'scoped task'))
       expect(prompt?.type === 'user/message' && prompt.data.content).toEqual([{ type: 'text', text: 'scoped task' }])
@@ -237,7 +237,7 @@ describe('dsh-tool-subagent-control', () => {
       expect(child.inbox.nextTurn.map(message => message.id)).toEqual([queued.messageId])
       release.resolve(undefined)
       await waitNoActivation(ctx, child.id)
-      const loaded = await ctx.sessionPersistence.load(child.id)
+      const loaded = await loadStoredSession(ctx.sessionPersistence, child.id)
       let turn = 0
       const deliveries = loaded.events.flatMap((event) => {
         if (event.type === 'turn/start') turn = event.data.turn
