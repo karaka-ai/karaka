@@ -63,11 +63,13 @@ const tConversation: ConversationSessionHeaderProps['t'] =
   key => (conversationZh as Record<string, string>)[key] ?? key
 
 const runtimes: SlotTestRuntime[] = []
+const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo')
 
 afterEach(async () => {
   cleanup()
   vi.restoreAllMocks()
-  Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
+  if (originalScrollTo === undefined) Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
+  else Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo)
   for (const runtime of runtimes.splice(0)) await runtime.dispose()
 })
 // The Conversation store persists under its declared key; clear so one case's active
