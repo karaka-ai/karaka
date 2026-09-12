@@ -1,7 +1,7 @@
 /** Keyless assembled-Web evidence for conversational Schedule delivery. */
 
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -29,6 +29,7 @@ import {
   type WebScaffold,
 } from './scaffold.ts'
 import {
+  REPO_ROOT,
   connectFreshWorkspace,
   conversationContextKey,
   saveFailureShot,
@@ -654,7 +655,10 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
   })
 
   it('replays the overlay-only catalog and sidebar marker, then removes both live', async () => {
-    onTestFailed(() => saveFailureShot(page, 'web-e2e-schedule-catalog'))
+    const artifactRoot = join(REPO_ROOT, '.artifacts')
+    await mkdir(artifactRoot, { recursive: true })
+    const evidenceDir = await mkdtemp(join(artifactRoot, 'schedule-catalog-'))
+    onTestFailed(() => saveFailureShot(page, `${basename(evidenceDir)}/failure`))
     const base = composeEntries([
       loadOverlayPatches('Schedule catalog base roster', BASE_PATCH),
       loadOverlayPatches('Schedule catalog base roster', WEB_PATCH),
@@ -708,18 +712,36 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     const catalog = page.getByRole('list', { name: 'Active reminders' })
     await catalog.waitFor({ timeout: 10_000 })
     expect(await catalog.getByRole('listitem').count()).toBe(3)
-    const lightLayout = await catalog.evaluate((element) => {
-      const box = element.getBoundingClientRect()
+    const readLayout = () => page.evaluate(() => {
+      const triggerElement = document.querySelector('button[aria-label="3 reminders"]')
+      const catalogElement = document.querySelector('[aria-label="Active reminders"]')
+      if (!(triggerElement instanceof HTMLElement) || !(catalogElement instanceof HTMLElement)) {
+        throw new Error('active reminder trigger or catalog is not mounted')
+      }
+      const triggerBox = triggerElement.getBoundingClientRect()
+      const catalogBox = catalogElement.getBoundingClientRect()
+      const viewport = window.innerWidth
       return {
-        width: box.width,
-        right: box.right,
-        viewport: window.innerWidth,
+        bodyPortal: catalogElement.parentElement === document.body,
+        position: getComputedStyle(catalogElement).position,
+        triggerLeft: triggerBox.left,
+        triggerRight: triggerBox.right,
+        catalogLeft: catalogBox.left,
+        catalogRight: catalogBox.right,
+        width: catalogBox.width,
+        viewport,
+        expectedLeft: Math.min(Math.max(16, triggerBox.left), viewport - catalogBox.width - 16),
         scrollWidth: document.documentElement.scrollWidth,
-        background: getComputedStyle(element).backgroundColor,
+        background: getComputedStyle(catalogElement).backgroundColor,
       }
     })
+    const lightLayout = await readLayout()
+    expect(lightLayout.bodyPortal).toBe(true)
+    expect(lightLayout.position).toBe('fixed')
     expect(lightLayout.width).toBe(336)
-    expect(lightLayout.right).toBeLessThanOrEqual(lightLayout.viewport)
+    expect(lightLayout.catalogLeft).toBe(lightLayout.expectedLeft)
+    expect(lightLayout.catalogLeft).toBeLessThan(lightLayout.triggerLeft)
+    expect(lightLayout.catalogRight).toBeLessThanOrEqual(lightLayout.viewport - 16)
     expect(lightLayout.scrollWidth).toBeLessThanOrEqual(lightLayout.viewport)
     expect(lightLayout.background).not.toBe('rgba(0, 0, 0, 0)')
     const longRow = catalog.getByRole('listitem').filter({ hasText: 'Join release review' })
@@ -760,6 +782,15 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     }))
     expect(scrollLayout.scrollHeight).toBeGreaterThan(scrollLayout.clientHeight)
 
+    await writeFile(
+      join(evidenceDir, 'web-e2e-schedule-catalog-left-alignment.json'),
+      `${JSON.stringify(lightLayout, null, 2)}\n`,
+    )
+    await page.screenshot({
+      path: join(evidenceDir, 'web-e2e-schedule-catalog-left-alignment.png'),
+      fullPage: true,
+    })
+
     await page.evaluate(() => { document.body.setAttribute('data-ds-dark-theme', '') })
     const darkBackground = await catalog.evaluate(element => getComputedStyle(element).backgroundColor)
     expect(darkBackground).not.toBe('rgba(0, 0, 0, 0)')
@@ -769,6 +800,56 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
       await captureStableAria(page, '[aria-label="Active reminders"]', scaffold.workspaceCwd),
       MODE,
     )
+
+    await page.getByRole('button', { name: 'Collapse sidebar' }).click()
+    await trigger.click()
+    await catalog.waitFor()
+    // Resizing the open portal must preserve its viewport anchor and bounds.
+    for (const width of [1680, 360]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect.poll(async () => {
+        const layout = await readLayout()
+        return layout.catalogLeft === layout.expectedLeft
+          && layout.width === Math.min(336, width - 32)
+      }).toBe(true)
+      if (width === 360) {
+        await trigger.click()
+        await expect.poll(() => catalog.count()).toBe(0)
+        await trigger.click()
+        await catalog.waitFor()
+      }
+      const layout = await readLayout()
+      expect(layout.catalogLeft).toBeGreaterThanOrEqual(16)
+      expect(layout.catalogRight).toBeLessThanOrEqual(width - 16)
+      expect(layout.scrollWidth).toBeLessThanOrEqual(width)
+      if (width === 1680) expect(layout.catalogLeft).toBe(layout.triggerLeft)
+      if (width === 360) {
+        expect(layout.triggerLeft).toBeGreaterThanOrEqual(0)
+        expect(layout.triggerRight).toBeLessThanOrEqual(width)
+      }
+      await writeFile(join(evidenceDir, `viewport-${width}.json`), `${JSON.stringify(layout, null, 2)}\n`)
+      await page.screenshot({ path: join(evidenceDir, `viewport-${width}.png`), fullPage: true })
+    }
+    await page.setViewportSize({ width: 900, height: 900 })
+    await page.getByRole('button', { name: 'Open sidebar' }).click()
+    await page.getByRole('button', { name: 'Collapse sidebar' }).waitFor()
+    await trigger.click()
+    await catalog.waitFor()
+    await expect.poll(async () => (await readLayout()).catalogLeft).toBe(lightLayout.catalogLeft)
+
+    await catalog.getByRole('listitem').first().click()
+    expect(await trigger.getAttribute('aria-expanded')).toBe('true')
+    await trigger.focus()
+    await page.keyboard.press('Escape')
+    await expect.poll(() => catalog.count()).toBe(0)
+    expect(await trigger.evaluate(element => document.activeElement === element)).toBe(true)
+    await page.keyboard.press('Enter')
+    await catalog.waitFor()
+    const composer = page.locator('[data-composer-input]').first()
+    await composer.click()
+    await expect.poll(() => catalog.count()).toBe(0)
+    await trigger.click()
+    await catalog.waitFor()
 
     const sessionRow = page.getByRole('treeitem', { name: new RegExp(CATALOG_TITLE) })
     expect(await sessionRow.getByRole('img', { name: ACTIVE_SCHEDULE_LABEL }).count()).toBe(1)
