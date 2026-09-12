@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/transport-http/README.md
-README.md: cdff407f903ee6d5ded4d98f3c528735ca394bd8
-README.zh.md: 43b821d084d730511bed5f125442d7058eb370a8
+README.md: b1a5e7223e6aacc130e0f87fc8cb23dad84a830f
+README.zh.md: f85a0906e715d53006e24792f91cf54b1a2dd352

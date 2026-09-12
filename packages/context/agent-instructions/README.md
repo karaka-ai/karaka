@@ -93,11 +93,13 @@ The plugin is built on one principle: workspace instructions are durable convers
 | [`src/render.ts`](src/render.ts) | Instruction rendering, budget truncation, change records |
 | [`src/state.ts`](src/state.ts) | Durable message sources, version/digest cache, reconciliation |
 | [`src/digest.ts`](src/digest.ts) | SHA-1 content identity and per-directory duplicate keys |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion for the durable context contract |
+| — | No runtime invariant companion is published; replay intentionally tolerates unknown or malformed workspace sources, while focused pipeline tests own its private pending/cache state transitions. |
 
 ### Main flow
 
 At the first eligible `agent/pre-step` of a session, the plugin composes the baseline and folds it into the entering batch right after the claimed messages. Successful first-party `read`, `write`, and `edit` calls contribute touches that bubble up through parent execution tokens; once the enclosing step is durable, a projection reconciles the visible session state against the inbox and queues additions, replacements, or removals. An unchanged path with an unchanged digest is never injected again. Discovery follows structured filesystem activity rather than shell navigation, because each local shell call starts a fresh process and parsing arbitrary shell syntax is not a reliable filesystem seam.
+
+Visible instruction changes fold in model-visible surface order, including positional replacements; numeric log order does not determine their precedence. Claimed authority messages fold after that surface. Compaction checkpoints do not acquire structured instruction authority from their prose.
 
 ### Invariants
 

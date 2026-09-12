@@ -93,11 +93,13 @@ export interface Config {
 | [`src/render.ts`](src/render.ts) | 指令渲染、预算截断、变更记录 |
 | [`src/state.ts`](src/state.ts) | 持久消息来源、版本／digest 缓存、对账 |
 | [`src/digest.ts`](src/digest.ts) | SHA-1 内容标识与每目录重复键 |
-| [`src/invariant.ts`](src/invariant.ts) | 持久上下文约定的不变式伴生插件 |
+| — | 不发布运行时不变式伴生入口；回放会容忍未知或格式错误的 workspace source，私有 pending/cache 状态转换由聚焦 pipeline 测试覆盖。 |
 
 ### 主要流程
 
 在会话第一次符合条件的 `agent/pre-step`，插件组合基线并把它折入进入步骤的批次、紧随已领取的消息之后。成功的第一方 `read`、`write`、`edit` 调用贡献的 touch 会沿父级执行 token 逐层上浮；当外层步骤进入持久历史后，一次投影会把可见会话状态与 inbox 对账，并排入新增、替换或移除。路径与 digest 都未变的内容绝不重复注入。发现跟随结构化文件系统活动，而非 shell 导航，因为每次本地 shell 调用都启动新进程，解析任意 shell 语法不是可靠的文件系统 seam。
+
+可见指令变更按模型可见的 surface 顺序折叠，包括位置替换；数字日志顺序不决定其优先级。已领取的权威消息在该 surface 之后折叠。压缩检查点不会从其文本取得结构化指令权威。
 
 ### 不变式
 

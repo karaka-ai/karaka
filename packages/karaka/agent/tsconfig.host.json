@@ -154,9 +154,6 @@
       "path": "../../preset/agent-presets"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
       "path": "../../sandbox/sandbox-local"
     },
     {
@@ -248,9 +245,6 @@
     },
     {
       "path": "../../subagent/tool-subagent-control"
-    },
-    {
-      "path": "../../subagent/tool-subagent-report"
     },
     {
       "path": "../../subprocess/subprocess-local"

@@ -23,13 +23,13 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
     const parent = writer.sessions.create(SessionId('owned-parent'), { meta: { applicationOwner } })
     parent.append('turn/start', { turn: 1 })
     parent.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-    const inherited = [...parent.events]
+    const inherited = parent.snapshotEvents()
     const child = writer.sessions.fork(parent, undefined, SessionId('owned-child'))
     expect(child.header).toMatchObject({
       applicationOwner, parentSession: parent.id, seedLength: inherited.length,
     })
-    expect(child.events.slice(0, inherited.length)).toEqual(inherited)
-    expect(child.events.slice(inherited.length).map(({ time, ...event }) => {
+    expect(child.snapshotEvents(0, inherited.length)).toEqual(inherited)
+    expect(child.snapshotEvents(inherited.length).map(({ time, ...event }) => {
       expect(typeof time).toBe('number')
       return event
     })).toEqual([{
@@ -38,7 +38,7 @@ it('restores an owned parent and its exact fork prefix from JSONL after provider
     parent.append('turn/start', { turn: 2 })
     parent.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
     const stored = [parent, child].map(session => ({
-      meta: { delegationDepth: 0, ...structuredClone(session.header) }, events: [...session.events],
+      meta: { delegationDepth: 0, ...structuredClone(session.header) }, events: session.snapshotEvents(),
     }))
     for (const session of [parent, child]) {
       await writer.sessionPersistence.ensureMaterialized(session)

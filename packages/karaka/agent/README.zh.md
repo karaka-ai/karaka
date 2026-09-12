@@ -73,6 +73,8 @@ client.forChat(chatId).$on('approval/request', async request => {
 import type { StorageBackend } from '@karaka-ai/agent/storage'
 ```
 
+`@karaka-ai/agent/session` 提供 `Session.eventAt(seq)` 读取规范索引事件，并提供 `Session.snapshotEvents(fromSeq, toSeqExclusive)` 获取不可变的半开区间快照。完整的当前快照会复用至下一次追加；先前快照保持稳定。参见 [Session 约定](../../core/session/README.zh.md)。
+
 Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件是 patch 层，因此新 row 必须放在 `insert` 下；此示例还选择了本地插件注册的后端：
 
 ```yaml
@@ -110,6 +112,8 @@ Agent 项目把应用专用插件放在根 `plugins/` 目录中。部署文件�
 </details>
 
 -----
+
+不发布运行时不变量伴生入口，因为此 bundle 组合的各包负责自身的运行时关系。
 
 <a id="further-exploration"></a>
 ## 延伸阅读

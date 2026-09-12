@@ -18,9 +18,6 @@
       "path": "../../core/session"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
       "path": "../../client/connection/tsconfig.host.json"
     }
   ]

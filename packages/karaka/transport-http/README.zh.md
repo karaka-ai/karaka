@@ -25,6 +25,8 @@ kind: "package-reference"
 
 `handleQuestions` 默认为 `true`。当已认证的 DSH Remote 连接负责人工交互时，将其设为 `false`。这仅禁用本插件的 question handler 注册；后端聊天路由仍然可用。
 
+不发布运行时不变量伴生入口，因为请求校验与归属检查在入口执行。
+
 <a id="model-experience"></a>
 ## 模型体验
 

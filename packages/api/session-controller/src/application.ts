@@ -288,7 +288,7 @@ export class ApplicationChatController {
       if (!applicationOwnerEquals(live.header.applicationOwner, request.owner)) {
         throw unauthorizedChat(request.chatId)
       }
-      return { header: live.header, events: [...live.events] }
+      return { header: live.header, events: live.snapshotEvents() }
     }
     const observed = await this.sessionQuery.observeSession(request.chatId, {
       ...(signal === undefined ? {} : { signal }),
@@ -313,7 +313,7 @@ function hasRequest(agent: Agent, requestId: string): boolean {
   const queued = [...agent.inbox.nextTurn, ...agent.inbox.nextStep]
   if (queued.some(message => message.source.kind === 'user'
     && 'rpcId' in message.source && message.source.rpcId === requestId)) return true
-  return agent.session.events.some((event) => {
+  return agent.session.snapshotEvents().some((event) => {
     if (event.type === 'agent/inbox/spliced') {
       return event.data.inserted.some(message => message.source.kind === 'user'
         && 'rpcId' in message.source && message.source.rpcId === requestId)

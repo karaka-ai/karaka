@@ -50,7 +50,7 @@ import type {
 interface SessionReadState {
   readonly id: SessionId
   readonly header: SessionHeader
-  readonly events: SessionEvent[]
+  readonly events: readonly SessionEvent[]
 }
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
@@ -542,7 +542,7 @@ export class SessionCommandController {
     const attached = this.ctx.sessions.get(sessionId)
     if (attached !== undefined) {
       this.rejectApplicationOwnership(attached.header)
-      return { id: attached.id, header: attached.header, events: [...attached.events] }
+      return { id: attached.id, header: attached.header, events: attached.snapshotEvents() }
     }
     const inspected = await inspectApiSession(this.ctx, sessionId)
     return { id: inspected.meta.id, header: inspected.meta, events: inspected.events }

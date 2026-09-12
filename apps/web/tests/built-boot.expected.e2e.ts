@@ -97,6 +97,19 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   await waitFor(() => {
     expect(document.querySelector('[data-sample="bash"]')).not.toBeNull()
   }, { timeout: 10_000 })
+  // Built read cards need the same visible-root observer model as component tests.
+  const readRow = await waitFor(() => {
+    const row = [...document.querySelectorAll('[data-tool="read"]')]
+      .find(candidate => candidate.textContent?.includes('ReadBlock.tsx'))
+    expect(row).toBeDefined()
+    return row!
+  }, { timeout: 10_000 })
+  const readToggle = readRow.querySelector('[data-expandable]')
+  if (readToggle !== null) act(() => { fireEvent.click(readToggle) })
+  await waitFor(() => {
+    expect(readRow.querySelector('[data-read] span[style*="--shiki-"]')).not.toBeNull()
+  }, { timeout: 10_000 })
+
   // The generated bundle roster mounts the question UI before the approval UI.
   // Skip the resident fixture's three questions, then resolve its approval so
   // the ordinary composer bar (which owns ContextMeter) resumes.

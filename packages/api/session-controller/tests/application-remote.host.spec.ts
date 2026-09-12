@@ -48,7 +48,7 @@ describe('application Remote caller ownership', () => {
     expect(await remote.applicationCancel(forged, signal)).toEqual({ accepted: true })
     expect(cancel).toHaveBeenCalledWith({ chatId, owner }, signal)
     session.append('turn/start', { turn: 1 })
-    expect(await remote.applicationHistory(forged, signal)).toEqual(session.events)
+    expect(await remote.applicationHistory(forged, signal)).toEqual(session.snapshotEvents())
     const abort = new AbortController()
     const stream = remote.applicationFollow(forged, abort.signal)[Symbol.asyncIterator]()
     try {
