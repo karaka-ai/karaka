@@ -23,8 +23,8 @@ import { isImageAdmissionError } from '@deepseek-ai/dsh-attachment'
 import type { AttachmentStore, ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolDefinition, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
+import { assertObjectJsonSchema, assertSupportedJsonSchema, ToolArgsError, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import type { JsonSchemaNode, ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Resolved options relevant to tool bridging. */
@@ -264,13 +264,15 @@ function createDefinition(
   taskRequired: boolean,
   opts: ToolBridgeOptions,
 ): ToolDefinition {
+  const { $schema: _dialect, ...inputSchema } = parameters
+  assertObjectJsonSchema(inputSchema)
   const projections = new WeakMap<ToolExecution, PreparedProjection>()
   return {
     name: publicName,
     description,
-    parameters,
+    parameters: inputSchema,
     output: createOutput(rawName, structuredSchema),
-    execute: createExecutor(client, ctx, rawName, taskRequired, opts, projections),
+    execute: createExecutor(client, ctx, rawName, inputSchema, taskRequired, opts, projections),
     finalizeContent(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>) {
       const projection = projections.get(exec)
       if (projection === undefined) return undefined
@@ -316,6 +318,7 @@ function createExecutor(
   client: Client,
   ctx: Context,
   rawName: string,
+  parameters: ObjectJsonSchema,
   taskRequired: boolean,
   opts: ToolBridgeOptions,
   projections: WeakMap<ToolExecution, PreparedProjection>,
@@ -324,11 +327,10 @@ function createExecutor(
     if (taskRequired) {
       throw new Error(`Tool "${rawName}" requires task-based execution, which this bridge does not support`)
     }
-    // The agent loop passes `JSON.parse(model_arguments)` which is usually an
-    // object, but can be any JSON value if the model misbehaves (outputs a bare
-    // string/number/null). Fallback to {} lets the MCP server produce a
-    // specific "missing required param" error the model can learn from.
-    const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
+    // Only this local rejection proves no application callback was dispatched.
+    const violations = validateJsonSchemaValue(parameters, args, '')
+    if (violations.length > 0) throw new ToolArgsError(violations)
+    const argsObj = args as Record<string, unknown>
     const result = await callToolUncached(client, rawName, argsObj, exec, opts)
 
     // The SDK may return a legacy `toolResult` shape; normalize to content array.
