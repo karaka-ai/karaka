@@ -5,6 +5,9 @@
   "projectTitle": "DSH Issue Management",
   "lifecycleActor": "dsh-issue-management",
   "priorityField": "Priority",
+  "initializeStartDates": false,
+  "startDateField": "Start Date",
+  "projectTimeZone": "Asia/Kolkata",
   "allowUnassignedOwner": true,
   "statuses": [
     "Inbox",

@@ -729,6 +729,7 @@ describe('Issue lifecycle workflow', () => {
     // review events.
     const lifecyclePullRequest = workflowEvent(lifecycle, 'pull_request')
     const lifecycleReview = workflowEvent(lifecycle, 'pull_request_review')
+    expect(lifecyclePullRequest.types).toContain('opened')
     expect(lifecyclePullRequest.types).not.toContain('ready_for_review')
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
@@ -754,7 +755,10 @@ describe('Issue lifecycle workflow', () => {
 
   it('targets the current repository for issue policy queries', () => {
     const config: unknown = JSON.parse(readFileSync(resolve(root, '.github/issue-management/config.json'), 'utf8'))
-    expect(config).toMatchObject({ organization: 'karaka-ai', repository: 'karaka' })
+    expect(config).toMatchObject({
+      organization: 'karaka-ai', repository: 'karaka', projectNumber: 1,
+      initializeStartDates: false, startDateField: 'Start Date', projectTimeZone: 'Asia/Kolkata',
+    })
 
     const workflow = loadWorkflow('.github/workflows/issue-policy.yml')
     const policy = workflowJob(workflow, 'policy')
