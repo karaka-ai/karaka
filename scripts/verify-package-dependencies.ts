@@ -2,8 +2,10 @@
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
+import { isBuiltin } from 'node:module'
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import ts from 'typescript'
+import { WorkspaceTypertGenerator } from '../packages/typert/generator/src/workspace.ts'
 import { writeModuleGraph } from './gen-module-graph.ts'
 import {
   hasClientDeclaration,
@@ -12,6 +14,7 @@ import {
 } from './package-dependency-policy.ts'
 import {
   collectRuntimeLocalSourceSpecifiers,
+  collectRuntimeSourcePackageUses,
   collectSourcePackageUses,
 } from './verify-client-packages.ts'
 
@@ -60,13 +63,10 @@ export interface PackageDependencyFacts {
   readonly hostRuntimeExportUses: readonly HostRuntimeExportUse[]
   readonly peerRequiredHostDependencies: ReadonlySet<string>
   readonly configurationOnlyDevDependencies: ReadonlySet<string>
-  readonly configurationOnlyRuntimeDependencies?: ReadonlySet<string>
   readonly clientInject: ReadonlySet<string>
-  readonly cordisIndependent: boolean
-  readonly cordisRuntimeDependency?: boolean
 }
 
-/** One runtime export reached from a package's Host source closure. */
+/** One runtime export used by an authored or generated Host module. */
 export interface HostRuntimeExportUse {
   readonly packageName: string
   readonly specifier: string
@@ -95,7 +95,8 @@ function normalizePath(path: string): string {
 }
 
 function packageNameOf(specifier: string): string | undefined {
-  if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('#') || specifier.includes(':')) {
+  if (isBuiltin(specifier) || specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('#')
+    || specifier.includes(':') || specifier.includes('*')) {
     return undefined
   }
   const parts = specifier.split('/')
@@ -142,8 +143,6 @@ export function discoverPackageDependencyScope(
   const include = new Set(policy.clientFaceInclude)
   const exclude = new Set(policy.clientFaceExclude)
   const host = new Set(policy.hostPackages)
-  const cordisIndependent = policy.cordisIndependentPackages ?? []
-  const cordisRuntimeDependencies = policy.cordisRuntimeDependencyPackages ?? []
 
   for (const [field, values] of [
     ['clientFaceInclude', policy.clientFaceInclude],
@@ -153,23 +152,6 @@ export function discoverPackageDependencyScope(
     for (const name of duplicates(values)) violations.push(`${field} lists ${name} more than once`)
     for (const name of values) {
       if (!byName.has(name)) violations.push(`${field} names unknown release package ${name}`)
-    }
-  }
-  for (const name of duplicates(cordisIndependent)) {
-    violations.push(`cordisIndependentPackages lists ${name} more than once`)
-  }
-  for (const name of cordisIndependent) {
-    if (!byName.has(name)) violations.push(`cordisIndependentPackages names unknown release package ${name}`)
-    if (!host.has(name)) violations.push(`cordisIndependentPackages names unmanaged package ${name}`)
-  }
-  for (const name of duplicates(cordisRuntimeDependencies)) {
-    violations.push(`cordisRuntimeDependencyPackages lists ${name} more than once`)
-  }
-  for (const name of cordisRuntimeDependencies) {
-    if (!byName.has(name)) violations.push(`cordisRuntimeDependencyPackages names unknown release package ${name}`)
-    if (!host.has(name)) violations.push(`cordisRuntimeDependencyPackages names unmanaged package ${name}`)
-    if (cordisIndependent.includes(name)) {
-      violations.push(`${name} appears in both cordisIndependentPackages and cordisRuntimeDependencyPackages`)
     }
   }
   for (const name of include) {
@@ -306,40 +288,105 @@ function resolveLocal(importer: string, specifier: string): string | undefined {
   const raw = resolve(dirname(importer), specifier)
   const candidates = extname(raw) === ''
     ? [`${raw}.ts`, `${raw}.tsx`, `${raw}.mts`, `${raw}.cts`, join(raw, 'index.ts'), join(raw, 'index.tsx')]
-    : [raw, raw.replace(/\.js$/, '.ts'), raw.replace(/\.jsx$/, '.tsx'), raw.replace(/\.mjs$/, '.mts'), raw.replace(/\.cjs$/, '.cts')]
+    : [raw, raw.replace(/\.js$/, '.ts'), raw.replace(/\.jsx?$/, '.tsx'), raw.replace(/\.mjs$/, '.mts'), raw.replace(/\.cjs$/, '.cts')]
   return candidates.find(candidate => existsSync(candidate))
 }
 
-function readHostRuntimeUses(root: string, pkg: WorkspacePackageManifest): {
+function nodeExportTargets(value: unknown): string[] {
+  if (typeof value === 'string') return /\.[cm]?js$/.test(value) ? [value] : []
+  if (Array.isArray(value)) return value.flatMap(nodeExportTargets)
+  if (value === null || typeof value !== 'object') return []
+  return Object.entries(value)
+    .filter(([condition]) => ['node', 'import', 'require', 'default'].includes(condition))
+    .flatMap(([, target]) => nodeExportTargets(target))
+}
+
+function hasGeneratedHostExport(pkg: WorkspacePackageManifest): boolean {
+  const exports = pkg.manifest.exports
+  return exports !== null && typeof exports === 'object'
+    && nodeExportTargets((exports as Record<string, unknown>)['./typert']).includes('./lib/typert.host.js')
+}
+
+/** Generate Host modules in memory, without the build plugin's artifact writes. */
+function generatedHostSources(root: string, packages: readonly WorkspacePackageManifest[]): ReadonlyMap<string, string> {
+  const selected = packages.filter(hasGeneratedHostExport)
+  if (selected.length === 0) return new Map()
+  const artifacts = new WorkspaceTypertGenerator(root).generate(selected.map(pkg => pkg.name), ['host'])
+  const sources = new Map(artifacts.map(artifact => [artifact.package, artifact.js]))
+  for (const pkg of selected) {
+    if (!sources.has(pkg.name)) throw new Error(`${pkg.manifestPath}: declared Host Typert export has no generated module`)
+  }
+  return sources
+}
+
+/** Source-backed Node exports; generated Typert artifacts have no standalone source entry. */
+function hostSourceEntries(root: string, pkg: WorkspacePackageManifest): string[] {
+  const entry = resolve(root, pkg.dir, 'src/index.ts')
+  if (!existsSync(entry)) {
+    throw new Error(`${pkg.manifestPath}: Host runtime entry ${normalizePath(relative(root, entry))} does not exist`)
+  }
+  const entries = new Set([entry])
+  const exports = pkg.manifest.exports
+  if (exports === null || typeof exports !== 'object') return [...entries]
+  for (const [subpath, declaration] of Object.entries(exports as Record<string, unknown>)) {
+    if (subpath === '.' || subpath === './package.json' || /^\.\/(?:client|src)(?:\/|$)/.test(subpath)) continue
+    const types = declaration !== null && typeof declaration === 'object' && 'types' in declaration
+      ? declaration.types
+      : undefined
+    for (const runtime of nodeExportTargets(declaration)) {
+      const generatedFace = subpath === './typert' ? 'host' : subpath === './remote' ? 'remote-client' : undefined
+      if (generatedFace !== undefined
+        && runtime === `./lib/typert.${generatedFace}.js`
+        && types === `./lib/typert.${generatedFace}.d.ts`) continue
+      const target = typeof types === 'string' && types.startsWith('./lib/types/') ? types : runtime
+      if (!target.startsWith('./lib/')) {
+        throw new Error(`${pkg.manifestPath}: Host export ${subpath} cannot map ${target} to a source entry`)
+      }
+      const source = target.replace(/^\.\/lib\/(?:types\/)?/, './src/').replace(/\.d\.([cm]?)ts$/, '.$1js')
+      const matched = source.includes('*')
+        ? globSync(source.replace(/\.[cm]?js$/, '.{ts,tsx,mts,cts}'), { cwd: resolve(root, pkg.dir) })
+          .map(path => resolve(root, pkg.dir, path))
+        : [resolveLocal(resolve(root, pkg.manifestPath), source)].filter(path => path !== undefined)
+      if (matched.length === 0) {
+        throw new Error(`${pkg.manifestPath}: Host export ${subpath} has no source entry for ${target}`)
+      }
+      for (const path of matched) entries.add(path)
+    }
+  }
+  return [...entries].sort()
+}
+
+function readHostRuntimeUses(root: string, pkg: WorkspacePackageManifest, generatedHostSource?: string): {
   packageUses: Map<string, string[]>
   exportUses: HostRuntimeExportUse[]
 } {
   const packageUses = new Map<string, string[]>()
   const exportUses = new Map<string, HostRuntimeExportUse>()
   const seen = new Set<string>()
-  const visit = (path: string): void => {
-    const normalized = normalize(path)
-    if (seen.has(normalized)) return
-    seen.add(normalized)
-    const source = readFileSync(normalized, 'utf8')
-    const displayPath = normalizePath(relative(root, normalized))
-    for (const use of collectRuntimeSourceExportUses(normalized, source)) {
+  const collect = (displayPath: string, source: string): void => {
+    for (const use of collectRuntimeSourceExportUses(displayPath, source)) {
       const name = packageNameOf(use.specifier)
       if (name === undefined) continue
       addUse(packageUses, name, displayPath)
       const fact = { packageName: name, ...use, sourcePath: displayPath }
       exportUses.set(`${use.specifier}\0${use.exportName}\0${displayPath}\0${String(use.line)}\0${String(use.column)}`, fact)
     }
+  }
+  const visit = (path: string): void => {
+    const normalized = normalize(path)
+    if (seen.has(normalized)) return
+    seen.add(normalized)
+    const source = readFileSync(normalized, 'utf8')
+    const displayPath = normalizePath(relative(root, normalized))
+    collect(displayPath, source)
     for (const specifier of collectRuntimeLocalSourceSpecifiers(normalized, source)) {
       const target = resolveLocal(normalized, specifier)
       if (target !== undefined) visit(target)
     }
   }
-  const entry = resolve(root, pkg.dir, 'src/index.ts')
-  if (!existsSync(entry)) {
-    throw new Error(`${pkg.manifestPath}: Host runtime entry ${normalizePath(relative(root, entry))} does not exist`)
-  }
-  visit(entry)
+  for (const entry of hostSourceEntries(root, pkg)) visit(entry)
+  const generated = generatedHostSource ?? generatedHostSources(root, [pkg]).get(pkg.name)
+  if (generated !== undefined) collect(`${normalizePath(pkg.dir)}/lib/typert.host.js`, generated)
   return {
     packageUses,
     exportUses: [...exportUses.values()].sort((left, right) =>
@@ -357,23 +404,46 @@ function readAllSourceUses(root: string, pkg: WorkspacePackageManifest): Map<str
   for (const sourcePath of globSync('src/**/*.{ts,tsx,mts,cts}', { cwd: resolve(root, pkg.dir) }).sort()) {
     const source = readFileSync(resolve(root, pkg.dir, sourcePath), 'utf8')
     const displayPath = `${pkg.dir}/${normalizePath(sourcePath)}`
-    for (const name of collectSourcePackageUses(sourcePath, source)) addUse(uses, name, displayPath)
+    let runtimeUses: Set<string> | undefined
+    for (const specifier of collectSourcePackageUses(sourcePath, source)) {
+      const name = packageNameOf(specifier)
+      if (name === undefined) continue
+      const typesName = `@types/${name.replace(/^@/, '').replace('/', '__')}`
+      if (declaredSections(pkg.manifest, name).length === 0 && declaredSections(pkg.manifest, typesName).length > 0) {
+        runtimeUses ??= collectRuntimeSourcePackageUses(sourcePath, source)
+        if (!runtimeUses.has(name)) {
+          addUse(uses, typesName, displayPath)
+          continue
+        }
+      }
+      addUse(uses, name, displayPath)
+    }
   }
   return uses
 }
 
-/** Read source usage for one already-classified package. */
+/**
+ * Read authored and generated source usage for one already-classified package.
+ * @param root - Repository containing source files and face tsconfigs.
+ * @param pkg - Package manifest and directory.
+ * @param role - Selected dependency policy role.
+ * @param workspaceNames - Workspace package identities.
+ * @param policy - Reviewed Host export and configuration-only classifications.
+ * @param generatedHostSource - Host module already emitted in memory by a batched Typert pass.
+ * @returns Source-derived dependency facts without writing build artifacts.
+ */
 export function readPackageDependencyFacts(
   root: string,
   pkg: WorkspacePackageManifest,
   role: PackageDependencyRole,
   workspaceNames: ReadonlySet<string>,
   policy: PackageDependencyPolicy = PACKAGE_DEPENDENCY_POLICY,
+  generatedHostSource?: string,
 ): PackageDependencyFacts {
   const inject = pkg.manifest.dsh?.client?.inject ?? []
   const hostRuntime = role === 'client-only'
     ? { packageUses: new Map<string, string[]>(), exportUses: [] }
-    : readHostRuntimeUses(root, pkg)
+    : readHostRuntimeUses(root, pkg, generatedHostSource)
   return {
     manifestPath: pkg.manifestPath,
     role,
@@ -388,12 +458,7 @@ export function readPackageDependencyFacts(
     configurationOnlyDevDependencies: new Set(
       policy.configurationOnlyDevDependencies[pkg.manifest.name ?? ''] ?? [],
     ),
-    configurationOnlyRuntimeDependencies: new Set(
-      policy.configurationOnlyRuntimeDependencies?.[pkg.manifest.name ?? ''] ?? [],
-    ),
     clientInject: new Set(inject.map(packageNameOf).filter(name => name !== undefined)),
-    cordisIndependent: policy.cordisIndependentPackages?.includes(pkg.name) === true,
-    cordisRuntimeDependency: policy.cordisRuntimeDependencyPackages?.includes(pkg.name) === true,
   }
 }
 
@@ -472,8 +537,9 @@ export function readPackageDependencyState(
   const packages = readWorkspacePackageManifests(root)
   const workspaceNames = new Set(packages.all.map(pkg => pkg.name))
   const discovered = discoverPackageDependencyScope(packages.release, policy)
+  const generated = generatedHostSources(root, discovered.selected.filter(pkg => pkg.role !== 'client-only'))
   const facts = discovered.selected.map(pkg =>
-    readPackageDependencyFacts(root, pkg, pkg.role, workspaceNames, policy))
+    readPackageDependencyFacts(root, pkg, pkg.role, workspaceNames, policy, generated.get(pkg.name)))
   const selectedNames = new Set(facts.map(fact => fact.manifest.name))
   return {
     facts,
@@ -484,9 +550,6 @@ export function readPackageDependencyState(
       ...Object.keys(policy.configurationOnlyDevDependencies)
         .filter(name => !selectedNames.has(name))
         .map(name => `configurationOnlyDevDependencies names unmanaged package ${name}`),
-      ...Object.keys(policy.configurationOnlyRuntimeDependencies ?? {})
-        .filter(name => !selectedNames.has(name))
-        .map(name => `configurationOnlyRuntimeDependencies names unmanaged package ${name}`),
     ].sort(),
     workspaceNames,
   }
@@ -508,23 +571,22 @@ export function expectedPackageDependencies(
     expected.set(name, { section, origins: new Set([...(current?.origins ?? []), origin]) })
   }
 
-  if (!facts.cordisIndependent) {
-    expected.set(CORDIS, facts.cordisRuntimeDependency === true
-      ? { section: 'dependencies', origins: new Set(['installed Cordis runtime']) }
-      : { section: 'peer-dev', origins: new Set(['shared Cordis runtime']) })
-  }
+  expected.set(CORDIS, { section: 'peer-dev', origins: new Set(['shared Cordis runtime']) })
   for (const [name, paths] of facts.allSourceUses) {
-    if (!facts.workspaceNames.has(name)) continue
     for (const path of paths) add(name, 'devDependencies', path)
+  }
+  if (facts.role !== 'configured-host') {
+    for (const sectionName of ['dependencies', 'optionalDependencies'] as const) {
+      for (const name of Object.keys(facts.manifest[sectionName] ?? {})) {
+        if (!facts.workspaceNames.has(name)) add(name, 'devDependencies', 'declared browser build input')
+      }
+    }
   }
   for (const name of facts.clientInject) {
     if (facts.workspaceNames.has(name)) add(name, 'devDependencies', 'dsh.client.inject')
   }
   for (const name of facts.configurationOnlyDevDependencies) {
     if (facts.workspaceNames.has(name)) add(name, 'devDependencies', 'configured development-only relationship')
-  }
-  for (const name of facts.configurationOnlyRuntimeDependencies ?? []) {
-    if (facts.workspaceNames.has(name)) add(name, 'dependencies', 'published bundle external')
   }
   for (const name of Object.keys(facts.manifest.peerDependencies ?? {})) {
     if (name !== CORDIS) add(name, 'devDependencies', 'existing non-Cordis peer')
@@ -607,10 +669,6 @@ export function collectPackageDependencyViolations(state: PackageDependencyState
   const violations = [...state.policyViolations]
   if (violations.length > 0) return [...new Set(violations)].sort()
   for (const facts of state.facts) {
-    if (facts.cordisIndependent
-      && (facts.allSourceUses.has(CORDIS) || declaredSections(facts.manifest, CORDIS).length > 0)) {
-      violations.push(`${facts.manifestPath}: Cordis-independent libraries must omit Cordis imports and dependencies`)
-    }
     for (const [name, rule] of expectedPackageDependencies(facts)) {
       const actual = declaredSections(facts.manifest, name)
       if (rule.section === 'peer-dev') {
@@ -683,17 +741,28 @@ function preferredRange(
   facts: PackageDependencyFacts,
   name: string,
   target: ExpectedPackageDependency['section'],
-): string | undefined {
-  if (facts.workspaceNames.has(name)) return WORKSPACE_RANGE
+): string {
+  if (name === CORDIS || facts.workspaceNames.has(name)) return WORKSPACE_RANGE
   const order: readonly DependencySection[] = target === 'dependencies'
     ? ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
     : ['devDependencies', 'peerDependencies', 'dependencies', 'optionalDependencies']
-  return order.map(sectionName => section(facts.manifest, sectionName)[name]).find(value => value !== undefined)
+  const range = order.map(sectionName => section(facts.manifest, sectionName)[name]).find(value => value !== undefined)
+  if (range === undefined) {
+    throw new Error(`${facts.manifestPath}: cannot repair undeclared third-party dependency ${name}; declare its version range first`)
+  }
+  return range
 }
 
-/** Apply the dependency policy to one in-memory manifest. */
+/**
+ * Apply the dependency policy to one in-memory manifest.
+ * @param facts - Source uses and manifest to repair.
+ * @throws When a third-party dependency has no declared range; the manifest remains unchanged.
+ */
 export function repairPackageDependencyManifest(facts: PackageDependencyFacts): void {
-  for (const [name, rule] of expectedPackageDependencies(facts)) {
+  const repairs = [...expectedPackageDependencies(facts)].map(([name, rule]) => ({
+    name, rule, range: preferredRange(facts, name, rule.section),
+  }))
+  for (const { name, rule, range } of repairs) {
     if (rule.section === 'peer-dev') {
       for (const sectionName of ['dependencies', 'optionalDependencies'] as const) {
         deleteDependency(facts.manifest, sectionName, name)
@@ -703,8 +772,6 @@ export function repairPackageDependencyManifest(facts: PackageDependencyFacts): 
       deletePeerMeta(facts.manifest, name)
       continue
     }
-    const range = preferredRange(facts, name, rule.section)
-    if (range === undefined) continue
     for (const sectionName of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const) {
       if (sectionName !== rule.section) deleteDependency(facts.manifest, sectionName, name)
     }
@@ -721,9 +788,18 @@ export function repairPackageDependencyManifest(facts: PackageDependencyFacts): 
   }
 }
 
-/** Repair every covered manifest and return repository-relative changed paths. */
+/**
+ * Repair every covered manifest after validating all dependency ranges.
+ * @param root - Repository containing the manifests.
+ * @param state - Classified packages and policy violations that block repair.
+ * @returns Repository-relative changed paths, or no paths when policy violations block repair.
+ * @throws When any third-party dependency is undeclared, before modifying any manifest.
+ */
 export function fixPackageDependencies(root: string, state: PackageDependencyState): string[] {
   if (state.policyViolations.length > 0) return []
+  for (const facts of state.facts) {
+    for (const [name, rule] of expectedPackageDependencies(facts)) preferredRange(facts, name, rule.section)
+  }
   const changed: string[] = []
   for (const facts of state.facts) {
     const before = `${JSON.stringify(facts.manifest, null, 2)}\n`

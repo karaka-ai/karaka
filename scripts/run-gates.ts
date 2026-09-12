@@ -27,6 +27,7 @@ export type Mode =
   | 'ci-static'
   | 'ci-lint-contracts-ready'
   | 'ci-coverage'
+  | 'ci-bench'
   | 'ci-snapshot'
   | 'ci-artifacts'
   | 'ci-consumers'
@@ -137,6 +138,7 @@ function parseMode(raw: string | undefined): Mode {
     case 'ci-static':
     case 'ci-lint-contracts-ready':
     case 'ci-coverage':
+    case 'ci-bench':
     case 'ci-snapshot':
     case 'ci-artifacts':
     case 'ci-consumers':
@@ -151,7 +153,7 @@ function parseMode(raw: string | undefined): Mode {
       return raw
     default:
       throw new Error(
-        `run-gates: expected mode ci-primary | ci-linux-primary | ci-static | ci-lint-contracts-ready | ci-coverage | ci-snapshot | ci-artifacts | ci-consumers | ci-windows-blocking | ci-windows-complete | ci-windows-observational | node-compat | check-all | hygiene | doc-sync | doc-quick, got ${JSON.stringify(raw)}.`,
+        `run-gates: expected mode ci-primary | ci-linux-primary | ci-static | ci-lint-contracts-ready | ci-coverage | ci-bench | ci-snapshot | ci-artifacts | ci-consumers | ci-windows-blocking | ci-windows-complete | ci-windows-observational | node-compat | check-all | hygiene | doc-sync | doc-quick, got ${JSON.stringify(raw)}.`,
       )
   }
 }
@@ -242,6 +244,8 @@ export function gatesForMode(selected: Mode): Gate[] {
       ]
     case 'ci-coverage':
       return coverageGates()
+    case 'ci-bench':
+      return [pnpmScript('bench', 'test:bench', { label: 'performance benchmarks' })]
     case 'ci-snapshot':
       return [ciBuildGate(), snapshotGate()]
     case 'ci-artifacts':
@@ -262,6 +266,7 @@ export function gatesForMode(selected: Mode): Gate[] {
         pnpmScript('cordis-config', 'verify-cordis-config', { label: 'Cordis config' }),
         pnpmScript('client-domain-graph', 'verify-client-domain-graph', { label: 'client domain graph' }),
         pnpmScript('test', 'test'),
+        pnpmScript('approval-policy', 'test:approval-policy', { label: 'Weighted approval policy' }),
         pnpmScript('issue-management', 'test:issue-management', { label: 'Issue management policy' }),
         pnpmScript('duplication', 'duplication'),
         snapshotGate(),
@@ -304,6 +309,8 @@ function ciSharedStaticGates(): Gate[] {
     }),
     pnpmScript('client-packages', 'verify-client-packages', { label: 'client packages' }),
     pnpmScript('client-ui-i18n', 'verify-client-ui-i18n', { label: 'client UI i18n' }),
+    pnpmScript('no-bare-dispatcher', 'verify-no-bare-dispatcher', { label: 'proxy-aware dispatchers' }),
+    pnpmScript('approval-policy', 'test:approval-policy', { label: 'Weighted approval policy' }),
     pnpmScript('issue-management', 'test:issue-management', { label: 'Issue management policy' }),
   ]
 }
@@ -332,7 +339,6 @@ function ciPrimaryGates(): Gate[] {
       label: 'node-next types',
       needs: ['build'],
     }),
-    karakaAgentPublicApiGate(['build']),
     builtPackageInvariantsGate(['build']),
     builtBinSmokeGate(),
   ]
@@ -433,7 +439,6 @@ function ciArtifactGates(): Gate[] {
       label: 'node-next types',
       needs: ['build'],
     }),
-    karakaAgentPublicApiGate(['build']),
     builtPackageInvariantsGate(['build']),
     builtBinSmokeGate(),
   ]
@@ -452,7 +457,6 @@ function ciConsumerGates(): Gate[] {
     'expected-output',
     'doc-typecheck',
     'node-next-types',
-    'karaka-agent-public-api',
     'built-bin-smoke',
   ]
   return [
@@ -478,7 +482,6 @@ function ciConsumerGates(): Gate[] {
       label: 'node-next types',
       needs: validatedBuild,
     }),
-    karakaAgentPublicApiGate(validatedBuild),
     builtBinSmokeGate(validatedBuild),
   ]
 }
@@ -628,7 +631,8 @@ function coverageGates(): Gate[] {
       streamOutput: true,
     })
   return [
-    instrumented,
+    pnpmScript('native-system', 'build:native-system'),
+    { ...instrumented, needs: ['native-system'] },
     pnpmExec('coverage-exempt-heavy', [
       'vitest',
       'run',
@@ -637,6 +641,7 @@ function coverageGates(): Gate[] {
       ...timeouts,
     ], {
       label: 'test:coverage-exempt-heavy',
+      needs: ['native-system'],
     }),
   ]
 }
@@ -662,13 +667,6 @@ function expectedOutputGate(needs: string[] = ['build']): Gate {
 function builtPackageInvariantsGate(needs?: string[]): Gate {
   return pnpmScript('built-package-invariants', 'verify-built-package-invariants', {
     label: 'built package invariants',
-    ...needs === undefined ? {} : { needs },
-  })
-}
-
-function karakaAgentPublicApiGate(needs?: string[]): Gate {
-  return pnpmScript('karaka-agent-public-api', 'verify-karaka-agent-public-api', {
-    label: 'Karaka Agent public API',
     ...needs === undefined ? {} : { needs },
   })
 }
@@ -701,7 +699,6 @@ function hygieneLeafGates(options: { artifactNeeds?: string[] } = {}): Gate[] {
     pnpmScript('dsh-package-licenses', 'verify-dsh-package-licenses', { label: 'DSH package licenses' }),
     pnpmScript('package-invariants', 'verify-package-invariants', { label: 'package invariants' }),
     builtPackageInvariantsGate(options.artifactNeeds),
-    karakaAgentPublicApiGate(options.artifactNeeds),
     pnpmScript('node-next-types', 'verify-node-next-types', {
       label: 'node-next types',
       ...artifactOptions,
@@ -711,6 +708,7 @@ function hygieneLeafGates(options: { artifactNeeds?: string[] } = {}): Gate[] {
     }),
     pnpmScript('client-packages', 'verify-client-packages', { label: 'client packages' }),
     pnpmScript('client-ui-i18n', 'verify-client-ui-i18n', { label: 'client UI i18n' }),
+    pnpmScript('no-bare-dispatcher', 'verify-no-bare-dispatcher', { label: 'proxy-aware dispatchers' }),
   ]
 }
 
@@ -744,12 +742,14 @@ function docSyncLeafGates(options: {
     pnpmScript('tool-catalog', 'verify-tool-catalog', { label: 'tool catalog' }),
     pnpmScript('config-catalog', 'verify-config-catalog', { label: 'config catalog' }),
     pnpmScript('persistence-catalog', 'verify-persistence-catalog', { label: 'persistence catalog' }),
+    pnpmScript('session-format-catalog', 'verify-session-format-catalog', { label: 'Session format catalog' }),
     pnpmScript('public-repository-links', 'verify-public-repository-links', { label: 'public repository links', quick: true }),
     pnpmScript('doc-refs', 'verify-doc-refs', { label: 'doc refs', quick: true }),
     pnpmScript('subsystem-pages', 'verify-subsystem-pages', { label: 'subsystem pages' }),
     pnpmScript('package-paths', 'verify-package-paths', { label: 'package paths' }),
     pnpmScript('tsconfig-paths', 'verify-tsconfig-paths', { label: 'tsconfig paths' }),
     pnpmScript('config-source-ownership', 'verify-config-source-ownership', { label: 'config source ownership' }),
+    pnpmScript('package-readme-summaries', 'verify-package-readme-summaries', { label: 'package README Summaries', quick: true }),
     pnpmScript('package-readme-model-experience', 'verify-package-readme-model-experience', { label: 'package README model experience', quick: true }),
     pnpmScript('agent-note-classification', 'verify-agent-note-classification', { label: 'agent note classification', quick: true }),
     pnpmScript('agent-note-format', 'verify-agent-note-format', { label: 'agent note format', quick: true }),
@@ -787,6 +787,8 @@ function builtBinSmokeGate(needs: string[] = ['build']): Gate {
     'apps/cli/tests/built-bin.e2e.ts',
     'packages/host/directory-picker-native/tests/built-worker.e2e.ts',
     'packages/sdk/server/tests/built-scope-carrier.e2e.ts',
+    'packages/fs/tool-present/tests/built-errors.e2e.ts',
+    'packages/subprocess/subprocess-local/tests/spawn-runner-built.e2e.ts',
     'packages/subagent/subagent-codex/tests/loader-composition.e2e.ts',
     'packages/subagent/subagent-claude-code/tests/loader-composition.e2e.ts',
     'packages/api/remotes/tests/built-lib.e2e.ts',
@@ -796,6 +798,7 @@ function builtBinSmokeGate(needs: string[] = ['build']): Gate {
     // unbuilt, so these files self-skip there.
     'packages/workflow/workflow-worker-thread/tests/built-worker.e2e.ts',
     'packages/code-runtime/code-runtime-worker-thread/tests/built-lib.e2e.ts',
+    'packages/session/session-persistence-jsonl/tests/built-migration-worker.e2e.ts',
     'packages/lsp/lsp-stdio/tests/built-lib.e2e.ts',
   ], {
     label: 'built-bin smoke',
@@ -1188,7 +1191,7 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
         if (enumerationInFlight !== undefined) return
         const handle = descendantPidsAsync(pid, process.platform)
         enumerationInFlight = handle
-        return handle.promise.then((fresh) => {
+        void handle.promise.then((fresh) => {
           if (enumerationInFlight === handle) enumerationInFlight = undefined
           // Merge regardless of the child's exit state: the enumeration
           // started while the child was alive, so its snapshot is the last
@@ -1211,9 +1214,8 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
         if (enumerationInFlight !== undefined) enumerationInFlight.cancel()
         enumerationInFlight = undefined
       }
-      void refreshDescendants()
-      // Native timers ignore the completion promise; controlled clocks can await it.
-      descendantSampler = setInterval(refreshDescendants as () => void, 5000)
+      refreshDescendants()
+      descendantSampler = setInterval(refreshDescendants, 5000)
       // A gate that settles while an enumeration is still running must not
       // leave the PowerShell subprocess holding stdio handles until its own
       // timeout: stop it as soon as the child's outcome is known.
@@ -1504,13 +1506,8 @@ export function taskkillArgs(rootPid: number, descendants: number[]): string[][]
   return [rootPid, ...descendants].map(pid => ['/PID', String(pid), '/T', '/F'])
 }
 
-/**
- * Visit each reachable process once, excluding the root even in cyclic tables.
- * @param root - the process whose descendants are wanted.
- * @param rows - observed pid/ppid pairs; duplicate rows and cycles are tolerated.
- * @returns unique descendants in breadth-first discovery order.
- */
-export function collectDescendants(root: number, rows: ReadonlyArray<readonly [number, number]>): number[] {
+/** Breadth-first walk of the pid/ppid rows starting at `root`. */
+function collectDescendants(root: number, rows: Array<[number, number]>): number[] {
   const byParent = new Map<number, number[]>()
   for (const [pid, ppid] of rows) {
     const children = byParent.get(ppid) ?? []
@@ -1518,15 +1515,12 @@ export function collectDescendants(root: number, rows: ReadonlyArray<readonly [n
     byParent.set(ppid, children)
   }
   const result: number[] = []
-  const queue = [root]
-  const seen = new Set(queue)
-  for (const parent of queue) {
-    for (const pid of byParent.get(parent) ?? []) {
-      if (seen.has(pid)) continue
-      seen.add(pid)
-      result.push(pid)
-      queue.push(pid)
-    }
+  const queue = byParent.get(root) ?? []
+  for (let index = 0; index < queue.length; index += 1) {
+    const pid = queue[index]
+    if (pid === undefined) continue
+    result.push(pid)
+    queue.push(...(byParent.get(pid) ?? []))
   }
   return result
 }

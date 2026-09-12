@@ -267,7 +267,7 @@ export class WorkspaceRegistry extends Service {
 | coordinator（per-id 写链、懒物化、崩溃修复、flush 屏障） | session 语义 | 永不下沉——事件日志的领域逻辑，在 domain 层对应的是写串行链，各归各 |
 | encodeSegment（id 进路径转义） | 介质工具 | domain 侧 key 不进路径用不到；`log` facet（一 session 一文件）迁移时随之下沉 |
 
-**本期不改 session-persistence 的介质代码**（只加 delete 原语）；上表是迁移期的施工清单，也是后端接口"必须装得下 log 形状"的设计依据。
+**本期不改 Session-persistence 的介质代码**（只加 delete 原语）。未来 log-facet 变更需要自己的 consumer 与证据；上表记录剩余 JSONL 复用边界，但不承诺一定提取。
 
 ### 测试矩阵
 
@@ -286,7 +286,7 @@ export class WorkspaceRegistry extends Service {
 | 不做 | 触发条件 | 返工点 | 预埋 |
 | --- | --- | --- | --- |
 | Session 删除（`SessionPersistence.delete`、deleted 事件、递归删除、运行中检查） | 破坏性的 Session 删除产品流启动 | 实现 Session 原语及 `session.delete`；与 Workspace 注册记录删除保持独立 | 上文编排规则和拒绝清单仍是基础；Workspace 删除会保留 Session 与日志 |
-| `log` facet 与 session 后端迁移 | 本期后任意期启动 | 介质操作下沉（复用审计表即施工清单） | facet 结构已留位；两后端介质代码本期即按可下沉形状组织 |
+| `log` facet 与 Session provider 迁移 | 本期后任意期启动 | 有真实 consumer 证明需要时下沉 JSONL 介质操作 | facet 组织保留选项，但不承诺提取 |
 | 多进程并发写保护 | 两 host 进程同写一介质 | JSON 后端文件锁；SQLite WAL 天然多进程 | 写全经 domain 单点串行，加锁只动后端 |
 | 跨进程变更观测 | GUI 断线重连感知 | revision 模式（抄 session-persistence） | 进程内已有 `domain/changed` |
 | 数据迁移 | 首个 tagged release 后模型再变 | 版本号驱动逐域迁移 | 版本号自第一天入介质 |

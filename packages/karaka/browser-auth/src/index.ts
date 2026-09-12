@@ -3,8 +3,11 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { importSPKI, jwtVerify, errors } from 'jose'
-import { ApplicationId, TenantId, UserId } from '@deepseek-ai/dsh-session'
-import type { ConnectionAuth, ConnectionCaller } from '@deepseek-ai/dsh-client-connection'
+import { ApplicationId, TenantId, UserId } from '@karaka-ai/identity'
+import type { ApplicationOwner } from '@karaka-ai/identity'
+
+export interface BrowserCaller { readonly kind: 'application'; readonly owner: ApplicationOwner; readonly expiresAt: number }
+declare module '@deepseek-ai/cordis' { interface Context { karakaBrowserAuth: BrowserAuthentication } }
 
 export const name = 'karaka-browser-auth'
 
@@ -53,15 +56,15 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   new BrowserAuthentication(ctx, config, keys)
 }
 
-class BrowserAuthentication extends Service implements ConnectionAuth {
+export class BrowserAuthentication extends Service {
   constructor(
     ctx: Context, private readonly config: Config,
     private readonly keys: ReadonlyMap<string, { algorithm: string; key: CryptoKey }>,
   ) {
-    super(ctx, 'connectionAuth')
+    super(ctx, 'karakaBrowserAuth')
   }
 
-  async authenticate(credential: string): Promise<Extract<ConnectionCaller, { kind: 'application' }> | undefined> {
+  async authenticate(credential: string): Promise<BrowserCaller | undefined> {
     const config = this.config
     try {
       const { payload } = await jwtVerify(credential, (header) => {

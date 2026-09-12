@@ -65,6 +65,11 @@ export async function writeEvent(
   event: ApplicationChatEvent,
   signal: AbortSignal,
 ): Promise<void> {
+  return writeJsonEvent(response, event, signal)
+}
+
+/** Write one JSON event without changing browser Remote envelopes. */
+export async function writeJsonEvent(response: ServerResponse, event: unknown, signal: AbortSignal): Promise<void> {
   if (response.write(`data: ${JSON.stringify(event)}\n\n`)) return
   await new Promise<void>((resolve, reject) => {
     const cleanup = (): void => {

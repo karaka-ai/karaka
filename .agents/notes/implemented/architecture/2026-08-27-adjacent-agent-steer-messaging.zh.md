@@ -79,8 +79,4 @@ parent 与 child 以相同注册表顺序继承相同定义。标准定义携带
 - 初始任务在 fork 前缀之后携带经过 JSON 编码的动态 parent 地址，而请求头系统提示词与工具顺序保持可复用。
 - 人类提示、结算通知、QueueDock 与 base bundle 的一次性 fork 策略仍是独立决策。
 
-本决策合并并删除了已完全被取代的 report 工具与 child report 义务记录。它取代[按意图命名的 subagent 继续执行操作](../simplification/2026-07-27-intent-named-subagent-continuation-operations.zh.md)中的 `followup` 命名选择，并保留[Child Agent 消息先于其结算通知](../bug-fix/2026-08-17-subagent-message-settlement-ordering.zh.md)中的接受顺序保证。
-
-## Karaka 集成证据
-
-Karaka 移除 report 插件别名和组合行，同时保留原生 Tools 和基础配置中的一次性 fork。带模型闸门的控制测试区分第 1 个回合中的模型消息和第 2 个回合中的人类 Remote 提示；将 Steer 替换为 Queue 会使收件箱断言失败。作用域过滤和同名替换会抑制返回指引。JSONL 重启测试保留应用所有者三元组、直接谱系和委派策略，并在激活前拒绝无关父级。打包部署冒烟测试通过公共入口导入标准控制工具，并针对启动后的运行时执行它，无需新增公共内部适配器别名。
+本决策合并并删除了已完全被取代的 report 工具与 child report 义务记录。它取代[按意图命名的 subagent 继续执行操作](../../archived/simplification/2026-07-27-intent-named-subagent-continuation-operations.md)中的 `followup` 命名选择，并保留[Child Agent 消息先于其结算通知](../bug-fix/2026-08-17-subagent-message-settlement-ordering.zh.md)中的接受顺序保证。

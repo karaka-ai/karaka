@@ -1,7 +1,7 @@
 # Agent Note: SQLite 物理分片行压缩
 
 Status: implemented
-Archived: 2026-09-11
+Archived: 2026-08-30
 
 [English](2026-08-18-sqlite-physical-chunk-row-compression.md) | 中文
 

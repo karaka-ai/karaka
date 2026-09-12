@@ -4,25 +4,22 @@
  * previous generation has been retained or restored.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { join } from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Include } from '@deepseek-ai/cordis-plugin-include'
 import { boot } from '../src/index.ts'
 
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    /** Value contributed by the project-package resolution fixture. */
-    fixtureProjectPluginValue?: string
-  }
-}
-
 const NAME = 'dsh-test-bin'
 
 const NOOP_PLUGIN = 'export const name = "noop"\nexport function apply() {}\n'
+
+const tempRoots: string[] = []
+afterAll(() => {
+  for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
 
 interface TreeFixture {
   ctx: Context
@@ -32,12 +29,9 @@ interface TreeFixture {
 
 async function bootTree(configBody: string, files: Record<string, string> = {}): Promise<TreeFixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-config-reload-'))
+  tempRoots.push(dir)
   writeFileSync(join(dir, 'noop.mjs'), NOOP_PLUGIN)
-  for (const [name, content] of Object.entries(files)) {
-    const path = join(dir, name)
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, content)
-  }
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content)
   writeFileSync(join(dir, 'cordis.yml'), configBody)
   const ctx = await boot(NAME, join(dir, 'cordis.yml'))
   const entry = [...ctx.loader.entries()].find(candidate => candidate.subtree !== undefined)
@@ -58,20 +52,6 @@ function entryById(ctx: Context, id: string) {
 function plugin(name: string, body = ''): string {
   return `export default function ${name}(_ctx, config = {}) { ${body} }\n`
 }
-
-describe('project plugin resolution', () => {
-  it('loads a plugins directory relative to the owning config file', async () => {
-    const { ctx, dir } = await bootTree('- id: project-plugin\n  name: ./plugins/storage-memory.mjs\n', {
-      'plugins/storage-memory.mjs': plugin('storageMemory'),
-    })
-    try {
-      expect(entryById(ctx, 'project-plugin').fiber?.runtime?.callback.name).toBe('storageMemory')
-    } finally {
-      await ctx.fiber.dispose()
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-})
 
 async function expectUpdateFailure(task: Promise<void>, stage: string): Promise<void> {
   try {
@@ -308,6 +288,7 @@ describe('loader tree replacement', () => {
 describe('include refresh with overlay patches', () => {
   it('re-applies entry patches and inserted entries on every re-read (parity with initial load)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dsh-config-reload-overlay-'))
+    tempRoots.push(dir)
     writeFileSync(join(dir, 'noop.mjs'), NOOP_PLUGIN)
     writeFileSync(join(dir, 'base.yml'), '- id: noop\n  name: ./noop.mjs\n  config:\n    value: base\n')
     writeFileSync(join(dir, 'cordis.yml'), [
@@ -373,6 +354,7 @@ describe('include patches layered over one base', () => {
     // must therefore be able to reach a row an earlier layer inserted, or
     // bundle-only rows would be invisible to the user's patch layer.
     const dir = mkdtempSync(join(tmpdir(), 'dsh-config-layered-'))
+    tempRoots.push(dir)
     writeFileSync(join(dir, 'noop.mjs'), NOOP_PLUGIN)
     writeFileSync(join(dir, 'base.yml'), '- id: shared\n  name: ./noop.mjs\n  config:\n    value: base\n')
     writeFileSync(join(dir, 'cordis.yml'), [
@@ -414,56 +396,6 @@ describe('include patches layered over one base', () => {
 })
 
 describe('shipped builtins', () => {
-  it('loads an exact packaged-runtime alias without resolving it through Node', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'dsh-packaged-alias-'))
-    const configPath = join(dir, 'cordis.yml')
-    writeFileSync(configPath, '- id: embedded\n  name: "@karaka-ai/agent/test-plugin"\n  config:\n    value: bundled\n')
-    let received: unknown
-    let ctx: Context | undefined
-    try {
-      ctx = await boot(NAME, configPath, [], (prepared) => {
-        prepared.loader.builtins['@karaka-ai/agent/test-plugin'] = (_pluginCtx: Context, config: unknown) => {
-          received = config
-        }
-      }, pathToFileURL(configPath).href)
-      expect(received).toEqual({ value: 'bundled' })
-    } finally {
-      await ctx?.fiber.dispose()
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('resolves a bare deployment plugin from the server project', async () => {
-    const project = mkdtempSync(join(tmpdir(), 'dsh-project-plugin-'))
-    try {
-      const packageDir = join(project, 'node_modules', '@acme', 'customer-tools')
-      const configPath = join(project, 'config', 'cordis.yml')
-      mkdirSync(packageDir, { recursive: true })
-      mkdirSync(join(project, 'config'), { recursive: true })
-      writeFileSync(join(packageDir, 'package.json'), JSON.stringify({
-        name: '@acme/customer-tools',
-        type: 'module',
-        exports: './index.js',
-      }))
-      writeFileSync(join(packageDir, 'index.js'), [
-        'export default function customerTools(ctx, config) {',
-        "  ctx.effect(() => ctx.provide('fixtureProjectPluginValue', config.value))",
-        '}',
-        '',
-      ].join('\n'))
-      writeFileSync(configPath, '- id: external\n  name: "@acme/customer-tools"\n  config:\n    value: project\n')
-
-      const ctx = await boot(NAME, configPath, [], undefined, pathToFileURL(configPath).href)
-      try {
-        expect(ctx.get('fixtureProjectPluginValue')).toBe('project')
-      } finally {
-        await ctx.fiber.dispose()
-      }
-    } finally {
-      rmSync(project, { recursive: true, force: true })
-    }
-  })
-
   it('lets a booted composition share one isolate realm across a group of rows', async () => {
     // The reason `boot()` registers `cordis:group`: a composition — notably an
     // agent preset living outside this workspace, which cannot resolve

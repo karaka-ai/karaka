@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { CodeBlock } from '../src/markdown/CodeBlock.tsx'
 import { StreamingHighlightSession } from '../src/markdown/highlight.ts'
-import type { HighlightSpan, StreamingHighlightFrame } from '../src/markdown/highlight.ts'
 import { markdownLabels } from './labels.client.ts'
 
 const LABELS = markdownLabels.code
@@ -38,29 +37,10 @@ function readPre(root: HTMLElement) {
   }
 }
 
-/** Accumulate delta frames for full-token parity assertions. */
-function createHighlightReader() {
-  const session = new StreamingHighlightSession()
-  let previous: StreamingHighlightFrame | undefined
-  let completed: HighlightSpan[][] = []
-  return (code: string, lang: string | undefined) => {
-    const frame = session.updateFrame(code, lang)
-    if (frame === undefined) {
-      previous = undefined
-      completed = []
-      return undefined
-    }
-    if (frame.generation !== previous?.generation) completed = []
-    if (frame !== previous) completed.push(...frame.appended)
-    previous = frame
-    return [...completed, ...frame.tail]
-  }
-}
-
 describe('StreamingHighlightSession', () => {
   it('reconstructs the code verbatim and colors tokens through --shiki-* properties', () => {
     const code = 'const a = 1\n// note\nconst b = "x"'
-    const lines = createHighlightReader()(code, 'ts')
+    const lines = new StreamingHighlightSession().update(code, 'ts')
     expect(lines?.map(line => line.map(span => span.text).join('')).join('\n')).toBe(code)
     expect(lines?.[0]?.[0]).toEqual({ text: 'const', style: { color: 'var(--shiki-token-keyword)' } })
     expect(lines?.[1]?.[0]?.style.color).toBe('var(--shiki-token-comment)')
@@ -71,18 +51,18 @@ describe('StreamingHighlightSession', () => {
     // grammar inside a multi-line construct — the case where a stale saved
     // state would color the continuation wrong.
     const code = 'const s = `template\nline ${x} mid\n` // done\nconst t: number = 42'
-    const session = createHighlightReader()
+    const session = new StreamingHighlightSession()
     for (let end = 1; end <= code.length; end++) {
       const slice = code.slice(0, end)
-      expect(session(slice, 'ts')).toEqual(createHighlightReader()(slice, 'ts'))
+      expect(session.update(slice, 'ts')).toEqual(new StreamingHighlightSession().update(slice, 'ts'))
     }
   })
 
   it('keeps completed lines\' span arrays identical across growth and re-tokenizes only the tail', () => {
-    const session = createHighlightReader()
-    const first = session('const a = 1\nlet', 'ts')
+    const session = new StreamingHighlightSession()
+    const first = session.update('const a = 1\nlet', 'ts')
     expect(first).toBeDefined()
-    const second = session('const a = 1\nlet b = 2', 'ts')
+    const second = session.update('const a = 1\nlet b = 2', 'ts')
     expect(second?.[0]).toBe(first?.[0])
     expect(second?.[1]).not.toBe(first?.[1])
   })
@@ -120,51 +100,51 @@ describe('StreamingHighlightSession', () => {
     expect(appended).toBe(800)
   })
 
-  it('is idempotent per input: repeated calls return the identical frame', () => {
+  it('is idempotent per input: repeated calls return the identical result array', () => {
     const session = new StreamingHighlightSession()
-    const result = session.updateFrame('const a = 1', 'ts')
+    const result = session.update('const a = 1', 'ts')
     expect(result).toBeDefined()
-    expect(session.updateFrame('const a = 1', 'ts')).toBe(result)
+    expect(session.update('const a = 1', 'ts')).toBe(result)
   })
 
   it('an alias switch onto the same grammar keeps the cache; a different grammar re-tokenizes correctly', () => {
-    const session = createHighlightReader()
-    const first = session('const a = 1\nlet', 'ts')
+    const session = new StreamingHighlightSession()
+    const first = session.update('const a = 1\nlet', 'ts')
     expect(first).toBeDefined()
     // Same code under a different alias of the same grammar: recomputed
     // (the idempotence key is the raw input) but the line cache is kept.
-    const aliased = session('const a = 1\nlet', 'typescript')
+    const aliased = session.update('const a = 1\nlet', 'typescript')
     expect(aliased?.[0]).toBe(first?.[0])
-    const json = session('{"a": 1}', 'json')
-    expect(json).toEqual(createHighlightReader()('{"a": 1}', 'json'))
+    const json = session.update('{"a": 1}', 'json')
+    expect(json).toEqual(new StreamingHighlightSession().update('{"a": 1}', 'json'))
   })
 
   it('non-append input re-tokenizes from scratch', () => {
-    const session = createHighlightReader()
-    session('const a = 1\nconst b = 2', 'ts')
-    const replaced = session('let c = 3', 'ts')
-    expect(replaced).toEqual(createHighlightReader()('let c = 3', 'ts'))
+    const session = new StreamingHighlightSession()
+    session.update('const a = 1\nconst b = 2', 'ts')
+    const replaced = session.update('let c = 3', 'ts')
+    expect(replaced).toEqual(new StreamingHighlightSession().update('let c = 3', 'ts'))
   })
 
   it('returns undefined for unknown or absent languages, then recovers when a known one arrives', () => {
-    const session = createHighlightReader()
-    expect(session('x', 'cobol')).toBeUndefined()
-    expect(session('x', undefined)).toBeUndefined()
-    expect(session('const x = 1', 'ts')).toEqual(createHighlightReader()('const x = 1', 'ts'))
+    const session = new StreamingHighlightSession()
+    expect(session.update('x', 'cobol')).toBeUndefined()
+    expect(session.update('x', undefined)).toBeUndefined()
+    expect(session.update('const x = 1', 'ts')).toEqual(new StreamingHighlightSession().update('const x = 1', 'ts'))
   })
 
   it('a lazy grammar reports plain until it registers, then highlights on the next update', async () => {
-    const session = createHighlightReader()
-    expect(session('print(1)', 'python')).toBeUndefined()
+    const session = new StreamingHighlightSession()
+    expect(session.update('print(1)', 'python')).toBeUndefined()
     await vi.waitFor(() => {
-      const lines = session('print(1)', 'python')
+      const lines = session.update('print(1)', 'python')
       expect(lines?.[0]?.map(span => span.text).join('')).toBe('print(1)')
       expect(lines?.[0]?.length).toBeGreaterThan(1)
     }, { timeout: 5_000 })
   })
 
   it('a trailing newline renders as a real empty last line (settled-arm parity)', () => {
-    const lines = createHighlightReader()('const a = 1\n', 'ts')
+    const lines = new StreamingHighlightSession().update('const a = 1\n', 'ts')
     expect(lines).toHaveLength(2)
     expect(lines?.[1]).toEqual([])
   })
@@ -174,12 +154,12 @@ describe('StreamingHighlightSession', () => {
     // must still be the inside-template state, so the continuation stays
     // string-colored (incremental equals from-scratch at every prefix).
     const code = 'const s = `a\n\nb` // done'
-    const session = createHighlightReader()
+    const session = new StreamingHighlightSession()
     for (let end = 1; end <= code.length; end++) {
       const slice = code.slice(0, end)
-      expect(session(slice, 'ts')).toEqual(createHighlightReader()(slice, 'ts'))
+      expect(session.update(slice, 'ts')).toEqual(new StreamingHighlightSession().update(slice, 'ts'))
     }
-    const lines = session(code, 'ts')
+    const lines = session.update(code, 'ts')
     expect(lines?.[1]).toEqual([])
     expect(lines?.[2]?.[0]?.text).toBe('b`')
     expect(lines?.[2]?.[0]?.style.color).toBe('var(--shiki-token-string-expression)')
@@ -190,28 +170,28 @@ describe('StreamingHighlightSession', () => {
     // continuation — a leaked \r would break the saved state and recolor the
     // next line as a fresh command.
     const code = 'echo a \\\r\nb\r\nc'
-    const session = createHighlightReader()
+    const session = new StreamingHighlightSession()
     for (let end = 1; end <= code.length; end++) {
       const slice = code.slice(0, end)
-      expect(session(slice, 'bash')).toEqual(createHighlightReader()(slice, 'bash'))
+      expect(session.update(slice, 'bash')).toEqual(new StreamingHighlightSession().update(slice, 'bash'))
     }
     // Span text carries no \r for completed lines, exactly like the settled
     // arm's shiki output.
-    const lines = session(code, 'bash')
+    const lines = session.update(code, 'bash')
     expect(lines?.map(line => line.map(span => span.text).join('')).join('\n')).toBe('echo a \\\nb\nc')
   })
 
   it('markdown markup styles (bold/italic/underline) reach the spans once the grammar loads', async () => {
     const snippet = '# Heading\n**bold words** and *italic* and a [link with spaces](https://x.example) tail'
     await vi.waitFor(() => {
-      expect(createHighlightReader()('# x', 'md')).toBeDefined()
+      expect(new StreamingHighlightSession().update('# x', 'md')).toBeDefined()
     }, { timeout: 5_000 })
-    const session = createHighlightReader()
+    const session = new StreamingHighlightSession()
     for (let end = 1; end <= snippet.length; end++) {
       const slice = snippet.slice(0, end)
-      expect(session(slice, 'md')).toEqual(createHighlightReader()(slice, 'md'))
+      expect(session.update(slice, 'md')).toEqual(new StreamingHighlightSession().update(slice, 'md'))
     }
-    const lines = session(snippet, 'md')
+    const lines = session.update(snippet, 'md')
     expect(lines?.[0]?.[0]?.style.fontWeight).toBe('bold')
     const spans = lines?.[1] ?? []
     expect(spans.some(span => span.style.fontWeight === 'bold')).toBe(true)
@@ -231,7 +211,7 @@ describe('CodeBlock streaming arm', () => {
   it('a markdown fence matches the settled swap including font styles, and a CRLF fence matches too', async () => {
     // md is a lazy grammar: wait for it so both arms highlight.
     await vi.waitFor(() => {
-      expect(new StreamingHighlightSession().updateFrame('# x', 'md')).toBeDefined()
+      expect(new StreamingHighlightSession().update('# x', 'md')).toBeDefined()
     }, { timeout: 5_000 })
     const md = '# Heading\n**bold words** and *italic* and a [link with spaces](https://x.example) tail\n'
     const mdStreamed = render(<CodeBlock code={md} lang="md" streaming {...LABELS} />)
@@ -291,8 +271,8 @@ describe('CodeBlock streaming arm', () => {
     const line = view.container.querySelector('pre.shiki .line')
     expect(line).not.toBeNull()
     const loader = new StreamingHighlightSession()
-    expect(loader.updateFrame('puts 1', 'ruby')).toBeUndefined()
-    await vi.waitFor(() => { expect(loader.updateFrame('puts 1', 'ruby')).toBeDefined() }, { timeout: 5_000 })
+    expect(loader.update('puts 1', 'ruby')).toBeUndefined()
+    await vi.waitFor(() => { expect(loader.update('puts 1', 'ruby')).toBeDefined() }, { timeout: 5_000 })
     expect(view.container.querySelector('pre.shiki .line')).toBe(line)
   })
 

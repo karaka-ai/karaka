@@ -1,7 +1,4 @@
-/**
- * Browser wire client. The plugin selects fixture or HTTP transport, provides
- * the shared API client, and lets API Gateway own the connection loop.
- */
+/** Browser wire client: Remote transport and connection generations. */
 import type { Context } from '@deepseek-ai/cordis'
 import {
   ConnectionController,
@@ -81,9 +78,15 @@ export const inject: string[] = []
  * provides both halves here instead of forking this plugin.
  */
 export interface ClientTransportHooks {
-  /** Transport for generic unary RPC channels (the Typert gateway). */
-  fetch: RpcFetch
-  /** Worker-local Gateway stream carrier; absent when the page uses the Gateway WebSocket. */
+  /**
+   * Already decoded logical RPC carrier. When present it replaces the HTTP
+   * caller outright: no envelopes, no `fetch`, no `openStream` (an in-process
+   * Host such as a test mock plugs in here).
+   */
+  rpc?: ClientConnectionRpc
+  /** Transport for generic unary RPC channels (the Typert gateway); unused when `rpc` is present. */
+  fetch?: RpcFetch
+  /** Worker-local Gateway stream carrier; absent when the page uses the Gateway WebSocket or `rpc` is present. */
   openStream?: RpcStreamOpen
   /**
    * Bundle transport for the module system, present when the carrier also owns
@@ -109,14 +112,10 @@ interface ClientTransportGlobal {
 }
 
 /**
- * The ctx.connection service API: the API client plus a one-shot controller
- * starter. API Gateway supplies generation readiness and reset callbacks;
- * Connection stays independent of downstream domain state.
+ * The ctx.connection service API. API Gateway supplies generation readiness
+ * and reset callbacks; Connection stays independent of downstream domain state.
  */
 export interface ConnectionHandle {
-  /** Resolve endpoint and credentials for each physical WebSocket attempt. */
-  readonly webSocketOptions?: (path: string, signal: AbortSignal) => Promise<{ url: string; protocols: string[] }>
-
   /**
    * Whether the privileged surface is reachable: the page authority is
    * loopback, the transport declares the page owns the Host
@@ -182,40 +181,17 @@ function watchBrowserNetwork(controller: ConnectionController): () => void {
   }
 }
 
-/** Per-client remote endpoint and application credential acquisition. */
-export interface BrowserConnectionConfig {
-  /** HTTP(S) server origin. Omit for the page's own Host connection. */
-  readonly endpoint?: string
-  /** Return a fresh credential when needed; cancellation ends credential acquisition. */
-  readonly credential?: (signal: AbortSignal) => string | Promise<string>
-}
-
 /**
- * Client plugin body: pick the api by page mode and provide ctx.connection.
+ * Client plugin body: pick physical carriers by page mode and provide ctx.connection.
  * @param ctx - client cordis context.
  */
-export function apply(ctx: Context, config: BrowserConnectionConfig = {}): void {
+export function apply(ctx: Context): void {
   const pageLocation = typeof location === 'undefined' ? undefined : location
-  const fixture = config.endpoint === undefined && pageLocation !== undefined && new URLSearchParams(pageLocation.search).has('fixture')
+  const fixture = pageLocation !== undefined && new URLSearchParams(pageLocation.search).has('fixture')
   const fixtureRpc = fixture ? createFixtureConnectionRpc() : undefined
   const transport = (globalThis as ClientTransportGlobal).__DSH_TRANSPORT__
   const recovery = resolveConnectionConfig((globalThis as ClientTransportGlobal).__DSH_CONNECTION_RECOVERY__)
-  const base = config.endpoint === undefined ? undefined : new URL(config.endpoint)
-  if (base !== undefined && (!['http:', 'https:'].includes(base.protocol) || base.pathname !== '/' || base.search !== '' || base.hash !== '' || base.username !== '' || base.password !== '')) {
-    throw new Error('connection: endpoint must be an HTTP(S) server origin')
-  }
-  const fetcher: RpcFetch = async (input, init) => {
-    const headers = new Headers(init.headers)
-    if (config.credential !== undefined) {
-      const signal = init.signal ?? new AbortController().signal
-      headers.set('authorization', `Bearer ${await config.credential(signal)}`)
-      signal.throwIfAborted()
-    }
-    const url = base === undefined ? input : new URL(input.pathname + input.search, base)
-    return (transport?.fetch ?? globalThis.fetch)(url, { ...init, headers })
-  }
-  const rpc = fixtureRpc ?? createWebConnectionRpc(fetcher, transport?.openStream)
-
+  const rpc = fixtureRpc ?? transport?.rpc ?? createWebConnectionRpc(transport?.fetch, transport?.openStream)
   let generationSource: ConnectionGenerationSource | undefined
   let owner: ConnectionOwner | undefined
   let generationId = 0
@@ -254,18 +230,7 @@ export function apply(ctx: Context, config: BrowserConnectionConfig = {}): void 
     publishState(undefined)
   }
   const handle: ConnectionHandle = {
-    isLoopback: config.credential === undefined && (base === undefined
-      ? transport?.ownsHost === true || pageLocation === undefined || isLoopbackHostname(pageLocation.hostname)
-      : isLoopbackHostname(base.hostname)),
-    ...base === undefined && config.credential === undefined ? {} : {
-      async webSocketOptions(path: string, signal: AbortSignal) {
-        const url = new URL(path, base ?? pageLocation?.origin)
-        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-        const credential = await config.credential?.(signal)
-        signal.throwIfAborted()
-        return { url: url.href, protocols: credential === undefined ? [] : ['dsh', `dsh.bearer.${credential}`] }
-      },
-    },
+    isLoopback: transport?.ownsHost === true || pageLocation === undefined || isLoopbackHostname(pageLocation.hostname),
     generation: {
       getSnapshot: () => generation,
       subscribe: (listener) => {

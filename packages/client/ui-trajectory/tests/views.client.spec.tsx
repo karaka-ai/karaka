@@ -7,6 +7,7 @@
  * event ledger with its timing overview, and fiber disposal removes the tab.
  * Timeline projection and inclusive focus edge cases ride along.
  */
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createElement, type ComponentProps, type FC, type ReactNode } from 'react'
@@ -52,24 +53,27 @@ import type { TrajectorySnapshot } from '../src/client/trajectory-contract.ts'
 import { deriveTrajectoryTimeline } from '../src/client/timeline.ts'
 import { t as tTrajectory, tZh } from './locale.client.ts'
 
+// Every session-scope fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
+const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
+const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
+
 function TrajectoryTimeline(
   props: Omit<ComponentProps<typeof LocalizedTrajectoryTimeline>, 't'>,
 ) {
   return <LocalizedTrajectoryTimeline {...props} t={tTrajectory} />
 }
 
+
 const SID = 's1' as SessionId
 const tConversation: ConversationSessionHeaderProps['t'] =
   key => (conversationZh as Record<string, string>)[key] ?? key
 
 const runtimes: SlotTestRuntime[] = []
-const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo')
 
 afterEach(async () => {
   cleanup()
   vi.restoreAllMocks()
-  if (originalScrollTo === undefined) Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
-  else Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo)
+  Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
   for (const runtime of runtimes.splice(0)) await runtime.dispose()
 })
 // The Conversation store persists under its declared key; clear so one case's active
@@ -208,19 +212,20 @@ function standaloneProps(
 ): StandaloneBaseProps {
   const trajectory = historySnapshot(nodes)
   const input = createSnapshotStore<InputState>({
-    draft: '', imageIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [],
+    draft: '', attachmentIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [],
   })
   const inputActions: InputActions = {
     setDraft: () => {},
-    addImages: () => false,
-    removeImage: () => {},
-    pruneImages: () => {},
+    addAttachments: () => false,
+    removeAttachment: () => {},
+    pruneAttachments: () => {},
     submit: () => {},
   }
   return {
     sessionId: SID,
     useChat: bindSnapshotSelector(createSnapshotStore(EMPTY_CHAT_SNAPSHOT)),
     useSessions: emptySessions(),
+    usePanelInfo, useResource,
     useSessionPendingInteraction: bindSnapshotSelector(
       createSnapshotStore<SessionPendingInteractionSnapshot>(new Map()),
     ),
@@ -330,13 +335,13 @@ function mount(fixture: Awaited<ReturnType<typeof bench>>) {
     createSnapshotStore<readonly ViewTab[]>(tabsOf(slots)),
   )
   const useInput = bindSnapshotSelector(createSnapshotStore<InputState>({
-    draft: '', imageIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [],
+    draft: '', attachmentIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [],
   }))
   const inputActions: InputActions = {
     setDraft: vi.fn(),
-    addImages: vi.fn(() => false),
-    removeImage: vi.fn(),
-    pruneImages: vi.fn(),
+    addAttachments: vi.fn(() => false),
+    removeAttachment: vi.fn(),
+    pruneAttachments: vi.fn(),
     submit: vi.fn(),
   }
   const standardProps = {
@@ -347,6 +352,7 @@ function mount(fixture: Awaited<ReturnType<typeof bench>>) {
     useConversation,
     useConversationViews,
     useSessions,
+    usePanelInfo, useResource,
     useSessionPendingInteraction,
     useWorkspaces,
     useProjection,

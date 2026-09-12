@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "c291e7961a515f6d7af9304e7fd1d257929aef26",
+  "sourcePackage": "packages/mcp/mcp-client",
+  "derivedFiles": {
+    "src/connection.ts": "Pass application hooks through the existing connection lifecycle.",
+    "src/tools.ts": "Publish a private catalog and inject verified invocation identity."
+  },
+  "ownedFiles": ["src/index.ts", "src/transport.ts"],
+  "upstreamImplementationFilesChanged": false
+}

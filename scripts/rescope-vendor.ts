@@ -3,8 +3,7 @@
  * that rescope with `--reverse`. Every harness package declares `cordis` as a
  * peer dependency, so publication carries this framework layer too; publishing
  * it under the upstream names would squat them on the registry
- * ([rationale](../.agents/notes/implemented/process/2026-08-10-vendor-package-rescope.md),
- * [name mapping](../docs/rescope.md)).
+ * ([rationale and name mapping](../docs/rescope.md)).
  *
  * The generic pass rewrites ONLY delimited, complete package-name tokens:
  * `'old'` / `"old"` / `` `old` `` / `'old/subpath'`, plus a YAML `name: old`
@@ -246,7 +245,7 @@ const EXACT_EDITS: readonly ExactEdit[] = [
     id: 'root-agents-vendored-name-contract',
     file: 'AGENTS.md',
     find: 'vendored packages keep upstream names and are `private: true`. `cordis` is a peerDependency (+ dev) of every harness package.',
-    replace: 'Vendored packages are rescoped ([mapping](docs/rescope.md)) and private. Cordis packages peer/dev-depend on `@deepseek-ai/cordis`.',
+    replace: 'vendored packages are rescoped ([mapping](docs/rescope.md)) and `private: true`. `@deepseek-ai/cordis` is a peerDependency (+ dev) of every harness package.',
     expect: 1,
   },
   {

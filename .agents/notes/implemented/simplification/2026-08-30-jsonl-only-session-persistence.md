@@ -6,26 +6,26 @@ English | [中文](2026-08-30-jsonl-only-session-persistence.zh.md)
 
 ## Problem
 
-Karaka previously selected the SQLite Session provider and retained it when upstream removed that backend. On 2026-09-11 the operator selected JSONL and confirmed that no existing chats need migration. Keeping the second authoritative format would retain its schema, resources, public exports, and cross-provider tests after that deployment need ended.
+The product ships and exercises JSONL as its authoritative Session store, while the optional SQLite Session-persistence provider duplicates the same logical service over a second physical format. Every Session contract, event-envelope change, recovery rule, package graph, platform lane, and format transition therefore carries a second implementation and test matrix even though shipped profiles do not select it. Released Session-format migration also needs an exact per-Session source generation that remains untouched while a version-named successor is published; the single-database provider would require a separate immutable-generation transaction design without serving a current deployment.
 
-The SQLite Session-query provider owns a separate rebuildable index. The generic SQLite domain-KV provider is also independent of Session logs; neither is part of this removal.
+The SQLite full-text Session-query provider is not an alternative authoritative store. It observes persistence through `ctx.sessionPersistence` and maintains a separate disposable derived index. The generic SQLite domain-KV provider is also independent of Session logs.
 
 ## Decision
 
 `@deepseek-ai/dsh-session-persistence-jsonl` is the sole first-party implementation of `ctx.sessionPersistence`. The abstract Service Definition remains backend-neutral so an out-of-tree provider can implement the same service, but the repository owns and tests one authoritative physical Session format.
 
-JSONL headers preserve the atomic application/tenant/user owner and fork lineage. Events retain their logical order and request identities. Karaka keeps the cold-activation repair that loads preset projections before recreating an Agent. Real process restart and provider remount tests cover owner isolation, history, inherited events, and duplicate request admission.
+The `@deepseek-ai/dsh-session-persistence-sqlite` package, its schema resources, backend-specific tests, configuration surface, and Windows differential lane are absent. Cross-package persistence tests use the real JSONL provider or an owner-local fake. `@deepseek-ai/dsh-session-query-sqlite` remains the optional FTS5 query provider over a separate rebuildable database, and `@deepseek-ai/dsh-storage-sqlite` remains the generic domain-KV provider.
 
-New sessions use the JSONL root under Karaka home, with the provider's compressed default. The old `karaka-sessions.sqlite` file is not read, converted, or deleted. This deployment cutover provides no migration tool because the operator confirmed none is needed. Existing database files do not become disposable merely because this runtime no longer uses them.
-
-`@deepseek-ai/dsh-session-query-sqlite` remains the optional FTS5 provider over a separate derived database; `@deepseek-ai/dsh-storage-sqlite` remains the generic domain-KV provider.
+Existing databases written by the removed provider are not opened or migrated by the current build. An operator who needs their contents must use a build that still contains that provider and export the logical Session before upgrading.
 
 ## Alternatives considered
 
-- **Retain SQLite as an optional authoritative provider.** Rejected for this deployment because it retains a second physical-format and lifecycle maintenance obligation without a current need.
-- **Build an offline converter now.** Not needed for the confirmed empty-chat cutover. A future deployment with retained databases needs a separately validated migration before switching; this change does not claim migration support.
-- **Use the query index as authority.** Rejected because a disposable projection cannot replace authoritative Session headers and events.
+- **Keep SQLite as an opt-in differential backend.** Rejected because an unselected production provider still multiplies every durable-format, lifecycle, platform, and migration obligation; contract fakes and the JSONL provider cover the shared service without retaining a second authoritative format.
+- **Keep a read-only SQLite import package.** Rejected because it would preserve the package graph and schema maintenance without a demonstrated deployment need. A recovery tool can be designed later if real retained databases require one.
+- **Use the Session-query SQLite database as persistence.** Rejected because that database is a disposable projection with independent ownership, schema, and rebuild semantics; treating it as authority would merge two unrelated storage roles.
 
 ## Consequences
 
-Karaka shares upstream's JSONL durability path while retaining its ownership and cold-restart behavior. Search and domain-KV SQLite remain available. Session-format migration and handle changes remain separate work; removing this backend does not incorporate those later protocol changes.
+Session persistence has one first-party physical format and one first-party durability path. The migration stack can keep one per-Session JSONL generation path, bytes, and inode unchanged while exclusively publishing a final successor, without implementing a parallel database transaction protocol. SQLite search remains available and its integration tests prove that it observes JSONL rather than sharing an authoritative database.
+
+Removing the provider is a deliberate compatibility cut for its opt-in database files. The change reduces implementation and CI surface but also removes the stronger database/WAL storage option; a future provider needs a current owner, deployment need, complete shared-contract evidence, and its own format-transition policy.

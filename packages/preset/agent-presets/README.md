@@ -1,5 +1,5 @@
 ---
-description: "Standing Agent Preset compositions with scoped per-Agent views, for users and maintainers choosing, configuring, or debugging presets."
+description: "Per-session agent composition from preset cordis.yml files, for users and maintainers choosing, configuring, or debugging agent presets."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-agent-presets` mounts one standing composition for each selected preset: a directory holding a single `agent.cordis.yml` that names its plugins. Every Agent that names a preset joins that composition and sees its tools, prompt sections, and skills, while Agents naming other presets see their own scoped views, so one process can run several differently composed agents at once. Agents joined to the same preset generation share its plugin instances; plugins keep chat-local mutable state on the Agent or Session, or key it by their identities. The package maintains the preset roster: it lists every preset the configured roots supply — shipped ones and your own under `<dshHome>/.agent-presets` — shows a reason when a preset cannot start a session, and lets you create new presets by copying existing ones. The default preset is a setting you can override per deployment or per user, and a session can switch to a different preset only while it has produced nothing. A preset is as privileged as the plugins it names, so a preset you author carries the same trust as shell access.
+Use `dsh-agent-presets` to give each session the tools, prompt sections, and skills named by one preset's `agent.cordis.yml`. One process can run sessions with different presets while keeping their state separate. The preset list combines shipped definitions with configured and user roots, reports why a preset cannot start, and can create a local preset by copying an existing one. Deployments and users can choose defaults; only an empty session may switch presets. Treat every authored preset as trusted configuration because it grants the capabilities of the plugins it selects.
 
 ## Table of Contents
 
@@ -25,13 +25,15 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this package when each Agent should get tools, prompt sections, and skills from a named preset. Every session names a preset — explicitly or through the configured default — and joins its standing composition; without the package, sessions fall back to whatever the host composition mounts.
+Mount this package in a composition that should give each agent session its own tools, prompt sections, and skills from a preset file. Every session names a preset — explicitly or through the configured default — and is composed from it; without the package, sessions fall back to whatever the host composition mounts.
+
+The shipped Web `standard`, `ptc`, and `cordis` presets include [explicit file delivery](../../client/ui-deliverables/README.md#explicit-deliveries). The `minimal` preset keeps its fixed two-tool training configuration.
 
 ### What a preset gives a session
 
-A session composed from a preset runs the plugins that preset's `agent.cordis.yml` names: its tools, prompt sections, and skills. Sessions joined to the same preset share one installed composition and its plugin instances. Session-local state stays separate only when a plugin stores it on the Agent or Session, or keys it by their identities. A child agent (subagent) joins its parent's composition, so it sees the same tools and prompt sections as the agent that spawned it.
+A session composed from a preset runs the plugins that preset's `agent.cordis.yml` names: its tools, prompt sections, and skills. Sessions joined to the same preset share one installed composition, and each session's state stays separate. A child agent (subagent) joins its parent's composition, so it sees the same tools and prompt sections as the agent that spawned it.
 
-The presets you can choose from come from two places: the presets shipped inside this package under `presets/`, and your own presets under `<dshHome>/.agent-presets`. The picker shows each preset's display name and description; a preset whose composition cannot load is listed with the reason rather than hidden, so you can see what to fix or delete.
+The presets you can choose from come from three sources: the presets shipped inside this package under `presets/`, configured roots, and your own presets under `<dshHome>/.agent-presets`. The picker shows each preset's display name and description; a preset whose composition cannot load is listed with the reason rather than hidden, so you can see what to fix or delete.
 
 ### Minimal configuration
 
@@ -48,7 +50,7 @@ The plugin needs a `default` preset id and scans `roots` for presets:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `default` | required | Preset id composed when a session names none |
+| `default` | required | Deployment fallback preset id, used while mode selection is disabled or no user default overrides it |
 | `roots` | `[]` | Scanned directories in precedence order; each supplies `path` (a leading `~` expands) and `trust` (defaults to `user`) |
 | `includeShippedRoot` | `true` | Prepend the package's bundled presets as a `system` root before every configured root |
 | `includeUserRoot` | `true` | Append `<dshHome>/.agent-presets` as a `user` root, after every configured root |
@@ -57,16 +59,17 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 The shipped root is prepended before every configured root, so the built-in set remains available and wins duplicate ids even when a patch replaces the roster configuration. `includeShippedRoot: false` drops that built-in set for deployments that supply all presets themselves. `includeUserRoot: false` drops the derived writable root; tests that pin an exact roster disable both derived roots.
 
-### Choosing the default preset
+### Showing the picker and choosing its default
 
-The `default` config sets the deployment default. When a settings provider is composed, this plugin registers the `agent-presets` namespace with `config.default` as its base, so a user document layers a per-user default over the deployment's:
+The required `default` config sets the deployment default. When a settings provider is composed, this plugin registers the `agent-presets` namespace with `{ default: config.default, modeSelectionEnabled: true }` as its base, so the existing new-session picker remains visible unless a user turns it off. The Host reads both fields on every default resolution: while `modeSelectionEnabled` is false, an omitted preset resolves to `config.default` even if the user document retains another `default`; while it is true, a user default may override the deployment value:
 
 ```yaml
 agent-presets:
+  modeSelectionEnabled: true
   default: minimal
 ```
 
-The value is read when a session is created, so a changed default affects only sessions created afterwards; running sessions stay on the preset they were composed from. Clearing the user field re-inherits the composition default.
+A client shows or hides selection by writing only `modeSelectionEnabled`; the [Web GUI settings switch](../../client/ui-agent-preset/README.md) does exactly that. The deployment default governs while selection is hidden; re-enabling it restores the saved user `default`, or keeps the deployment default when none has been saved. While mode selection stays enabled, choosing a default writes a user override for sessions created later. Because the Host owns the policy, it applies to every subsequently created session whose caller omits a preset, including Web, CLI, SDK, and headless callers; an explicitly named preset and every existing session remain unchanged.
 
 ### Authoring presets
 
@@ -94,7 +97,7 @@ This section explains the design behind the roster and the standing mount; obser
 
 ### Design philosophy
 
-- **One standing composition per detected generation.** Agents join by parenting their scope key to that generation's standing mount, so its registrations and listeners cover every joined agent and no sibling preset's. A changed composition starts another generation while joined agents retain the old one.
+- **One standing composition per preset.** A preset is mounted once per process under a standing scope; agents join by parenting their scope key to the mount, so the mount's registrations and listeners cover every joined agent and no sibling preset's.
 - **Generations keyed on the composition file.** The mount records the composition file's stamp (mtime and size); a session that finds the stamp stale starts the next generation, while sessions already joined keep the generation they run on — a running session outlives its file changing or disappearing.
 - **The preset file is an input, never a persistence target.** The mounted subtree overrides `write()` as a no-op, so a loader-initiated write-back never rewrites a shared preset file.
 - **Discovery owns health.** A directory whose composition is missing or unloadable is a broken roster row with a reason, not a skip — a skipped directory would still occupy its id while no surface shows anything to delete.
@@ -149,7 +152,6 @@ Read these pages when the package-level contract is not enough; they move from t
 - [Session package map](../../session/README.md) — the durable session record a preset switch appends to.
 - [Generated configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-presets) — every accepted config field and its source declaration.
 - [Per-session agent presets note](../../../.agents/notes/implemented/architecture/2026-08-03-per-session-agent-presets.md) — design rationale and alternatives.
-- [Per-preset standing mounts note](../../../.agents/notes/implemented/architecture/2026-08-08-per-preset-standing-mounts.md) — why the mount is standing and shared.
 
 -----
 

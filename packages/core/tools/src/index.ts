@@ -168,7 +168,7 @@ declare module '@deepseek-ai/cordis' {
     /**
      * Allow a listener to replace content in the DURABLE LOG COPY of one
      * `run_code` sub-dispatch outcome before the bridge appends its
-     * `tool/code-dispatch` event. `next()` keeps the
+     * `tool/ptc-dispatch` event. `next()` keeps the
      * content unchanged; a listener may return replacement blocks (e.g. the
      * spill policy's preview + locator for an oversized text result). Only the
      * logged copy is affected — the program already received the complete
@@ -210,28 +210,10 @@ export interface ToolOutputDefinition {
   presentationMeta?(args: unknown, value: JsonValue): JsonValue
 }
 
-/** Scope and selection facts supplied to a definition-owned visibility rule. */
-export interface ToolVisibilityContext {
-  /** Viewing or executing scope, normally the Agent; undefined for the global view. */
-  readonly scope: ScopeKey | undefined
-  /** Whether the definition comes from a parent or global registry layer. */
-  readonly inherited: boolean
-  /** Whether an inherited definition is named by an allow-list on the scope chain. */
-  readonly explicitlyAllowed: boolean
-}
-
 /** A registered tool: its schema plus the execution function. */
 export interface ToolDefinition extends ToolSchema {
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
-  /**
-   * Pure host-only visibility policy evaluated for model presentation and dispatch.
-   * Omit for every scope; returning false makes the tool indistinguishable from
-   * an unregistered tool in that scope. This callback is never model-visible.
-   * @param visibility - viewing scope and inherited-selection facts.
-   * @returns whether this scope may discover and call the tool.
-   */
-  isVisible?(visibility: Readonly<ToolVisibilityContext>): boolean
   /**
    * Run one accepted call and return only its canonical lossless-JSON value.
    * Async work must observe or forward `exec.signal` and settle only after its
@@ -363,14 +345,14 @@ export type ToolExecutionMode =
  * copy a listener may reshape. `content` is the RENDERED result projection
  * (what a native `tool/result` would carry) — the program itself received
  * the structured `value` (or just the error message on failure); only the
- * `tool/code-dispatch` event's copy changes.
+ * `tool/ptc-dispatch` event's copy changes.
  */
 export interface PtcDispatchLog {
   /** The outer `run_code` execution. */
   readonly exec: ToolExecution
   /** The calling agent (the scope routing key and the spill owner), when the outer call has one. */
   readonly agent?: Agent
-  /** Deterministic sub-call id (`<parent>:code:<n>`). */
+  /** Opaque sub-call id; new calls use `<parent>:ptc:<n>`. */
   readonly subCallId: ToolCallId
   /** The dispatched sub-tool name. */
   readonly name: string
@@ -754,14 +736,6 @@ class ToolLayer implements ScopeLayer {
     return true
   }
 
-  /** Whether this layer carries an explicit allow-list naming one inherited tool. */
-  explicitlyAllows(name: string): boolean {
-    for (const filter of this.restrictions.values()) {
-      if (filter.allow?.has(name) === true) return true
-    }
-    return false
-  }
-
   /** First monotonic denial from this layer's live guard registrations. */
   guardReason(exec: ToolExecution): string | undefined {
     for (const guard of this.guards.values()) {
@@ -1030,8 +1004,7 @@ export class ToolRuntime extends Service {
    * reads return the same flavor — but a reload that swapped in a second
    * language between them would hand a program written against one SDK to the
    * other. Binding it is deferred until a second backend ships (the first
-   * point it is testable); rationale in the
-   * [language-dispatch note](../../../../.agents/notes/implemented/feature/2026-07-31-ptc-language-dispatch.md).
+   * point it is testable).
    */
   private requireCodeRuntime(mode: ToolPresentationMode): CodeRuntime {
     const runtime = this.ctx.get('codeRuntime')
@@ -1188,23 +1161,14 @@ export class ToolRuntime extends Service {
       restrictableNames.add(name)
       // Restrictions intersect across the whole chain: any scope on it may
       // mask an inherited name for everything nested inside it.
-      const visibility = {
-        scope,
-        inherited: true,
-        explicitlyAllowed: layers.some(layer => layer.explicitlyAllows(name)),
-      }
-      if (layers.every(layer => layer.admits(name)) && (definition.isVisible?.(visibility) ?? true)) {
-        visible.set(name, definition)
-      }
+      if (layers.every(layer => layer.admits(name))) visible.set(name, definition)
     }
     // The scope's own registrations last, shadowing an inherited name and
     // outside the filter above.
     if (own !== undefined) {
       for (const [name, definition] of own.tools.entries()) {
         knownNames.add(name)
-        if (definition.isVisible?.({ scope, inherited: false, explicitlyAllowed: false }) ?? true) {
-          visible.set(name, definition)
-        }
+        visible.set(name, definition)
       }
     }
     // Presentation infrastructure is resolved last and outside capability
@@ -1312,7 +1276,7 @@ export class ToolRuntime extends Service {
 
   /**
    * Run the `tools/ptc-dispatch-log` waterfall over one settled sub-dispatch
-   * and return the content the bridge should log on `tool/code-dispatch`.
+   * and return the content the bridge should log on `tool/ptc-dispatch`.
    * Contained: when a listener throws, the method logs the original settled
    * content; that failure must not fail the dispatch or omit the settle event. Private:
    * the ONE consumer is the `run_code` bridge this registry constructs, which

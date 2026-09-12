@@ -73,7 +73,7 @@ function main(): void {
     allowPositionals: false,
   })
   if (values.family === undefined || values.from === undefined || values.from.length === 0) {
-    throw new Error('usage: verify-packed-install.ts --family <dsh|karaka|vendor> --from <packed directory> [--from ...]')
+    throw new Error('usage: verify-packed-install.ts --family <dsh|vendor> --from <packed directory> [--from ...]')
   }
 
   const family = releaseFamily(values.family)
@@ -104,7 +104,7 @@ function main(): void {
     // that cannot install them must still start — which is what optional means
     // here. Their entry package is a plain dependency of dsh-sandbox-local, so
     // its tarball is supplied through --from.
-    capture('npm', ['install', '--no-audit', '--no-fund', '--package-lock=false', '--omit=optional'],
+    capture('npm', ['install', '--no-audit', '--no-fund', '--package-lock=false', '--omit=optional', '--loglevel=http'],
       { cwd: consumerRoot, env: environment })
 
     const bin = join(consumerRoot, 'node_modules', ...entry.packageName.split('/'), entry.binPath)

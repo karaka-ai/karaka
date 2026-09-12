@@ -93,7 +93,15 @@ const windowsOnlyCoverageExclusions = process.platform !== 'win32'
 // never measures child processes. Its behavior is pinned end-to-end by
 // tests/runner.spec.ts, which spawns the real entry through tsx.
 const windowsRunnerCoverageExclusions = process.platform === 'win32'
-  ? ['packages/sandbox/sandbox-windows-acl/src/runner.ts']
+  ? [
+      'packages/sandbox/sandbox-windows-acl/src/runner.ts',
+      // The session write lock's POSIX face (fs-ext flock plus inode
+      // verification) executes only off-Windows: the Linux lanes hold its
+      // per-file 100%, while the Windows branch is unit-pinned by
+      // win32.spec's injected bindings and exercised natively by every
+      // Windows suite through the real backend.
+      'packages/session/session-persistence-jsonl/src/lease.ts',
+    ]
   : []
 
 // pwsh-local's run/start/lifecycle suites self-skip without a real pwsh
@@ -150,7 +158,7 @@ const processBoundTests = [
 export default defineConfig({
   plugins: [pathsPlugin(), standardDecoratorPlugin()],
   test: {
-    setupFiles: ['./scripts/test-invariants.ts', './scripts/test-browser-observers.ts'],
+    setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
     // .tsx: client component specs (jsdom via per-file @vitest-environment pragma).
     include: testIncludes,
     exclude: platformUnsupportedTests,
@@ -166,7 +174,7 @@ export default defineConfig({
           // MaybeLocal in cjs_lexer::Parse) from worker threads on macOS,
           // Linux, and Windows. Forked workers avoid that shared thread path.
           pool: 'forks',
-          setupFiles: ['./scripts/test-invariants.ts', './scripts/test-browser-observers.ts'],
+          setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
           include: testIncludes,
           exclude: [
             ...platformUnsupportedTests,
@@ -181,7 +189,7 @@ export default defineConfig({
           name: 'process-bound',
           execArgv: vitestExecArgv,
           pool: 'forks',
-          setupFiles: ['./scripts/test-invariants.ts', './scripts/test-browser-observers.ts'],
+          setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
           include: processBoundTests,
           exclude: [
             ...platformUnsupportedTests,
@@ -202,30 +210,6 @@ export default defineConfig({
         'packages/*/*/src/types.ts',
         'packages/*/*/src/bin.ts',
         'packages/*/*/src/worker.ts',
-        // Karaka's process launch and Loader registry statically bind the full
-        // product graph. Built-package smokes exercise that composition; its
-        // focused lifecycle spec runs uninstrumented to avoid remapping source
-        // files that their owning packages already cover.
-        'packages/karaka/agent/src/launch.ts',
-        'packages/karaka/agent/src/plugins.ts',
-        // The application-chat stack is exercised as one assembled runtime by
-        // the Karaka transport, SDK, MCP, and recorded-session suites, but its
-        // package-local branch coverage is incomplete. TODO(karaka): add the
-        // missing owner-local cases and restore these files to the per-file gate.
-        'packages/acp/acp/src/mcp.ts',
-        'packages/api/session-controller/src/agent.ts',
-        'packages/api/session-controller/src/application.ts',
-        'packages/api/session-controller/src/commands.ts',
-        'packages/api/session-controller/src/control.ts',
-        'packages/api/session-controller/src/index.ts',
-        'packages/api/session-controller/src/list.ts',
-        'packages/core/session/src/index.ts',
-        'packages/core/tools/src/index.ts',
-        'packages/mcp/mcp-client/src/index.ts',
-        'packages/mcp/mcp-client/src/tools.ts',
-        'packages/mcp/mcp-client/src/transport.ts',
-        'packages/preset/agent-presets/src/mount.ts',
-        'packages/session/session-persistence-jsonl/src/format.ts',
         // Dynamic Host/Client composition is covered by its focused lifecycle
         // tests and assembled application checks rather than per-file coverage.
         'packages/self-modification/*/src/**/*.{ts,tsx}',
@@ -245,8 +229,9 @@ export default defineConfig({
         'packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx',
         'packages/client/ui-renderer/src/client/*',
         // Session object internals retain the runtime GUI debt exemption; the
-        // new Controller entry, transport, Agent scope, and adapters stay gated.
-        'packages/api/session-controller/src/client/sessions/*',
+        // assistant-stream reconciler, Controller entry, transport, Agent scope,
+        // and adapters stay gated.
+        'packages/api/session-controller/src/client/sessions/!(assistant-stream).ts',
         'packages/api/session-controller/src/client/ordered-baseline.ts',
         'packages/api/session-controller/src/client/time-zone.ts',
         // Keep the browser conversation tree under its existing GUI debt
@@ -345,11 +330,9 @@ export default defineConfig({
         'packages/client/ui-settings-models/src/client/welcome-store.ts',
         'packages/extensions/*/src/**/*.ts',
         'packages/extensions/*/src/**/*.tsx',
-        // Typert generator: correctness is pinned by its fixture suites and
-        // the byte-for-byte catalog reproduction test; per-file coverage
-        // would put whole-workspace compiler analysis under v8
-        // instrumentation — the coverage lane's longest tail.
-        'packages/typert/generator/src/*.ts',
+        // Typert correctness is checked by its uninstrumented suites,
+        // including compiler fixtures and byte-for-byte catalog reproduction.
+        'packages/typert/*/src/**/*.{ts,tsx}',
         // Experimental webworker-runtime is outside the coverage requirement
         // by decision: its correctness signal is its uninstrumented suite and
         // the packer's end-to-end image spec.

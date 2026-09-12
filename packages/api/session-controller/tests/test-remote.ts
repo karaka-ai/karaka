@@ -3,6 +3,11 @@
 import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
+import type {
+  AdmittedPromptContentPart,
+  AttachmentAdmissionPart,
+  ImageAttachmentLimits,
+} from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import {
   SessionPersistenceNotFoundError,
@@ -83,15 +88,23 @@ export interface TestSessionRemote {
 export interface TestSessionRemoteDefaults {
   readonly defaultModelSelection: () => AgentModelSelection
   readonly cwd: string
-  readonly coldBlankProbeMaxEvents?: number
-  readonly coldBlankProbeMaxBytes?: number
   readonly nativeOpen?: boolean
   readonly saveDefaultModelSelection?: (selection: AgentModelSelection) => void | Promise<void>
   readonly openPath?: (path: string, signal: AbortSignal) => Promise<void>
+  readonly revealPath?: (path: string, signal: AbortSignal) => Promise<void>
   readonly canOpenPath?: () => boolean
 }
 
 const installed = new WeakMap<Context, SessionController>()
+
+const TEST_IMAGE_LIMITS: ImageAttachmentLimits = Object.freeze({
+  maxImageBytes: 5 * 1024 * 1024,
+  maxImagesPerMessage: 20,
+  maxMessageImageBytes: 100 * 1024 * 1024,
+  maxImagePixels: 40_000_000,
+  maxImageDimension: 2000,
+  mediaTypes: Object.freeze(['image/png'] as const),
+})
 
 /** Compact header-and-events point read a persistence double declares per session. */
 interface TestSessionInspection {
@@ -129,7 +142,10 @@ function testReadHandle(
     access: 'read',
     read: (offset = 0, length?: number, options?: SessionHandleReadOptions) => {
       options?.signal?.throwIfAborted()
-      return Promise.resolve(events.slice(offset, length === undefined ? undefined : offset + length))
+      return Promise.resolve({
+        eventState: 'detached',
+        events: structuredClone(events.slice(offset, length === undefined ? undefined : offset + length)),
+      } as const)
     },
     append: () => Promise.reject(new SessionReadOnlyError(sessionId, 'append')),
     flush: () => Promise.reject(new SessionReadOnlyError(sessionId, 'flush')),
@@ -141,8 +157,7 @@ function testReadHandle(
 /**
  * Adapt a compact header/inspect persistence double onto the handle-based
  * abstract the production readers consume: `list` snapshots wrap the double's
- * headers, `stat` derives a metadata-less snapshot from the listing (so the
- * cold-blank probe skips unless the double declares its own `stat`), and
+ * headers, `stat` derives a metadata-less snapshot from the listing, and
  * `open` serves immutable read handles over the double's `inspect` result.
  */
 export function testSessionPersistence(
@@ -236,6 +251,29 @@ function installControllers(
       },
     } as never)
   }
+  if (ctx.get('attachments') === undefined) {
+    ctx.provide('attachments', {
+      imageLimits: TEST_IMAGE_LIMITS,
+      admitPromptContent: async (
+        content: readonly AttachmentAdmissionPart[],
+      ): Promise<AdmittedPromptContentPart[]> => {
+        const admitted: AdmittedPromptContentPart[] = []
+        for (const part of content) {
+          if (part.type === 'image') throw new Error('test did not configure image persistence')
+          admitted.push(part)
+        }
+        return admitted
+      },
+    } as never)
+  }
+  if (ctx.get('fileUploads') === undefined) {
+    ctx.provide('fileUploads', {
+      registerAgentResolver: () => () => {},
+      resolve: () => undefined,
+      bindPrompt: () => ({ commit: () => {}, [Symbol.dispose]: () => {} }),
+      retirePrompt: () => {},
+    } as never)
+  }
   installSessionReadTestServices(ctx)
   const cwd = vi.spyOn(process, 'cwd').mockReturnValue(defaults.cwd)
   let controller: SessionController
@@ -243,16 +281,11 @@ function installControllers(
     controller = new SessionController(
       ctx,
       {
-        ...defaults.coldBlankProbeMaxEvents === undefined
-          ? {}
-          : { coldBlankProbeMaxEvents: defaults.coldBlankProbeMaxEvents },
-        ...defaults.coldBlankProbeMaxBytes === undefined
-          ? {}
-          : { coldBlankProbeMaxBytes: defaults.coldBlankProbeMaxBytes },
         ...defaults.nativeOpen === undefined ? {} : { nativeOpen: defaults.nativeOpen },
       },
       {
         ...defaults.openPath === undefined ? {} : { openPath: defaults.openPath },
+        ...defaults.revealPath === undefined ? {} : { revealPath: defaults.revealPath },
         ...defaults.canOpenPath === undefined ? {} : { canOpenPath: defaults.canOpenPath },
       },
     )

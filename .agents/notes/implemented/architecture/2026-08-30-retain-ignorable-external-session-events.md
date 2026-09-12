@@ -16,6 +16,8 @@ The canonical `SessionEvent` envelope retains `ignorable?: true`, and every repr
 
 The field is removable only after a replacement supports the current third-party plugin across event production, persistence, reload, and transport, with an explicit cutover for sessions already containing the marker. The [session log versioning decision](2026-08-10-session-log-version-mechanism.md) continues to own the default-required safety rule and format-version policy.
 
+Historical format migration is deliberately stricter in the alpha implementation. The v0-to-v1 edge refuses every unknown v0 type, including an ignorable one, because an opaque payload may contain references that a format edge cannot validate. The [alpha historical-event decision](2026-08-31-alpha-historical-unknown-event-refusal.md) owns that bounded exception; equal-version append and reload continue to follow this note.
+
 ## Alternatives considered
 
 **Require every unknown event on read.** Rejected because the current third-party plugin emits an informational event outside the repository-generated vocabulary. A first-party reload would reject that session even though omitting the event is safe.
@@ -28,6 +30,4 @@ The field is removable only after a replacement supports the current third-party
 
 ## Consequences
 
-Third-party informational events can remain reloadable when their stored records carry the explicit marker, while unknown required events still fail loudly. The field remains part of the public event envelope, persistence schemas, transport types, generated references, and their tests until a replacement satisfies the cutover condition.
-
-SQLite advances from schema 19 to schema 20 because restoring the durable column changes the pre-release physical database format. The provider continues to reject other schema versions rather than migrating them.
+Third-party informational events can remain reloadable when their stored records carry the explicit marker, while unknown required events still fail loudly. The field remains part of the public event envelope, JSONL representation, transport types, generated references, and their tests until a replacement satisfies the cutover condition.

@@ -41,11 +41,6 @@ export class RemoteStreamMuxClient {
   private running = false
   private disposed = false
 
-  /**
-   * @param options - optional per-attempt endpoint and credential resolver.
-   */
-  constructor(private readonly options?: (path: string, signal: AbortSignal) => Promise<{ url: string; protocols: string[] }>) {}
-
   /** Ensure a physical attempt exists, following the current attempt once if needed. */
   start(): void {
     if (this.disposed) return
@@ -145,26 +140,7 @@ export class RemoteStreamMuxClient {
   }
 
   private connect(): Promise<WebSocket> {
-    if (this.options !== undefined) return this.connectAuthenticated(this.options)
-    return this.connectSocket(new WebSocket(remoteStreamUrl()))
-  }
-
-  private async connectAuthenticated(options: NonNullable<RemoteStreamMuxClient['options']>): Promise<WebSocket> {
-    const abort = new AbortController()
-    const cancelled = new Promise<never>((_resolve, reject) => {
-      this.cancelCandidate = (error) => { abort.abort(error); reject(error) }
-    })
-    try {
-      const target = await Promise.race([options(REMOTE_STREAM_MUX_PATH, abort.signal), cancelled])
-      abort.signal.throwIfAborted()
-      return await this.connectSocket(new WebSocket(target.url, target.protocols))
-    } catch (error) {
-      this.cancelCandidate = undefined
-      throw error
-    }
-  }
-
-  private connectSocket(socket: WebSocket): Promise<WebSocket> {
+    const socket = new WebSocket(remoteStreamUrl())
     const connecting = new Promise<WebSocket>((resolve, reject) => {
       let settled = false
       const rejectCandidate = (error: Error): void => {

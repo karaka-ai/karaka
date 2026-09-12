@@ -6,7 +6,7 @@ English | [中文](2026-08-28-omit-unneeded-invariant-companions.zh.md)
 
 ## Problem
 
-The package invariant rule required every workspace package to publish `./invariant`, including packages with no runtime relationship to check. The current workspace had 217 explained-empty companions, each carrying a source file, public export, publication entry, invariant-only dependencies or TypeScript references, build wiring, and registration tests. That machinery expressed a negative conclusion without adding a runtime assertion.
+The package invariant rule required every workspace package to publish `./invariant`, including packages with no runtime relationship to check. The current workspace had 209 explained-empty companions, each carrying a source file, public export, publication entry, invariant-only dependencies or TypeScript references, build wiring, and registration tests. That machinery expressed a negative conclusion without adding a runtime assertion.
 
 The `dsh-host-webserver` companion exposed the same problem in executable form. It registered and disposed synthetic reserved routes on plugin lifecycle events, then called the same service operations again to detect residue. The probe had no independently produced observation: it mutated and inspected one route table through the implementation it claimed to verify, while real route and HMR tests already covered duplicate rejection and disposer symmetry.
 
@@ -28,11 +28,9 @@ A package without a qualifying relationship omits `src/invariant.ts`, the `./inv
 
 ### Audit result
 
-The repository-wide audit removed the 217 explained-empty companions and the synthetic `dsh-host-webserver` companion, leaving 39 checks with independent observations. The retained set includes cross-event protocols such as session, command, approval, workflow, and hook lifecycles; event-to-state checks such as settings, storage-domain, Workspace, client modules, and slots; multi-producer assembly such as system prompt and time context; and durable data consumed by projections or policy state such as todo, plan mode, and sandbox mode.
+The repository-wide audit removed the 209 explained-empty companions and the synthetic `dsh-host-webserver` companion, leaving 39 checks with independent observations. The retained set includes cross-event protocols such as session, command, approval, workflow, and hook lifecycles; event-to-state checks such as settings, storage-domain, Workspace, client modules, and slots; multi-producer assembly such as system prompt and time context; and durable data consumed by projections or policy state such as todo, plan mode, and sandbox mode.
 
 Existing package behavior tests remain responsible for omitted relationships, including webserver route registration and HMR disposal. Product behavior and root package entrypoints do not change; the omitted `./invariant` subpaths are removed under the repository's pre-release compatibility stance.
-
-Karaka applies the same omission rule to its Agent, CLI, SDK, browser authentication, server authentication, application MCP, and HTTP transport packages. Their empty companions perform no authorization or ownership checks; the request handlers and Session Controller retain those checks, while JSONL remains authoritative persistence. Packed artifacts omit the empty invariant exports and files; all other public entries remain available.
 
 ## Alternatives considered
 

@@ -1,7 +1,7 @@
 /** Keyless assembled-Web evidence for conversational Schedule delivery. */
 
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -58,7 +58,7 @@ const EVERY_REPLY = 'Reminders: Check primary metrics; Check secondary metrics.'
 const EVERY_INTERVAL_SECONDS = 60 * 60
 const EVERY_FIXTURE_AGE_MS = 90 * 60 * 1_000
 const CATALOG_SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/schedule-catalog', import.meta.url))
-const CATALOG_FIXTURE = join(CATALOG_SNAPSHOT_DIR, 'session.jsonl')
+const CATALOG_FIXTURE = join(CATALOG_SNAPSHOT_DIR, 'session.v3.jsonl')
 const CATALOG_EXPECTED = join(CATALOG_SNAPSHOT_DIR, 'catalog.expected.md')
 const BASE_PATCH = fileURLToPath(new URL('../../../packages/bundle/base/cordis.patch.yml', import.meta.url))
 const WEB_PATCH = fileURLToPath(new URL('../../../packages/bundle/web-app/cordis.patch.yml', import.meta.url))
@@ -607,8 +607,6 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     const fixture = await readFile(CATALOG_FIXTURE, 'utf8')
     scaffold = await launchWebScaffold({
       extraOverlayPath: OVERLAY,
-      replayFixture: CATALOG_FIXTURE,
-      replayProvidersOnly: true,
     })
     await seedSession(scaffold, fixture, CATALOG_SESSION_ID, 'standard')
     const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
@@ -617,7 +615,7 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     // Seed the zero-I/O list view before the Session is opened.
     const catalogReader = await scaffold.ctx.sessionPersistence.open(CATALOG_SESSION_ID, 'read')
     try {
-      const catalogEvents = [...await catalogReader.read()]
+      const catalogEvents = [...(await catalogReader.read()).events]
       scaffold.ctx.sessionProjectionCache.coldSnapshot(catalogReader.header, catalogReader.inheritedEventCount, catalogEvents)
     } finally {
       await catalogReader.close()
@@ -660,10 +658,7 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
   })
 
   it('replays the overlay-only catalog and sidebar marker, then removes both live', async () => {
-    const artifactRoot = join(REPO_ROOT, '.artifacts')
-    await mkdir(artifactRoot, { recursive: true })
-    const evidenceDir = await mkdtemp(join(artifactRoot, 'schedule-catalog-'))
-    onTestFailed(() => saveFailureShot(page, `${basename(evidenceDir)}/failure`))
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-schedule-catalog'))
     const base = composeEntries([
       loadOverlayPatches('Schedule catalog base roster', BASE_PATCH),
       loadOverlayPatches('Schedule catalog base roster', WEB_PATCH),
@@ -717,7 +712,7 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     const catalog = page.getByRole('list', { name: 'Active reminders' })
     await catalog.waitFor({ timeout: 10_000 })
     expect(await catalog.getByRole('listitem').count()).toBe(3)
-    const readLayout = () => page.evaluate(() => {
+    const lightLayout = await page.evaluate(() => {
       const triggerElement = document.querySelector('button[aria-label="3 reminders"]')
       const catalogElement = document.querySelector('[aria-label="Active reminders"]')
       if (!(triggerElement instanceof HTMLElement) || !(catalogElement instanceof HTMLElement)) {
@@ -730,7 +725,6 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
         bodyPortal: catalogElement.parentElement === document.body,
         position: getComputedStyle(catalogElement).position,
         triggerLeft: triggerBox.left,
-        triggerRight: triggerBox.right,
         catalogLeft: catalogBox.left,
         catalogRight: catalogBox.right,
         width: catalogBox.width,
@@ -740,7 +734,6 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
         background: getComputedStyle(catalogElement).backgroundColor,
       }
     })
-    const lightLayout = await readLayout()
     expect(lightLayout.bodyPortal).toBe(true)
     expect(lightLayout.position).toBe('fixed')
     expect(lightLayout.width).toBe(336)
@@ -787,6 +780,8 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     }))
     expect(scrollLayout.scrollHeight).toBeGreaterThan(scrollLayout.clientHeight)
 
+    const evidenceDir = join(REPO_ROOT, '.artifacts')
+    await mkdir(evidenceDir, { recursive: true })
     await writeFile(
       join(evidenceDir, 'web-e2e-schedule-catalog-left-alignment.json'),
       `${JSON.stringify(lightLayout, null, 2)}\n`,
@@ -806,105 +801,6 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
       MODE,
     )
 
-    await page.getByRole('button', { name: 'Collapse sidebar' }).click()
-    await page.locator('div[style*="grid-template-columns"]').evaluate(async (frame) => {
-      // Complete collapse before controlling the distinct expansion on resize.
-      await Promise.all(frame.getAnimations().map(animation => animation.finished.catch(() => {
-        // A superseded transition has also stopped moving the frame.
-      })))
-    })
-    await trigger.click()
-    await catalog.waitFor()
-    // Resizing the open portal must preserve its viewport anchor and bounds.
-    for (const width of [1680, 360]) {
-      // Widening restores the saved sidebar width after the window resize.
-      // Hold that real transition so its final anchor movement cannot race
-      // ahead of the test and leave the stale-position bug unexercised.
-      const transition = width === 1680 ? await page.evaluateHandle(() => {
-        const frame = document.querySelector('div[style*="grid-template-columns"]')
-        if (!(frame instanceof HTMLElement)) throw new Error('layout frame is not mounted')
-        let animation: Animation | undefined
-        const pause = (event: TransitionEvent) => {
-          if (event.target !== frame || event.propertyName !== 'grid-template-columns') return
-          animation = frame.getAnimations().find(candidate => candidate instanceof CSSTransition
-            && candidate.transitionProperty === 'grid-template-columns')
-          if (animation === undefined) throw new Error('sidebar transition is missing')
-          animation.pause()
-          animation.currentTime = 0
-          frame.removeEventListener('transitionrun', pause)
-        }
-        frame.addEventListener('transitionrun', pause)
-        return {
-          ready: () => animation?.playState === 'paused',
-          finish: () => {
-            if (animation === undefined) throw new Error('sidebar transition was not captured')
-            animation.finish()
-          },
-          dispose: () => {
-            frame.removeEventListener('transitionrun', pause)
-            animation?.finish()
-          },
-        }
-      }) : undefined
-      try {
-        await page.setViewportSize({ width, height: 900 })
-        let pausedLeft: number | undefined
-        if (transition !== undefined) {
-          await expect.poll(() => transition.evaluate(control => control.ready())).toBe(true)
-          pausedLeft = (await readLayout()).triggerLeft
-          await transition.evaluate((control) => { control.finish() })
-        }
-        await expect.poll(async () => {
-          const layout = await readLayout()
-          return {
-            leftError: layout.catalogLeft - layout.expectedLeft,
-            width: layout.width,
-            anchorMoved: pausedLeft === undefined || layout.triggerLeft !== pausedLeft,
-          }
-        }).toEqual({ leftError: 0, width: Math.min(336, width - 32), anchorMoved: true })
-      } finally {
-        await transition?.evaluate((control) => { control.dispose() })
-        await transition?.dispose()
-      }
-      if (width === 360) {
-        await trigger.click()
-        await expect.poll(() => catalog.count()).toBe(0)
-        await trigger.click()
-        await catalog.waitFor()
-      }
-      const layout = await readLayout()
-      expect(layout.catalogLeft).toBeGreaterThanOrEqual(16)
-      expect(layout.catalogRight).toBeLessThanOrEqual(width - 16)
-      expect(layout.scrollWidth).toBeLessThanOrEqual(width)
-      if (width === 1680) expect(layout.catalogLeft).toBe(layout.triggerLeft)
-      if (width === 360) {
-        expect(layout.triggerLeft).toBeGreaterThanOrEqual(0)
-        expect(layout.triggerRight).toBeLessThanOrEqual(width)
-      }
-      await writeFile(join(evidenceDir, `viewport-${width}.json`), `${JSON.stringify(layout, null, 2)}\n`)
-      await page.screenshot({ path: join(evidenceDir, `viewport-${width}.png`), fullPage: true })
-    }
-    await page.setViewportSize({ width: 900, height: 900 })
-    await page.getByRole('button', { name: 'Open sidebar' }).click()
-    await page.getByRole('button', { name: 'Collapse sidebar' }).waitFor()
-    await trigger.click()
-    await catalog.waitFor()
-    await expect.poll(async () => (await readLayout()).catalogLeft).toBe(lightLayout.catalogLeft)
-
-    await catalog.getByRole('listitem').first().click()
-    expect(await trigger.getAttribute('aria-expanded')).toBe('true')
-    await trigger.focus()
-    await page.keyboard.press('Escape')
-    await expect.poll(() => catalog.count()).toBe(0)
-    expect(await trigger.evaluate(element => document.activeElement === element)).toBe(true)
-    await page.keyboard.press('Enter')
-    await catalog.waitFor()
-    const composer = page.locator('[data-composer-input]').first()
-    await composer.click()
-    await expect.poll(() => catalog.count()).toBe(0)
-    await trigger.click()
-    await catalog.waitFor()
-
     const sessionRow = page.getByRole('treeitem', { name: new RegExp(CATALOG_TITLE) })
     expect(await sessionRow.getByRole('img', { name: ACTIVE_SCHEDULE_LABEL }).count()).toBe(1)
     for (const id of Object.values(CATALOG_IDS)) {
@@ -920,7 +816,7 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     }).toBe(0)
     await assertFixtureInventory(CATALOG_SNAPSHOT_DIR, [
       'catalog.expected.md',
-      'session.jsonl',
+      'session.v3.jsonl',
       'system-prompt.expected.md',
       'tool-schemas.expected.json',
     ])

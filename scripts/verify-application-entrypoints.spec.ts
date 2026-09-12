@@ -34,7 +34,7 @@ describe('application entrypoints', () => {
     write(root, 'packages/example/app/package.json', JSON.stringify({ bin: { app: 'lib/bin.js' } }))
 
     expect(applicationEntrypointViolations(root)).toEqual([
-      'packages/example/app/package.json: package bin has no explicit application/build/test classification',
+      'packages/example/app/package.json: package bin bypasses the dsh launcher; applications use apps/cli profiles',
     ])
   })
 
@@ -71,6 +71,15 @@ describe('application entrypoints', () => {
 
     expect(applicationEntrypointViolations(root)).toEqual([
       'apps/rogue/src/bin.ts: executable source has no application/build/test classification',
+    ])
+  })
+
+  it('rejects a packaging dispatcher owned by the CLI workspace', () => {
+    const root = fixture()
+    write(root, 'apps/cli/src/runtime-bootstrap.ts', '#!/usr/bin/env node\n')
+
+    expect(applicationEntrypointViolations(root)).toEqual([
+      'apps/cli/src/runtime-bootstrap.ts: executable source has no application/build/test classification',
     ])
   })
 

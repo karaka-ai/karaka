@@ -12,30 +12,65 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
-    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
-    "./package.json": "./package.json"
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./browser": {
+      "types": "./lib/types/browser.d.ts",
+      "default": "./lib/browser.js"
+    }
   },
-  "files": ["lib/index.js", "lib/types/**/*.d.ts"],
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "lib/browser.js",
+    "lib/**/*.js"
+  ],
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
     "@deepseek-ai/dsh-attachment": "workspace:^",
     "@deepseek-ai/dsh-host-webserver": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-user-questions": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
-    "@karaka-ai/sdk": "workspace:^"
+    "@karaka-ai/sdk": "^0.1.2-alpha.2",
+    "@karaka-ai/identity": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-agent-default-model": "workspace:^",
+    "@deepseek-ai/dsh-agent-presets": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-session-query": "workspace:^",
+    "@deepseek-ai/dsh-session-persistence": "workspace:^",
+    "@karaka-ai/browser-auth": "workspace:^",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-cmdline": "workspace:^",
+    "@deepseek-ai/dsh-user-approval": "workspace:^"
   },
-  "dependencies": { "@deepseek-ai/schemastery": "workspace:^" },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:^",
+    "zod": "^4.4.3"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
     "@deepseek-ai/dsh-attachment": "workspace:^",
     "@deepseek-ai/dsh-host-webserver": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-user-questions": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
-    "@karaka-ai/sdk": "workspace:^"
+    "@karaka-ai/sdk": "file:../../../../standalone/karaka-sdk",
+    "@karaka-ai/identity": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-agent-default-model": "workspace:^",
+    "@deepseek-ai/dsh-agent-presets": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-session-query": "workspace:^",
+    "@deepseek-ai/dsh-session-persistence": "workspace:^",
+    "@karaka-ai/browser-auth": "workspace:^",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-cmdline": "workspace:^",
+    "@deepseek-ai/dsh-user-approval": "workspace:^"
   }
 }

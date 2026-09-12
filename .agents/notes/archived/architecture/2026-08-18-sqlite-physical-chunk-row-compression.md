@@ -1,7 +1,7 @@
 # Agent Note: SQLite physical chunk-row compression
 
 Status: implemented
-Archived: 2026-09-11
+Archived: 2026-08-30
 
 English | [中文](2026-08-18-sqlite-physical-chunk-row-compression.zh.md)
 

@@ -4,8 +4,6 @@ Status: implemented
 
 English | [中文](2026-06-19-real-api-e2e-ci.zh.md)
 
-The [optional CI credentials decision](2026-09-02-optional-ci-credentials.md) supersedes this note's requirement that trusted runs fail when `DEEPSEEK_API_KEY_EXTERNAL` is absent. The trigger and secret-exposure analysis below remains authoritative.
-
 ## Problem
 
 The harness leans hard on real-API tests by policy: [docs/testing.md](../../../../docs/testing.md) argues that a no-key suite proves the plumbing but not the product, and the [ACP inject postmortem](../../../../docs/postmortem/0001-acp-default-export-drops-inject.md) is the standing proof — 178 keyless tests stayed green while a real ACP client session crashed instantly. The real-API e2e suite (`pnpm run test:e2e`, the `*.e2e.ts` files) exists precisely to close that gap: it drives the agent against the live DeepSeek API — real model calls, real bash tools, multi-turn, resume, ACP-over-stdio.
@@ -56,7 +54,7 @@ The repo secret is named `DEEPSEEK_API_KEY_EXTERNAL`; it is mapped to the `DEEPS
 
 ### Scope, runtime shape
 
-The job runs only `test:e2e` on Node 24; keyless gates and version compatibility belong to the main CI workflow. Tests run unbuilt through the workspace paths map with a bounded configurable worker pool, per-test retries, and a job timeout. Superseded PR runs are cancelled, while push and scheduled runs complete for post-merge signal.
+The job runs only `test:e2e` on Node 24; keyless gates and version compatibility belong to the main CI workflow. Tests run unbuilt through the workspace paths map with a bounded configurable worker pool, per-test retries, and a job timeout. The [superseded-CI cancellation policy](../process/2026-09-09-cancel-superseded-ci.md) cancels older runs in the same workflow/ref group across PR, push, schedule, and manual triggers; a post-merge or nightly trigger does not guarantee completion.
 
 The DeepSeek native `web_search` probe is registered but skipped. The live Anthropic-compatible endpoint can return a successful response without structured source blocks, so its positive-source assertion is not a reliable merge signal; unit coverage still pins response parsing, but CI does not prove the live source-block wire shape.
 

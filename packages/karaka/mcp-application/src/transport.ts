@@ -1,0 +1,18 @@
+/** Fetch-time credentials rotate without reconnecting or modifying DSH transport. */
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { ApplicationBridge, Config } from './index.ts'
+
+export function createTransport(config: Config, bridge: ApplicationBridge): Transport {
+  const endpoint = new URL(config.url)
+  if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') throw new Error('MCP endpoint must use HTTP or HTTPS')
+  return new StreamableHTTPClientTransport(endpoint, {
+    requestInit: { headers: config.headers },
+    fetch: async (input, init) => {
+      const headers = new Headers(init?.headers)
+      for (const [key, value] of Object.entries(await bridge.headers(init?.signal ?? undefined))) headers.set(key, value)
+      // A credential-bearing request must never follow a redirect to another origin.
+      return fetch(input, { ...init, headers, redirect: 'error' })
+    },
+  }) as Transport
+}

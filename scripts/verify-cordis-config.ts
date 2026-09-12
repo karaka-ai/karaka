@@ -7,8 +7,7 @@
  * metadata field stays static, so an expression there remains truthy data and
  * silently changes composition. Shipped and test-only dsh overlays resolve
  * named plugins from the CLI application's owning manifest; package-owned
- * Loader fixtures resolve from their package manifest. Karaka Agent aliases
- * resolve from its embedded plugin registry.
+ * Loader fixtures resolve from their package manifest.
  */
 
 import { globSync, readFileSync } from 'node:fs'
@@ -55,8 +54,6 @@ const CHOOSER_BACKEND_PACKAGES = [
   '@deepseek-ai/dsh-client-ui-directory-picker-browse',
   '@deepseek-ai/dsh-client-ui-directory-picker-native',
 ]
-const KARAKA_AGENT_PLUGIN_PREFIX = '@karaka-ai/agent/'
-const KARAKA_AGENT_PLUGIN_REGISTRY = 'packages/karaka/agent/src/plugins.ts'
 const errors: string[] = []
 const pluginReferences: PluginReference[] = []
 
@@ -77,7 +74,6 @@ if (import.meta.main) {
   errors.push(...validateAppResolution())
   errors.push(...validatePackageTestResolution())
   errors.push(...packageTestFixtureDependencyErrors())
-  errors.push(...validateKarakaAgentBuiltinResolution())
   errors.push(...validateSourcePlaneResolution())
   errors.push(...validatePresetPlaneSeparation())
   errors.push(...validateClientHalvesDeclared())
@@ -89,44 +85,6 @@ if (import.meta.main) {
   } else {
     console.log(`verify-cordis-config: ${files.length} config files passed.`)
   }
-}
-
-/**
- * Validate Karaka Agent plugin aliases against the registry embedded in its
- * bundle. These names intentionally do not resolve through Node: the Loader
- * consults `builtins` before it tries project-relative package resolution.
- * @returns one diagnostic per unregistered `@karaka-ai/agent/*` config row.
- */
-function validateKarakaAgentBuiltinResolution(): string[] {
-  const registrySource = readFileSync(resolve(root, KARAKA_AGENT_PLUGIN_REGISTRY), 'utf8')
-  const names = new Set([...registrySource.matchAll(/^\s*'(@karaka-ai\/agent\/[^']+)':/gm)]
-    .map(match => match[1])
-    .filter((name): name is string => name !== undefined))
-  if (names.size === 0) {
-    return [`${KARAKA_AGENT_PLUGIN_REGISTRY}: embedded plugin registry contains no Karaka Agent aliases`]
-  }
-  return karakaAgentBuiltinErrors(pluginReferences, names)
-}
-
-/**
- * Report Karaka Agent aliases absent from the embedded Loader registry.
- * @param references - named plugins collected from Loader configuration.
- * @param registeredNames - exact names installed into `Loader.builtins`.
- * @returns missing-alias diagnostics grouped by name.
- */
-export function karakaAgentBuiltinErrors(
-  references: readonly PluginReference[],
-  registeredNames: ReadonlySet<string>,
-): string[] {
-  const locationsByName = new Map<string, Set<string>>()
-  for (const reference of references) {
-    if (!reference.name.startsWith(KARAKA_AGENT_PLUGIN_PREFIX) || registeredNames.has(reference.name)) continue
-    const locations = locationsByName.get(reference.name) ?? new Set<string>()
-    locations.add(reference.file)
-    locationsByName.set(reference.name, locations)
-  }
-  return [...locationsByName].map(([name, locations]) =>
-    `${[...locations].join(', ')}: ${name} is not registered in ${KARAKA_AGENT_PLUGIN_REGISTRY}`)
 }
 
 /**
@@ -466,9 +424,6 @@ function validateSourcePlaneResolution(): string[] {
   const containingFile = resolve(root, 'scripts/verify-cordis-config.ts')
   const locationsBySpecifier = new Map<string, Set<string>>()
   for (const reference of pluginReferences) {
-    // The dedicated registry check above owns embedded aliases. They are not
-    // Node specifiers and therefore must not acquire fake tsconfig paths.
-    if (reference.name.startsWith(KARAKA_AGENT_PLUGIN_PREFIX)) continue
     const packageName = packageNameFromSpecifier(reference.name)
     if (packageName === undefined || !localPackages.has(packageName)) continue
     const locations = locationsBySpecifier.get(reference.name) ?? new Set<string>()

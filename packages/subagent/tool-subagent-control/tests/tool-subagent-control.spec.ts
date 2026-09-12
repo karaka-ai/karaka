@@ -9,9 +9,7 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import SubagentRuntime, { type SubagentPromptRequestId } from '@deepseek-ai/dsh-subagent'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as SubagentFork from '@deepseek-ai/dsh-subagent-fork-in-process'
 import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -63,7 +61,6 @@ async function setupWith(adapter: MockAdapter | GatedAdapter, park = true) {
   await ctx.plugin(JsonlSessionPersistence, { root })
   await ctx.plugin(TestSessionQuery)
   await ctx.plugin(AgentLoop, { agents: [] })
-  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
@@ -165,97 +162,6 @@ describe('dsh-tool-subagent-control', () => {
     expect(texts[1]).toContain(`Your parent agent id is ${JSON.stringify(parent.id)}`)
     expect(texts[1]).toContain(`send_message({ agent_id: ${JSON.stringify(parent.id)}`)
     expect(texts[1]).not.toContain('report tool')
-  })
-
-  it.each(['filtered', 'replaced'] as const)('omits return guidance when the standard tool is %s', async (mode) => {
-    const { ctx, parent } = await setup([textResponse('child done')])
-    const replacement = defineTool({
-      name: 'send_message',
-      description: 'A scoped tool with unrelated semantics.',
-      parameters: {},
-      output: {
-        schema: { type: 'object', additionalProperties: false, properties: {} },
-        render: () => [{ type: 'text', text: 'replacement' }],
-      },
-      execute: () => Promise.resolve({}),
-    })
-    const off = ctx.on('agent/created', ({ agent }) => {
-      if (agent !== parent && mode === 'replaced') agent.ctx.tools.register(replacement)
-    })
-    try {
-      const started = await ctx.subagents.startContinuable({
-        provider: 'spawn',
-        label: 'scoped child',
-        request: {
-          prompt: [{ type: 'text', text: 'scoped task' }], parent,
-          ...(mode === 'filtered' ? { toolFilter: { deny: ['send_message'] } } : {}),
-        },
-        signal: testToolSignal,
-      })
-      await waitNoActivation(ctx, started.childId)
-      const loaded = await loadStoredSession(ctx.sessionPersistence, started.childId)
-      const prompt = loaded.events.find(event => event.type === 'user/message'
-        && event.data.content.some(block => block.type === 'text' && block.text === 'scoped task'))
-      expect(prompt?.type === 'user/message' && prompt.data.content).toEqual([{ type: 'text', text: 'scoped task' }])
-      expect(ctx.tools.get('send_message', parent)).not.toBe(replacement)
-    } finally {
-      off()
-      await ctx.fiber.dispose()
-    }
-  })
-
-  it('steers model messages in the open turn while the human Remote queues a later turn', async () => {
-    const release = Promise.withResolvers<undefined>()
-    const adapter = new GatedAdapter([
-      { chunks: textResponse('first answer'), gate: release.promise },
-      { chunks: textResponse('steered answer') },
-      { chunks: textResponse('human answer') },
-    ])
-    const { ctx, parent } = await setupWith(adapter)
-    try {
-      const started = await ctx.subagents.startContinuable({
-        provider: 'spawn', label: 'delivery boundary',
-        request: { prompt: [{ type: 'text', text: 'initial task' }], parent },
-        signal: testToolSignal,
-      })
-      await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
-      const child = ctx.agents.get(started.childId)!
-      const humanId = 'human-request' as SubagentPromptRequestId
-      const queued = await ctx.subagents.prompt({
-        parentSessionId: parent.id, childSessionId: child.id, mode: 'continuable',
-        content: [{ type: 'text', text: 'human next turn' }],
-        requestId: humanId, clientTimeZone: 'UTC',
-      }, testToolSignal)
-      const steered = await callTool(ctx, 'send_message', {
-        agent_id: child.id, message: 'model nearest step',
-      }, parent)
-      expect(steered.isError).toBe(false)
-      expect(child.status).toBe('running')
-      expect(child.inbox.nextStep.map(message => message.source)).toEqual([
-        { kind: 'agent-message', form: 'relay', senderSessionId: parent.id },
-      ])
-      expect(child.inbox.nextTurn.map(message => message.id)).toEqual([queued.messageId])
-      release.resolve(undefined)
-      await waitNoActivation(ctx, child.id)
-      const loaded = await loadStoredSession(ctx.sessionPersistence, child.id)
-      let turn = 0
-      const deliveries = loaded.events.flatMap((event) => {
-        if (event.type === 'turn/start') turn = event.data.turn
-        if (event.type !== 'user/message') return []
-        const texts = event.data.content.flatMap(block => block.type === 'text' ? [block.text] : [])
-        if (!texts.includes('model nearest step') && !texts.includes('human next turn')) return []
-        return [{ turn, source: event.data.source, texts }]
-      })
-      expect(deliveries).toHaveLength(2)
-      expect(deliveries[0]).toMatchObject({ turn: 1, source: { kind: 'agent-message', senderSessionId: parent.id } })
-      expect(deliveries[1]).toMatchObject({
-        turn: 2, source: { kind: 'user', rpcId: humanId, clientTimeZone: 'UTC' },
-      })
-      expect(adapter.requests).toHaveLength(3)
-    } finally {
-      release.resolve(undefined)
-      await ctx.fiber.dispose()
-    }
   })
 
   it('JSON-encodes a caller-supplied parent id in the initial return instruction', async () => {
@@ -425,7 +331,6 @@ describe('dsh-tool-subagent-control', () => {
     const ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
-    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     const fiber = await ctx.plugin(tool)
     expect(ctx.tools.schemas().some(schema => schema.name === 'send_message')).toBe(true)

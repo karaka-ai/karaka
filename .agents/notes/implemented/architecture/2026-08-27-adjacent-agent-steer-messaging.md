@@ -79,8 +79,4 @@ The standalone `@deepseek-ai/dsh-tool-subagent-report` package, `report` schema,
 - The initial task carries JSON-encoded dynamic parent addressing after a fork prefix, while the request-head system prompt and tool ordering remain reusable.
 - Human prompts, settlement notices, QueueDock, and the base bundle's one-shot fork policy remain separate decisions.
 
-This decision consolidates and removes the fully superseded report-tool and child-report-obligation records. It supersedes the `followup` naming choice in [Intent-named subagent continuation operations](../simplification/2026-07-27-intent-named-subagent-continuation-operations.md) and retains the accepted-order guarantee in [Child Agent messages precede their settlement notices](../bug-fix/2026-08-17-subagent-message-settlement-ordering.md).
-
-## Karaka integration evidence
-
-Karaka removes the report plugin alias and composition row while retaining native Tools and the one-shot base fork. The gated control test distinguishes a model message in turn 1 from a human Remote prompt in turn 2; replacing Steer with Queue fails its inbox assertion. Scoped filtering and same-name replacement suppress return guidance. The JSONL restart test preserves the application owner triple, direct lineage and delegated policy, and rejects an unrelated parent before activation. The packed deployment smoke imports the standard control tool through its public entry and exercises it against the launched runtime, without adding a public internal adapter alias.
+This decision consolidates and removes the fully superseded report-tool and child-report-obligation records. It supersedes the `followup` naming choice in [Intent-named subagent continuation operations](../../archived/simplification/2026-07-27-intent-named-subagent-continuation-operations.md) and retains the accepted-order guarantee in [Child Agent messages precede their settlement notices](../bug-fix/2026-08-17-subagent-message-settlement-ordering.md).

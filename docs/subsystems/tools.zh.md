@@ -8,7 +8,7 @@
 
 ## `ToolDefinition` — 一个已注册的工具
 
-由一个 `ToolSchema`（面向模型的字段）、必需的规范输出声明、仅供宿主使用的可见性策略、`execute` 函数、仅供宿主使用的调度器元数据、可选的最终内容回调和可选 UI 展示函数组成。注册表持有这些定义，循环通过它们分派调用。注册表的 `schemas()` 通过显式允许列表构建面向模型的 `ToolSchema[]`；`output`/`isVisible`/`execute`/`finalizeContent`/`timeoutMs`/`isConcurrencySafe`/`presentCall`/`presentResult` 绝不能泄漏到模型请求中。
+由一个 `ToolSchema`（面向模型的字段）、必需的规范输出声明、`execute` 函数、仅供宿主使用的调度器元数据、可选的最终内容回调和可选 UI 展示函数组成。注册表持有这些定义，循环通过它们分派调用。注册表的 `schemas()` 通过显式允许列表构建面向模型的 `ToolSchema[]`；`output`/`execute`/`finalizeContent`/`timeoutMs`/`isConcurrencySafe`/`presentCall`/`presentResult` 绝不能泄漏到模型请求中。
 
 ```ts type-equiv
 /** Tool-owned canonical output contract used after the body returns a JSON value. */
@@ -23,30 +23,10 @@ interface ToolOutputDefinition {
 ```
 
 ```ts type-equiv
-/** Scope and selection facts supplied to a definition-owned visibility rule. */
-interface ToolVisibilityContext {
-  /** Viewing or executing scope, normally the Agent; undefined for the global view. */
-  readonly scope: ScopeKey | undefined
-  /** Whether the definition comes from a parent or global registry layer. */
-  readonly inherited: boolean
-  /** Whether an inherited definition is named by an allow-list on the scope chain. */
-  readonly explicitlyAllowed: boolean
-}
-```
-
-```ts type-equiv
 /** A registered tool: its schema plus the execution function. */
 interface ToolDefinition extends ToolSchema {
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
-  /**
-   * Pure host-only visibility policy evaluated for model presentation and dispatch.
-   * Omit for every scope; returning false makes the tool indistinguishable from
-   * an unregistered tool in that scope. This callback is never model-visible.
-   * @param visibility - viewing scope and inherited-selection facts.
-   * @returns whether this scope may discover and call the tool.
-   */
-  isVisible?(visibility: Readonly<ToolVisibilityContext>): boolean
   /**
    * Run one accepted call and return only its canonical lossless-JSON value.
    * Async work must observe or forward `exec.signal` and settle only after its
@@ -282,14 +262,14 @@ PTC mode 的桥接层还会把每个已结算的子分派暴露给 `tools/ptc-di
  * copy a listener may reshape. `content` is the RENDERED result projection
  * (what a native `tool/result` would carry) — the program itself received
  * the structured `value` (or just the error message on failure); only the
- * `tool/code-dispatch` event's copy changes.
+ * `tool/ptc-dispatch` event's copy changes.
  */
 interface PtcDispatchLog {
   /** The outer `run_code` execution. */
   readonly exec: ToolExecution
   /** The calling agent (the scope routing key and the spill owner), when the outer call has one. */
   readonly agent?: Agent
-  /** Deterministic sub-call id (`<parent>:code:<n>`). */
+  /** Opaque sub-call id; new calls use `<parent>:ptc:<n>`. */
   readonly subCallId: ToolCallId
   /** The dispatched sub-tool name. */
   readonly name: string
@@ -387,7 +367,7 @@ interface ToolExecutionFailure {
 type ToolExecutionResult = ToolExecutionSuccess | ToolExecutionFailure
 ```
 
-结果仅承载产出。调用身份保留在不可变的 `ToolExecution` 上，后者伴随结果经过每个钩子，并出现在持久化的 `tool/call` / `tool/result` 会话事件上，因此包装层无法创建第二个相互矛盾的身份。规范的 `value` 仅存在于执行期间：循环只持久化 `content`、`error` 和 `meta`，`tool/code-dispatch` 则原样存储子调用渲染后的 `content` 与 `isError`。回放可以重现展示，却无法重建规范的中间值。
+结果仅承载产出。调用身份保留在不可变的 `ToolExecution` 上，后者伴随结果经过每个钩子，并出现在持久化的 `tool/call` / `tool/result` 会话事件上，因此包装层无法创建第二个相互矛盾的身份。规范的 `value` 仅存在于执行期间：循环只持久化 `content`、`error` 和 `meta`，`tool/ptc-dispatch` 则原样存储子调用渲染后的 `content` 与 `isError`。回放可以重现展示，却无法重建规范的中间值。
 
 成功时，注册表会快照并校验函数体返回值，将其冻结，然后调用纯渲染器；对于直接的外层调用，还会调用可选的元数据投影器。注册表会在 `tools/result` 之前另行物化持久展示字段；无效值、渲染器/投影器失败或非 JSON 展示都会转为 JSON 安全的 `isError`。因此，最终实时观察者能看到精确的执行期值，以及可安全用于后续持久追加的字段。
 
@@ -694,13 +674,13 @@ Source: [`packages/core/tools/src/index.ts`](../../packages/core/tools/src/index
 
 #### `tools/ptc-dispatch-log` — waterfall
 
-Allow a listener to replace content in the DURABLE LOG COPY of one `run_code` sub-dispatch outcome before the bridge appends its `tool/code-dispatch` event. `next()` keeps the content unchanged; a listener may return replacement blocks (e.g. the spill policy's preview + locator for an oversized text result). Only the logged copy is affected — the program already received the complete value, and the model sees neither. A throwing listener is contained: the bridge falls back to logging the original settled content. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's dispatches.
+Allow a listener to replace content in the DURABLE LOG COPY of one `run_code` sub-dispatch outcome before the bridge appends its `tool/ptc-dispatch` event. `next()` keeps the content unchanged; a listener may return replacement blocks (e.g. the spill policy's preview + locator for an oversized text result). Only the logged copy is affected — the program already received the complete value, and the model sees neither. A throwing listener is contained: the bridge falls back to logging the original settled content. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's dispatches.
 
 ```ts cordis-catalog
 /**
  * Allow a listener to replace content in the DURABLE LOG COPY of one
  * `run_code` sub-dispatch outcome before the bridge appends its
- * `tool/code-dispatch` event. `next()` keeps the
+ * `tool/ptc-dispatch` event. `next()` keeps the
  * content unchanged; a listener may return replacement blocks (e.g. the
  * spill policy's preview + locator for an oversized text result). Only the
  * logged copy is affected — the program already received the complete

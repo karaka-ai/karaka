@@ -1,6 +1,5 @@
 /** Generic unary RPC contracts shared by the Host and Client Connection halves. */
 
-import type { ConnectionAuthentication, ConnectionCaller } from './auth.ts'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 
 /** Correlation id minted by a caller and echoed by the Connection response. */
@@ -102,14 +101,16 @@ export type ConnectionRpcHandler = (
   endpoint: string,
   payload: unknown,
   signal: AbortSignal,
-  caller?: ConnectionCaller,
 ) => Promise<ConnectionRpcResult<unknown>>
 
 /** Synchronous ownership test for one endpoint on a shared RPC channel. */
 export type ConnectionRpcEndpointMatcher = (endpoint: string) => boolean
 
 /** HTTP methods supported by exact Fetch routes on the shared API channel. */
-export type ConnectionFetchMethod = 'GET' | 'HEAD'
+export type ConnectionFetchMethod = 'GET' | 'HEAD' | 'POST'
+
+/** How the node:http bridge presents one request body to its Fetch route. */
+export type ConnectionRequestBodyMode = 'buffered' | 'streaming'
 
 /** One exact, transport-independent Fetch route owned by a Host feature. */
 export interface ConnectionFetchRoute {
@@ -117,6 +118,8 @@ export interface ConnectionFetchRoute {
   readonly path: string
   /** Methods this route owns. Other methods continue through normal shared-channel dispatch. */
   readonly methods: readonly ConnectionFetchMethod[]
+  /** Buffered requests obey the configured JSON cap; streaming requests arrive with backpressure and no aggregate cap. */
+  readonly requestBody: ConnectionRequestBodyMode
   /** Handle one request after the physical carrier has applied its trust and authentication policy. */
   readonly fetch: (request: Request) => Promise<Response>
 }
@@ -166,13 +169,6 @@ export interface HostConnectionHandle {
   readonly fetch: HostConnectionFetch
 
   /**
-   * Authenticate an HTTP request or WebSocket upgrade.
-   * @param request - carrier-supplied headers.
-   * @returns verified caller or rejection status.
-   */
-  authenticate(request: ConnectionTrustRequest): Promise<ConnectionAuthentication>
-
-  /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
    * @param channel - shared channel mounted by Connection.
    * @returns Fetch handler for trusted, authenticated requests.
@@ -206,11 +202,18 @@ export interface HostConnectionHandle {
 /** Transport-independent Fetch handler used by HTTP and worker carriers. */
 export interface ConnectionFetchHandler {
   /**
+   * Resolve body handling before the bridge reads any request bytes.
+   * @param request - request method and URL available from node:http headers.
+   * @returns the registered route's body handling mode.
+   */
+  requestBodyMode(request: { readonly method: string; readonly url: URL }): ConnectionRequestBodyMode
+
+  /**
    * Dispatch one already-authenticated request.
    * @param request - Fetch request below the shared channel.
    * @returns the registered response or a 404 response.
    */
-  fetch(request: Request, caller?: ConnectionCaller): Promise<Response>
+  fetch(request: Request): Promise<Response>
 }
 
 /** Client caller for logical RPC channels carried by the current transport. */

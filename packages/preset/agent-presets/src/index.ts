@@ -1,13 +1,12 @@
 /**
- * Agent presets: each Agent selects its model-facing plugin set from one
- * preset `cordis.yml`. The roster mounts one standing scope per detected
- * composition generation; every Agent selecting that generation joins it.
+ * Agent presets: each session composes its model-facing plugin set from one
+ * preset `cordis.yml`, mounted ONCE per preset under a standing scope and
+ * joined by every agent that names it.
  *
  * The standing mount is what makes a preset one composition rather than one
  * per session: its plugin instances, tool registrations, prompt sections, and
- * projection units exist once within that generation, keyed per session
- * inside the plugins themselves (they predate presets and were written for a
- * shared world). An
+ * projection units exist exactly once, keyed per session inside the plugins
+ * themselves (they predate presets and were written for a shared world). An
  * agent joins by having its scope key parented to the mount's
  * ({@link bindScopeParent}), which makes the mount's registrations visible to
  * that agent's views and the mount's listeners receive that agent's events —
@@ -47,19 +46,12 @@ import {
 } from './composition-inventory.ts'
 import type { AgentPreset, Config, PresetRoot } from './preset.ts'
 import { agentPresetProjectionDefinition } from './session.ts'
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    /** Base URL supplied by a host that keeps bare modules separate from config files. */
-    loaderBareModuleBaseUrl?: string
-  }
-}
 export type * from './types.ts'
 export type {
   AgentPresetComposition, AgentPresetCompositionRow, CompositionRowEnablement,
 } from './composition-inventory.ts'
 
-/** Settings namespace carrying the user's chosen default preset. */
+/** Settings namespace carrying the user's preset-picker preference and chosen default. */
 export const SETTINGS_NAMESPACE = 'agent-presets'
 
 /** Refuse an empty preset id before invoking a domain operation. */
@@ -69,15 +61,18 @@ function validatePresetId(value: string, field: 'agentPreset' | 'from'): void {
   }
 }
 
-/** The user-writable slice of this plugin's config. */
+/** Resolved preset-selection settings; the registration base supplies both fields. */
 export interface AgentPresetSettings {
-  /** Preset mounted when a session names none. */
-  default?: string
+  /** Saved default used when mode selection is enabled. */
+  default: string
+  /** Whether visible mode selection and the saved user default govern unnamed new sessions. */
+  modeSelectionEnabled: boolean
 }
 
 /** Runtime schema for the user-writable slice. */
 export const AgentPresetSettingsSchema: z<AgentPresetSettings> = z.object({
   default: z.string(),
+  modeSelectionEnabled: z.boolean(),
 })
 
 export { COMPOSITION_FILE, discoverPresets, scanRoot, SHIPPED_PRESET_ROOT } from './discovery.ts'
@@ -135,7 +130,7 @@ export class AgentPresets extends TypertRemoteService {
 
   /**
    * Where a row's package name resolves from: the base URL of the composition
-   * this roster was loaded by, or from the package base selected by its host.
+   * this roster was loaded by, which is inside the installed harness.
    *
    * Discovery needs it because a preset's own directory is the wrong base for
    * a package name — a locally authored preset lives under the user's home,
@@ -143,7 +138,7 @@ export class AgentPresets extends TypertRemoteService {
    * dependencies. The mount already resolves rows this way; holding the same
    * base here is what lets health answer the question before a session does.
    */
-  private readonly barePackageBase: string
+  private readonly harnessBase: string
 
   /**
    * The user layer over `config.default`, present only while a settings
@@ -182,7 +177,7 @@ export class AgentPresets extends TypertRemoteService {
         + 'compose it under a Loader, or set the base on the context this plugin is applied to',
       )
     }
-    this.barePackageBase = ctx.get('loaderBareModuleBaseUrl') ?? baseUrl
+    this.harnessBase = baseUrl
     this.resolvedRoots = [
       ...config.includeShippedRoot ? [{ path: SHIPPED_PRESET_ROOT, trust: 'system' } satisfies PresetRoot] : [],
       ...config.roots,
@@ -197,7 +192,7 @@ export class AgentPresets extends TypertRemoteService {
       this.settings = settingsCtx.settings.register(
         SETTINGS_NAMESPACE,
         AgentPresetSettingsSchema,
-        { base: { default: config.default } },
+        { base: { default: config.default, modeSelectionEnabled: true } },
       )
       this.settingsService = settingsCtx.settings
       settingsCtx.effect(() => () => {
@@ -246,7 +241,21 @@ export class AgentPresets extends TypertRemoteService {
    * every running session on the preset it was composed from.
    */
   get defaultId(): string {
-    return this.settings?.get().default ?? this.config.default
+    // Hiding the picker is also the product's safe-default boundary: a stale
+    // user choice from an older build must not silently compose a non-standard
+    // new session while there is no control that reports that choice.
+    return this.selectionPolicy().defaultId
+  }
+
+  /** Read one internally consistent snapshot of the selection policy. */
+  private selectionPolicy(): { enabled: boolean; defaultId: string } {
+    const settings = this.settings?.get()
+    if (settings === undefined) return { enabled: true, defaultId: this.config.default }
+    const enabled = settings.modeSelectionEnabled
+    return {
+      enabled,
+      defaultId: enabled ? settings.default : this.config.default,
+    }
   }
 
   /**
@@ -254,34 +263,35 @@ export class AgentPresets extends TypertRemoteService {
    * @returns the presets, first-root-wins per id.
    */
   async list(): Promise<AgentPreset[]> {
-    return await discoverPresets(
-      this.resolvedRoots,
-      this.barePackageBase,
-      new Set(Object.keys(this.ctx.loader.builtins)),
-    )
+    return await discoverPresets(this.resolvedRoots, this.harnessBase)
   }
 
   /**
    * The roster off the Host: {@link list} projected to path-free rows, with
-   * the default marked and this deployment's authoring capability beside it.
+   * the policy-effective default marked, this deployment's authoring
+   * capability, and its mode-selection policy beside it.
    *
    * Whether a client can open a preset's directory is the Host's own opener
    * capability, not a roster property — a caller needing both joins them.
-   * @returns the rows and the authoring capability.
+   * @returns the rows, authoring capability, and effective selection policy.
    */
   @Remote('list')
   async remoteExportList(): Promise<AgentPresetRoster> {
-    const defaultId = this.defaultId
+    // Keep the visible policy and marked default from the same settings
+    // snapshot even when discovery yields while settings are hot-reloaded.
+    const policy = this.selectionPolicy()
+    const presets = await this.list()
     return {
-      presets: (await this.list()).map(preset => ({
+      presets: presets.map(preset => ({
         id: preset.id,
         trust: preset.trust,
-        isDefault: preset.id === defaultId,
+        isDefault: preset.id === policy.defaultId,
         ...preset.name === undefined ? {} : { name: preset.name },
         ...preset.description === undefined ? {} : { description: preset.description },
         ...preset.broken === undefined ? {} : { broken: preset.broken },
       })),
       authorable: this.authorable,
+      modeSelectionEnabled: policy.enabled,
     }
   }
 
@@ -618,20 +628,19 @@ export class AgentPresets extends TypertRemoteService {
   }
 
   /**
-   * The shared service instance mounted by an agent's preset generation.
+   * One agent's instance of a service its preset mounted.
    *
-   * Agents joined to one standing generation resolve the same instance. Its
-   * `isolate` realm separates that generation from the root and other preset
-   * generations. The agent addresses the generation for callers such as
-   * browser RPC handlers; it does not imply a chat-local service instance.
+   * A preset publishes services behind `isolate` realms, which are invisible
+   * outside the group that declares them — including to the host. This is how a
+   * caller holding the agent reads one anyway: a request that is ABOUT a
+   * session but arrives from outside it, which is every browser RPC.
    *
    * Read addressing only. A host row that `inject`s a service cannot use this,
-   * because injection has no agent to address through; such a service belongs
-   * on the host plane. Plugins keep chat-local mutable state on the Agent or
-   * Session, or key it by their identities.
-   * @param agent - an agent joined to the preset generation to inspect.
+   * because injection resolves before any session exists and has no agent to
+   * key by; such a service belongs on the host plane instead.
+   * @param agent - the agent whose composition to look inside.
    * @param name - the service name as the preset's rows resolve it.
-   * @returns the generation's shared instance, or undefined when it mounts none.
+   * @returns the agent's instance, or undefined when its preset mounts none.
    */
   serviceFor<K extends string & keyof Context>(agent: { ctx: Context }, name: K): Context[K] | undefined {
     return serviceForAgent(this.ctx, agent, name)

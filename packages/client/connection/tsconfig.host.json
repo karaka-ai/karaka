@@ -6,7 +6,6 @@
     "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
   },
   "files": [
-    "src/auth.ts",
     "src/api-path.ts",
     "src/api-request-trust.ts",
     "src/browser-auth.ts",

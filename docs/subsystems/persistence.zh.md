@@ -2,13 +2,26 @@
 
 [English](persistence.md) | 中文
 
-事件日志的**持久性 seam**。[session.md](session.zh.md) 描述了内存中的 `Session`：仅追加的 `SessionEvent` 日志即为真源。本页描述如何使该日志持久化：抽象的 `SessionPersistence` 服务、它的后端、flush 检查点、崩溃恢复，以及随日志一同存储的元数据头。日志承载的事件词汇在生成的[持久化日志事件目录](../persistence-catalog.zh.md)中逐项列举。
+事件日志的**持久性 seam**。[session.md](session.zh.md) 描述了内存中的 `Session`：仅追加的 `SessionEvent` 日志即为真源。本页描述如何使该日志持久化：抽象的 `SessionPersistence` 服务、它的提供方模型与随产品交付的 JSONL 后端、flush 检查点、崩溃恢复，以及随日志一同存储的元数据头。日志承载的事件词汇在生成的[持久化日志事件目录](../persistence-catalog.zh.md)中逐项列举。
 
 该 seam 是一个[能力 seam](../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)：一个抽象服务（[dsh-session-persistence](../../packages/session/session-persistence)，`ctx.sessionPersistence`）在现有 `SessionEvent` 上暴露 `create`/`open`/`stat`/`list`——**没有平行的持久化事件类型**——其中 `create` 与 `open` 返回逐会话的 `SessionHandle`（`read`/`append`/`flush`/`close`），它承载全部日志访问与单写者所有权。仓库随产品交付 [dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl) 作为其 provider；仓库外 provider 可以实现同一服务约定。见[基于句柄的持久化 Agent Note](../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)与 [session-persistence Agent Note](../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.zh.md)。
 
 ## `SessionHandle`——通向已存储会话的一条打开通道
 
-每一次日志读写都经由句柄流动，绝不经由按 id 寻址的服务方法：句柄是未来跨进程写租约将要把守的那扇唯一的门。一种句柄类型同时服务两种访问——在 `read` 句柄上执行修改是运行时的 `SessionReadOnlyError`，而非类型层面的拆分——而进程内单写者所有权使得在已有活跃持有者时第二次 `open(id, 'write')` 以 `SessionAlreadyOwnedError` 拒绝。
+每一次日志读写都经由句柄流动，绝不经由按 id 寻址的服务方法：句柄是跨进程写租约把守的唯一入口。读取会返回调用方独占的外层 slice，以及由生产者建立的 event value 别名状态。一种句柄类型同时服务两种访问——在 `read` 句柄上执行修改是运行时的 `SessionReadOnlyError`，而非类型层面的拆分——而进程内单写者所有权使得在已有活跃持有者时第二次 `open(id, 'write')` 以 `SessionAlreadyOwnedError` 拒绝。
+
+```ts type-equiv
+/** One persistence event slice returned by {@link SessionHandle.read}. */
+interface SessionHandleReadResult {
+  /**
+   * Whether event values are exclusively owned or shared only after deep
+   * freezing. Slicing preserves the producer's state even when no events remain.
+   */
+  readonly eventState: SessionSeedEventState
+  /** Event values in a caller-owned outer array. */
+  readonly events: readonly SessionEvent[]
+}
+```
 
 ```ts type-equiv
 /**
@@ -47,9 +60,9 @@ interface SessionHandle extends AsyncDisposable {
    * @param length - maximum number of events to return; defaults to the rest
    *   of the log. An offset at or past the end returns an empty list.
    * @param options - optional cancellation.
-   * @returns the events with `seq >= offset`, at most `length` of them.
+   * @returns the caller-owned outer slice plus the ownership state of its event values.
    */
-  read(offset?: number, length?: number, options?: SessionHandleReadOptions): Promise<readonly SessionEvent[]>
+  read(offset?: number, length?: number, options?: SessionHandleReadOptions): Promise<SessionHandleReadResult>
 
   /**
    * Append a contiguous batch continuing the current logical end. The first
@@ -90,7 +103,7 @@ interface SessionHandle extends AsyncDisposable {
 
 ## flush 检查点
 
-`session/event` 是一个*同步*通知；挂载的后端按会话 id 把它路由进活跃写句柄的有界 write-behind 窗口，而不阻塞生产方（后端一次性安装这些监听器，因为持久化已保证每个 id 只有一个活跃写句柄）。第一个待处理事件会开启固定的内部批处理窗口，后续事件会加入但不会重置其截止时间。窗口到期后会通过该会话的写句柄启动一次持久化 `append`；该次写入期间接纳的事件会获得自己的截止时间，并形成后续批次。`session/flush` 会取消等待并排空至完全停稳，因此循环仍将其用作在领取下一个普通轮次之前的顺序与错误观察检查点。后台写入被拒绝时会按序保留对应事件、暂停自动路径，并通过 logger 报告；下一次显式 flush 会重试，并向其调用方响亮地拒绝。`session/disposed` 会执行同样的最终排空并关闭句柄，而 `close()` 本身会经由仍然打开的存储排空已路由的缓冲，因此后端 teardown 的关闭清扫不丢任何数据。该窗口只限制有意的批处理等待，不限制事件循环调度或后端完成持久化的延迟（[决策](../../.agents/notes/implemented/architecture/2026-08-08-bounded-session-persistence-write-batching.zh.md)）。
+`session/event` 是一个*同步*通知；挂载的后端按会话 id 把它路由进活跃写句柄的有界 write-behind 窗口，而不阻塞生产方（后端一次性安装这些监听器，因为持久化已保证每个 id 只有一个活跃写句柄）。第一个待处理事件会开启固定的内部批处理窗口，后续事件会加入但不会重置其截止时间。窗口到期后会通过该会话的写句柄启动一次持久化 `append`；该次写入期间接纳的事件会获得自己的截止时间，并形成后续批次。`session/flush` 会取消等待并排空至完全停稳，因此循环仍将其用作在领取下一个普通轮次之前的顺序与错误观察检查点。后台写入被拒绝时会按序保留对应事件、暂停自动路径，并通过 logger 报告；下一次显式 flush 会重试，并向其调用方响亮地拒绝。`session/disposed` 会执行同样的最终排空并关闭句柄，而 `close()` 本身会经由仍然打开的存储排空已路由的缓冲，因此后端 teardown 的关闭清扫不丢任何数据。该窗口只限制有意的批处理等待，不限制事件循环调度或后端完成持久化的延迟。
 
 ## 崩溃恢复保留被中断的轮次
 
@@ -98,7 +111,7 @@ interface SessionHandle extends AsyncDisposable {
 
 因此修复只在写所有权之下写入：活跃会话的写句柄由其生命周期所有者持有，故并发的 `open(id, 'write')` 会以 `SessionAlreadyOwnedError` 拒绝，而不是让修复与活跃轮次竞速。只读观察方（session-query）仅在内存中用同样的闭合事件配平被中断的冷日志，不回写任何内容。
 
-只读观察即 `open(id, 'read')`：句柄提供经过验证的连续前缀切片，绝不返回撕裂尾部，且同一句柄上的重复读取绝不会观察到比先前读取更旧的状态。持久化侧不存在已准备 Session 缓存：session-query 拥有自己的冷读缓存，按 `stat().revision` 变更令牌为每个 id 缓存一个已配平的冷 Session，仅在令牌变化时重新读取。该生命周期由[基于句柄的持久化 Agent Note](../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)定义；[Session 准备阶段决策](../../.agents/notes/implemented/architecture/2026-08-05-session-preparation.zh.md)记录仍然保留的发布边界 `SessionPreparation`。
+只读观察即 `open(id, 'read')`：句柄提供经过验证的连续前缀切片，绝不返回撕裂尾部，且同一句柄上的重复读取绝不会观察到比先前读取更旧的状态。持久化侧不存在已准备 Session 缓存：session-query 拥有自己的冷读缓存，按 `stat().revision` 变更令牌为每个 id 缓存一个已配平的冷 Session，仅在令牌变化时重新读取。该生命周期由[基于句柄的持久化 Agent Note](../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)定义；已归档的 [Session 准备阶段记录](../../.agents/notes/archived/architecture/2026-08-05-session-preparation.md)记载了发布边界 `SessionPreparation` 最初的决策。
 
 ## `SessionLocation`——拒绝诊断的产物目标
 
@@ -123,7 +136,7 @@ interface SessionLocation {
 
 ## `SessionHeader`：日志旁的元数据
 
-每个会话的元数据与事件日志**分开**存储：header 携带格式版本、cwd、原子应用所有者与 `isSeeded` 谱系 bit，含正文的存储值则在其旁边单独携带精确 inherited cut。二者都不进入 `SessionEventMap`，也不会到达 `deriveMessages()`。logical header 通过 `session.header` 附加，Session 则以 `inheritedEventCount` 暴露其 cut。
+每个会话的元数据与事件日志**分开**存储：header 携带格式版本、cwd 与 `isSeeded` 谱系 bit，含正文的存储值则在其旁边单独携带精确 inherited cut。二者都不进入 `SessionEventMap`，也不会到达 `deriveMessages()`。logical header 通过 `session.header` 附加，Session 则以 `inheritedEventCount` 暴露其 cut。
 
 源码：[`packages/core/session/src/types.ts`](../../packages/core/session/src/types.ts)
 
@@ -133,11 +146,10 @@ interface SessionLocation {
  */
 interface SessionHeader {
   /**
-   * On-disk format version, stamped from {@link SESSION_FORMAT_VERSION} when the
-   * session is created. A persistence backend rejects any other version on load
-   * (no migration — see the constant).
+   * Current logical format version, stamped from {@link SESSION_FORMAT_VERSION}.
+   * Historical physical headers are translated before entering this interface.
    */
-  readonly version: number
+  readonly version: typeof SESSION_FORMAT_VERSION
   /** The session's id (mirrors the {@link Session}'s id). */
   readonly id: SessionId
   /** Non-negative safe-integer Unix epoch milliseconds when the session was created. */
@@ -169,18 +181,16 @@ interface SessionHeader {
    * would replay history the model can no longer act on.
    */
   readonly agentPreset?: string
-  /** Application identity authorized to operate this session. */
-  readonly applicationOwner?: ApplicationOwner
 }
 ```
 
 ## 格式拒绝：本构建无法可靠读取的日志
 
-后端用 `SessionFormatUnsupportedError` 拒绝无法可靠解读的日志，它与 `SessionPersistenceCorruptionError` 区分，因为数据没有损坏。header 的 `version` 比 `SESSION_FORMAT_VERSION` 新时，消息说明方向（"由更新的 harness 写入，请升级 harness 后打开"）；比它旧时说明本构建没有升级路径。本构建生成词汇表（`KNOWN_SESSION_EVENT_TYPES`，由 `gen-persistence-catalog` 生成）之外的事件类型同样被拒绝，除非该事件的信封带 `ignorable: true`：静默跳过一个不认识的必需事件可能改变日志其余部分的解读方式。后端为每个会话保留独立文件时，消息附上原始日志路径，被拒绝的文本仍然可读。JSONL 后端直接从原始 header 行拒绝外来版本，先于本格式版本的 header 形状校验和任何事件行解码，因此结构完全不同的未来格式仍会报告升级方向，绝不会报"损坏"。仓库外后端必须在自己的物理格式入口执行等价的方向感知拒绝。设计理由与推迟建设的升级器链见 [session-log 版本机制 Agent Note](../../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.zh.md)。
+后端用 `SessionFormatUnsupportedError` 拒绝无法可靠解读的日志，它与 `SessionPersistenceCorruptionError` 区分，因为数据没有损坏。`stat` 与 `list` 会对最高规范 generation 分类，并在不读取或改变正文的前提下转换受支持的历史 header。历史 `open` 会共享每个 Session 唯一的一次 migration preparation，再返回当前逻辑值，并保持每个源路径、字节与 inode 不变。JSONL provider 直接从该内存结果返回读句柄而不发布；写 open 则在持有单写者 claim 与文件 lease 时复用 preparation、排他发布最终 current generation，随后才返回可写句柄。即使仍有较旧的可读 generation，最高的未来 generation 仍会导致拒绝。当前格式恢复会保留已安装扩展和带 `ignorable: true` 的未知事件；历史 v0/v1/v2 迁移则会拒绝未知类型，即使它带有 ignorable 标记。后端为每个会话保留独立文件时，消息附上选定的原始日志路径。仓库外后端必须在自己的物理格式入口提供等价的仅当前句柄值与方向感知拒绝。[已发布格式迁移决策](../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md)负责迁移链与不可变发布规则。
 
 ## `CreateSessionOptions`：seed 与元数据
 
-通过 store 创建 `Session` 时会接收 `seed`（初始回放或 fork 历史）、可选的精确 `inheritedEventCount` 与 `meta`（store 整合进 `SessionHeader` 的存储层字段）。store 填充 `version`/`id` 并为 `createdAt` 提供默认值；调用方可以提供已校验的绝对 `cwd`、`parentSession` 谱系、`isSeeded` 谱系标记、可选的粗粒度 `origin`、`delegationDepth`、用于组装该 agent（智能体）的 `agentPreset`、原子应用所有者以及已有的 `createdAt`。seeded 创建必须同时显式提供 seed 与精确 cut，因为继承前缀之后还可能存在 child-owned setup event。`origin: 'subagent'` 让产品导航能够隐藏重复的 child 行；它不证明描述符有效，也不证明 child 可以恢复。
+通过 store 创建 `Session` 时会接收 `seed`（初始回放或 fork 历史）、可选的精确 `inheritedEventCount` 与 `meta`（store 整合进 `SessionHeader` 的存储层字段）。store 填充 `version`/`id` 并为 `createdAt` 提供默认值；调用方可以提供已校验的绝对 `cwd`、`parentSession` 谱系、`isSeeded` 谱系标记、可选的粗粒度 `origin`、`delegationDepth`、用于组装该 agent（智能体）的 `agentPreset` 以及已有的 `createdAt`。seeded 创建必须显式提供与 inherited prefix 完全相等的 seed 和精确 cut；constructor 会先在该 cut 追加 child-owned tagged end-seed marker，setup 再添加 child-owned event。`origin: 'subagent'` 让产品导航能够隐藏重复的 child 行；它不证明描述符有效，也不证明 child 可以恢复。
 
 ```ts type-equiv
 /**
@@ -192,8 +202,9 @@ interface CreateSessionOptions {
   /** Initial replay or fork history supplied at construction. */
   readonly seed?: readonly SessionEvent[]
   /**
-   * Exact fork-inherited prefix length when `meta.isSeeded` is true. A
-   * constructor seed may also contain child-owned setup events after this cut.
+   * Exact fork-inherited prefix length when `meta.isSeeded` is true. The
+   * constructor seed is exactly this inherited prefix; the constructor
+   * appends the child-owned tagged marker at the cut.
    */
   readonly inheritedEventCount?: SessionLogOffset
   /**
@@ -208,7 +219,6 @@ interface CreateSessionOptions {
     readonly origin?: 'subagent'
     readonly delegationDepth?: number
     readonly agentPreset?: string
-    readonly applicationOwner?: ApplicationOwner
   }
 }
 ```
@@ -217,29 +227,37 @@ interface CreateSessionOptions {
 
 ## 准备与恢复所有权
 
-`SessionStore.prepare()` 接收普通创建选项，或通过 `RestoredSessionOptions` 转移所有权的全新的持久化对象图。恢复分支会就地验证并冻结转移来的 header 与事件，因此调用方不得保留可变别名。`SessionPreparation` 随后持有该精确的未发布 Session，直至发布或回滚；dispose 是同步且幂等的。agent-loop 的 resume 通过该会话的写句柄读取已存储的日志，并在准备之前追加所需的 `interruptedTurnClosers`，以此构建这些对象图。
+`SessionStore.prepare()` 接收普通创建选项，或通过 `RestoredSessionOptions` 接收可直接接管的 seed。它的 `eventState` 表明 event value 是独占对象，还是只有深度冻结后的共享对象；生产者负责建立该状态，slice 不会根据结果长度推断其他状态。恢复流程会校验并直接接管这些值，不再复制或冻结。`SessionPreparation` 随后持有该精确的未发布 Session，直至发布或回滚；dispose 是同步且幂等的。agent-loop 的 resume 通过该会话的写句柄读取这份结果，并在准备之前追加独占的 `interruptedTurnClosers`。
 
 ```ts type-equiv
 /**
- * Fresh storage values transferred to {@link SessionStore.prepare} without a
- * second serialization copy. Callers retain no mutable aliases.
+ * Aliasing state of an adoptable Session seed. `shared-frozen` permits deeply
+ * frozen aliases plus independently owned unfrozen values in the same seed.
+ */
+type SessionSeedEventState = 'detached' | 'shared-frozen'
+```
+
+```ts type-equiv
+/**
+ * Adoptable storage values transferred to {@link SessionStore.prepare}
+ * without another copy or freeze pass.
  */
 interface RestoredSessionOptions {
-  /** Fresh detached storage events to validate and freeze in place. */
+  /** Events that are independently owned or already deeply frozen. */
   readonly seed: SessionEvent[]
-  /** Fresh detached storage metadata to validate and freeze in place. */
+  /** Independently owned storage metadata to validate and freeze in place. */
   readonly meta: SessionHeader
   /** Exact number of fork-inherited leading events decoded from storage. */
   readonly inheritedEventCount: SessionLogOffset
-  /** Select the persistence ownership-transfer path. */
-  readonly seedSource: 'persistence'
+  /** Aliasing state carried from the operation that produced the seed. */
+  readonly eventState: SessionSeedEventState
 }
 ```
 
 ```ts type-equiv
 /** Inputs accepted while constructing an unpublished Session. */
 type PrepareSessionOptions =
-  | (CreateSessionOptions & { readonly seedSource?: undefined })
+  | (CreateSessionOptions & { readonly eventState?: undefined })
   | RestoredSessionOptions
 ```
 
@@ -302,7 +320,7 @@ interface SessionPersistenceSnapshot {
 }
 ```
 
-可选的 `eventCount`/`sizeBytes` 提示让会话列表的冷空白探测（cold blank probe）仅凭元数据即可限定其工作量（session-controller 配置 `coldBlankProbeMaxEvents`/`coldBlankProbeMaxBytes`），而无需打开任何日志。
+可选的 `eventCount`/`sizeBytes` 字段仍是供明确需要它们的 consumer 使用的低成本 backend observation。Session 列表不借助这两个字段打开冷日志，只读取 header 与经过 identity 校验的 projection cache hint，因此 cache 或 Session format 升级不会把启动变成 body scan。
 
 ## 后端
 

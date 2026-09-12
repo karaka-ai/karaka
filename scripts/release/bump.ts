@@ -48,7 +48,7 @@ interface PlannedVersion {
   readonly tag: string | undefined
 }
 
-/** One private dsh package whose version follows the publishable family. */
+/** One private dsh workspace whose version follows the publishable family. */
 interface PrivateDshVersion {
   /** Repository-relative manifest path. */
   readonly manifestPath: string
@@ -201,11 +201,6 @@ export function reachesPayload(member: ReleaseMember, path: string): boolean {
     matchesGlob(relative, pattern) || matchesGlob(relative, `${pattern}/**`) || relative === pattern)
 }
 
-/** Operator instruction emitted after a release bump commit. */
-export function postBumpTagInstruction(family: ReleaseFamily): string {
-  return `release bump: committed. After this merges to ${family.integrationBranch}, tag it:`
-}
-
 /**
  * The newest version a member tagged.
  * @param family - the member's family.
@@ -248,13 +243,13 @@ function rootVersion(root: string): string {
 }
 
 /**
- * Discover private package manifests that share the dsh version without joining
- * its publish set.
+ * Discover private package and application manifests that share the dsh version
+ * without joining its publish set.
  * @param root - repository root.
- * @returns Private package manifests sorted by path.
+ * @returns Private workspace manifests sorted by path.
  */
 function privateDshVersions(root: string): PrivateDshVersion[] {
-  return globSync('packages/*/*/package.json', { cwd: root })
+  return globSync(['apps/*/package.json', 'packages/*/*/package.json'], { cwd: root })
     .map(path => path.replaceAll('\\', '/'))
     .sort()
     .flatMap((manifestPath) => {
@@ -363,7 +358,7 @@ function main(): void {
     },
     allowPositionals: true,
   })
-  if (values.family === undefined) throw new Error('usage: bump.ts --family <dsh|karaka|vendor> [version]')
+  if (values.family === undefined) throw new Error('usage: bump.ts --family <dsh|vendor> [version]')
 
   const family = releaseFamily(values.family)
   const root = process.cwd()
@@ -411,7 +406,7 @@ function main(): void {
   }
   capture('git', ['add', 'pnpm-lock.yaml', ...planned.map(entry => entry.manifestPath)])
   capture('git', ['commit', '-m', `release(${family.id}): ${summary}`])
-  console.log(postBumpTagInstruction(family))
+  console.log('release bump: committed. After this merges to master, tag it:')
   for (const tag of [...new Set(planned.map(entry => entry.tag).filter(tag => tag !== undefined))]) {
     console.log(`  git tag ${tag} <merge commit> && git push origin ${tag}`)
   }

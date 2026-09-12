@@ -93,7 +93,6 @@ const GROUP_ORDER = [
   'storage',
   'workspace',
   'support',
-  'karaka',
   'acp',
   'ui',
 ]
@@ -107,6 +106,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['attachment-local'],
     consumers: ['api-session-controller', 'tool-fs', 'llm-pi-ai', 'llm-deepseek'],
     note: 'The host commits accepted images before session events; provider adapters resolve authorized durable references into provider-native content.',
+  },
+  {
+    key: 'fileUploads',
+    pkg: 'client-file-upload',
+    title: 'Agent-scoped staged file uploads',
+    mode: 'core',
+    consumers: ['api-session-controller'],
+    note: 'Owns streaming intake, durable storage, and staged receipt lifetime; the Session controller binds receipts to accepted submissions.',
   },
   {
     key: 'llm',
@@ -186,6 +193,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Projects the user-settings seam onto the generated Remote namespace: the read is always redacted and every refusal is classified here, not on the seam Definition.',
   },
   {
+    key: 'workspaceFiles',
+    pkg: 'api-workspace-files',
+    title: 'Host workspace file Remote service',
+    mode: 'core',
+    note: 'Serves stat, paged text, byte windows, directory listings, and the change feed for files inside a Session\'s workspace root, confined by lstat, containment, and a stat re-check.',
+  },
+  {
     key: 'workspaceController',
     pkg: 'api-workspace-controller',
     title: 'Host Workspace Remote controller',
@@ -229,7 +243,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'seam',
     implementations: ['session-persistence-jsonl'],
     consumers: ['agent-loop', 'tool-bash', 'hooks-claude-code', 'hooks-codex', 'session-query', 'session-query-sqlite', 'message-feedback'],
-    note: 'Backends persist the same SessionEvent vocabulary; apps choose a backend at composition time.',
+    note: 'The JSONL backend persists the SessionEvent vocabulary as one artifact per Session.',
   },
   {
     key: 'settings',
@@ -256,15 +270,6 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['credentials-local'],
     consumers: ['api-settings-controller', 'llm-deepseek', 'llm-pi-ai'],
     note: 'Configuration carries references to secrets; providers own the values. Consumers resolve per operation, so a rotated credential reaches the very next request; the settings controller exposes value-free views and write-only storage.',
-  },
-  {
-    key: 'serverAuth',
-    pkg: 'server-auth',
-    title: 'Application server authentication seam',
-    mode: 'seam',
-    implementations: ['server-auth'],
-    consumers: ['mcp-application', 'transport-http'],
-    note: 'The default provider verifies inbound application credentials and resolves outbound MCP authorization; deployments may replace the service through the same Cordis contract.',
   },
   {
     key: 'authorization',
@@ -298,7 +303,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'storage-domain',
     title: 'Domain data facility',
     mode: 'core',
-    consumers: ['workspace', 'message-feedback'],
+    consumers: ['workspace'],
     note: 'Waits for every configured backend, then publishes the domain form as one lifecycle-bound service for typed durable state.',
   },
   {
@@ -306,7 +311,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'message-feedback',
     title: 'Lifecycle-bound message feedback',
     mode: 'core',
-    note: 'Owns local per-assistant-message feedback, lifecycle and target validation, per-item compare-and-set, and the Host unary Remote contract without entering Session history or telemetry.',
+    note: 'Owns per-assistant-message feedback in the canonical Session log, target validation, per-item compare-and-set, and the Host unary Remote contract. Feedback stays outside model history; log export follows the consumer policy.',
+  },
+  {
+    key: 'sessionFeedback',
+    pkg: 'command-feedback',
+    title: 'Session-level feedback recorder',
+    mode: 'core',
+    note: 'Records one Session-level remark with its category as a log-only feedback/record event on a live Session through the Host unary Remote contract; the /feedback command shares the same producer.',
   },
   {
     key: 'workspaceRegistry',
@@ -383,9 +395,9 @@ const SERVICE_ROLES: ServiceRole[] = [
   {
     key: 'agentPresets',
     pkg: 'agent-presets',
-    title: 'Standing Agent Preset composition',
+    title: 'Per-session agent composition',
     mode: 'core',
-    note: 'Discovers preset directories over trusted and user-authored roots, mounts one standing generation per selected preset, and joins each Agent through scoped parentage; unusable rows and root-realm service publication are rejected.',
+    note: 'Discovers preset directories over trusted and user-authored roots and mounts one preset cordis.yml under an agent scope during creation, rejecting a row that never activates or that publishes into the root service realm.',
   },
   {
     key: 'commands',
@@ -714,20 +726,9 @@ function pkgLink(pkg: Pkg | undefined, fallback: string, up = '..'): string {
   return pkg ? repoLink(pkg.rel, `\`${pkg.short}\``, up) : `\`${fallback}\``
 }
 
-const SERVICE_PACKAGE_PATHS = new Map([
-  ['mcp-application', 'packages/karaka/mcp-application'],
-  ['server-auth', 'packages/karaka/server-auth'],
-  ['transport-http', 'packages/karaka/transport-http'],
-])
-
-function servicePkgLink(name: string, pkgsByShort: Map<string, Pkg>): string {
-  const explicit = SERVICE_PACKAGE_PATHS.get(name)
-  return explicit === undefined ? pkgLink(pkgsByShort.get(name), name) : repoLink(explicit, `\`${name}\``)
-}
-
 function pkgList(names: string[] | undefined, pkgsByShort: Map<string, Pkg>): string {
   if (!names || names.length === 0) return '-'
-  return names.map(name => servicePkgLink(name, pkgsByShort)).join(', ')
+  return names.map(name => pkgLink(pkgsByShort.get(name), name)).join(', ')
 }
 
 function tableCell(value: string): string {
@@ -787,7 +788,7 @@ function renderCapabilitySeams(pkgs: Pkg[], services: readonly ServiceEntry[]): 
   lines.push(...nodes.values(), ...[...edges].sort(), ...[...companionEdges].sort())
   lines.push('```', '', '| ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |', '| --- | --- | --- | --- | --- | --- | --- |')
   for (const role of SERVICE_ROLES) {
-    lines.push(`| \`ctx.${role.key}\` | \`${role.mode}\` | ${servicePkgLink(role.pkg, pkgsByShort)} | ${pkgList(role.implementations, pkgsByShort)} | ${pkgList(role.consumers, pkgsByShort)} | ${pkgList(role.companions, pkgsByShort)} | ${tableCell(role.note)} |`)
+    lines.push(`| \`ctx.${role.key}\` | \`${role.mode}\` | ${pkgLink(pkgsByShort.get(role.pkg), role.pkg)} | ${pkgList(role.implementations, pkgsByShort)} | ${pkgList(role.consumers, pkgsByShort)} | ${pkgList(role.companions, pkgsByShort)} | ${tableCell(role.note)} |`)
   }
   lines.push('', ...maintenanceFooter(maintenance))
   return lines.join('\n')
@@ -1337,24 +1338,33 @@ function renderLifecycle(): string {
     '  Note over Agent,Driver: claim pending next-step input plus one queued prompt',
     `  Driver-->>SDK: ${mermaidCode('agent/inbox/spliced')} pure deletion`,
     `  Driver-->>SDK: ${mermaidCode('agent/inbox/claimed')} { message, turn } per message`,
+    `  Driver->>Prompt: ${mermaidCode('system-prompt/assemble')} waterfall`,
     `  Driver->>Hooks: ${mermaidCode('agent/pre-step')} waterfall`,
     '  Hooks-->>Driver: authoritative reject or enter(messages)',
-    '  alt proposed step rejected or pre-step failed',
+    '  alt proposed step rejected, first batch empty, or pre-step failed',
     '    Driver-->>Driver: claimed batch stays removed, the open turn spends no step',
     '  else enter proposed step',
     `  Driver->>Session: ${mermaidCode('step/start')}`,
+    `  Driver->>Hooks: ${mermaidCode('agent/request')} waterfall`,
+    '  Driver->>LLM: prepareCall(config, signal)',
+    '  Note over Driver,LLM: cancellation during either async phase commits neither system nor users',
+    '  Note over Driver,Session: synchronous admission using the prepared call capability',
+    `  Driver->>Session: ${mermaidCode('system/message')} ordered per-node reconciliation`,
     `  Driver->>Session: ${mermaidCode('user/message')} per entered message`,
-    `  Driver->>Prompt: ${mermaidCode('system-prompt/assemble')} waterfall`,
-    `  Driver->>LLM: ${mermaidCode('agent/request')} waterfall, then ${mermaidCode('llm/stream')} waterfall`,
+    `  Driver->>Session: ${mermaidCode('request/header')} and ${mermaidCode('request/context')} as needed`,
+    '  Driver->>Driver: derive and freeze request from the log',
+    `  Driver->>LLM: bound prepared call through ${mermaidCode('llm/stream')} waterfall`,
     '  LLM-->>Driver: StreamChunk*',
-    `  Driver->>Session: ${mermaidCode('assistant/chunk')}*`,
-    `  Session-->>SDK: ${mermaidCode('session/event')} ${mermaidCode('assistant/chunk')}*`,
+    `  Driver-->>SDK: ${mermaidCode('agent/assistant-stream')} chunk*`,
     '  alt final adapter or terminal in-band request failure',
-    `    Driver->>Session: ${mermaidCode('step/end')}`,
+    `    Driver->>Session: ${mermaidCode('assistant/attempt')}`,
+    `    Driver-->>SDK: ${mermaidCode('agent/assistant-stream')} committed end`,
     `    Driver->>Hooks: ${mermaidCode('agent/request-error')} waterfall`,
     '    Hooks-->>Driver: return retry action or preserve the original error',
+    '    Note over Driver,LLM: retry in the open step: prepare and reconcile the same rendered assembly without repeating pre-step or users',
     '  else model request succeeded',
     `  Driver->>Session: ${mermaidCode('assistant/message')}`,
+    `  Driver-->>SDK: ${mermaidCode('agent/assistant-stream')} committed end`,
     '  Driver->>Tools: classify pending call by executionMode',
     '  loop barriers and bounded rolling pool, reclassify before start',
     '    opt call starts',
@@ -1383,9 +1393,9 @@ function renderLifecycle(): string {
     `  Driver-->>SDK: ${mermaidCode('agent/status')} idle`,
     '```',
     '',
-    'The `assistant/message` event records every successful provider call, including content-less and `max-tokens` finishes. Empty content stays out of derived history, while the durable event keeps usage and `sourceEventSeqs` listing the exact `assistant/chunk` events, including an explicit empty list.',
+    'The `assistant/message` event records every successful provider call, including content-less and `max-tokens` finishes, and embeds the exact compact timed stream. Empty content stays out of derived history. A failed, retried, cancelled, or stream-error attempt that reaches settlement without a surface message records its stream as `assistant/attempt`. Live `agent/assistant-stream` chunk frames are transient; replay reads either durable settlement, and a hard process loss before settlement leaves no durable attempt stream.',
     '',
-    '`dsh-compaction-basic` uses `agent/pre-step` for pressure before request derivation and `agent/request-error` only for canonical context overflow. Once either trigger qualifies, optional tool-result pruning runs before summary selection. Recovery works between the closed failed step and failed turn close, and opens a fresh retry turn only when pruning or summarization advances the surface replacement generation; otherwise the original request error remains authoritative.',
+    '`dsh-compaction-basic` uses `agent/pre-step` for pressure before request derivation and `agent/request-error` only for canonical context overflow. Once either trigger qualifies, optional tool-result pruning runs before summary selection. Recovery runs within the open step and retries only when pruning or summarization advances the surface replacement generation; otherwise the original request error remains authoritative. Each retry prepares its call and reconciles the retained rendered assembly before request derivation, without repeating assembly, pre-step, or user admission.',
     '',
     'The returned `agent/pre-step` decision is authoritative; listeners wrapping `next()` preserve downstream messages and `startsRequestSeries` unless replacement is intentional. Steering and injected context pass through the same waterfall after a later claim operation takes their next-step batch.',
     '',
@@ -1413,7 +1423,7 @@ function renderToolPipeline(): string {
     `  around["${mermaidCode('tools/execute')} waterfall<br/>timeout, retry, metrics (around dispatch)"]`,
     '  toolBody["Registered tool execute() body"]',
     `  fsGate["${mermaidCode('fs/write-intent')} or ${mermaidCode('fs/edit-intent')}<br/>tool-fs mutations only"]`,
-    `  owned["Tool-owned session events<br/>${mermaidCode('todo/write')}, ${mermaidCode('fs/observed')}, ${mermaidCode('hook/invoked')}, ${mermaidCode('hook/result')}, ${mermaidCode('tool/code-dispatch')}"]`,
+    `  owned["Tool-owned session events<br/>${mermaidCode('todo/write')}, ${mermaidCode('fs/observed')}, ${mermaidCode('hook/invoked')}, ${mermaidCode('hook/result')}, ${mermaidCode('tool/ptc-dispatch')}"]`,
     `  post["${mermaidCode('tools/post-execute')} waterfall<br/>accept, block, replace, add context"]`,
     '  normalized["Registry outer normalization<br/>pipeline/result snapshot throws become isError"]',
     '  finalize["ToolDefinition.finalizeContent<br/>last content-only invariant"]',
@@ -1453,7 +1463,7 @@ function renderToolPipeline(): string {
     '  allResults --> context',
     '```',
     '',
-    'Filesystem read-before-edit checks stay below `tool-fs` on `fs/*` events. Generic pre/post waterfalls host hooks and approval policy; `ctx.approval` resolves asks before monotonic guards, and owner policy that must not be reordered remains a registered guard. Around-dispatch concerns such as timeouts wrap `tools/execute`. The registry losslessly snapshots the candidate result and normalizes a snapshot failure before the visible definition\'s snapshotted `finalizeContent` callback enforces its synchronous content-only invariant. `tools/result` then observes the immutable, lossless-JSON outcome. This lets hooks span tool families without coupling the tools to one policy service. PTC mode sends both the reserved `run_code` transport and its serialized sub-calls through the pipeline; sub-calls carry the parent token, log `tool/code-dispatch`, return denials as binding rejections, and omit `additionalContexts` to preserve call/result adjacency.',
+    'Filesystem read-before-edit checks stay below `tool-fs` on `fs/*` events. Generic pre/post waterfalls host hooks and approval policy; `ctx.approval` resolves asks before monotonic guards, and owner policy that must not be reordered remains a registered guard. Around-dispatch concerns such as timeouts wrap `tools/execute`. The registry losslessly snapshots the candidate result and normalizes a snapshot failure before the visible definition\'s snapshotted `finalizeContent` callback enforces its synchronous content-only invariant. `tools/result` then observes the immutable, lossless-JSON outcome. This lets hooks span tool families without coupling the tools to one policy service. PTC mode sends both the reserved `run_code` transport and its serialized sub-calls through the pipeline; sub-calls carry the parent token, log `tool/ptc-dispatch`, return denials as binding rejections, and omit `additionalContexts` to preserve call/result adjacency.',
     '',
     ...maintenanceFooter(maintenance),
   ].join('\n')

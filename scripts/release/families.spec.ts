@@ -6,9 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { officialClientBuildEnvironment, writeClientBuildRecord } from '../client-build-environment.ts'
 import { releaseFamily, type ReleaseMember } from './families.ts'
-import {
-  compareVersions, nextVendorVersion, planShared, postBumpTagInstruction, reachesPayload,
-} from './bump.ts'
+import { compareVersions, nextVendorVersion, planShared, reachesPayload } from './bump.ts'
 
 /**
  * A release member standing in for a manifest on disk.
@@ -44,36 +42,35 @@ afterEach(() => {
 })
 
 describe('release families', () => {
-  it('excludes private experimental packages from the dsh release', () => {
+  it('publishes Agent Teams while excluding private experimental packages', () => {
     const members = releaseFamily('dsh').members(resolve(import.meta.dirname, '../..'))
 
-    expect(members.some(member => member.directory.startsWith('packages/experimental/'))).toBe(false)
-    expect(members.some(member => member.directory.startsWith('packages/karaka/'))).toBe(false)
-    expect(members.map(member => member.name)).not.toContain('@deepseek-ai/dsh-experimental-agent-team')
-  })
-
-  it('releases Karaka packages as an independent family', () => {
-    const karaka = releaseFamily('karaka')
-    const members = karaka.members(resolve(import.meta.dirname, '../..'))
-
-    expect(members.map(member => member.name)).toEqual([
-      '@karaka-ai/agent',
-      '@karaka-ai/cli',
-      '@karaka-ai/sdk',
+    expect(members
+      .filter(member => member.directory.startsWith('packages/experimental/'))
+      .map(member => member.name)).toEqual([
+      '@deepseek-ai/dsh-experimental-agent-team-profile',
+      '@deepseek-ai/dsh-experimental-agent-team-web-profile',
+      '@deepseek-ai/dsh-experimental-agent-team',
+      '@deepseek-ai/dsh-experimental-client-ui-agent-team',
+      '@deepseek-ai/dsh-experimental-tool-agent-team',
     ])
-    const agent = members.find(member => member.name === '@karaka-ai/agent')
-    expect(Object.keys(agent?.manifest.dependencies ?? {}).filter(name => name.startsWith('@deepseek-ai/dsh-')))
-      .toEqual([])
-    expect(karaka.installedEntry).toEqual({ packageName: '@karaka-ai/cli', binPath: 'lib/bin.js' })
-    expect(karaka.tagFor(members[0]!)).toBe(`karaka-v${members[0]!.version}`)
-    expect(postBumpTagInstruction(karaka))
-      .toBe('release bump: committed. After this merges to main, tag it:')
+    expect(members.map(member => member.name)).not.toContain('@deepseek-ai/dsh-experimental-inspector')
   })
 
-  it('bumps private dsh packages without adding release tags', () => {
+  it('excludes private applications from the publish set', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-release-private-'))
+    roots.push(root)
+    write(join(root, 'apps/public/package.json'), '{"name":"@deepseek-ai/dsh-public","version":"0.0.1"}\n')
+    write(join(root, 'apps/private/package.json'), '{"name":"@deepseek-ai/dsh-private","version":"0.0.1","private":true}\n')
+
+    expect(releaseFamily('dsh').members(root).map(entry => entry.name)).toEqual(['@deepseek-ai/dsh-public'])
+  })
+
+  it('bumps private dsh workspaces without adding release tags', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-release-version-'))
     roots.push(root)
     write(join(root, 'package.json'), '{"version":"0.0.1"}\n')
+    write(join(root, 'apps/desktop/package.json'), '{"version":"0.0.1","private":true}\n')
     write(join(root, 'packages/experimental/prototype/package.json'), '{"version":"0.0.1","private":true}\n')
     write(join(root, 'packages/core/unselected/package.json'), '{"version":"0.0.1"}\n')
 
@@ -84,6 +81,7 @@ describe('release families', () => {
     expect(planned.map(entry => ({ path: entry.manifestPath, tag: entry.tag }))).toEqual([
       { path: 'package.json', tag: undefined },
       { path: 'packages/core/published/package.json', tag: 'dsh-v0.0.2' },
+      { path: 'apps/desktop/package.json', tag: undefined },
       { path: 'packages/experimental/prototype/package.json', tag: undefined },
     ])
   })
@@ -293,7 +291,6 @@ describe('release families', () => {
 
   it('drives the installed entry only for the family that publishes one', () => {
     expect(releaseFamily('dsh').installedEntry).toEqual({ packageName: '@deepseek-ai/dsh', binPath: 'lib/bin.js' })
-    expect(releaseFamily('karaka').installedEntry).toEqual({ packageName: '@karaka-ai/cli', binPath: 'lib/bin.js' })
     expect(releaseFamily('vendor').installedEntry).toBeUndefined()
   })
 

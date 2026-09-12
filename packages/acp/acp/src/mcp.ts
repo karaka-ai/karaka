@@ -55,9 +55,7 @@ function resolveMcpConfigs(servers: readonly McpServer[], sessionCwd: string): M
         cwd: sessionCwd,
         failOnStartupError: true,
       }))
-      if (config.transport !== 'stdio') throw new Error('stdio MCP config parsed as another transport')
-      config.env = env
-      return config
+      return { ...config, env }
     }
     if (server.type === 'http') {
       assertHttpUrl(server.url, `mcpServers[${index}].url`)
@@ -69,9 +67,7 @@ function resolveMcpConfigs(servers: readonly McpServer[], sessionCwd: string): M
         headers,
         failOnStartupError: true,
       }))
-      if (config.transport !== 'streamable-http') throw new Error('HTTP MCP config parsed as another transport')
-      config.headers = headers
-      return config
+      return { ...config, headers }
     }
     throw new AcpMcpConfigError(`mcpServers[${index}] transport ${server.type} is not supported`)
   })

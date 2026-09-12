@@ -6,7 +6,6 @@
     "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo"
   },
   "files": [
-    "src/application-methods.ts",
     "src/client/index.ts",
     "src/remote-events.ts",
     "src/types.ts"
@@ -22,8 +21,10 @@
       "path": "../../client/connection/tsconfig.client.json"
     },
     {
+      "path": "../../client/file-upload/tsconfig.client.json"
+    },
+    {
       "path": "../../credentials/credentials"
-
     },
     {
       "path": "../../context/file-reference"
@@ -68,6 +69,9 @@
       "path": "../session-controller/tsconfig.client.json"
     },
     {
+      "path": "../workspace-files/tsconfig.client.json"
+    },
+    {
       "path": "../settings-controller"
     },
     {
@@ -75,6 +79,9 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../feedback/command-feedback"
     }
   ]
 }

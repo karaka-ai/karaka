@@ -267,7 +267,7 @@ The current reuse audit (an account already legible before the migration):
 | coordinator (per-id write chain, lazy materialization, crash repair, flush barrier) | session semantics | never sinks — event-log domain logic whose counterpart here is the domain layer's write chain; each owns its own |
 | encodeSegment (id-to-path escaping) | medium utility | unused on the domain side (keys never reach paths); sinks together with the `log` facet (one file per session) at migration |
 
-**This phase does not touch session-persistence's medium code** (only the delete primitive is added); the table above is the migration-phase work list and the design evidence that the backend interface must accommodate the log shape.
+**This phase does not touch Session-persistence medium code** (only the delete primitive is added). A future log-facet change needs its own consumer and evidence; the table records the remaining JSONL reuse boundary without promising that extraction.
 
 ### Test matrix
 
@@ -286,7 +286,7 @@ Snapshots: no model-visible or assembly surface this phase, none added; next pha
 | Not doing | Trigger | Rework point | Groundwork |
 | --- | --- | --- | --- |
 | Session deletion (`SessionPersistence.delete`, the deleted event, recursive delete, running checks) | a destructive Session-delete product flow starts | implement the session primitive plus `session.delete`; keep it independent from Workspace registration deletion | orchestration rules and rejection table above remain groundwork; Workspace deletion preserves Sessions and logs |
-| The `log` facet and the session-backend migration | any phase after this one | sink the medium operations (the reuse audit table is the work list) | the facet structure is in place; both backends' medium code is organized in sinkable shape already |
+| The `log` facet and Session-provider migration | any phase after this one | sink JSONL medium operations when a real consumer justifies the facet | the facet organization leaves the option open without committing to extraction |
 | Multi-process write protection | two host processes writing one medium | JSON backend file locks; SQLite WAL is natively multi-process | all writes already funnel through the domain's single point; locking touches backends only |
 | Cross-process change observation | GUI reconnect awareness | the revision pattern (copy session-persistence) | `domain/changed` already exists in-process |
 | Data migration | model changes after the first tagged release | version-driven per-domain migration | versions are on the medium from day one |

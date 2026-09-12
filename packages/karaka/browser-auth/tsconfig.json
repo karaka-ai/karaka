@@ -15,10 +15,7 @@
       "path": "../../../vendor/schemastery"
     },
     {
-      "path": "../../core/session"
-    },
-    {
-      "path": "../../client/connection/tsconfig.host.json"
+      "path": "../identity"
     }
   ]
 }

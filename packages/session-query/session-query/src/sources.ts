@@ -10,17 +10,12 @@ import { SessionQueryError } from './config.ts'
  */
 export function assertSessionHeadersCompatible(a: SessionHeader, b: SessionHeader): void {
   if (
-    a.version !== b.version
-    || a.id !== b.id
+    a.id !== b.id
     || a.createdAt !== b.createdAt
     || a.cwd !== b.cwd
     || a.parentSession !== b.parentSession
     || a.isSeeded !== b.isSeeded
     || (a.delegationDepth ?? 0) !== (b.delegationDepth ?? 0)
-    || a.agentPreset !== b.agentPreset
-    || a.applicationOwner?.applicationId !== b.applicationOwner?.applicationId
-    || a.applicationOwner?.tenantId !== b.applicationOwner?.tenantId
-    || a.applicationOwner?.userId !== b.applicationOwner?.userId
   ) {
     throw new SessionQueryError(
       `session source headers conflict for session "${a.id}"`,

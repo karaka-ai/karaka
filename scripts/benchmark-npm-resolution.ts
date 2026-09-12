@@ -16,8 +16,8 @@ const WORKSPACE_MANIFEST_GLOBS = [
   'apps/*/package.json',
   'packages/*/*/package.json',
   'vendor/*/package.json',
-  'native/landlock-run/package.json',
-  'native/landlock-run/packages/*/package.json',
+  'native/system/package.json',
+  'native/system/packages/*/package.json',
 ]
 const INSTALLED_MANIFEST_GLOBS = [
   'node_modules/.pnpm/*/node_modules/*/package.json',
@@ -131,7 +131,7 @@ export function parseBenchmarkOptions(args: readonly string[]): BenchmarkOptions
 }
 
 function workspaceManifestPath(path: string): boolean {
-  return /^(?:apps\/[^/]+|packages\/[^/]+\/[^/]+|vendor\/[^/]+|native\/landlock-run(?:\/packages\/[^/]+)?)\/package\.json$/.test(path)
+  return /^(?:apps\/[^/]+|packages\/[^/]+\/[^/]+|vendor\/[^/]+|native\/system(?:\/packages\/[^/]+)?)\/package\.json$/.test(path)
 }
 
 function workspaceManifestPaths(root: string, ref: string | undefined): string[] {
@@ -376,7 +376,7 @@ async function runNpm(
   cwd: string,
   registry: string,
   timeoutMs: number,
-): Promise<Awaited<ReturnType<typeof runCommandWithTimeout>>> {
+): Promise<{ durationMs: number; output: string; timedOut: boolean }> {
   const npmrc = join(cwd, '.npmrc')
   const globalNpmrc = join(cwd, '.npmrc-global')
   writeFileSync(npmrc, `registry=${registry}\n@deepseek-ai:registry=${registry}\n`)
@@ -471,14 +471,7 @@ export async function resolveNpmPackageLock(
       dependencies,
     }, null, 2)}\n`)
     const result = await runNpm(consumer, registry, timeoutMs)
-    if (result.timedOut) {
-      throw new Error(`npm resolution exceeded ${String(timeoutMs)} ms: ${JSON.stringify({
-        ...result,
-        registryRequests,
-        archiveRequests,
-        unknownPackages: [...unknownPackages].sort(),
-      })}`)
-    }
+    if (result.timedOut) throw new Error(`npm resolution exceeded ${String(timeoutMs)} ms`)
     return {
       durationMs: result.durationMs,
       registryRequests,

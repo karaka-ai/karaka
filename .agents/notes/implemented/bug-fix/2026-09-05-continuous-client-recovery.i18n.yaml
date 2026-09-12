@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-05-continuous-client-recovery.md
-2026-09-05-continuous-client-recovery.md: 81d2b61a94981c2610d0811603e7f2f8ac33956e
-2026-09-05-continuous-client-recovery.zh.md: 915ff52b14ec84d959f9d98413715c60c18b4028
+2026-09-05-continuous-client-recovery.md: 2eacaca4f8d4b76ab8d82bb10bb8cfa4c80cbd65
+2026-09-05-continuous-client-recovery.zh.md: 96908b1217ca1caa17514e16522080fa342e6813

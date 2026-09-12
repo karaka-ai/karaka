@@ -9,13 +9,10 @@ const CLIENT_FACE_EXCLUDE: readonly string[] = [
   '@deepseek-ai/dsh-api-workspace-controller',
 ]
 
-/** Packages whose published dependency graph is deliberately flattened. */
+/** Host-only packages whose peer relays are deliberately flattened. */
 const HOST_DEPENDENCY_PACKAGES: readonly string[] = [
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-session',
-  '@karaka-ai/agent',
-  '@karaka-ai/cli',
-  '@karaka-ai/sdk',
 ]
 
 /** Development-only package relationships not represented by source imports. */
@@ -32,15 +29,6 @@ const CONFIGURATION_ONLY_DEV_DEPENDENCIES = {
   '@deepseek-ai/dsh-client-ui-tool': ['@deepseek-ai/dsh-api-remotes'],
 } as const satisfies Readonly<Record<string, readonly string[]>>
 
-/** Runtime dependencies introduced by a package's published bundle rather than its source imports. */
-const CONFIGURATION_ONLY_RUNTIME_DEPENDENCIES = {
-  '@karaka-ai/agent': [
-    '@deepseek-ai/cordis-plugin-hmr',
-    '@deepseek-ai/cordis-plugin-loader',
-    '@deepseek-ai/cordis-plugin-timer',
-  ],
-} as const satisfies Readonly<Record<string, readonly string[]>>
-
 /** Workspace packages whose complete runtime surface is safe across duplicate installations. */
 const DUPLICATE_SAFE_PACKAGES: readonly string[] = [
   '@deepseek-ai/dsh-brand',
@@ -51,11 +39,15 @@ const DUPLICATE_SAFE_PACKAGES: readonly string[] = [
 
 /**
  * Runtime exports whose values remain valid when npm installs another package copy.
+ * New entries are forbidden by default. Automated agents must not add an
+ * exception; every addition requires explicit human review and a dedicated,
+ * prominent heading in the pull request description.
  */
 const SAFE_HOST_DEPENDENCY_EXPORTS = {
   '@deepseek-ai/dsh-credentials': ['credentialKey'],
   '@deepseek-ai/dsh-deque': ['Deque'],
   '@deepseek-ai/dsh-llm': ['callConfigEquals'],
+  '@deepseek-ai/dsh-session-format': ['sessionFormatLogFilename'],
   '@deepseek-ai/dsh-timeout': ['MAX_TIMER_DELAY_MS'],
   '@deepseek-ai/schemastery': ['default'],
 } as const satisfies HostDependencyExports
@@ -63,6 +55,7 @@ const SAFE_HOST_DEPENDENCY_EXPORTS = {
 /** Runtime exports that require every consumer to resolve the provider's shared peer instance. */
 const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-scope': ['carrierKeyOf', 'scopeOf', 'scopeTarget'],
+  '@deepseek-ai/dsh-session': ['SESSION_FORMAT_VERSION'],
   '@deepseek-ai/dsh-session-persistence': ['SessionPersistenceNotFoundError'],
 } as const satisfies HostDependencyExports
 
@@ -74,13 +67,7 @@ export interface PackageDependencyPolicy {
   readonly clientFaceInclude: readonly string[]
   readonly clientFaceExclude: readonly string[]
   readonly hostPackages: readonly string[]
-  /** Plain libraries whose source and published surface do not use Cordis. */
-  readonly cordisIndependentPackages?: readonly string[]
   readonly configurationOnlyDevDependencies: Readonly<Record<string, readonly string[]>>
-  /** Workspace modules externalized by a published bundle. */
-  readonly configurationOnlyRuntimeDependencies?: Readonly<Record<string, readonly string[]>>
-  /** Packages that install Cordis instead of requiring an application-owned peer. */
-  readonly cordisRuntimeDependencyPackages?: readonly string[]
   readonly duplicateSafePackages?: readonly string[]
   readonly safeHostDependencyExports: HostDependencyExports
   readonly peerRequiredHostExports: HostDependencyExports
@@ -91,10 +78,7 @@ export const PACKAGE_DEPENDENCY_POLICY: PackageDependencyPolicy = {
   clientFaceInclude: CLIENT_FACE_INCLUDE,
   clientFaceExclude: CLIENT_FACE_EXCLUDE,
   hostPackages: HOST_DEPENDENCY_PACKAGES,
-  cordisIndependentPackages: ['@karaka-ai/cli', '@karaka-ai/sdk'],
-  cordisRuntimeDependencyPackages: ['@karaka-ai/agent'],
   configurationOnlyDevDependencies: CONFIGURATION_ONLY_DEV_DEPENDENCIES,
-  configurationOnlyRuntimeDependencies: CONFIGURATION_ONLY_RUNTIME_DEPENDENCIES,
   duplicateSafePackages: DUPLICATE_SAFE_PACKAGES,
   safeHostDependencyExports: SAFE_HOST_DEPENDENCY_EXPORTS,
   peerRequiredHostExports: PEER_REQUIRED_HOST_EXPORTS,
