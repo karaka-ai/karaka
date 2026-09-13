@@ -7264,8 +7264,8 @@ importers:
         specifier: workspace:^
         version: link:../identity
       '@karaka-ai/sdk':
-        specifier: file:../../../../standalone/karaka-sdk
-        version: file:../standalone/karaka-sdk
+        specifier: 0.1.2-alpha.5
+        version: 0.1.2-alpha.5(supports-color@9.4.0)
       '@karaka-ai/server-auth':
         specifier: workspace:^
         version: link:../server-auth
@@ -13041,8 +13041,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@karaka-ai/sdk@file:../standalone/karaka-sdk':
-    resolution: {directory: ../standalone/karaka-sdk, type: directory}
+  '@karaka-ai/sdk@0.1.2-alpha.5':
+    resolution: {integrity: sha512-NWNO1ypDsb3/FXK9h/uzLMyTgugTfCPTCcH53ksNehI4UW5zoGWFj87+v3YAFbnB6/OGhp7o1oqmBSh9r0PfKg==}
     engines: {node: ^22.19.0 || >=24.0.0}
 
   '@koromix/koffi-darwin-arm64@3.1.1':
@@ -19803,7 +19803,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@karaka-ai/sdk@file:../standalone/karaka-sdk':
+  '@karaka-ai/sdk@0.1.2-alpha.5(supports-color@9.4.0)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.29.0(supports-color@9.4.0)(zod@4.4.3)
       zod: 4.4.3

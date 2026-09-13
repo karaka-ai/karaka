@@ -18,7 +18,7 @@ The selected upstream master shares release version numbers with npm packages th
 
 This initial npm build targets Linux x64 glibc and advertises that restriction in its manifest. Its README records the libvips dependency's glibc 2.28 minimum. Other platforms and native runtime paths remain outside the executed application scenario. The staging inventory records package versions and repositories; the root agent owns clean installation, the same end-to-end scenario, and publication.
 
-The current source checkout uses a built sibling SDK at `../standalone/karaka-sdk`, relative to the server checkout, through transport-http's development dependency. That is temporary local build wiring, not a published dependency path. Replace it with the public SDK release and refresh the lockfile once that release is available. The npm server tarball contains the validated SDK runtime and has no dependency on the sibling checkout.
+The source build pins the separately published `@karaka-ai/sdk@0.1.2-alpha.5` through transport-http's development dependency and registry lockfile integrity. Its exact prerelease is exempt from the dependency release-age delay so coordinated server and client releases can resolve together. The npm server tarball contains its validated SDK runtime and has no dependency on a sibling checkout; changing the source development pin does not rebuild that published artifact.
 
 ## Application composition
 

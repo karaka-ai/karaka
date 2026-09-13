@@ -55,6 +55,8 @@ allowBuilds:
   msgpackr-extract: false
 
 minimumReleaseAgeExclude:
+  # Coordinated Karaka prerelease used by the server's source build.
+  - '@karaka-ai/sdk@0.1.2-alpha.5'
   # Fresh pi-ai releases carry the model catalog updates that are the whole
   # point of bumping it; waiting out the release age would defeat that.
   - '@earendil-works/pi-ai@0.85.1'
