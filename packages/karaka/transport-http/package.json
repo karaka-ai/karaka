@@ -60,7 +60,7 @@
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-user-questions": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
-    "@karaka-ai/sdk": "file:../../../../standalone/karaka-sdk",
+    "@karaka-ai/sdk": "0.1.2-alpha.5",
     "@karaka-ai/identity": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",

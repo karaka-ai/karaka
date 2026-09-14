@@ -4,7 +4,7 @@
   "sourcePackage": "packages/mcp/mcp-client",
   "derivedFiles": {
     "src/connection.ts": "Pass application hooks through the existing connection lifecycle.",
-    "src/tools.ts": "Publish a private catalog and inject verified invocation identity."
+    "src/tools.ts": "Publish a private catalog, inject verified invocation identity, and validate supported object arguments before MCP dispatch using original DSH schema helpers."
   },
   "ownedFiles": ["src/index.ts", "src/transport.ts"],
   "upstreamImplementationFilesChanged": false

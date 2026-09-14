@@ -18,6 +18,10 @@
     "./tool-policy": {
       "types": "./lib/types/tool-policy.d.ts",
       "default": "./lib/tool-policy.js"
+    },
+    "./tools": {
+      "types": "./lib/types/tools.d.ts",
+      "default": "./lib/tools.js"
     }
   },
   "dsh": {

@@ -16,6 +16,8 @@ Karaka HTTP operations call the original engine through its public APIs. The pro
 
 The existing Karaka MCP package owns its application catalog. Its connection supervisor and rich tool/result conversion derive from two DSH files pinned in [provenance](../../../../packages/karaka/mcp-application/UPSTREAM.json); both contain necessary hook changes. No unchanged dependency package is copied. Application tools register in each eligible Agent scope, are absent globally, and require both endpoint permission and explicit preset allow, with deny precedence across inherited scopes. Omitted or deny-only policy does not grant application tools; ordinary tool restrictions and presentation remain upstream implementations. Each outgoing request resolves current credentials; each execution obtains trusted identity from the actual Agent. HTTP redirects are rejected for credential-bearing MCP requests.
 
+The MCP bridge admits only supported object-rooted input schemas and validates arguments with the original DSH helpers before dispatch. A local `ToolArgsError`/`INVALID_ARGS` proves no application callback ran, allowing a quota policy to admit a corrected proposal. Remote errors do not establish that an operation had no effect. Local plugins obtain the same tool definitions, error class and authoring types through `@karaka-ai/agent/tools`.
+
 The profile and implementation boundary are described in the [runtime note](../../../../packages/karaka/agent/IMPLEMENTATION.md). This decision adds Karaka behavior and supersedes no active upstream Agent Note; DSH's released format and original plugin contracts remain intact.
 
 ## Alternatives considered

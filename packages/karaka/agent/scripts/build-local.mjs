@@ -15,7 +15,7 @@ const packages = {
   'browser-auth': ['index'],
   'mcp-application': ['index', 'tool-policy'],
   'transport-http': ['index'],
-  agent: ['index', 'bin', 'tool-policy'],
+  agent: ['index', 'bin', 'tool-policy', 'tools'],
 }
 if (!declarationsOnly) for (const [name, entries] of Object.entries(packages)) {
   const cwd = resolve(root, 'packages/karaka', name)

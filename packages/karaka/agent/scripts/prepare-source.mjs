@@ -15,6 +15,7 @@ paths['@karaka-ai/identity/session-reference'] = ['./packages/karaka/identity/sr
 paths['@karaka-ai/mcp-application/tool-policy'] = ['./packages/karaka/mcp-application/src/tool-policy.ts']
 paths['@karaka-ai/transport-http/browser'] = ['./packages/karaka/transport-http/src/browser.ts']
 paths['@karaka-ai/agent/tool-policy'] = ['./packages/karaka/agent/src/tool-policy.ts']
+paths['@karaka-ai/agent/tools'] = ['./packages/karaka/agent/src/tools.ts']
 await writeFile(resolve(root, 'tsconfig.karaka.json'), JSON.stringify({
   extends: './tsconfig.base.json',
   compilerOptions: { paths },
