@@ -1,12 +1,12 @@
 {
-  "organization": "deepseek-harness",
-  "repository": "deepseek-harness",
+  "organization": "karaka-ai",
+  "repository": "karaka",
   "projectNumber": 1,
-  "projectTitle": "DSH Issue Management",
-  "lifecycleActor": "dsh-issue-management",
+  "projectTitle": "Karaka Issue Management",
+  "lifecycleActor": "karaka-issue-management",
   "priorityField": "Priority",
   "startDateField": "Start Date",
-  "projectTimeZone": "Asia/Shanghai",
+  "projectTimeZone": "Asia/Kolkata",
   "statuses": [
     "Inbox",
     "Backlog",
