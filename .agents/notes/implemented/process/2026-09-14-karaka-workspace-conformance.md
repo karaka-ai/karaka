@@ -14,7 +14,9 @@ Karaka uses the repository [source import map](../../../../tsconfig.base.json), 
 
 Package READMEs, service documentation, invariant decisions and behavior tests follow the same rules as DSH packages. The transport uses a session projection for acknowledged request IDs and model-selection state instead of deprecated synchronous history scans. The [Karaka subsystem page](../../../../docs/subsystems/karaka.md) owns generated service documentation. Compiler references resolve workspace source imports without requiring stale package declarations.
 
-The launcher checker classifies the exact `@karaka-ai/agent` binary target and bootstrap source as a Karaka profile initializer that delegates to `dsh`. The classification preserves the [application launch rule](../../../../docs/architecture.md#application-launch); it grants no independent Cordis startup or general Karaka launcher exemption.
+The launcher checker classifies the exact `@karaka-ai/agent` binary target and bootstrap source as a Karaka profile initializer that delegates to `dsh`. The classification preserves the [application launch rule](../../../../docs/architecture.md); it grants no independent Cordis startup or general Karaka launcher exemption.
+
+Workspace constraints require packages in `packages/karaka/<name>` to use `@karaka-ai/<name>` and `private: true`. These packages are outside the DSH publication family; release discovery already excludes private packages. DSH public-release metadata rules remain unchanged, and shared dependency and structural checks still apply to Karaka.
 
 ## Alternatives considered
 
@@ -24,4 +26,4 @@ The launcher checker classifies the exact `@karaka-ai/agent` binary target and b
 
 ## Consequences
 
-The generated Cordis API catalog includes registered Karaka services. Shared configuration contains explicit Karaka registrations that must be retained when replaying upstream commits. The [shared MCP extension decision](../architecture/2026-09-14-shared-mcp-extensions-for-karaka.md) owns the bounded upstream implementation changes that replace copied MCP code. Package checks do not settle fork release policy, CI process supervision or unavailable live-test credentials; those require separate evidence and decisions. Local package coverage establishes the exercised source behavior; it does not establish a passing platform matrix.
+The generated Cordis API catalog includes registered Karaka services. Shared configuration contains explicit Karaka registrations that must be retained when replaying upstream commits. The [shared MCP extension decision](../architecture/2026-09-14-shared-mcp-extensions-for-karaka.md) owns the bounded upstream implementation changes that replace copied MCP code. Package checks do not settle CI process supervision or unavailable live-test credentials; those require separate evidence and decisions. Local package coverage establishes the exercised source behavior; it does not establish a passing platform matrix.
