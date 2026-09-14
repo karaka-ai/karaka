@@ -216,7 +216,9 @@ describe('CI workflow', () => {
 
     // windows-coverage uses the lower 4-partition profile.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: "${{ runner.environment == 'github-hosted' && '1' || '4' }}" })
+    const coverageEnvironment = windowsCoverage.env as Record<string, string>
+    expect(coverageEnvironment.DSH_COVERAGE_PARTITIONS).not.toContain('runner.')
+
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -347,6 +349,24 @@ describe('CI workflow', () => {
       expect(evaluate(selector, { [variable]: 'selfhosted' }, 'dependabot[bot]'), `${name} dependabot on selfhosted`).toBe(hosted)
       for (const mode of ['', 'hosted', 'unexpected']) {
         expect(evaluate(selector, { [variable]: mode }), `${name} default on ${mode}`).toBe(hosted)
+      }
+    }
+
+    for (const [job, variable] of [
+      [node24Coverage, 'DSH_CI_FAILOVER_LINUX'],
+      [windowsCoverage, 'DSH_CI_FAILOVER_WINDOWS'],
+    ] as const) {
+      const environment = job.env as Record<string, string>
+      for (const [key, standard, custom] of [
+        ['DSH_COVERAGE_PARTITIONS', '1', '4'],
+        ['DSH_COVERAGE_MAX_WORKERS', '2', '6'],
+        ['DSH_GATE_CONCURRENCY', '1', '3'],
+      ]) {
+        const expression = environment[key!]!
+        expect(evaluate(expression, { [variable]: '' })).toBe(standard)
+        expect(evaluate(expression, { [variable]: 'selfhosted' })).toBe(custom)
+        expect(evaluate(expression, { [variable]: 'blacksmith' })).toBe(custom)
+        expect(evaluate(expression, { [variable]: 'selfhosted' }, 'dependabot[bot]')).toBe(standard)
       }
     }
 

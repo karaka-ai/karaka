@@ -33,7 +33,7 @@ jobs:
           || 'ubuntu-24.04' }}
     name: node 24 / static
     env:
-      DSH_GATE_CONCURRENCY: ${{ runner.environment == 'github-hosted' && '2' || '8' }}
+      DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '8' }}
       # Stop the aggregate at the first blocking gate failure so a red run
       # does not keep burning enterprise runner time on the remaining gates.
       DSH_GATE_FAIL_FAST: '1'
@@ -101,9 +101,9 @@ jobs:
     name: node 24 / coverage
     env:
       # Standard runners bound aggregate and coverage fan-out to fit their memory.
-      DSH_COVERAGE_MAX_WORKERS: ${{ runner.environment == 'github-hosted' && '2' || '6' }}
-      DSH_COVERAGE_PARTITIONS: ${{ runner.environment == 'github-hosted' && '1' || '4' }}
-      DSH_GATE_CONCURRENCY: ${{ runner.environment == 'github-hosted' && '1' || '3' }}
+      DSH_COVERAGE_MAX_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '6' }}
+      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '4' }}
+      DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '3' }}
       # Managed-scope teardown cases run past the default per-test budget when
       # this lane's partitions, workers, and sibling gates share one host: the
       # disposal cases in subprocess-local and bash-sandbox exceeded 5000ms on
@@ -229,17 +229,17 @@ jobs:
           || 'ubuntu-24.04' }}
     name: node 24 / snapshots and artifacts
     env:
-      DSH_GATE_CONCURRENCY: ${{ runner.environment == 'github-hosted' && '2' || '10' }}
+      DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '10' }}
       DSH_NODE_COMPAT_SKIP_TYPECHECK: '1'
-      DSH_OXLINT_THREADS: ${{ runner.environment == 'github-hosted' && '2' || '8' }}
-      DSH_PUBLINT_CONCURRENCY: ${{ runner.environment == 'github-hosted' && '2' || '8' }}
-      DSH_WEB_SNAPSHOT_WORKERS: ${{ runner.environment == 'github-hosted' && '2' || '6' }}
+      DSH_OXLINT_THREADS: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '8' }}
+      DSH_PUBLINT_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '8' }}
+      DSH_WEB_SNAPSHOT_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '6' }}
       # A failing gate aborts its running siblings: a failing build stops the
       # independent Node compatibility smoke, and a failing reader (e.g.
       # publint) stops the remaining artifact consumers.
       DSH_GATE_FAIL_FAST: '1'
       # Bound standard-runner fan-out; retain the shared VM and Blacksmith budgets.
-      DSH_SNAPSHOT_MAX_CONCURRENCY: ${{ runner.environment == 'github-hosted' && '4' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32' }}
+      DSH_SNAPSHOT_MAX_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '4' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32' }}
     steps:
       # Runner cleanup owns tool caches and fixtures, including cancelled runs.
       - name: Use runner-owned temporary storage
@@ -504,10 +504,10 @@ jobs:
     name: windows node 24 / coverage
     timeout-minutes: 120
     env:
-      DSH_COVERAGE_MAX_WORKERS: ${{ runner.environment == 'github-hosted' && '2' || '6' }}
-      DSH_COVERAGE_PARTITIONS: ${{ runner.environment == 'github-hosted' && '1' || '4' }}
+      DSH_COVERAGE_MAX_WORKERS: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '6' }}
+      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '4' }}
       DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
-      DSH_GATE_CONCURRENCY: ${{ runner.environment == 'github-hosted' && '1' || '3' }}
+      DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '3' }}
       # A gate failure aborts the sibling gate instead of waiting out its
       # multi-minute instrumented run.
       DSH_GATE_FAIL_FAST: '1'
@@ -631,7 +631,7 @@ jobs:
     name: windows node 24 / observational
     timeout-minutes: 60
     env:
-      DSH_PUBLINT_CONCURRENCY: ${{ runner.environment == 'github-hosted' && '2' || '8' }}
+      DSH_PUBLINT_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '8' }}
     steps:
       - uses: actions/checkout@v6
         with:
