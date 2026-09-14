@@ -18,6 +18,8 @@ The [live API workflow](../../../../.github/workflows/e2e.yml) reports missing c
 
 The [preview workflow](../../../../.github/workflows/build-preview-cloudflare.yml) always builds its artifacts; deployment, protected-image verification and URL comments require all four Cloudflare credentials. Missing credentials produce a notice and summary.
 
+The [CI process tracker](../../../../scripts/run-gates.ts) visits each reachable PID once and excludes the root from its descendant list. Its traversal queue is independent of the recorded parent-child rows, and children are appended individually. Cyclic or duplicate process-table relationships cannot grow the queue indefinitely; wide tables do not depend on JavaScript argument-count limits. This bounds enumeration without changing process ownership or termination policy.
+
 ## Alternatives considered
 
 **Compile Karaka through the upstream graph:** this duplicates the existing source-build ownership and requires integrating application-specific browser and declaration entries. [Workspace conformance](2026-09-14-karaka-workspace-conformance.md) supersedes this ownership choice.
