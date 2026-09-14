@@ -55,8 +55,8 @@ jobs:
         with:
           client-id: ${{ vars.DSH_ISSUE_APP_CLIENT_ID }}
           private-key: ${{ secrets.DSH_ISSUE_APP_PRIVATE_KEY }}
-          owner: deepseek-harness
-          repositories: deepseek-harness
+          owner: karaka-ai
+          repositories: karaka
       - name: Handle repository event
         if: ${{ github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested' }}
         env:
