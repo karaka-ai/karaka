@@ -9,19 +9,7 @@
   ],
   "references": [
     {
-      "path": "../../attachment/attachment"
-    },
-    {
-      "path": "../../llm/llm"
-    },
-    {
       "path": "../../core/scope"
-    },
-    {
-      "path": "../../subprocess/subprocess"
-    },
-    {
-      "path": "../../util/timeout"
     },
     {
       "path": "../../core/tools"
@@ -42,10 +30,10 @@
       "path": "../../core/agent-tool-presentation"
     },
     {
-      "path": "../../util/values"
+      "path": "../../../vendor/schemastery"
     },
     {
-      "path": "../../../vendor/schemastery"
+      "path": "../../mcp/mcp-client"
     }
   ]
 }

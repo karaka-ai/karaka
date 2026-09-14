@@ -1578,7 +1578,7 @@ export interface ReconnectConfig {
 }
 ```
 
-来源：[`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+来源：[`packages/mcp/mcp-client/src/index.ts:99`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -3489,7 +3489,7 @@ export interface Config {
 
 ## `@karaka-ai/mcp-application`
 
-需要：`tools` · `agents` · `karakaIdentity` · `serverAuth`
+需要： `tools` · `agents` · `karakaIdentity` · `serverAuth`
 
 ```ts config-catalog
 /** Application identity, HTTP endpoint, tool admission and reconnect settings. */
@@ -3513,21 +3513,11 @@ export interface Config {
   /** Deny overrides the explicit allow list. */
   deny: string[]
 }
-
-/** Automatic reconnect policy for one MCP server connection. */
-export interface ReconnectConfig {
-  /** Reconnect automatically after a lost connection (default true). */
-  enabled?: boolean
-  /** First reconnect delay in milliseconds; doubles per consecutive failed attempt (default 500). */
-  initialDelayMs?: number
-  /** Backoff ceiling in milliseconds; also the uptime after which the attempt budget resets (default 30000). */
-  maxDelayMs?: number
-  /** Consecutive failed attempts per outage before giving up for good (default 10). */
-  maxAttempts?: number
-}
 ```
 
-来源：[`packages/karaka/mcp-application/src/index.ts:14`](../packages/karaka/mcp-application/src/index.ts)
+依赖： [`ReconnectConfig`](../packages/mcp/mcp-client/src/index.ts)
+
+来源： [`packages/karaka/mcp-application/src/index.ts:16`](../packages/karaka/mcp-application/src/index.ts)
 
 <a id="karaka-aiserver-auth"></a>
 

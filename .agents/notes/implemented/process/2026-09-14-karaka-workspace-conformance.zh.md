@@ -14,6 +14,8 @@ Karaka 使用仓库的[源码导入映射](../../../../tsconfig.base.json)、Hos
 
 包 README、服务文档、不变量判断和行为测试遵循 DSH 包的同一套规则。传输层通过会话投影维护已确认的请求 ID 与模型选择状态，不使用已弃用的同步历史扫描。[Karaka 子系统页面](../../../../docs/subsystems/karaka.zh.md)负责生成的服务文档。编译器引用解析工作区源码导入，无需依赖过时的包声明文件。
 
+启动器检查器将精确的 `@karaka-ai/agent` 二进制目标和引导源码归类为委托 `dsh` 的 Karaka 配置初始化器。该分类保留[应用启动规则](../../../../docs/architecture.zh.md#application-launch)，不允许独立启动 Cordis，也不对 Karaka 启动器提供通用豁免。
+
 ## Alternatives considered
 
 **从共享检查中排除 Karaka：**这会留下未检测的集成错误，也不符合工作区成员身份。
@@ -22,4 +24,4 @@ Karaka 使用仓库的[源码导入映射](../../../../tsconfig.base.json)、Hos
 
 ## Consequences
 
-手写上游实现保持不变；生成的 Cordis API 目录包含已注册的 Karaka 服务。共享配置包含显式 Karaka 注册，重放上游提交时必须保留。包检查不能解决分叉仓库发布策略、启动器分类、CI 进程监督或真实测试凭证缺失；这些问题需要独立证据和决策。本地包覆盖率可以证明所执行的源码行为，但不能证明平台矩阵通过。
+生成的 Cordis API 目录包含已注册的 Karaka 服务。共享配置包含显式 Karaka 注册，重放上游提交时必须保留。[共享 MCP 扩展决策](../architecture/2026-09-14-shared-mcp-extensions-for-karaka.zh.md)负责替代 MCP 副本所需的有限上游实现改动。包检查不能解决分叉仓库发布策略、CI 进程监督或真实测试凭证缺失；这些问题需要独立证据和决策。本地包覆盖率可以证明所执行的源码行为，但不能证明平台矩阵通过。

@@ -38,6 +38,23 @@ describe('application entrypoints', () => {
     ])
   })
 
+  it('accepts the classified Karaka profile bootstrap', () => {
+    const root = fixture()
+    write(root, 'packages/karaka/agent/package.json', JSON.stringify({ bin: { 'karaka-agent': 'lib/bin.js' } }))
+    write(root, 'packages/karaka/agent/src/bin.ts', '#!/usr/bin/env node\n')
+
+    expect(applicationEntrypointViolations(root)).toEqual([])
+  })
+
+  it('rejects a different executable target under the Karaka classification', () => {
+    const root = fixture()
+    write(root, 'packages/karaka/agent/package.json', JSON.stringify({ bin: { 'karaka-agent': 'lib/other.js' } }))
+
+    expect(applicationEntrypointViolations(root)).toEqual([
+      'packages/karaka/agent/package.json: classified bin must remain {"karaka-agent":"lib/bin.js"}, got {"karaka-agent":"lib/other.js"}',
+    ])
+  })
+
   it('rejects an unclassified executable source', () => {
     const root = fixture()
     write(root, 'packages/example/app/src/bin.ts', '#!/usr/bin/env node\n')

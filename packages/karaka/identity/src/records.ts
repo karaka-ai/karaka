@@ -1,5 +1,6 @@
 /** Durable Karaka authority records, separate from original DSH JSONL. */
 import { z } from 'zod'
+import { pick } from '@deepseek-ai/cosmokit'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
 import { ApplicationId, TenantId, UserId } from './owner.ts'
@@ -44,14 +45,8 @@ export type IdentityRecord = z.infer<typeof recordSchema>
  */
 export function bindingOf(header: SessionHeader): z.infer<typeof bindingSchema> {
   return {
-    id: header.id,
-    createdAt: header.createdAt,
-    ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
-    ...(header.parentSession === undefined ? {} : { parentSession: header.parentSession }),
-    isSeeded: header.isSeeded,
-    ...(header.origin === undefined ? {} : { origin: header.origin }),
+    ...pick(header, bindingSchema.keyof().options),
     delegationDepth: header.delegationDepth ?? 0,
-    ...(header.agentPreset === undefined ? {} : { agentPreset: header.agentPreset }),
   }
 }
 

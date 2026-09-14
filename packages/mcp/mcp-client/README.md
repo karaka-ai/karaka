@@ -129,6 +129,13 @@ The supervisor listens for `notifications/tools/list_changed` and queues a re-sy
 
 A tool call sends an uncached `tools/call` request carrying the raw MCP name, the JSON arguments, the abort signal, and the configured timeout; the public name is never sent to the server and never parsed back. Canonical success is `{ content: JsonValue[], structuredContent? }`, preserving the complete MCP JSON blocks for programmatic and PTC mode callers. A supported advertised `outputSchema` validates `structuredContent`; unsupported schema vocabulary falls back to unconstrained `JsonValue`. An MCP `isError` result throws before any image persistence, so the registry produces a failed tool result. Image batches are decoded and validated as a whole before any member is saved; any refusal projects every image as diagnostic text.
 
+<a id="programmatic-extensions"></a>
+### Programmatic extensions
+
+Application plugins can import `startConnection` and `resolveReconnectPolicy` from the package root and pass optional `ConnectionExtensions` as the fourth argument. These callbacks are programmatic inputs, not `cordis.yml` fields. Omitting them uses the configured DSH transport, ordinary Tools registration and calls without application metadata. The caller owns startup failure policy, namespace coordination and registering the returned handle's `dispose()` with its plugin lifecycle.
+
+A custom transport factory supplies a fresh unconnected transport for each attempt; the supervisor owns its closure and reconnect lifecycle. Tool preparation runs while building the next catalog, before the old registrations are removed, so admission failure retains the old catalog. Preparation receives the original MCP tool descriptor and preserves each definition's name and remote dispatch identity. Custom registration owns every contribution it publishes, rolls back partial work on failure and returns its complete disposer. Per-call metadata resolves before remote dispatch, and rejection prevents the request. The [Karaka application adapter](../../karaka/mcp-application/README.md) uses these extensions for its own authentication, schema admission and scoped policy.
+
 ### Environment scrubbing (stdio)
 
 The child environment starts from the subprocess seam's `scrubbedParentEnv()` — ambient names matching `/KEY|PASSWORD|SECRET|TOKEN/i` and ambient `DSH_*` names are dropped — and the configured `env` merges on top, so explicit overrides survive. The MCP SDK owns the actual spawn; this package shares the scrub definition, not the spawn path.

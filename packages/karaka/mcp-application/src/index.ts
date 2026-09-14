@@ -1,4 +1,4 @@
-/** Application MCP bridge, derived from DSH c291e796 with an owned scoped catalog. */
+/** Application-owned authorization and scoped catalogs on the DSH MCP connection supervisor. */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { policyAllows, registerCatalog, watchPolicy } from './policy.ts'
@@ -6,7 +6,9 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { ApplicationId } from '@karaka-ai/identity'
 import type {} from '@karaka-ai/server-auth'
-import { resolveReconnectPolicy, startConnection, type ReconnectConfig } from './connection.ts'
+import { resolveReconnectPolicy, startConnection, type ReconnectConfig } from '@deepseek-ai/dsh-mcp-client'
+import { createTransport } from './transport.ts'
+import { prepareApplicationTool } from './tools.ts'
 
 export const name = 'karaka-mcp-application'
 export const inject = ['tools', 'agents', 'karakaIdentity', 'serverAuth']
@@ -48,7 +50,7 @@ export const Config = z.object({
   }),
 }) as z<Config>
 
-/** Hooks owned by this bridge rather than added to upstream Tools or MCP. */
+/** Application credentials, invocation authorization and scoped tool publication. */
 export interface ApplicationBridge {
   /**
    * Resolve current endpoint credentials for each HTTP request.
@@ -135,7 +137,21 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.on('agent/created', ({ agent }) => { attach(agent) }, { global: true })
   // Application roots and children are published only after their trusted identity setup.
   for (const agent of ctx.agents.list()) attach(agent)
-  const connection = startConnection(ctx, config, resolveReconnectPolicy(config.reconnect, name), bridge)
+  const connection = startConnection(ctx, {
+    transport: 'streamable-http',
+    serverName: config.serverName,
+    url: config.url,
+    headers: config.headers,
+    toolCallTimeoutMs: config.toolCallTimeoutMs,
+    failOnStartupError: config.failOnStartupError,
+  }, resolveReconnectPolicy(config.reconnect, name), {
+    createTransport: () => createTransport(config, bridge),
+    tools: {
+      prepare: prepareApplicationTool,
+      metadata: execution => bridge.metadata(execution),
+      register: definition => bridge.register(definition),
+    },
+  })
   ctx.effect(() => () => connection.dispose(), 'karaka-mcp-application.connection')
   const outcome = await connection.ready
   if (outcome.error !== undefined && config.failOnStartupError) {

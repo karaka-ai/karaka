@@ -2,17 +2,25 @@
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
   "commit": "c291e7961a515f6d7af9304e7fd1d257929aef26",
   "sourcePackage": "packages/mcp/mcp-client",
-  "derivedFiles": {
-    "src/connection.ts": "Pass application hooks through the existing connection lifecycle.",
-    "src/tools.ts": "Publish a private catalog, inject verified invocation identity, and validate supported object arguments before MCP dispatch using original DSH schema helpers."
-  },
+  "sharedPackage": "@deepseek-ai/dsh-mcp-client",
+  "derivedFiles": {},
   "ownedFiles": [
     "src/index.ts",
-    "src/transport.ts"
+    "src/transport.ts",
+    "src/tools.ts",
+    "src/policy.ts",
+    "src/tool-policy.ts"
   ],
-  "upstreamImplementationFilesChanged": false,
-  "derivedTests": {
-    "tests/inherited-tools.spec.ts": "Adapted from packages/mcp/mcp-client/tests/mcp-client.spec.ts at the pinned commit: application registration and metadata hooks; upstream stdio and non-object argument cases are omitted.",
-    "tests/inherited-connection.spec.ts": "Adapted from packages/mcp/mcp-client/tests/reconnect.spec.ts at the pinned commit: application HTTP configuration and hooks, fake-timer advancement, and fixture-owned Cordis teardown."
+  "upstreamImplementationFilesChanged": true,
+  "upstreamImplementationChanges": {
+    "packages/mcp/mcp-client/src/index.ts": "Export the programmatic connection API and generic extension types.",
+    "packages/mcp/mcp-client/src/connection.ts": "Accept optional transport creation and tool extensions while preserving default supervision.",
+    "packages/mcp/mcp-client/src/tools.ts": "Accept catalog preparation, per-invocation metadata and registration extensions while preserving default tool execution."
+  },
+  "derivedTests": {},
+  "sharedTests": {
+    "packages/mcp/mcp-client/tests/mcp-client.spec.ts": "Ordinary discovery, naming, execution and rich-result behavior.",
+    "packages/mcp/mcp-client/tests/reconnect.spec.ts": "Connection lifecycle, refresh and reconnect behavior.",
+    "packages/mcp/mcp-client/tests/extensions.spec.ts": "Programmatic preparation, metadata, custom registration and transport ownership."
   }
 }
