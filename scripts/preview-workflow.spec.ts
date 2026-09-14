@@ -1,5 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 
@@ -10,7 +12,15 @@ const workflow = yaml.load(readFileSync(resolve(import.meta.dirname, '../.github
   env: Record<string, string>
   jobs: Record<'preview', {
     'runs-on': string
-    steps: Array<{ name?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> }>
+    steps: Array<{
+      name?: string
+      id?: string
+      if?: string
+      uses?: string
+      run?: string
+      with?: Record<string, unknown>
+      env?: Record<string, string>
+    }>
   }>
 }
 const preview = workflow.jobs.preview
@@ -36,6 +46,35 @@ describe('PR preview workflow', () => {
     expect(preview.steps.find(step => step.uses === 'actions/cache/restore@v4')?.with).toMatchObject({
       key: "${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}",
     })
+  })
+
+  it.skipIf(process.platform === 'win32')('requires every deployment credential while retaining the preview build', () => {
+    const check = preview.steps.find(step => step.id === 'deployment')!
+    const keys = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'CF_ACCESS_CLIENT_ID', 'CF_ACCESS_CLIENT_SECRET']
+    const root = mkdtempSync(join(tmpdir(), 'preview-credentials-'))
+    try {
+      for (const missing of [undefined, ...keys]) {
+        const output = join(root, missing ?? 'enabled')
+        const credentials = Object.fromEntries(keys.map(key => [key, key === missing ? '' : 'synthetic-test-value']))
+        const result = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', check.run!], {
+          env: { ...process.env, ...credentials, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: output + '.summary' },
+          encoding: 'utf8', timeout: 10_000,
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.signal).toBeNull()
+        expect(result.status, result.stderr).toBe(0)
+        expect(readFileSync(output, 'utf8').trim()).toBe(`enabled=${missing === undefined}`)
+        expect(result.stdout + result.stderr).not.toContain('synthetic-test-value')
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+    for (const name of ['Upload to Cloudflare Pages', 'Verify the protected deployment serves the image', 'Comment the preview URL']) {
+      expect(preview.steps.find(step => step.name === name)?.if).toBe("steps.deployment.outputs.enabled == 'true'")
+    }
+    for (const name of ['Build workspace', 'Build the preview page and pack the VFS image']) {
+      expect(preview.steps.find(step => step.name === name)?.if).toBeUndefined()
+    }
   })
 
   it('retains per-PR deployment, protected image verification, and idempotent URL comments', () => {

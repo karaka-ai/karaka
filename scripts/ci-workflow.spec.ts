@@ -172,7 +172,7 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must not use the Linux failover switch`).not.toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on']).toContain('self-hosted')
       expect(job['runs-on']).toContain('dsh-win-ci')
-      expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain('windows-2025')
       expect(job['runs-on']).toContain('blacksmith-16vcpu-windows-2025')
       expect(job.if).toBe("github.event_name == 'pull_request'")
     }
@@ -216,7 +216,7 @@ describe('CI workflow', () => {
 
     // windows-coverage uses the lower 4-partition profile.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '4' })
+    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: "${{ runner.environment == 'github-hosted' && '1' || '4' }}" })
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -336,9 +336,9 @@ describe('CI workflow', () => {
       }, { timeout: 1000 })
     }
     for (const [name, selector, variable, pool, hosted] of [
-      ['linux gates', selectors.linux, 'DSH_CI_FAILOVER_LINUX', ['self-hosted', 'linux', 'x64', 'vm-backup'], 'dsh-ubuntu-24-04-16core'],
+      ['linux gates', selectors.linux, 'DSH_CI_FAILOVER_LINUX', ['self-hosted', 'linux', 'x64', 'vm-backup'], 'ubuntu-24.04'],
       ['linux aggregate', selectors.linuxAggregate, 'DSH_CI_FAILOVER_LINUX', ['self-hosted', 'linux', 'x64', 'vm-backup'], 'ubuntu-latest'],
-      ['windows lanes', selectors.windows, 'DSH_CI_FAILOVER_WINDOWS', ['self-hosted', 'dsh-win-ci', 'windows'], 'dsh-windows-2025-16core'],
+      ['windows lanes', selectors.windows, 'DSH_CI_FAILOVER_WINDOWS', ['self-hosted', 'dsh-win-ci', 'windows'], 'windows-2025'],
     ] as const) {
       expect(evaluate(selector, { [variable]: 'blacksmith' }), `${name} blacksmith value`).toMatch(/^blacksmith-/)
       expect(evaluate(selector, { [variable]: 'selfhosted' }), `${name} selfhosted value`).toEqual(pool)
@@ -985,8 +985,8 @@ describe('Issue lifecycle workflow', () => {
       with: {
         'client-id': '${{ vars.DSH_ISSUE_APP_CLIENT_ID }}',
         'private-key': '${{ secrets.DSH_ISSUE_APP_PRIVATE_KEY }}',
-        owner: 'deepseek-harness',
-        repositories: 'deepseek-harness',
+        owner: 'karaka-ai',
+        repositories: 'karaka',
         'permission-issues': 'read',
         'permission-organization-projects': 'read',
       },
