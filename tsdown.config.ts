@@ -11,15 +11,14 @@ function isBuildFaceClient(value: unknown): boolean {
  * The ordinary workspace build consumes JavaScript emitted by the Host
  * TypeScript project and runs Typert. The Client pass selects packages that
  * declare a browser bundle and lets their package-local configs emit both
- * their Node loader entry and browser artifact. Karaka packages use their
- * separate source build in packages/karaka/agent/scripts/build-local.mjs.
+ * their Node loader entry and browser artifact.
  */
 export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   return {
     workspace: client
-      ? ['vendor/*', 'packages/*/*', 'apps/cli', '!packages/karaka/*']
-      : ['vendor/*', 'packages/*/*', 'apps/cli', 'apps/desktop', 'apps/desktop-host', '!packages/karaka/*'],
+      ? ['vendor/*', 'packages/*/*', 'apps/cli']
+      : ['vendor/*', 'packages/*/*', 'apps/cli', 'apps/desktop', 'apps/desktop-host'],
     entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],
     outDir: 'lib',
     format: ['esm'],

@@ -1,9 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import { spawnSync } from 'node:child_process'
 import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { runWorkflowStep } from './workflow-step-test-helper.ts'
 
 const workflow = yaml.load(readFileSync(resolve(import.meta.dirname, '../.github/workflows/build-preview-cloudflare.yml'), 'utf8')) as {
   on: unknown
@@ -56,13 +56,9 @@ describe('PR preview workflow', () => {
       for (const missing of [undefined, ...keys]) {
         const output = join(root, missing ?? 'enabled')
         const credentials = Object.fromEntries(keys.map(key => [key, key === missing ? '' : 'synthetic-test-value']))
-        const result = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', check.run!], {
-          env: { ...process.env, ...credentials, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: output + '.summary' },
-          encoding: 'utf8', timeout: 10_000,
+        const result = runWorkflowStep('bash', check.run!, {
+          ...credentials, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: output + '.summary',
         })
-        expect(result.error).toBeUndefined()
-        expect(result.signal).toBeNull()
-        expect(result.status, result.stderr).toBe(0)
         expect(readFileSync(output, 'utf8').trim()).toBe(`enabled=${missing === undefined}`)
         expect(result.stdout + result.stderr).not.toContain('synthetic-test-value')
       }

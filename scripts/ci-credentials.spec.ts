@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { runWorkflowStep } from './workflow-step-test-helper.ts'
 
 interface Step {
   name?: string
@@ -31,7 +32,7 @@ const cases = [
   { name: 'E2E', job: e2e.credentials!, id: 'key', shell: 'bash' },
   { name: 'installed wheel POSIX', job: build, id: 'live-api-posix', shell: 'bash' },
   { name: 'installed wheel Windows', job: build, id: 'live-api-windows', shell: 'pwsh' },
-]
+] as const
 
 describe('optional CI API credentials', () => {
   for (const entry of cases) {
@@ -43,15 +44,9 @@ describe('optional CI API credentials', () => {
         for (const key of ['', 'synthetic-test-key']) {
           const output = join(root, key ? 'enabled' : 'disabled')
           const summary = output + '.summary'
-          const result = spawnSync(entry.shell, entry.shell === 'pwsh'
-            ? ['-NoProfile', '-NonInteractive', '-Command', step.run!]
-            : ['-e', '-u', '-o', 'pipefail', '-c', step.run!], {
-            env: { ...process.env, DEEPSEEK_API_KEY: key, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary },
-            encoding: 'utf8', timeout: 10_000,
+          const result = runWorkflowStep(entry.shell, step.run!, {
+            DEEPSEEK_API_KEY: key, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary,
           })
-          expect(result.error).toBeUndefined()
-          expect(result.signal).toBeNull()
-          expect(result.status, result.stderr).toBe(0)
           expect(readFileSync(output, 'utf8').trim()).toBe(`enabled=${key !== ''}`)
           if (!key) {
             expect(result.stdout).toContain('::notice::Skipping')

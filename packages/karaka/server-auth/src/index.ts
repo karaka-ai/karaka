@@ -8,6 +8,7 @@ import { ApplicationId } from '@karaka-ai/identity'
 
 /** Verified application server identity. */
 export interface AuthenticatedApplication {
+  /** Application whose configured credential uniquely matched the request. */
   readonly applicationId: ApplicationId
 }
 
@@ -20,7 +21,7 @@ export abstract class ServerAuth extends Service {
   /**
    * Verify an inbound authorization value.
    * @param authorization - complete inbound Authorization header.
-   * @param signal - caller lifetime; implementations must stop credential work when aborted.
+   * @param signal - caller lifetime; aborting rejects the wait even if credential resolution continues.
    * @returns the authenticated application, or undefined when verification fails.
    */
   abstract authenticate(

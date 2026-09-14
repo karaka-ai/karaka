@@ -3438,6 +3438,149 @@ export interface Config {
 
 Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages/workflow/workflow-worker-thread/src/index.ts)
 
+<a id="karaka-aibrowser-auth"></a>
+
+## `@karaka-ai/browser-auth`
+
+```ts config-catalog
+/** Public verification keys and required credential claims. */
+export interface Config {
+  /** Exact application identity accepted by this deployment. */
+  readonly applicationId: string
+  /** Required JWT issuer. */
+  readonly issuer: string
+  /** Required JWT audience. */
+  readonly audience: string
+  /** Maximum age and issued lifetime, in seconds. */
+  readonly maxTokenAgeSeconds: number
+  /** Public verification keys indexed by the protected JWT key id. */
+  readonly keys: {
+    /** Unique protected JWT key id. */
+    readonly id: string
+    /** Signature algorithm accepted for this key. */
+    readonly algorithm: 'ES256' | 'RS256' | 'EdDSA'
+    /** SPKI PEM public key; private signing keys remain in the backend. */
+    readonly publicKey: string
+  }[]
+}
+```
+
+Source: [`packages/karaka/browser-auth/src/index.ts:24`](../packages/karaka/browser-auth/src/index.ts)
+
+<a id="karaka-aiidentity"></a>
+
+## `@karaka-ai/identity`
+
+Requires: `storage` · `sessions` · `sessionPersistence`
+
+```ts config-catalog
+/** Authority records and their exclusive lock share this directory. */
+export interface Config {
+  /** Absolute directory dedicated to durable application authority. */
+  root: string
+}
+```
+
+Source: [`packages/karaka/identity/src/index.ts:28`](../packages/karaka/identity/src/index.ts)
+
+<a id="karaka-aimcp-application"></a>
+
+## `@karaka-ai/mcp-application`
+
+Requires: `tools` · `agents` · `karakaIdentity` · `serverAuth`
+
+```ts config-catalog
+/** Application identity, HTTP endpoint, tool admission and reconnect settings. */
+export interface Config {
+  /** Trusted application identifier whose Agents may receive this catalog. */
+  applicationId: string
+  /** Stable tool namespace, using 1–32 ASCII letters, digits, underscores or hyphens. */
+  serverName: string
+  /** HTTP or HTTPS MCP endpoint; credential-bearing requests reject redirects. */
+  url: string
+  /** Static HTTP headers; current authorization from serverAuth overrides the same header. */
+  headers: Record<string, string>
+  /** Maximum duration of one tools/call request in milliseconds. Default: 60000. */
+  toolCallTimeoutMs: number
+  /** Reject plugin activation when the first connection or catalog sync fails. Default: true. */
+  failOnStartupError: boolean
+  /** Bounded reconnect policy; omission uses the connection supervisor defaults. */
+  reconnect?: ReconnectConfig
+  /** Only these public MCP tool names are exposed to this application's Agents. */
+  allow: string[]
+  /** Deny overrides the explicit allow list. */
+  deny: string[]
+}
+
+/** Automatic reconnect policy for one MCP server connection. */
+export interface ReconnectConfig {
+  /** Reconnect automatically after a lost connection (default true). */
+  enabled?: boolean
+  /** First reconnect delay in milliseconds; doubles per consecutive failed attempt (default 500). */
+  initialDelayMs?: number
+  /** Backoff ceiling in milliseconds; also the uptime after which the attempt budget resets (default 30000). */
+  maxDelayMs?: number
+  /** Consecutive failed attempts per outage before giving up for good (default 10). */
+  maxAttempts?: number
+}
+```
+
+Source: [`packages/karaka/mcp-application/src/index.ts:14`](../packages/karaka/mcp-application/src/index.ts)
+
+<a id="karaka-aiserver-auth"></a>
+
+## `@karaka-ai/server-auth`
+
+Requires: `credentials`
+
+```ts config-catalog
+/** Shared-bearer provider configuration. */
+export interface Config {
+  /** Authenticated application servers and their directional credentials. */
+  readonly applications: ApplicationCredentialConfig[]
+}
+
+/** One application and its independently rotatable directional credentials. */
+export interface ApplicationCredentialConfig {
+  /** Stable application-server identity. */
+  readonly id: string
+  /** Credential reference accepted on inbound chat requests. */
+  readonly chatCredential: string
+  /** Credential reference sent to this application's MCP endpoint. */
+  readonly toolCredential: string
+}
+```
+
+Source: [`packages/karaka/server-auth/src/index.ts:58`](../packages/karaka/server-auth/src/index.ts)
+
+<a id="karaka-aitransport-http"></a>
+
+## `@karaka-ai/transport-http`
+
+Requires: `serverAuth` · `karakaIdentity` · `agents` · `sessions` · `sessionQuery` · `sessionPersistence` · `sessionProjections` · `agentDefaultModel` · `llm` · `webServer`
+
+```ts config-catalog
+/** HTTP transport configuration. */
+export interface Config {
+  /** Register this transport as an application question recipient. Default: true. */
+  readonly handleQuestions?: boolean
+  /** Route prefix mounted on the shared Host web server. */
+  readonly path?: string
+  /** Maximum accepted JSON request body size in bytes. */
+  readonly maxBodyBytes?: number
+  /** Optional JWT-authenticated browser endpoint; requires browser-auth and explicit origins. */
+  readonly browserPath?: string
+  /** Exact browser origins allowed on browserPath. */
+  readonly browserOrigins?: string[]
+  /** Browser operations mounted at browserPath; defaults to all six application methods. */
+  readonly browserMethods?: ('applicationAgents' | 'applicationCreate' | 'applicationPrompt' | 'applicationHistory' | 'applicationFollow' | 'applicationCancel')[]
+  /** Owner-scoped interactions delivered to browsers; defaults to approvals and questions. */
+  readonly browserEvents?: ('approval/request' | 'user-questions/request')[]
+}
+```
+
+Source: [`packages/karaka/transport-http/src/index.ts:33`](../packages/karaka/transport-http/src/index.ts)
+
 ## Loadable plugins with no config
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
@@ -3603,3 +3746,4 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-util-values` ([`packages/util/values/src/index.ts`](../packages/util/values/src/index.ts))
 - `@deepseek-ai/dsh-util-workspace-path` ([`packages/util/workspace-path/src/index.ts`](../packages/util/workspace-path/src/index.ts))
 - `@deepseek-ai/dsh-win32-process` ([`packages/subprocess/win32-process/src/index.ts`](../packages/subprocess/win32-process/src/index.ts))
+- `@karaka-ai/agent` ([`packages/karaka/agent/src/index.ts`](../packages/karaka/agent/src/index.ts))

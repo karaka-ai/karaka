@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
-import { ApplicationId, TenantId, UserId } from './types.ts'
+import { ApplicationId, TenantId, UserId } from './owner.ts'
 
 const ownerSchema = z.object({
   applicationId: z.string().min(1).transform(ApplicationId),
@@ -55,7 +55,12 @@ export function bindingOf(header: SessionHeader): z.infer<typeof bindingSchema> 
   }
 }
 
-/** @param record - Bound authority. @param header - Observed original header. @returns Whether all immutable fields match. */
+/**
+ * Compare durable authority with the observed immutable Session fields.
+ * @param record - Bound authority.
+ * @param header - Observed original header.
+ * @returns Whether all immutable fields match.
+ */
 export function matchesBinding(record: Exclude<IdentityRecord, { state: 'reserved' }>, header: SessionHeader): boolean {
   const left = record.binding
   const right = bindingOf(header)

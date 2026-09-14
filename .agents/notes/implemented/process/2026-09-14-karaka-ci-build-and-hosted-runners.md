@@ -10,7 +10,7 @@ Organization-specific runner labels leave Karaka pull requests queued without an
 
 ## Decision
 
-The root [bundler](../../../../tsdown.config.ts) excludes `packages/karaka/*` in both compiler passes. [Karaka's build script](../../../../packages/karaka/agent/scripts/build-local.mjs) owns those artifacts; the upstream TypeScript graph and root bundle discovery cover the same package family.
+The separate-build decision is superseded by [Karaka workspace conformance](2026-09-14-karaka-workspace-conformance.md), which owns compiler and bundler integration.
 
 [Pull-request CI](../../../../.github/workflows/ci.yml) defaults to `ubuntu-24.04` and `windows-2025`. Standard GitHub runners use lower gate, coverage and snapshot concurrency. The [platform failover switches](2026-07-26-ci-failover-runbook.md) and [Blacksmith overrides](2026-09-09-blacksmith-failover-leg.md) remain available when their pools are configured.
 
@@ -20,7 +20,7 @@ The [preview workflow](../../../../.github/workflows/build-preview-cloudflare.ym
 
 ## Alternatives considered
 
-**Compile Karaka through the upstream graph:** this duplicates the existing source-build ownership and requires integrating application-specific browser and declaration entries. The separate artifact pass remains authoritative.
+**Compile Karaka through the upstream graph:** this duplicates the existing source-build ownership and requires integrating application-specific browser and declaration entries. [Workspace conformance](2026-09-14-karaka-workspace-conformance.md) supersedes this ownership choice.
 
 **Require custom runners and credentials everywhere:** that makes ordinary validation depend on infrastructure a repository may not have. Explicit overrides and visible live-test skips preserve the distinction between unavailable coverage and passing tests.
 

@@ -3,7 +3,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApplicationChatEvent } from '@karaka-ai/sdk'
 
-/** Read and validate one object-rooted JSON request body. */
+/**
+ * Read object-rooted JSON within a byte limit; reject malformed, oversized or cancelled input.
+ * @param request - Incoming byte stream; this reader removes its listeners when settled.
+ * @param maxBytes - Maximum accepted body length in bytes.
+ * @param signal - Cancellation that rejects the read.
+ * @returns Parsed JSON object; invalid bodies reject with code BAD_REQUEST.
+ */
 export function readObject(
   request: IncomingMessage,
   maxBytes: number,
@@ -41,7 +47,8 @@ export function readObject(
         cleanup()
         resolve(parsed as Record<string, unknown>)
       } catch (error: unknown) {
-        fail(badRequest(error instanceof Error ? error.message : 'invalid JSON request body'))
+        // JSON.parse and the object-root check both throw Error instances.
+        fail(badRequest((error as Error).message))
       }
     }
     const onError = (error: Error): void => { fail(error) }
@@ -59,7 +66,13 @@ export function readObject(
   })
 }
 
-/** Write one SSE event and wait for transport backpressure when necessary. */
+/**
+ * Write one application SSE event, awaiting transport backpressure.
+ * @param response - Open event-stream response.
+ * @param event - Application event to serialize.
+ * @param signal - Cancellation while waiting for the response to drain.
+ * @returns Completion after the response accepts the event.
+ */
 export async function writeEvent(
   response: ServerResponse,
   event: ApplicationChatEvent,
@@ -68,7 +81,13 @@ export async function writeEvent(
   return writeJsonEvent(response, event, signal)
 }
 
-/** Write one JSON event without changing browser Remote envelopes. */
+/**
+ * Write one JSON SSE envelope, awaiting transport backpressure.
+ * @param response - Open event-stream response.
+ * @param event - JSON-serializable envelope.
+ * @param signal - Cancellation while waiting for the response to drain.
+ * @returns Completion after the response accepts the event; closure rejects a pending write.
+ */
 export async function writeJsonEvent(response: ServerResponse, event: unknown, signal: AbortSignal): Promise<void> {
   if (response.write(`data: ${JSON.stringify(event)}\n\n`)) return
   await new Promise<void>((resolve, reject) => {
@@ -93,13 +112,22 @@ export async function writeJsonEvent(response: ServerResponse, event: unknown, s
   })
 }
 
-/** Send one JSON response. */
+/**
+ * Send and end one JSON response.
+ * @param response - Response whose headers have not been sent.
+ * @param status - HTTP status code.
+ * @param value - JSON-serializable response body.
+ */
 export function json(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   response.end(JSON.stringify(value))
 }
 
-/** Create a transport error that maps to the public bad-request response. */
+/**
+ * Create a transport error that maps to the public bad-request response.
+ * @param message - Diagnostic explanation for the internal error.
+ * @returns Error carrying the BAD_REQUEST code.
+ */
 export function badRequest(message: string): Error {
   return Object.assign(new Error(message), { code: 'BAD_REQUEST' })
 }

@@ -6,6 +6,13 @@
     "src/connection.ts": "Pass application hooks through the existing connection lifecycle.",
     "src/tools.ts": "Publish a private catalog, inject verified invocation identity, and validate supported object arguments before MCP dispatch using original DSH schema helpers."
   },
-  "ownedFiles": ["src/index.ts", "src/transport.ts"],
-  "upstreamImplementationFilesChanged": false
+  "ownedFiles": [
+    "src/index.ts",
+    "src/transport.ts"
+  ],
+  "upstreamImplementationFilesChanged": false,
+  "derivedTests": {
+    "tests/inherited-tools.spec.ts": "Adapted from packages/mcp/mcp-client/tests/mcp-client.spec.ts at the pinned commit: application registration and metadata hooks; upstream stdio and non-object argument cases are omitted.",
+    "tests/inherited-connection.spec.ts": "Adapted from packages/mcp/mcp-client/tests/reconnect.spec.ts at the pinned commit: application HTTP configuration and hooks, fake-timer advancement, and fixture-owned Cordis teardown."
+  }
 }

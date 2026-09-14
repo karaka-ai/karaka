@@ -1,17 +1,86 @@
-# Karaka application HTTP transport
+---
+description: "Authenticated Karaka HTTP and SSE chat operations, browser origins, and interaction delivery for application integrators."
+kind: "package-reference"
+---
+# @karaka-ai/transport-http
 
-Backend applications authenticate through `serverAuth`, supply tenant/user identity, and call the standalone SDK's `/v1` JSON and SSE API. This package owns application operations; it does not mount DSH Host remotes or replace DSH Session, Agent, query, persistence or the loop.
+English | [中文](README.zh.md)
 
-Chat creation reserves durable Karaka identity before creating an original DSH Agent. Unpublished setup binds the original header, mounts the chosen preset, and installs original model-selection hooks. Creation is acknowledged after JSONL flush and authority publication. Resume authorizes persisted data before activating the original Agent and checks its reconstructed Session again during setup.
+## Summary
 
-Mutating operations serialize per chat. Prompt admission checks durable inbox/user history for the SDK request id and flushes before acknowledging either new or duplicate requests. History and snapshot-first SSE authorize the requested owner. Cancellation retains the inbox; model changes use DSH's existing model-selection event and request routing.
+Backend applications can create, resume and follow owner-scoped chats through authenticated JSON and SSE requests. Browsers can use a separate JWT-authenticated endpoint with explicit allowed origins. Chat operations retain DSH Agents, Sessions and persistence, while Karaka checks application, tenant and user ownership. Do not expose unrestricted Host remotes against the same application data store.
 
-Optional `browserPath` mounts the existing applicationAgents/Create/Prompt/History/Follow/Cancel facade under a separate path, together with an owner-filtered approval/question event channel and response route. `browserMethods` and `browserEvents` select the server capabilities. The browser-safe `./browser` entry preserves `createBrowserClient`, per-instance renewable credentials, `forChat().$on`, state/generation observers, explicit reconnect and disposal. Its default route is `/karaka/browser`. `browserOrigins` must explicitly list allowed origins, and `@karaka-ai/browser-auth` verifies JWT claims. The request identity must equal the signed owner, and a stream closes when its credential expires. This endpoint does not implement the DSH browser Connection protocol.
+## Table of Contents
 
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+Mount the plugin in the application composition with server authentication, identity, Agents, Sessions, Session projections, queries, persistence, default-model selection, LLM routing, launcher readiness and the shared web server. The [SDK](package.json) supplies the backend request and event types.
+
+The backend `path` defaults to `/v1`, and `maxBodyBytes` defaults to 1,048,576 bytes. Each request authenticates through `serverAuth`; the application identity comes from the credential, while the body supplies tenant and user identifiers. Invalid credentials return 401; rejected ownership returns 403. Requests return 503 until application readiness.
+
+Set `browserPath` to mount browser access, provide a nonempty `browserOrigins` list, and mount [browser authentication](../browser-auth/README.md). Backend and browser paths must be disjoint. `browserMethods` selects application operations; `browserEvents` selects approval and question delivery. Both lists default to all supported entries. `handleQuestions` defaults to true for backend question delivery.
+
+The browser-safe `./browser` entry exports `createBrowserClient`. Supply an HTTP(S) server origin and a renewable credential callback; its default path is `/karaka/browser`. Clients own their credentials, chat-scoped listeners and connection observers. `reconnect()` renews the connection; `dispose()` waits for connection and callback teardown. Signed ownership controls interaction delivery, and browser streams close when credentials expire.
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Ownership and durable admission</summary>
+
+Chat creation reserves durable Karaka identity before creating a DSH Agent. Unpublished setup binds its header, mounts the selected preset and installs model-selection hooks. Creation and prompt admission acknowledge only after durable readiness. Resume authorizes persisted data before activating the Agent and checks its reconstructed Session during setup. Mutations serialize per chat. A host-only [Session projection](src/application-state.ts) restores request receipts and model-selection state and updates them from committed events. Request IDs remain retained for the chat lifetime to reject duplicate admission.
+
+History and snapshot-first streams authorize the requested owner. Cancellation retains the inbox. Model changes append the existing DSH model-selection event. [Application operations](src/application.ts), [HTTP framing](src/http.ts), and [browser routes](src/browser-routes.ts) own these behaviors.
+
+No runtime invariant companion is published: HTTP requests and listeners have no independent lifecycle event stream; Session ownership is checked by the identity service, and durable sequence continuity is enforced during follow delivery.
+
+</details>
+
+-----
+
+<a id="model-experience"></a>
 ## Model Experience
 
-Application identity changes authorization, not model input. Presets supply the model-facing tools and persona. HTTP prompts enter DSH's normal durable inbox; model selection uses DSH's existing request hooks and switch notices.
+### Admitted chat input
+
+#### What the model sees
+
+Authorized prompt content enters the normal DSH durable inbox as `user/message` content. Presets supply persona and tools; existing DSH model-selection hooks supply model changes. Application identity and HTTP authentication add no model-visible text.
+
+#### Token effect
+
+Admitted user content incurs its normal model-input cost. Authorization, HTTP framing and duplicate request acknowledgments add no prompt tokens.
+
+#### KV Cache effect
+
+New user input appends through the existing Session pipeline. Transport metadata does not change the reusable prefix; model selection and preset changes retain their DSH-owned cache effects.
 
 ## Known Limitations and Deferred Work
 
-The selected validation is one end-to-end flow. Browser client integration, image admission, interaction responses, model changes and concurrency are not separately verified. Streams project durable complete assistant messages and transient text deltas from original DSH assistant-stream events. Transient deltas share the current durable cursor and are preview data: they do not advance replay position, and the complete settled message is authoritative. The existing SDK has no per-attempt rollback/reset event, so cancelled/retried partial previews require consumer reconciliation. Pending questions remain process-local, as in the existing transport. The application profile must not expose unfiltered Host remotes against this data store.
+<a id="known-limitations-and-deferred-work"></a>
+
+Consumers must account for these streaming and interaction limits.
+
+- Transient text deltas share the current durable cursor and do not advance replay position. Settled assistant messages are authoritative; the SDK has no per-attempt rollback/reset event for cancelled or retried previews.
+- Pending approvals and questions are process-local and do not survive restart. The browser endpoint does not implement the DSH browser Connection protocol.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers</summary>
+
+None.
+
+</details>

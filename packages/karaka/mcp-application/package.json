@@ -61,7 +61,9 @@
     "@karaka-ai/identity": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
     "@deepseek-ai/dsh-agent-tool-presentation": "workspace:^",
-    "@deepseek-ai/dsh-util-values": "workspace:^"
+    "@deepseek-ai/dsh-util-values": "workspace:^",
+    "@deepseek-ai/dsh-system-prompt": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^"
   },
   "private": true
 }

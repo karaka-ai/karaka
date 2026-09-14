@@ -27,7 +27,7 @@ import { mountBrowserRoutes } from './browser-routes.ts'
 import { json, readObject, writeEvent } from './http.ts'
 
 export const name = 'karaka-transport-http'
-export const inject = ['serverAuth', 'karakaIdentity', 'agents', 'sessions', 'sessionQuery', 'sessionPersistence', 'agentDefaultModel', 'llm', 'webServer']
+export const inject = ['serverAuth', 'karakaIdentity', 'agents', 'sessions', 'sessionQuery', 'sessionPersistence', 'sessionProjections', 'agentDefaultModel', 'llm', 'webServer']
 
 /** HTTP transport configuration. */
 export interface Config {
@@ -41,7 +41,9 @@ export interface Config {
   readonly browserPath?: string
   /** Exact browser origins allowed on browserPath. */
   readonly browserOrigins?: string[]
+  /** Browser operations mounted at browserPath; defaults to all six application methods. */
   readonly browserMethods?: ('applicationAgents' | 'applicationCreate' | 'applicationPrompt' | 'applicationHistory' | 'applicationFollow' | 'applicationCancel')[]
+  /** Owner-scoped interactions delivered to browsers; defaults to approvals and questions. */
   readonly browserEvents?: ('approval/request' | 'user-questions/request')[]
 }
 
@@ -139,7 +141,7 @@ export function apply(ctx: Context, config: Config): void {
     const id = randomUUID()
     const deferred: PromiseWithResolvers<AskUserQuestionAnswer> = Promise.withResolvers()
     const abort = (): void => {
-      if (!pending.delete(id)) return
+      pending.delete(id)
       deferred.reject(request.signal?.reason ?? new Error('Interaction was cancelled'))
     }
     try {
@@ -148,7 +150,7 @@ export function apply(ctx: Context, config: Config): void {
         chatId: agent.id,
         owner,
         questions: request.questions,
-        cursor: agent.session.snapshotEvents().at(-1)?.seq ?? -1,
+        cursor: agent.session.seq - 1,
         resolve: deferred.resolve,
         reject: deferred.reject,
       }
@@ -392,7 +394,7 @@ async function stream(
     await frames.return?.()
     set.delete(direct)
     if (set.size === 0) subscribers.delete(chatId)
-    if (completed && response.headersSent && !response.writableEnded) response.end()
+    if (completed) response.end()
   }
 }
 
@@ -427,7 +429,7 @@ async function writeFollowFrame(
   }
   if (frame.type === 'snapshot') {
     for (const record of frame.records) {
-      if (record.type !== 'event' || (cursor !== undefined && record.event.seq <= cursor)) continue
+      if (cursor !== undefined && record.event.seq <= cursor) continue
       for (const event of projectWireEvent(record.event)) await writeEvent(response, event, signal)
     }
     await writeEvent(response, { type: 'snapshot', cursor: frame.cursor }, signal)
@@ -441,37 +443,24 @@ function projectEvent(event: SessionEvent): WireEvent[] {
   return projectWireEvent(event)
 }
 
-function projectWireEvent(event: { readonly type: string; readonly seq: number; readonly data: unknown }): WireEvent[] {
-  const data = event.data as Record<string, unknown>
-  if (event.type === 'user/message') {
-    const source = data.source as Record<string, unknown> | undefined
-    return source?.kind === 'user'
-      ? [{ type: 'user-message', cursor: event.seq, content: data }]
-      : []
+function projectWireEvent(event: SessionEvent): WireEvent[] {
+  switch (event.type) {
+    case 'user/message':
+      return event.data.source.kind === 'user'
+        ? [{ type: 'user-message', cursor: event.seq, content: event.data }]
+        : []
+    case 'assistant/message':
+      return [{ type: 'assistant-message', cursor: event.seq, content: event.data.message }]
+    case 'tool/call':
+      return [{ type: 'tool-call', cursor: event.seq, callId: event.data.callId, name: event.data.name, arguments: event.data.arguments }]
+    case 'tool/result':
+      return [{ type: 'tool-result', cursor: event.seq, callId: event.data.message.source.callId, content: event.data.message }]
+    case 'turn/end':
+      return [{ type: 'turn-end', cursor: event.seq, reason: event.data.reason }]
+    default:
+      // Other session events have no application transcript representation.
+      return []
   }
-  if (event.type === 'assistant/chunk') {
-    const chunk = data.chunk as Record<string, unknown> | undefined
-    return chunk?.type === 'text-delta' && typeof chunk.text === 'string'
-      ? [{ type: 'text-delta', cursor: event.seq, text: chunk.text }]
-      : []
-  }
-  if (event.type === 'assistant/message') {
-    return [{ type: 'assistant-message', cursor: event.seq, content: data.message }]
-  }
-  if (event.type === 'tool/call') {
-    return typeof data.callId === 'string' && typeof data.name === 'string' && typeof data.arguments === 'string'
-      ? [{ type: 'tool-call', cursor: event.seq, callId: data.callId, name: data.name, arguments: data.arguments }]
-      : []
-  }
-  if (event.type === 'tool/result') {
-    const message = data.message as Record<string, unknown> | undefined
-    const source = message?.source as Record<string, unknown> | undefined
-    return typeof source?.callId === 'string'
-      ? [{ type: 'tool-result', cursor: event.seq, callId: source.callId, content: data.result ?? message }]
-      : []
-  }
-  if (event.type === 'turn/end') return [{ type: 'turn-end', cursor: event.seq, reason: data.reason }]
-  return []
 }
 
 function ownerFrom(applicationId: ApplicationId, body: ApplicationIdentity): ApplicationOwner {

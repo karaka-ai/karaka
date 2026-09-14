@@ -99,6 +99,31 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'karakaIdentity',
+    pkg: '@karaka-ai/identity',
+    title: 'Application-owned durable conversations',
+    mode: 'core',
+    consumers: ['@karaka-ai/transport-http', '@karaka-ai/mcp-application'],
+    note: 'The [identity package](../packages/karaka/identity/README.md) authorizes application owners before resolving durable conversation and session references.',
+  },
+  {
+    key: 'serverAuth',
+    pkg: '@karaka-ai/server-auth',
+    title: 'Application server authentication',
+    mode: 'seam',
+    implementations: ['@karaka-ai/server-auth'],
+    consumers: ['@karaka-ai/transport-http', '@karaka-ai/mcp-application'],
+    note: 'The [server-auth package](../packages/karaka/server-auth/README.md) declares replaceable inbound and outbound authentication and supplies the shared-bearer provider.',
+  },
+  {
+    key: 'karakaBrowserAuth',
+    pkg: '@karaka-ai/browser-auth',
+    title: 'Browser Connection credential verification',
+    mode: 'core',
+    consumers: ['@karaka-ai/transport-http'],
+    note: 'The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity.',
+  },
+  {
     key: 'attachments',
     pkg: 'attachment',
     title: 'Durable binary attachment storage',

@@ -10,7 +10,7 @@ import SessionReferenceResolver, {
   type SessionReferenceCandidate,
   type SessionReferenceInput,
 } from '@deepseek-ai/dsh-session-reference'
-import { IdentityError, sameOwner, type ApplicationOwner } from './types.ts'
+import { IdentityError, sameOwner, type ApplicationOwner } from './owner.ts'
 import type {} from './index.ts'
 
 /**
@@ -28,8 +28,10 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
 
   /**
    * Filter ownership before the final cap while retaining original ranking.
-   * @param agent - Target Agent. @param query - Original substring query.
-   * @param limit - Positive result cap. @param signal - Caller cancellation.
+   * @param agent - Target Agent.
+   * @param query - Original substring query.
+   * @param limit - Positive result cap.
+   * @param signal - Caller cancellation.
    * @returns Same-owner application candidates or unowned ordinary candidates.
    */
   override async listCandidates(
@@ -60,8 +62,10 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
   /**
    * Authorize each exact target before the original resolver reads its content.
    * Its inherited pre-step listener dispatches through this override as well.
-   * @param agent - Target Agent. @param content - Direct user content.
-   * @param references - Requested original Session references. @param signal - Cancellation.
+   * @param agent - Target Agent.
+   * @param content - Direct user content.
+   * @param references - Requested original Session references.
+   * @param signal - Cancellation.
    * @returns The original resolver's durable, budgeted reference context.
    */
   override async prepare(
@@ -73,9 +77,6 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
     const owner = await this.ctx.karakaIdentity.ownerOf(agent.session)
     for (const reference of references) {
       assertNotCancelled(signal)
-      if (reference === null || typeof reference !== 'object' || typeof reference.sessionId !== 'string') {
-        throw new SessionReferenceError('session reference must contain a string sessionId', 'SESSION_REFERENCE_INVALID_REFERENCE')
-      }
       const targetOwner = await this.ctx.karakaIdentity.ownerOfId(reference.sessionId)
       if (!canReference(owner, targetOwner)) throw new IdentityError('forbidden', 'Referenced chat is not owned by this caller')
     }

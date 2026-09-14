@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-根目录[打包器](../../../../tsdown.config.ts)在两个编译阶段均排除 `packages/karaka/*`。[Karaka 构建脚本](../../../../packages/karaka/agent/scripts/build-local.mjs)负责这些产物；上游 TypeScript 图与根目录打包发现覆盖相同的包系列。
+独立构建决策由 [Karaka 工作区规范一致性](2026-09-14-karaka-workspace-conformance.zh.md)取代，后者负责编译器与打包器集成。
 
 [拉取请求 CI](../../../../.github/workflows/ci.yml)默认使用 `ubuntu-24.04` 和 `windows-2025`。标准 GitHub 运行器使用较低的门禁、覆盖率和快照并发度。配置相应运行器池后，仍可使用[平台故障切换开关](2026-07-26-ci-failover-runbook.zh.md)和 [Blacksmith 覆盖配置](2026-09-09-blacksmith-failover-leg.zh.md)。
 
@@ -20,7 +20,7 @@ Status: implemented
 
 ## Alternatives considered
 
-**通过上游图编译 Karaka：**这会重复现有源码构建的职责，还需整合应用专用的浏览器与声明入口。独立产物构建阶段继续作为真源。
+**通过上游图编译 Karaka：**这会重复现有源码构建的职责，还需整合应用专用的浏览器与声明入口。[工作区规范一致性](2026-09-14-karaka-workspace-conformance.zh.md)取代了这一归属选择。
 
 **所有仓库均强制要求自定义运行器和凭证：**这会使常规验证依赖仓库可能并不具备的基础设施。显式覆盖配置与可见的真实测试跳过状态，保留了覆盖不可用与测试通过之间的区别。
 

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { parseCoveragePartitionCount } from './coverage-partitions.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}$/
@@ -357,8 +358,15 @@ describe('CI workflow', () => {
       [windowsCoverage, 'DSH_CI_FAILOVER_WINDOWS'],
     ] as const) {
       const environment = job.env as Record<string, string>
+      for (const pool of ['', 'selfhosted', 'blacksmith']) {
+        for (const login of ['maintainer', 'dependabot[bot]']) {
+          const partitions = evaluate(environment.DSH_COVERAGE_PARTITIONS!, { [variable]: pool }, login)
+          expect(typeof partitions).toBe('string')
+          expect(parseCoveragePartitionCount(String(partitions))).toBeGreaterThanOrEqual(2)
+        }
+      }
       for (const [key, standard, custom] of [
-        ['DSH_COVERAGE_PARTITIONS', '1', '4'],
+        ['DSH_COVERAGE_PARTITIONS', '2', '4'],
         ['DSH_COVERAGE_MAX_WORKERS', '2', '6'],
         ['DSH_GATE_CONCURRENCY', '1', '3'],
       ]) {

@@ -8,9 +8,13 @@ import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval/types'
 import type { AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions/types'
 export { SessionId }
 
+/** Application methods supported by the authenticated browser endpoint. */
 export const APPLICATION_REMOTE_METHODS = ['applicationAgents', 'applicationCreate', 'applicationPrompt', 'applicationHistory', 'applicationFollow', 'applicationCancel'] as const
+/** One supported browser application method. */
 export type ApplicationRemoteMethod = typeof APPLICATION_REMOTE_METHODS[number]
+/** Sanitized remote failure with protocol code and optional server details. */
 export interface RemoteFailure { readonly code: string; readonly message: string; readonly details: unknown }
+/** Successful operation value or sanitized remote failure. */
 export type RemoteResult<Value> = { readonly ok: true; readonly value: Value } | { readonly ok: false; readonly error: RemoteFailure }
 type TextDelta = { readonly type: 'text-delta'; readonly cursor: number; readonly text: string }
 type FollowFrame = SessionFollowFrame | TextDelta
@@ -19,31 +23,103 @@ interface AgentRow { readonly id: string; readonly name: string; readonly descri
 interface Observable<Value> { getSnapshot(): Value; subscribe(listener: () => void): () => void }
 /** Identity and Host display facts for one authenticated connection generation. */
 export interface BrowserGeneration { readonly id: number; readonly host: { readonly home: string } }
+/** Per-instance endpoint, renewable credentials and reconnection settings. */
 export interface BrowserClientConfig {
+  /** HTTP(S) server origin without a path, credentials, query or fragment. */
   readonly endpoint: string
+  /**
+   * Resolve a current JWT for each request.
+   * @param signal - Cancellation of this HTTP request.
+   * @returns Current browser credential, synchronously or asynchronously.
+   */
   readonly credential: (signal: AbortSignal) => string | Promise<string>
+  /** Locally enabled application methods; defaults to all supported methods. */
   readonly methods?: readonly ApplicationRemoteMethod[]
+  /** Browser route prefix. Default: /karaka/browser. */
   readonly path?: string
+  /** Positive integer delay between connection attempts in milliseconds. Default: 1000. */
   readonly reconnectDelayMs?: number
 }
+/** Browser methods, connection observations and chat-scoped interaction subscriptions. */
 export interface BrowserClient {
   readonly chats: {
+    /**
+     * List presets available to the authenticated application.
+     * @param signal - Optional caller cancellation.
+     * @returns Available presets or a sanitized remote failure.
+     */
     applicationAgents(signal?: AbortSignal): Promise<RemoteResult<readonly AgentRow[]>>
-    applicationCreate(request: Address & { readonly agentId: string }, signal?: AbortSignal): Promise<RemoteResult<Address & { readonly agentId: string }>>
-    applicationPrompt(request: Address & { readonly requestId: string; readonly content: readonly PromptContentPart[] }, signal?: AbortSignal): Promise<RemoteResult<{ readonly accepted: true; readonly duplicate: boolean }>>
+    /**
+     * Create an owned chat using an available preset.
+     * @param request - New chat id and selected preset id.
+     * @param signal - Optional caller cancellation.
+     * @returns Created chat identity or a sanitized remote failure.
+     */
+    applicationCreate(
+      request: Address & { readonly agentId: string }, signal?: AbortSignal,
+    ): Promise<RemoteResult<Address & { readonly agentId: string }>>
+    /**
+     * Submit content with an application request id for deduplication.
+     * @param request - Owned chat, request id, and prompt content.
+     * @param signal - Optional caller cancellation.
+     * @returns Acceptance and duplicate status, or a sanitized remote failure.
+     */
+    applicationPrompt(
+      request: Address & { readonly requestId: string; readonly content: readonly PromptContentPart[] }, signal?: AbortSignal,
+    ): Promise<RemoteResult<{ readonly accepted: true; readonly duplicate: boolean }>>
+    /**
+     * Read an owned chat's persisted history.
+     * @param request - Owned chat identity.
+     * @param signal - Optional caller cancellation.
+     * @returns Persisted wire events or a sanitized remote failure.
+     */
     applicationHistory(request: Address, signal?: AbortSignal): Promise<RemoteResult<readonly SessionWireEvent[]>>
+    /**
+     * Follow an owned chat until its stream closes or the caller cancels.
+     * @param request - Owned chat identity.
+     * @param signal - Optional caller cancellation; cancellation ends iteration without an error frame.
+     * @returns Remote follow frames and sanitized transport failures.
+     */
     applicationFollow(request: Address, signal?: AbortSignal): AsyncIterable<RemoteResult<FollowFrame>>
+    /**
+     * Request cancellation of the owned chat's active work.
+     * @param request - Owned chat identity.
+     * @param signal - Optional cancellation of the HTTP request.
+     * @returns Cancellation acceptance or a sanitized remote failure.
+     */
     applicationCancel(request: Address, signal?: AbortSignal): Promise<RemoteResult<{ readonly accepted: true }>>
   }
   readonly connection: {
     readonly state: Observable<'connecting' | 'connected' | 'disconnected'>
     readonly generation: Observable<BrowserGeneration | undefined>
+    /** Replace the event connection; throws after disposal. */
     reconnect(): void
   }
+  /**
+   * Select the chat whose incoming interactions receive these listeners.
+   * @param chatId - Application chat identity.
+   * @returns Approval and question subscriptions scoped to this chat.
+   */
   forChat(chatId: string): {
-    $on(event: 'approval/request', handler: (request: BrowserApprovalRequest, next: () => Promise<ApprovalOutcome | undefined>) => ApprovalOutcome | undefined | Promise<ApprovalOutcome | undefined>): () => void
-    $on(event: 'user-questions/request', handler: (request: BrowserQuestionRequest, next: () => Promise<AskUserQuestionAnswer | undefined>) => AskUserQuestionAnswer | undefined | Promise<AskUserQuestionAnswer | undefined>): () => void
+    /**
+     * Answer or delegate approval requests in registration order.
+     * @param event - Approval event name.
+     * @param handler - Answerer receiving cancellation and the next answerer.
+     * @returns Callback removing this subscription.
+     */
+    $on(event: 'approval/request', handler: ApprovalHandler): () => void
+    /**
+     * Answer or delegate questions in registration order.
+     * @param event - Question event name.
+     * @param handler - Answerer receiving cancellation and the next answerer.
+     * @returns Callback removing this subscription.
+     */
+    $on(event: 'user-questions/request', handler: QuestionHandler): () => void
   }
+  /**
+   * Cancel connections and interactions, then remove listeners.
+   * @returns Completion after the event loop and tracked callbacks settle.
+   */
   dispose(): Promise<void>
 }
 const approvalRequestSchema = z.object({
@@ -60,11 +136,18 @@ const questionRequestSchema = z.object({
 })
 /** Browser event payloads contain a chat identity, never a live server Agent. */
 export type BrowserApprovalRequest = z.infer<typeof approvalRequestSchema>
+/** Owner-scoped browser question payload with cancellation and a chat identity. */
 export type BrowserQuestionRequest = z.infer<typeof questionRequestSchema>
-type ApprovalHandler = (request: BrowserApprovalRequest, next: () => Promise<ApprovalOutcome | undefined>) => ApprovalOutcome | undefined | Promise<ApprovalOutcome | undefined>
-type QuestionHandler = (request: BrowserQuestionRequest, next: () => Promise<AskUserQuestionAnswer | undefined>) => AskUserQuestionAnswer | undefined | Promise<AskUserQuestionAnswer | undefined>
+type ApprovalHandler = (
+  request: BrowserApprovalRequest, next: () => Promise<ApprovalOutcome | undefined>,
+) => ApprovalOutcome | undefined | Promise<ApprovalOutcome | undefined>
+type QuestionHandler = (
+  request: BrowserQuestionRequest, next: () => Promise<AskUserQuestionAnswer | undefined>,
+) => AskUserQuestionAnswer | undefined | Promise<AskUserQuestionAnswer | undefined>
 const approvalAnswerSchema = z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable'])
-const questionAnswerSchema = z.object({ answers: z.array(z.object({ id: z.string(), selected: z.array(z.string()), custom: z.string().optional() })) })
+const questionAnswerSchema = z.object({
+  answers: z.array(z.object({ id: z.string(), selected: z.array(z.string()), custom: z.string().optional() })),
+})
 const failureSchema = z.object({ code: z.string(), message: z.string(), details: z.unknown() })
 const envelope = z.discriminatedUnion('ok', [z.object({ ok: z.literal(true), value: z.unknown() }), z.object({ ok: z.literal(false), error: failureSchema })])
 const eventSchema = z.discriminatedUnion('type', [
@@ -72,9 +155,14 @@ const eventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cancel'), eventId: z.string() }),
   z.object({ type: z.literal('interaction'), eventId: z.string(), chatId: z.string(), event: z.enum(['approval/request', 'user-questions/request']), request: z.record(z.string(), z.unknown()) }),
 ])
-type Handler = (request: Record<string, unknown>, next: () => Promise<unknown>) => unknown | Promise<unknown>
+type Handler = (request: Record<string, unknown>, next: () => Promise<unknown>) => unknown
 
-/** Preserve independent credentials, chat-scoped listeners and explicit reconnection. */
+/**
+ * Start an independent browser connection with renewable credentials and chat-scoped listeners.
+ * @param config - Server origin, credential callback and optional route or reconnect settings.
+ * @returns Client immediately while connecting; dispose() awaits event-loop and callback teardown.
+ */
+// oxlint-disable-next-line typescript/require-await -- Configuration errors reject through the existing asynchronous factory API.
 export async function createBrowserClient(config: BrowserClientConfig): Promise<BrowserClient> {
   const origin = new URL(config.endpoint)
   if (!['http:', 'https:'].includes(origin.protocol) || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw new Error('connection: endpoint must be an HTTP(S) server origin')
@@ -116,7 +204,7 @@ export async function createBrowserClient(config: BrowserClientConfig): Promise<
       const response = await fetchRequest('applicationFollow', request, signal)
       if (!response.ok) { yield parseResponse(await response.json(), response.status); return }
       for await (const frame of parseEvents(response)) yield envelope.parse(frame) as RemoteResult<FollowFrame>
-    } catch (error) { if (!lifetime.signal.aborted && !supplied?.aborted) yield failure(error) }
+    } catch (error) { if (!isAborted(lifetime.signal) && !supplied?.aborted) yield failure(error) }
   }
 
   async function handleInteraction(event: Extract<z.infer<typeof eventSchema>, { type: 'interaction' }>, clientId: string, signal: AbortSignal): Promise<void> {
@@ -129,18 +217,19 @@ export async function createBrowserClient(config: BrowserClientConfig): Promise<
     const dispatch = async (index: number): Promise<unknown> => {
       const handler = handlers[index]
       if (handler === undefined) { delegated = true; return undefined }
-      return handler({ ...event.request, signal: interactionSignal }, () => dispatch(index + 1))
+      return await Promise.resolve(handler({ ...event.request, signal: interactionSignal }, () => dispatch(index + 1)))
     }
     try {
       const value = await abortable(dispatch(0), interactionSignal)
-      if (interactionSignal.aborted) return
+      if (isAborted(interactionSignal)) return
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispatch mutates delegated while awaiting its handler chain.
       const outcome = delegated && value === undefined ? { kind: 'next' } : { kind: 'result', value }
       const response = await fetchRequest('result', { clientId, eventId: event.eventId, outcome }, interactionSignal)
       if (!response.ok) throw new Error('Browser interaction response was rejected')
-    } catch (error) {
-      if (!interactionSignal.aborted) {
+    } catch {
+      if (!isAborted(interactionSignal)) {
         // A failed answerer delegates rather than approving or dropping the pending decision.
-        await fetchRequest('result', { clientId, eventId: event.eventId, outcome: { kind: 'next' } }, interactionSignal).catch(() => {})
+        await fetchRequest('result', { clientId, eventId: event.eventId, outcome: { kind: 'next' } }, interactionSignal).catch(() => { /* A failed fallback request cannot settle the server interaction; connection teardown releases its recipient. */ })
       }
     } finally {
       if (interactions.get(event.eventId) === controller) interactions.delete(event.eventId)
@@ -148,7 +237,7 @@ export async function createBrowserClient(config: BrowserClientConfig): Promise<
   }
 
   const eventLoop = (async () => {
-    while (!lifetime.signal.aborted) {
+    while (!isAborted(lifetime.signal)) {
       const current = connection
       const currentReady = connectionReady
       const signal = AbortSignal.any([lifetime.signal, current.signal])
@@ -168,19 +257,19 @@ export async function createBrowserClient(config: BrowserClientConfig): Promise<
             if (clientId === undefined) throw new Error('Browser event arrived before readiness')
             const callback = handleInteraction(event, clientId, signal)
             callbacks.add(callback)
-            void callback.then(() => callbacks.delete(callback), () => callbacks.delete(callback))
+            void callback.then(() => { callbacks.delete(callback) })
           }
         }
-      } catch (error) {
+      } catch {
         // Connection and credential failures enter the same renewable reconnect loop.
       } finally {
         currentReady.resolve()
         for (const controller of interactions.values()) controller.abort(new Error('Browser connection replaced'))
         interactions.clear()
         generation.set(undefined)
-        if (!lifetime.signal.aborted) state.set('connecting')
+        if (!isAborted(lifetime.signal)) state.set('connecting')
       }
-      if (lifetime.signal.aborted) break
+      if (isAborted(lifetime.signal)) break
       if (connection === current) {
         await pause(delay, signal)
         if (connection === current) { connection = new AbortController(); connectionReady = Promise.withResolvers<void>() }
@@ -220,12 +309,20 @@ export async function createBrowserClient(config: BrowserClientConfig): Promise<
             const value = await next()
             if (value === undefined) return undefined
             const parsed = questionAnswerSchema.parse(value)
-            return { answers: parsed.answers.map(item => ({ id: item.id, selected: item.selected, ...(item.custom === undefined ? {} : { custom: item.custom }) })) }
+            return {
+              answers: parsed.answers.map(item => ({
+                id: item.id, selected: item.selected, ...(item.custom === undefined ? {} : { custom: item.custom }),
+              })),
+            }
           })
         const byEvent = listeners.get(chatId) ?? new Map<string, Set<Handler>>()
         const handlers = byEvent.get(event) ?? new Set<Handler>()
         handlers.add(adapted); byEvent.set(event, handlers); listeners.set(chatId, byEvent)
-        return () => { handlers.delete(adapted); if (handlers.size === 0) byEvent.delete(event); if (byEvent.size === 0) listeners.delete(chatId) }
+        return () => {
+          handlers.delete(adapted)
+          if (handlers.size === 0) byEvent.delete(event)
+          if (byEvent.size === 0) listeners.delete(chatId)
+        }
       }
       return { $on: on }
     },
@@ -242,9 +339,19 @@ export async function createBrowserClient(config: BrowserClientConfig): Promise<
 function observable<Value>(initial: Value): Observable<Value> & { set(value: Value): void } {
   let value = initial
   const listeners = new Set<() => void>()
-  return { getSnapshot: () => value, subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener) } }, set(next) { value = next; for (const listener of [...listeners]) {
-    try { listener() } catch (error) { console.error('Browser connection observer failed', error) }
-  } } }
+  return {
+    getSnapshot: () => value,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    set(next) {
+      value = next
+      for (const listener of [...listeners]) {
+        try { listener() } catch (error) { console.error('Browser connection observer failed', error) }
+      }
+    },
+  }
 }
 function failure(error: unknown): RemoteResult<never> { return { ok: false, error: { code: 'gateway/internal', message: error instanceof Error ? error.message : 'Browser request failed', details: {} } } }
 function parseResponse<Value>(raw: unknown, status: number): RemoteResult<Value> {
@@ -269,11 +376,15 @@ async function* parseEvents(response: Response): AsyncIterable<unknown> {
       }
       if (part.done) break
     }
-  } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
+  } finally {
+    await reader.cancel().catch(() => {
+      // A failed stream can reject cancellation; its reader lock must still be released.
+    })
+    reader.releaseLock()
+  }
 }
 function pause(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise(resolve => {
-    if (signal.aborted) { resolve(); return }
+  return new Promise((resolve) => {
     const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve() }
     const timer = setTimeout(finish, ms)
     signal.addEventListener('abort', finish, { once: true })
@@ -283,8 +394,15 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 function abortable<Value>(operation: Promise<Value>, signal: AbortSignal): Promise<Value> {
   signal.throwIfAborted()
   return new Promise((resolve, reject) => {
-    const abort = () => reject(signal.reason)
+    const abort = () => {
+      const reason: unknown = signal.reason
+      reject(reason instanceof Error ? reason : new Error('Browser request failed', { cause: reason }))
+    }
     signal.addEventListener('abort', abort, { once: true })
-    void operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+    void operation.then(resolve, reject).finally(() => { signal.removeEventListener('abort', abort) })
   })
+}
+
+function isAborted(signal: AbortSignal): boolean {
+  return signal.aborted
 }

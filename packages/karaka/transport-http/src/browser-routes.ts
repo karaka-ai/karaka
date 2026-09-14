@@ -28,11 +28,21 @@ interface Pending {
 const address = z.strictObject({ chatId: z.string().min(1) })
 const create = ApplicationCreateChatRequestSchema.omit({ tenantId: true, userId: true })
 const prompt = ApplicationPromptRequestSchema.omit({ tenantId: true, userId: true }).extend({ chatId: z.string().min(1) }).strict()
-const answer = z.strictObject({ answers: z.array(z.strictObject({ id: z.string(), selected: z.array(z.string()), custom: z.string().optional() })) })
-const outcomeSchema = z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('next') }), z.strictObject({ kind: z.literal('result'), value: z.unknown() })])
+const answer = z.strictObject({
+  answers: z.array(z.strictObject({ id: z.string(), selected: z.array(z.string()), custom: z.string().optional() })),
+})
+const outcomeSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('next') }),
+  z.strictObject({ kind: z.literal('result'), value: z.unknown() }),
+])
 const resultSchema = z.strictObject({ clientId: z.string(), eventId: z.string(), outcome: outcomeSchema })
 
-/** Mount the existing browser method facade without the Host's unrestricted remotes. */
+/**
+ * Mount JWT-authenticated application methods and owner-scoped interaction delivery.
+ * @param ctx - Context providing the application controller and authorization services.
+ * @param config - Browser route, allowed origins and enabled capabilities.
+ * @param ready - Whether the application has completed startup.
+ */
 export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => boolean): void {
   const path = config.browserPath
   if (path === undefined) return
@@ -55,10 +65,14 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
   const ask = async (event: Pending['event'], chatId: string, owner: ApplicationOwner, request: unknown, signal?: AbortSignal) => {
     const recipients = new Set([...channels.values()].filter(channel => sameOwner(channel.owner, owner)).map(channel => channel.id))
     if (recipients.size === 0) return { kind: 'next' as const }
-    const deferred = Promise.withResolvers<{ readonly kind: 'next' } | { readonly kind: 'result'; readonly value: unknown }>()
-    const item: Pending = { id: randomUUID(), chatId, owner, event, request, recipients, resolve: deferred.resolve, reject: deferred.reject }
+    const deferred = Promise.withResolvers<
+      { readonly kind: 'next' } | { readonly kind: 'result'; readonly value: unknown }
+    >()
+    const item: Pending = {
+      id: randomUUID(), chatId, owner, event, request, recipients, resolve: deferred.resolve, reject: deferred.reject,
+    }
     pending.set(item.id, item)
-    const abort = () => deferred.reject(signal?.reason ?? new Error('Interaction cancelled'))
+    const abort = (): void => { deferred.reject(signal?.reason ?? new Error('Interaction cancelled')) }
     signal?.addEventListener('abort', abort, { once: true })
     for (const id of recipients) channels.get(id)?.push(frame(item))
     try {
@@ -93,7 +107,7 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
     const controller = new AbortController()
     const signal = AbortSignal.any([controller.signal, lifetime.signal])
     active.add(controller)
-    const abort = () => controller.abort(new Error('Browser disconnected'))
+    const abort = (): void => { controller.abort(new Error('Browser disconnected')) }
     request.once('aborted', abort)
     response.once('close', abort)
     let expiry: ReturnType<typeof setTimeout> | undefined
@@ -126,11 +140,14 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
         const result = resultSchema.parse(body)
         const channel = channels.get(result.clientId)
         const item = pending.get(result.eventId)
-        if (channel === undefined || item === undefined || !sameOwner(channel.owner, caller.owner) || !sameOwner(item.owner, caller.owner) || !item.recipients.has(channel.id)) {
+        if (channel === undefined || item === undefined || !sameOwner(channel.owner, caller.owner)
+          || !sameOwner(item.owner, caller.owner) || !item.recipients.has(channel.id)) {
           throw Object.assign(new Error('Interaction is unavailable to this caller'), { code: 'CHAT_FORBIDDEN' })
         }
         if (result.outcome.kind === 'result') {
-          const value = item.event === 'approval/request' ? z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable']).parse(result.outcome.value) : answer.parse(result.outcome.value)
+          const value = item.event === 'approval/request'
+            ? z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable']).parse(result.outcome.value)
+            : answer.parse(result.outcome.value)
           item.resolve({ kind: 'result', value })
         } else {
           item.recipients.delete(channel.id)
@@ -138,7 +155,7 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
         }
         json(response, 200, { ok: true, value: null }); return
       }
-      if (!methods.has(method as NonNullable<Config['browserMethods']>[number])) { json(response, 403, { code: 'METHOD_FORBIDDEN', message: 'Browser method is unavailable' }); return }
+      if (!methods.has(method)) { json(response, 403, { code: 'METHOD_FORBIDDEN', message: 'Browser method is unavailable' }); return }
       const owner = caller.owner
       let value: unknown
       if (method === 'applicationAgents') { z.strictObject({}).parse(body); value = await ctx.karakaApplication.listAgents(signal) }
@@ -149,14 +166,16 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
         const target = { chatId: SessionId(input.chatId), owner }
         if (method === 'applicationHistory') value = await ctx.karakaApplication.events(target, signal)
         else if (method === 'applicationCancel') value = await ctx.karakaApplication.cancel(target, signal)
-        else if (method === 'applicationFollow') {
+        else {
           const frames = ctx.karakaApplication.follow(target, signal)[Symbol.asyncIterator]()
           try {
             const first = await frames.next()
             if (first.done) throw new Error('Chat follow ended before snapshot')
             openEvents(response)
             await writeJsonEvent(response, { ok: true, value: first.value }, signal)
-            for (let next = await frames.next(); !next.done; next = await frames.next()) await writeJsonEvent(response, { ok: true, value: next.value }, signal)
+            for (let next = await frames.next(); !next.done; next = await frames.next()) {
+              await writeJsonEvent(response, { ok: true, value: next.value }, signal)
+            }
           } finally { await frames.return?.() }
           response.end(); return
         }
@@ -185,7 +204,7 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
     let wake = Promise.withResolvers<void>()
     const channel: Channel = { id: randomUUID(), owner, push(event) { queue.push(event); wake.resolve() } }
     channels.set(channel.id, channel)
-    const abort = () => wake.resolve()
+    const abort = (): void => { wake.resolve() }
     signal.addEventListener('abort', abort, { once: true })
     try {
       openEvents(response)

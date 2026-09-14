@@ -102,7 +102,7 @@ jobs:
     env:
       # Standard runners bound aggregate and coverage fan-out to fit their memory.
       DSH_COVERAGE_MAX_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '6' }}
-      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '4' }}
+      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '4' }}
       DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX != 'blacksmith' && (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '3' }}
       # Managed-scope teardown cases run past the default per-test budget when
       # this lane's partitions, workers, and sibling gates share one host: the
@@ -505,7 +505,7 @@ jobs:
     timeout-minutes: 120
     env:
       DSH_COVERAGE_MAX_WORKERS: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '6' }}
-      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '4' }}
+      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '2' || '4' }}
       DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
       DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_WINDOWS != 'blacksmith' && (vars.DSH_CI_FAILOVER_WINDOWS != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '3' }}
       # A gate failure aborts the sibling gate instead of waiting out its
