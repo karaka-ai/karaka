@@ -1,7 +1,7 @@
 name: Build PR preview
 
-# Every push to a pull request publishes that pull request's preview to
-# Cloudflare Pages under its own branch alias, behind Cloudflare Access. The
+# Pull requests build a preview. Configured Cloudflare credentials enable
+# publication under a per-PR branch alias, behind Cloudflare Access. The
 # upload carries build products only: the workflow never grants the deployment
 # platform access to this repository's sources.
 
@@ -87,7 +87,24 @@ jobs:
           find apps/web/dist -name '*.map' -delete
           cp apps/web/dist/preview.html apps/web/dist/index.html
 
+      - name: Check preview deployment credentials
+        id: deployment
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Preview built; deployment skipped because Cloudflare credentials are incomplete."
+            echo "Preview built; deployment skipped. Configure CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET to enable deployment." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload to Cloudflare Pages
+        if: steps.deployment.outputs.enabled == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -112,6 +129,7 @@ jobs:
       # Accept-Encoding is sent because a browser sends it; the assertion is
       # about what the platform does with a body that is already compressed.
       - name: Verify the protected deployment serves the image
+        if: steps.deployment.outputs.enabled == 'true'
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -151,6 +169,7 @@ jobs:
       # idempotent: a pull request opened before this workflow existed never
       # sees an `opened` event, and every later push must not restate the URL.
       - name: Comment the preview URL
+        if: steps.deployment.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}

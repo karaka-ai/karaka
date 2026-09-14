@@ -9,9 +9,9 @@ import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
 import { isAbsolute } from 'node:path'
 import { identityDomain, bindingOf, matchesBinding, type IdentityRecord } from './records.ts'
 import { lockAuthority } from './lock.ts'
-import { IdentityError, sameOwner, type ApplicationOwner } from './types.ts'
+import { IdentityError, sameOwner, type ApplicationOwner } from './owner.ts'
 
-export * from './types.ts'
+export * from './owner.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -26,6 +26,7 @@ export const inject = ['storage', 'sessions', 'sessionPersistence']
 
 /** Authority records and their exclusive lock share this directory. */
 export interface Config {
+  /** Absolute directory dedicated to durable application authority. */
   root: string
 }
 
@@ -67,7 +68,8 @@ export class KarakaIdentity {
 
   /**
    * Serialize one complete controller operation, including original engine calls.
-   * @param id - Chat being changed. @param operation - Non-reentrant operation.
+   * @param id - Chat being changed.
+   * @param operation - Non-reentrant operation.
    * @returns The operation's result after preceding operations have settled.
    */
   async withChatLock<T>(id: SessionId, operation: () => Promise<T>): Promise<T> {
@@ -85,7 +87,8 @@ export class KarakaIdentity {
 
   /**
    * Reserve creation or authorize an existing root. Call inside withChatLock.
-   * @param id - Caller-selected chat identity. @param owner - Authenticated owner.
+   * @param id - Caller-selected chat identity.
+   * @param owner - Authenticated owner.
    * @returns Whether the controller must create or reuse the original Session.
    */
   async reserve(id: SessionId, owner: ApplicationOwner): Promise<'create' | 'existing'> {
@@ -112,7 +115,8 @@ export class KarakaIdentity {
 
   /**
    * Bind the actual unpublished Session during the original Agent setup callback.
-   * @param session - Original factory-created Session. @param owner - Reserved owner.
+   * @param session - Original factory-created Session.
+   * @param owner - Reserved owner.
    * @returns Resolution only after the immutable source binding is durable.
    */
   async bind(session: Session, owner: ApplicationOwner): Promise<void> {
@@ -136,13 +140,13 @@ export class KarakaIdentity {
 
   /**
    * Complete creation only after original JSONL flush and durable authority agree.
-   * @param session - Published original Session. @param owner - Authenticated owner.
+   * @param session - Published original Session.
+   * @param owner - Authenticated owner.
    * @returns Resolution after the application can acknowledge this chat.
    */
   async markReady(session: Session, owner: ApplicationOwner): Promise<void> {
     await this.authorizeSession(session, owner)
-    const record = this.chats.get(session.id)
-    if (record?.state === 'reserved') throw new IdentityError('unavailable', 'Chat has no bound authority')
+    const record = this.boundRecord(session.id, 'unavailable')
     if (!await this.ctx.sessions.flush(session)) throw new IdentityError('unavailable', 'Chat has no durability provider')
     const stored = await this.ctx.sessionPersistence.stat(session.id)
     if (stored === undefined) throw new IdentityError('unavailable', 'Flushed chat data is unavailable')
@@ -154,7 +158,8 @@ export class KarakaIdentity {
 
   /**
    * Authorize using read-only observation before calling original agents.resume.
-   * @param id - Requested chat. @param owner - Authenticated owner.
+   * @param id - Requested chat.
+   * @param owner - Authenticated owner.
    * @returns Its observed original header; missing and foreign chats are denied.
    */
   async authorize(id: SessionId, owner: ApplicationOwner): Promise<SessionHeader> {
@@ -169,7 +174,8 @@ export class KarakaIdentity {
 
   /**
    * Check the exact live or unpublished restored Session before an operation.
-   * @param session - Original Session. @param owner - Authenticated owner.
+   * @param session - Original Session.
+   * @param owner - Authenticated owner.
    * @returns Resolution after immutable binding and lineage checks.
    */
   async authorizeSession(session: Session, owner: ApplicationOwner): Promise<void> {
@@ -227,7 +233,10 @@ export class KarakaIdentity {
     return undefined
   }
 
-  /** @returns Resolution after admitted operations drain and authority storage closes. */
+  /**
+   * Reject new authority calls, await admitted operations settling, and close storage.
+   * @returns Resolution after admitted operations settle and authority storage closes.
+   */
   async close(): Promise<void> {
     this.closed = true
     await Promise.all([...this.chains.values()])
@@ -242,9 +251,8 @@ export class KarakaIdentity {
       if (seen.has(header.id)) throw new IdentityError('forbidden', 'Cyclic chat lineage')
       seen.add(header.id)
       this.headers.set(header.id, header)
-      const record = this.chats.get(header.id)
+      const record = this.boundRecord(header.id, 'forbidden')
       if (record !== undefined) {
-        if (record.state === 'reserved') throw new IdentityError('forbidden', 'Chat has no bound authority')
         this.checkBinding(record, header)
         if (owner !== undefined) this.checkOwner(owner, record.owner)
         owner = record.owner
@@ -260,6 +268,12 @@ export class KarakaIdentity {
     if (header !== undefined) this.headers.set(id, header)
     else this.headers.delete(id)
     return header
+  }
+
+  private boundRecord(id: SessionId, errorCode: IdentityError['code']): Exclude<IdentityRecord, { state: 'reserved' }> | undefined {
+    const record = this.chats.get(id)
+    if (record?.state === 'reserved') throw new IdentityError(errorCode, 'Chat has no bound authority')
+    return record
   }
 
   private requireRecord(id: SessionId): IdentityRecord {
@@ -283,7 +297,8 @@ export class KarakaIdentity {
 
 /**
  * Mount an exclusively locked JSON authority using original DSH storage providers.
- * @param ctx - Plugin context. @param config - Explicit authority directory.
+ * @param ctx - Plugin context.
+ * @param config - Explicit authority directory.
  * @returns Resolution after durable authority has been validated.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { parseCoveragePartitionCount } from './coverage-partitions.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}$/
@@ -172,7 +173,7 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must not use the Linux failover switch`).not.toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on']).toContain('self-hosted')
       expect(job['runs-on']).toContain('dsh-win-ci')
-      expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain('windows-2025')
       expect(job['runs-on']).toContain('blacksmith-16vcpu-windows-2025')
       expect(job.if).toBe("github.event_name == 'pull_request'")
     }
@@ -216,7 +217,9 @@ describe('CI workflow', () => {
 
     // windows-coverage uses the lower 4-partition profile.
     expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '4' })
+    const coverageEnvironment = windowsCoverage.env as Record<string, string>
+    expect(coverageEnvironment.DSH_COVERAGE_PARTITIONS).not.toContain('runner.')
+
     const coverageSteps = windowsCoverage.steps as unknown[]
     const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && typeof step.run === 'string'
@@ -336,9 +339,9 @@ describe('CI workflow', () => {
       }, { timeout: 1000 })
     }
     for (const [name, selector, variable, pool, hosted] of [
-      ['linux gates', selectors.linux, 'DSH_CI_FAILOVER_LINUX', ['self-hosted', 'linux', 'x64', 'vm-backup'], 'dsh-ubuntu-24-04-16core'],
+      ['linux gates', selectors.linux, 'DSH_CI_FAILOVER_LINUX', ['self-hosted', 'linux', 'x64', 'vm-backup'], 'ubuntu-24.04'],
       ['linux aggregate', selectors.linuxAggregate, 'DSH_CI_FAILOVER_LINUX', ['self-hosted', 'linux', 'x64', 'vm-backup'], 'ubuntu-latest'],
-      ['windows lanes', selectors.windows, 'DSH_CI_FAILOVER_WINDOWS', ['self-hosted', 'dsh-win-ci', 'windows'], 'dsh-windows-2025-16core'],
+      ['windows lanes', selectors.windows, 'DSH_CI_FAILOVER_WINDOWS', ['self-hosted', 'dsh-win-ci', 'windows'], 'windows-2025'],
     ] as const) {
       expect(evaluate(selector, { [variable]: 'blacksmith' }), `${name} blacksmith value`).toMatch(/^blacksmith-/)
       expect(evaluate(selector, { [variable]: 'selfhosted' }), `${name} selfhosted value`).toEqual(pool)
@@ -347,6 +350,31 @@ describe('CI workflow', () => {
       expect(evaluate(selector, { [variable]: 'selfhosted' }, 'dependabot[bot]'), `${name} dependabot on selfhosted`).toBe(hosted)
       for (const mode of ['', 'hosted', 'unexpected']) {
         expect(evaluate(selector, { [variable]: mode }), `${name} default on ${mode}`).toBe(hosted)
+      }
+    }
+
+    for (const [job, variable] of [
+      [node24Coverage, 'DSH_CI_FAILOVER_LINUX'],
+      [windowsCoverage, 'DSH_CI_FAILOVER_WINDOWS'],
+    ] as const) {
+      const environment = job.env as Record<string, string>
+      for (const pool of ['', 'selfhosted', 'blacksmith']) {
+        for (const login of ['maintainer', 'dependabot[bot]']) {
+          const partitions = evaluate(environment.DSH_COVERAGE_PARTITIONS!, { [variable]: pool }, login)
+          expect(typeof partitions).toBe('string')
+          expect(parseCoveragePartitionCount(String(partitions))).toBeGreaterThanOrEqual(2)
+        }
+      }
+      for (const [key, standard, custom] of [
+        ['DSH_COVERAGE_PARTITIONS', '2', '4'],
+        ['DSH_COVERAGE_MAX_WORKERS', '2', '6'],
+        ['DSH_GATE_CONCURRENCY', '1', '3'],
+      ]) {
+        const expression = environment[key!]!
+        expect(evaluate(expression, { [variable]: '' })).toBe(standard)
+        expect(evaluate(expression, { [variable]: 'selfhosted' })).toBe(custom)
+        expect(evaluate(expression, { [variable]: 'blacksmith' })).toBe(custom)
+        expect(evaluate(expression, { [variable]: 'selfhosted' }, 'dependabot[bot]')).toBe(standard)
       }
     }
 
@@ -985,8 +1013,8 @@ describe('Issue lifecycle workflow', () => {
       with: {
         'client-id': '${{ vars.DSH_ISSUE_APP_CLIENT_ID }}',
         'private-key': '${{ secrets.DSH_ISSUE_APP_PRIVATE_KEY }}',
-        owner: 'deepseek-harness',
-        repositories: 'deepseek-harness',
+        owner: 'karaka-ai',
+        repositories: 'karaka',
         'permission-issues': 'read',
         'permission-organization-projects': 'read',
       },

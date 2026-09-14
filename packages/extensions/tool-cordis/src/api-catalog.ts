@@ -1200,6 +1200,93 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'karakaBrowserAuth',
+    summary: 'Verifies signed browser credentials without storing tokens or signing keys.',
+    description: 'Verifies signed browser credentials without storing tokens or signing keys.',
+    methods: [
+      {
+        signature: 'async authenticate(credential: string): Promise<BrowserCaller | undefined>',
+        description: 'Verify signature, issuer, audience, owner claims, age, and issued lifetime.',
+        parameters: [{ name: 'credential', description: 'Complete compact JWT supplied by the browser.' }],
+        returns: 'The signed owner and expiry, or undefined for invalid credentials.',
+        throws: ['Errors unrelated to JWT validation.'],
+      },
+    ],
+  },
+  {
+    key: 'karakaIdentity',
+    summary: 'A single process owns authority records for this root.',
+    description: 'A single process owns authority records for this root. Application ingress serializes complete create/admit operations through withChatLock. No ownership is inferred from request-supplied lineage or written into a DSH Session.',
+    methods: [
+      {
+        signature: 'async initialize(): Promise<void>',
+        description: 'Validate materialized roots before routes and background tools become available.',
+        parameters: [],
+        returns: 'Resolution after existing original headers have warmed lineage lookup.',
+      },
+      {
+        signature: 'async withChatLock<T>(id: SessionId, operation: () => Promise<T>): Promise<T>',
+        description: 'Serialize one complete controller operation, including original engine calls.',
+        parameters: [{ name: 'id', description: 'Chat being changed.' }, { name: 'operation', description: 'Non-reentrant operation.' }],
+        returns: 'The operation\'s result after preceding operations have settled.',
+      },
+      {
+        signature: 'async reserve(id: SessionId, owner: ApplicationOwner): Promise<\'create\' | \'existing\'>',
+        description: 'Reserve creation or authorize an existing root. Call inside withChatLock.',
+        parameters: [{ name: 'id', description: 'Caller-selected chat identity.' }, { name: 'owner', description: 'Authenticated owner.' }],
+        returns: 'Whether the controller must create or reuse the original Session.',
+      },
+      {
+        signature: 'async bind(session: Session, owner: ApplicationOwner): Promise<void>',
+        description: 'Bind the actual unpublished Session during the original Agent setup callback.',
+        parameters: [{ name: 'session', description: 'Original factory-created Session.' }, { name: 'owner', description: 'Reserved owner.' }],
+        returns: 'Resolution only after the immutable source binding is durable.',
+      },
+      {
+        signature: 'async markReady(session: Session, owner: ApplicationOwner): Promise<void>',
+        description: 'Complete creation only after original JSONL flush and durable authority agree.',
+        parameters: [{ name: 'session', description: 'Published original Session.' }, { name: 'owner', description: 'Authenticated owner.' }],
+        returns: 'Resolution after the application can acknowledge this chat.',
+      },
+      {
+        signature: 'async authorize(id: SessionId, owner: ApplicationOwner): Promise<SessionHeader>',
+        description: 'Authorize using read-only observation before calling original agents.resume.',
+        parameters: [{ name: 'id', description: 'Requested chat.' }, { name: 'owner', description: 'Authenticated owner.' }],
+        returns: 'Its observed original header; missing and foreign chats are denied.',
+      },
+      {
+        signature: 'async authorizeSession(session: Session, owner: ApplicationOwner): Promise<void>',
+        description: 'Check the exact live or unpublished restored Session before an operation.',
+        parameters: [{ name: 'session', description: 'Original Session.' }, { name: 'owner', description: 'Authenticated owner.' }],
+        returns: 'Resolution after immutable binding and lineage checks.',
+      },
+      {
+        signature: 'async ownerOf(session: Session): Promise<ApplicationOwner | undefined>',
+        description: 'Resolve trusted identity for tool execution, including background child Agents.',
+        parameters: [{ name: 'session', description: 'Executing original Session, never request-supplied metadata.' }],
+        returns: 'Its root authority owner, or undefined for an ordinary DSH Session.',
+      },
+      {
+        signature: 'async ownerOfId(id: SessionId): Promise<ApplicationOwner | undefined>',
+        description: 'Observe a cold or live Session\'s owner without activating or repairing it.',
+        parameters: [{ name: 'id', description: 'Original Session identity selected by an authorized consumer.' }],
+        returns: 'Its application owner, or undefined for missing/unowned Sessions.',
+      },
+      {
+        signature: 'ownerOfCached(session: Session): ApplicationOwner | undefined',
+        description: 'Synchronous catalog lookup from validated authority and runtime/persisted lineage. Execution must still call ownerOf; an unresolved catalog grants no tools.',
+        parameters: [{ name: 'session', description: 'Original Session being composed or published.' }],
+        returns: 'Known owner, or undefined when lineage has not been observed.',
+      },
+      {
+        signature: 'async close(): Promise<void>',
+        description: 'Reject new authority calls, await admitted operations settling, and close storage.',
+        parameters: [],
+        returns: 'Resolution after admitted operations settle and authority storage closes.',
+      },
+    ],
+  },
+  {
     key: 'llm',
     summary: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
@@ -1437,6 +1524,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Read the session override without applying the deployment default.',
         parameters: [{ name: 'session', description: 'session whose log supplies the override.' }],
         returns: 'the last logged mode, or `undefined` without one.',
+      },
+    ],
+  },
+  {
+    key: 'serverAuth',
+    summary: 'Replaceable authentication used for both inbound chat and outbound tool traffic.',
+    description: 'Replaceable authentication used for both inbound chat and outbound tool traffic.',
+    methods: [
+      {
+        signature: 'abstract authenticate( authorization: string | undefined, signal?: AbortSignal, ): Promise<AuthenticatedApplication | undefined>',
+        description: 'Verify an inbound authorization value.',
+        parameters: [{ name: 'authorization', description: 'complete inbound Authorization header.' }, { name: 'signal', description: 'caller lifetime; aborting rejects the wait even if credential resolution continues.' }],
+        returns: 'the authenticated application, or undefined when verification fails.',
+      },
+      {
+        signature: 'abstract authorizeTools(applicationId: ApplicationId, signal?: AbortSignal): Promise<string>',
+        description: 'Build outbound authorization for one application\'s MCP endpoint.',
+        parameters: [{ name: 'applicationId', description: 'authenticated application identity.' }, { name: 'signal', description: 'outbound request lifetime.' }],
+        returns: 'complete outbound Authorization header.',
       },
     ],
   },
@@ -3651,6 +3757,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ApiSessionAgentResult = {\n    readonly agent: Agent;\n} | {\n    readonly error: ApiSessionAgentError;\n};',
   },
   {
+    name: 'ApplicationId',
+    declaration: 'export type ApplicationId = Branded<\'ApplicationId\'>;',
+  },
+  {
+    name: 'ApplicationOwner',
+    declaration: 'export interface ApplicationOwner {\n    readonly applicationId: ApplicationId;\n    readonly tenantId: TenantId;\n    readonly userId: UserId;\n}',
+  },
+  {
     name: 'ApprovalOutcome',
     declaration: 'export type ApprovalOutcome = \'allowed-once\' | \'rejected\' | \'cancelled\' | \'unavailable\';',
   },
@@ -3739,6 +3853,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AuthenticatedApplication',
+    declaration: 'export interface AuthenticatedApplication {\n    readonly applicationId: ApplicationId;\n}',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
@@ -3809,6 +3927,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BrandedNumber',
     declaration: 'export type BrandedNumber<B extends string> = number & {\n    readonly [BRAND]: B;\n};',
+  },
+  {
+    name: 'BrowserCaller',
+    declaration: 'export interface BrowserCaller {\n    readonly kind: \'application\';\n    readonly owner: ApplicationOwner;\n    readonly expiresAt: number;\n}',
   },
   {
     name: 'ClientArtifactBaseline',
@@ -5931,6 +6053,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TeamWaitResult {\n    readonly timedOut: boolean;\n}',
   },
   {
+    name: 'TenantId',
+    declaration: 'export type TenantId = Branded<\'TenantId\'>;',
+  },
+  {
     name: 'TerminalBackend',
     declaration: 'export interface TerminalBackend {\n    readonly type: string;\n    spawn(spec: TerminalBackendSpawnSpec): Promise<TerminalBackendSession>;\n}',
   },
@@ -6245,6 +6371,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+  },
+  {
+    name: 'UserId',
+    declaration: 'export type UserId = Branded<\'UserId\'>;',
   },
   {
     name: 'UserMessage',

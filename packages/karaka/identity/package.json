@@ -39,6 +39,7 @@
     "@deepseek-ai/dsh-storage": "workspace:^"
   },
   "dependencies": {
+    "@deepseek-ai/cosmokit": "workspace:^",
     "@deepseek-ai/dsh-brand": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^",
     "@deepseek-ai/dsh-storage-json": "workspace:^",

@@ -23,15 +23,17 @@ interface DemoPolicy {
   readonly wrapper?: string
 }
 
-/** Public product launcher plus the private build-only WebWorker packer. */
+/** DSH launcher, Karaka profile bootstrap, and private build-only WebWorker packer. */
 const MANIFEST_BIN_ALLOWLIST = new Map<string, ManifestBin>([
   ['apps/cli/package.json', { dsh: 'lib/bin.js' }],
+  ['packages/karaka/agent/package.json', { 'karaka-agent': 'lib/bin.js' }],
   ['packages/experimental/webworker-packer/package.json', { 'dsh-pack-vfs-image': './bin.js' }],
 ])
 
 /** Every JavaScript executable in an application or packaging workspace has one explicit role. */
 const EXECUTABLE_SOURCE_ALLOWLIST = new Map<string, string>([
   ['apps/cli/src/bin.ts', 'supported dsh application launcher'],
+  ['packages/karaka/agent/src/bin.ts', 'Karaka profile bootstrap delegating to the dsh launcher'],
   ['packages/context/time-context/tests/fixtures/driver.ts', 'test-only subprocess driver'],
   ['packages/experimental/webworker-packer/bin.js', 'private build-only wrapper'],
   ['packages/experimental/webworker-packer/src/bin.ts', 'private build-only implementation'],

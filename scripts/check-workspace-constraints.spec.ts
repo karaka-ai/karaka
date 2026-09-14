@@ -1,10 +1,11 @@
-/** Experimental-package publication and dependency constraints. */
+/** Workspace publication and dependency constraints. */
 
 import { describe, expect, it } from 'vitest'
 import {
   checkDshFamilyVersion,
   checkExperimentalDependencyIsolation,
   checkExperimentalManifest,
+  checkWorkspaceManifest,
   expectedDshPackageFiles,
   type WorkspaceManifest,
 } from './check-workspace-constraints.ts'
@@ -141,5 +142,48 @@ describe('package payload constraints', () => {
       'cordis.patch.yml',
       'lib/types/**/*.d.ts',
     ])
+  })
+})
+
+describe('private Karaka workspace constraints', () => {
+  const karaka: WorkspaceManifest = {
+    dir: 'packages/karaka/agent',
+    manifest: { name: '@karaka-ai/agent', private: true },
+  }
+
+  it('accepts private Karaka packages without DSH publication metadata', () => {
+    expect(checkWorkspaceManifest(karaka)).toEqual([])
+  })
+
+  it.each([false, undefined])('rejects Karaka private: %s', (privateFlag) => {
+    expect(checkWorkspaceManifest({
+      ...karaka,
+      manifest: { name: '@karaka-ai/agent', ...privateFlag === undefined ? {} : { private: privateFlag } },
+    })).toEqual([expect.stringContaining('Karaka package must set "private": true')])
+  })
+
+  it.each(['@deepseek-ai/dsh-agent', '@karaka-ai/other', undefined])(
+    'rejects a mismatched Karaka directory/name pair: %s',
+    (name) => {
+      expect(checkWorkspaceManifest({
+        ...karaka,
+        manifest: { private: true, ...name === undefined ? {} : { name } },
+      })).toContainEqual(expect.stringContaining('Karaka package name must be @karaka-ai/agent'))
+    },
+  )
+
+  it('rejects Karaka packages outside their group', () => {
+    expect(checkWorkspaceManifest({ ...karaka, dir: 'packages/core/agent' }))
+      .toContainEqual(expect.stringContaining('Karaka packages must live in packages/karaka/<name>'))
+  })
+
+  it('still requires ordinary DSH release members to declare public metadata', () => {
+    const errors = checkWorkspaceManifest({
+      dir: 'packages/core/agent',
+      manifest: { name: '@deepseek-ai/dsh-agent', private: true },
+    })
+    expect(errors).toContainEqual(expect.stringContaining('release member must not set "private": true'))
+    expect(errors).toContainEqual(expect.stringContaining('release member must set publishConfig.access to "public"'))
+    expect(errors).toContainEqual(expect.stringContaining('release member repository must use git+https://github.com/deepseek-ai/deepseek-harness.git'))
   })
 })

@@ -6,9 +6,18 @@ import { importSPKI, jwtVerify, errors } from 'jose'
 import { ApplicationId, TenantId, UserId } from '@karaka-ai/identity'
 import type { ApplicationOwner } from '@karaka-ai/identity'
 
-export interface BrowserCaller { readonly kind: 'application'; readonly owner: ApplicationOwner; readonly expiresAt: number }
+/** Verified application user and the instant when the transport must end access. */
+export interface BrowserCaller {
+  /** Credential category accepted by application transports. */
+  readonly kind: 'application'
+  /** Signed application, tenant, and user identity. */
+  readonly owner: ApplicationOwner
+  /** JWT expiry in milliseconds since the Unix epoch. */
+  readonly expiresAt: number
+}
 declare module '@deepseek-ai/cordis' { interface Context { karakaBrowserAuth: BrowserAuthentication } }
 
+/** Loader plugin name. */
 export const name = 'karaka-browser-auth'
 
 /** Public verification keys and required credential claims. */
@@ -32,6 +41,7 @@ export interface Config {
   }[]
 }
 
+/** Required JWT verification settings, validated before mounting. */
 export const Config: z<Config> = z.object({
   applicationId: z.string().min(1).required(),
   issuer: z.string().min(1).required(),
@@ -44,6 +54,7 @@ export const Config: z<Config> = z.object({
  * Validate public keys and provide the Connection credential verifier.
  * @param ctx - provider-owning context.
  * @param config - trusted application, issuer, audience, lifetime and public keys.
+ * @returns Resolution after all verification keys have been imported.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
   const keys = new Map<string, { algorithm: string; key: CryptoKey }>()
@@ -56,6 +67,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   new BrowserAuthentication(ctx, config, keys)
 }
 
+/** Verifies signed browser credentials without storing tokens or signing keys. */
 export class BrowserAuthentication extends Service {
   constructor(
     ctx: Context, private readonly config: Config,
@@ -64,6 +76,12 @@ export class BrowserAuthentication extends Service {
     super(ctx, 'karakaBrowserAuth')
   }
 
+  /**
+   * Verify signature, issuer, audience, owner claims, age, and issued lifetime.
+   * @param credential - Complete compact JWT supplied by the browser.
+   * @returns The signed owner and expiry, or undefined for invalid credentials.
+   * @throws Errors unrelated to JWT validation.
+   */
   async authenticate(credential: string): Promise<BrowserCaller | undefined> {
     const config = this.config
     try {

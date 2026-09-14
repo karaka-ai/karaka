@@ -72,6 +72,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`fflate`](https://github.com/101arrowz/fflate) | MIT |
 | [`immer`](https://github.com/immerjs/immer) | MIT |
 | [`ipaddr.js`](https://github.com/whitequark/ipaddr.js) | MIT |
+| [`jose`](https://github.com/panva/jose) | MIT |
 | [`js-yaml`](https://github.com/nodeca/js-yaml) | MIT |
 | [`katex`](https://github.com/KaTeX/KaTeX) | MIT |
 | [`koffi`](https://github.com/Koromix/koffi) | MIT |
@@ -145,6 +146,7 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`@aws-sdk/client-s3`](https://github.com/aws/aws-sdk-js-v3) | Apache-2.0 |
 | [`@braintree/sanitize-url`](https://github.com/braintree/sanitize-url) | MIT |
 | [`@electron/notarize`](https://github.com/electron/notarize) | MIT |
+| [`@karaka-ai/sdk`](https://github.com/karaka-ai/karaka-sdk) | MIT |
 | [`@lexical/headless`](https://github.com/facebook/lexical) | MIT |
 | [`@modelcontextprotocol/server-everything`](https://github.com/modelcontextprotocol/servers) | MIT / Apache-2.0 |
 | [`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers) | MIT / Apache-2.0 |

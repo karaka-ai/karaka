@@ -15,7 +15,7 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { ListToolsResultSchema, type Tool } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import type { Context } from '@deepseek-ai/cordis'
 import { isImageAdmissionError } from '@deepseek-ai/dsh-attachment'
@@ -26,12 +26,39 @@ import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
+/** Optional application-owned preparation, authorization and publication of MCP tools. */
+export interface ToolBridgeExtensions {
+  /**
+   * Validate or wrap a definition before any prior catalog is removed; preserve its name and remote dispatch identity.
+   * @param definition - Complete MCP definition with its original input schema and executor.
+   * @param tool - Original server descriptor, including execution requirements; must not be mutated.
+   * @returns Definition to publish; throwing leaves the previous catalog untouched.
+   */
+  prepare?(definition: ToolDefinition, tool: Readonly<Tool>): ToolDefinition
+  /**
+   * Authorize each invocation and supply its MCP request metadata before remote dispatch.
+   * @param execution - Current ToolRuntime execution, including caller and cancellation.
+   * @returns Metadata included as `_meta`; rejection prevents the request.
+   */
+  metadata?(execution: ToolExecution): Promise<Record<string, unknown>>
+  /**
+   * Publish a prepared definition instead of registering it in the default Tools scope.
+   * @param definition - Prepared definition retaining its server-qualified public name.
+   * @returns Disposer removing every published contribution; partial registration must roll back on throw.
+   */
+  register?(definition: ToolDefinition): () => void
+}
+
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
   /** Whether a registry conflict is contained or rejects this synchronization. */
   registrationFailure: 'contain' | 'throw'
+  /** Stable namespace used in public tool names. */
   serverName: string
+  /** Maximum duration of each remote tool call in milliseconds. */
   toolCallTimeoutMs: number
+  /** Optional application hooks; omission uses the ordinary DSH tool registry and calls. */
+  extensions?: ToolBridgeExtensions
 }
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
@@ -78,7 +105,7 @@ function listToolsUncached(client: Client, cursor?: string) {
 }
 
 /** Call without the SDK pre-validating an output schema the bridge may not support. */
-function callToolUncached(
+async function callToolUncached(
   client: Client,
   rawName: string,
   args: Record<string, unknown>,
@@ -86,7 +113,14 @@ function callToolUncached(
   opts: ToolBridgeOptions,
 ) {
   return client.request(
-    { method: 'tools/call', params: { name: rawName, arguments: args } },
+    {
+      method: 'tools/call',
+      params: {
+        name: rawName,
+        arguments: args,
+        ...opts.extensions?.metadata === undefined ? {} : { _meta: await opts.extensions.metadata(exec) },
+      },
+    },
     RawCallToolResultSchema,
     {
       signal: exec.signal,
@@ -160,7 +194,7 @@ export async function syncTools(
           `mcp-client(${opts.serverName}): server listed tool "${tool.name}" more than once — invalid tool list`,
         )
       }
-      definitions.set(publicName, createDefinition(
+      const definition = createDefinition(
         client,
         ctx,
         publicName,
@@ -170,7 +204,8 @@ export async function syncTools(
         supportedOutputSchema(tool.outputSchema),
         tool.execution?.taskSupport === 'required',
         opts,
-      ))
+      )
+      definitions.set(publicName, opts.extensions?.prepare === undefined ? definition : opts.extensions.prepare(definition, tool))
     }
     cursor = response.nextCursor
     if (cursor) {
@@ -188,7 +223,10 @@ export async function syncTools(
   const disposers: ToolDisposers = new Map()
   try {
     for (const [publicName, definition] of definitions) {
-      disposers.set(publicName, ctx.tools.register(definition))
+      const dispose = opts.extensions?.register === undefined
+        ? ctx.tools.register(definition)
+        : opts.extensions.register(definition)
+      disposers.set(publicName, dispose)
     }
   } catch (error) {
     // A conflict on an `mcp__<serverName>__`-qualified name means a foreign

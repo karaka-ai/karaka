@@ -7100,6 +7100,9 @@ importers:
 
   packages/karaka/identity:
     dependencies:
+      '@deepseek-ai/cosmokit':
+        specifier: link:../../../vendor/cosmokit
+        version: link:../../../vendor/cosmokit
       '@deepseek-ai/dsh-brand':
         specifier: workspace:^
         version: link:../../util/brand
@@ -7149,9 +7152,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.0
         version: 1.29.0(supports-color@9.4.0)(zod@4.4.3)
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -7162,27 +7162,24 @@ importers:
       '@deepseek-ai/dsh-agent-tool-presentation':
         specifier: workspace:^
         version: link:../../core/agent-tool-presentation
-      '@deepseek-ai/dsh-attachment':
-        specifier: workspace:^
-        version: link:../../attachment/attachment
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-mcp-client':
+        specifier: workspace:^
+        version: link:../../mcp/mcp-client
       '@deepseek-ai/dsh-scope':
         specifier: workspace:^
         version: link:../../core/scope
-      '@deepseek-ai/dsh-subprocess':
+      '@deepseek-ai/dsh-session':
         specifier: workspace:^
-        version: link:../../subprocess/subprocess
-      '@deepseek-ai/dsh-timeout':
+        version: link:../../core/session
+      '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
-        version: link:../../util/timeout
+        version: link:../../core/system-prompt
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
-      '@deepseek-ai/dsh-util-values':
-        specifier: workspace:^
-        version: link:../../util/values
       '@karaka-ai/identity':
         specifier: workspace:^
         version: link:../identity
@@ -7248,6 +7245,9 @@ importers:
       '@deepseek-ai/dsh-session-persistence':
         specifier: workspace:^
         version: link:../../session/session-persistence
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:^
+        version: link:../../session/session-projection
       '@deepseek-ai/dsh-session-query':
         specifier: workspace:^
         version: link:../../session-query/session-query
@@ -7265,7 +7265,7 @@ importers:
         version: link:../identity
       '@karaka-ai/sdk':
         specifier: 0.1.2-alpha.5
-        version: 0.1.2-alpha.5(supports-color@9.4.0)
+        version: 0.1.2-alpha.5
       '@karaka-ai/server-auth':
         specifier: workspace:^
         version: link:../server-auth
@@ -19803,7 +19803,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@karaka-ai/sdk@0.1.2-alpha.5(supports-color@9.4.0)':
+  '@karaka-ai/sdk@0.1.2-alpha.5':
     dependencies:
       '@modelcontextprotocol/sdk': 1.29.0(supports-color@9.4.0)(zod@4.4.3)
       zod: 4.4.3

@@ -15,13 +15,14 @@
  * @module
  */
 
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Context } from '@deepseek-ai/cordis'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { createTransport } from './transport.ts'
 import { syncTools } from './tools.ts'
-import type { ToolBridgeOptions, ToolDisposers } from './tools.ts'
+import type { ToolBridgeExtensions, ToolBridgeOptions, ToolDisposers } from './tools.ts'
 import type { Config } from './index.ts'
 
 /** Automatic reconnect policy for one MCP server connection. */
@@ -111,6 +112,17 @@ export interface ConnectionHandle {
   dispose(): Promise<void>
 }
 
+/** Programmatic transport and tool hooks shared by every connection generation. */
+export interface ConnectionExtensions {
+  /**
+   * Create a fresh transport for each connection attempt, replacing the configured DSH transport.
+   * @returns An unconnected transport whose lifecycle the supervisor owns.
+   */
+  createTransport?(): Transport
+  /** Optional catalog preparation, invocation metadata and registration hooks. */
+  tools?: ToolBridgeExtensions
+}
+
 /**
  * Start the supervised connection for one MCP server and keep it alive per
  * the reconnect policy.
@@ -118,12 +130,19 @@ export interface ConnectionHandle {
  * @param ctx - Cordis context providing the `tools` registry and logger.
  * @param config - Resolved plugin config selecting the transport and server identity.
  * @param policy - Resolved reconnect policy from {@link resolveReconnectPolicy}.
+ * @param extensions - Optional transport and tool hooks; omission preserves ordinary DSH behavior.
  * @returns Handle with a `ready` promise for startup-await and a `dispose` for teardown.
  */
-export function startConnection(ctx: Context, config: Config, policy: ResolvedReconnectPolicy): ConnectionHandle {
+export function startConnection(
+  ctx: Context,
+  config: Config,
+  policy: ResolvedReconnectPolicy,
+  extensions?: ConnectionExtensions,
+): ConnectionHandle {
   const label = `mcp-client(${config.serverName})`
   const opts: ToolBridgeOptions = {
     registrationFailure: 'contain',
+    ...extensions?.tools === undefined ? {} : { extensions: extensions.tools },
     serverName: config.serverName,
     toolCallTimeoutMs: config.toolCallTimeoutMs,
   }
@@ -269,7 +288,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       },
     )
     try {
-      await generation.connect(createTransport(config))
+      await generation.connect(extensions?.createTransport === undefined ? createTransport(config) : extensions.createTransport())
       if (hasClosed()) {
         attemptSettled = true
         generationDown(generation)

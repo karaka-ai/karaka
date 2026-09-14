@@ -439,6 +439,25 @@ describe('reconnect supervisor', () => {
     expect(ctx.tools.get('mcp__srv__late')).toBeUndefined()
   })
 
+  it('reports a failed live catalog refresh and retains callable registrations', async () => {
+    const { errors } = captureLogs(ctx)
+    const connection = startConnection(ctx, stdioConfig(), resolveReconnectPolicy({ enabled: false }, 'test'))
+    try {
+      await connection.ready
+      mockListTools.mockRejectedValueOnce(new Error('catalog unavailable'))
+      const handler = mockSetNotificationHandler.mock.calls[0]?.[1] as () => Promise<void>
+      await handler()
+      expect(errors.some(line => line.includes('tool re-sync failed'))).toBe(true)
+      const result = await ctx.tools.execute({
+        signal: testToolSignal, callId: nextCallId(), name: 'mcp__srv__remote', arguments: {},
+      })
+      expect(result.isError).toBe(false)
+    } finally {
+      await connection.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('a re-sync failing because dispose closed the transport stays silent', async () => {
     const { errors } = captureLogs(ctx)
     const fiber = ctx.plugin({ name: 'mcp-client', inject: ['tools'], apply }, stdioConfig())
