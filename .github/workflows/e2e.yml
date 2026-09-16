@@ -76,7 +76,9 @@ jobs:
   e2e:
     needs: credentials
     if: needs.credentials.outputs.enabled == 'true'
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith'
+          && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
     name: e2e
     # Profile e2e files can each own several complete dsh subprocess trees, so
     # four file workers preserve process/PTY headroom. Tests retain 120s/test

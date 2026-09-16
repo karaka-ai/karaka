@@ -5,6 +5,11 @@ import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 import { parseCoveragePartitionCount } from './coverage-partitions.ts'
 
+function evaluateRunsOn(selector: unknown, context: Record<string, unknown>): unknown {
+  if (typeof selector !== 'string') throw new TypeError('Runner selector must be a string')
+  return runInNewContext(selector.trim().slice(3, -2), context, { timeout: 1000 })
+}
+
 const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}$/
 const nativeWindowsPnpmDestination = '${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}'
@@ -332,12 +337,11 @@ describe('CI workflow', () => {
       windows: windowsBuild['runs-on'] as string,
     }
     const evaluate = (expression: string, vars: Record<string, string>, login = 'maintainer'): unknown => {
-      const body = expression.trim().slice(3, -2)
-      return runInNewContext(body, {
+      return evaluateRunsOn(expression, {
         vars,
         fromJSON: JSON.parse,
         github: { event: { pull_request: { user: { login } } } },
-      }, { timeout: 1000 })
+      })
     }
     for (const [name, selector, variable, pool, hosted] of [
       ['linux gates', selectors.linux, 'DSH_CI_FAILOVER_LINUX', ['self-hosted', 'linux', 'x64', 'vm-backup'], 'ubuntu-24.04'],
@@ -605,6 +609,50 @@ describe('CI workflow', () => {
 
     expect(config).not.toContain("pool: process.platform === 'win32' ? 'threads' : 'forks'")
     expect(config.match(/pool: 'forks'/g)).toHaveLength(2)
+  })
+})
+
+describe('Runtime and LLM e2e Blacksmith routing', () => {
+  it('routes DeepSeek e2e only through the Linux Blacksmith switch', () => {
+    const job = workflowJob(loadWorkflow('.github/workflows/e2e.yml'), 'e2e')
+    for (const mode of ['', 'selfhosted', 'unexpected', 'blacksmith']) {
+      expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: mode, DSH_CI_FAILOVER_WINDOWS: 'blacksmith' } }))
+        .toBe(mode === 'blacksmith' ? 'blacksmith-4vcpu-ubuntu-2404' : 'ubuntu-latest')
+    }
+  })
+
+  it('keeps native release and dispatch builders hosted while routing x64 CI by platform', () => {
+    const workflow = loadWorkflow('.github/workflows/build-exe-for-python-sdk.yml')
+    const build = workflowJob(workflow, 'build')
+    for (const [target, runner, variable, blacksmith] of [
+      ['node24-linux-x64', 'ubuntu-latest', 'DSH_CI_FAILOVER_LINUX', 'blacksmith-16vcpu-ubuntu-2404'],
+      ['node24-win-x64', 'windows-2025', 'DSH_CI_FAILOVER_WINDOWS', 'blacksmith-16vcpu-windows-2025'],
+      ['node24-linux-arm64', 'ubuntu-24.04-arm', 'DSH_CI_FAILOVER_LINUX', 'ubuntu-24.04-arm'],
+      ['node24-macos-arm64', 'macos-latest', 'DSH_CI_FAILOVER_LINUX', 'macos-latest'],
+      ['node24-macos-x64', 'macos-15-intel', 'DSH_CI_FAILOVER_LINUX', 'macos-15-intel'],
+    ] as const) {
+      for (const ci of [false, true]) {
+        for (const release of [false, true]) {
+          for (const mode of ['', 'selfhosted', 'unexpected', 'blacksmith']) {
+            const vars = { DSH_CI_FAILOVER_LINUX: 'blacksmith', DSH_CI_FAILOVER_WINDOWS: 'blacksmith', [variable]: mode }
+            expect(evaluateRunsOn(build['runs-on'], { inputs: { ci, release }, vars, matrix: { target, runner } }), `${target} ci=${ci} release=${release} mode=${mode}`)
+              .toBe(ci && !release && mode === 'blacksmith' ? blacksmith : runner)
+          }
+        }
+      }
+    }
+  })
+
+  it.each(['plan', 'sdk-wheel'])('routes runtime %s only for non-release CI', (name) => {
+    const job = workflowJob(loadWorkflow('.github/workflows/build-exe-for-python-sdk.yml'), name)
+    for (const ci of [false, true]) {
+      for (const release of [false, true]) {
+        for (const mode of ['', 'selfhosted', 'unexpected', 'blacksmith']) {
+          expect(evaluateRunsOn(job['runs-on'], { inputs: { ci, release }, vars: { DSH_CI_FAILOVER_LINUX: mode } }))
+            .toBe(ci && !release && mode === 'blacksmith' ? 'blacksmith-4vcpu-ubuntu-2404' : 'ubuntu-latest')
+        }
+      }
+    }
   })
 })
 
