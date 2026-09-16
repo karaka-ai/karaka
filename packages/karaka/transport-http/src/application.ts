@@ -10,8 +10,10 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import { applicationState, installApplicationProjection } from './application-state.ts'
 
 interface Address { readonly chatId: SessionId; readonly owner: ApplicationOwner }
+/** Authorized baseline, durable event or transient assistant text emitted by follow(). */
 export type FollowFrame = { readonly type: 'snapshot'; readonly header: SessionHeader; readonly hasMore: false; readonly projections: { readonly asOfSeq: number; readonly values: Record<string, never> }; readonly cursor: number; readonly records: readonly { readonly type: 'event'; readonly event: SessionEvent }[] } | { readonly type: 'event'; readonly event: SessionEvent } | { readonly type: 'text-delta'; readonly cursor: number; readonly text: string }
 
 declare module '@deepseek-ai/cordis' {
@@ -27,6 +29,7 @@ export class ApplicationChatController extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'karakaApplication')
+    installApplicationProjection(ctx)
     ctx.effect(() => async () => {
       this.lifetime.abort(new Error('Application controller disposed'))
       await Promise.allSettled(this.operations)
@@ -35,14 +38,29 @@ export class ApplicationChatController extends Service {
     })
   }
 
+  /**
+   * List available, non-broken Agent presets.
+   * @param signal - Cancellation checked before listing.
+   * @returns Preset identifiers and display metadata; empty when presets are unavailable.
+   */
   async listAgents(signal?: AbortSignal) {
     signal?.throwIfAborted()
     const presets = this.ctx.get('agentPresets')
     if (presets === undefined) return []
     const listed = await presets.list()
-    return listed.filter(preset => preset.broken === undefined).map(preset => ({ id: preset.id, name: preset.name ?? preset.id, ...(preset.description === undefined ? {} : { description: preset.description }) }))
+    return listed.filter(preset => preset.broken === undefined).map(preset => ({
+      id: preset.id,
+      name: preset.name ?? preset.id,
+      ...(preset.description === undefined ? {} : { description: preset.description }),
+    }))
   }
 
+  /**
+   * Reserve ownership and create or resume a chat, acknowledging only after durable readiness.
+   * @param request - Chat identity, trusted owner and requested preset.
+   * @param signal - Cancellation checked before mutation begins.
+   * @returns Chat and preset identifiers; an incompatible existing preset rejects.
+   */
   async create(request: Address & { readonly agentId: string }, signal?: AbortSignal) {
     return this.run(request.chatId, async () => {
       signal?.throwIfAborted()
@@ -73,11 +91,17 @@ export class ApplicationChatController extends Service {
     })
   }
 
+  /**
+   * Admit a prompt once per request ID and flush before acknowledgment.
+   * @param request - Trusted owner, request ID and text or image prompt content.
+   * @param signal - Cancellation checked before mutation begins.
+   * @returns Acceptance and duplicate status; unavailable models or invalid attachments reject.
+   */
   async prompt(request: Address & { readonly requestId: string; readonly content: readonly PromptContentPart[] }, signal?: AbortSignal) {
     return this.run(request.chatId, async () => {
       signal?.throwIfAborted()
       const agent = await this.activate(request)
-      const duplicate = hasRequest(agent, request.requestId)
+      const duplicate = applicationState(this.ctx, agent.session).requestIds.includes(request.requestId)
       if (!duplicate) {
         const selection = this.selections.get(agent)?.current ?? this.ctx.agentDefaultModel.currentSelection()
         if (!this.ctx.llm.listProviders().some(provider => provider.id === selection.provider)) throw Object.assign(new Error('Selected model provider is unavailable'), { code: 'session/model-unavailable' })
@@ -88,10 +112,7 @@ export class ApplicationChatController extends Service {
           if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) throw Object.assign(new Error('Selected model does not accept images'), { code: 'session/attachment-invalid' })
         }
         const content = attachments === undefined
-          ? request.content.map(part => {
-            if (part.type !== 'text') throw new Error('Image attachments are unavailable')
-            return part
-          })
+          ? request.content.filter(part => part.type === 'text')
           : await attachments.admitPromptContent(request.content)
         const source = { kind: 'user' as const, rpcId: request.requestId }
         agent.followup(createUserMessage({ content, source }))
@@ -101,6 +122,12 @@ export class ApplicationChatController extends Service {
     })
   }
 
+  /**
+   * Cancel the active turn while retaining pending inbox messages.
+   * @param request - Chat identity and trusted owner.
+   * @param signal - Cancellation checked before mutation begins.
+   * @returns Acknowledgment after the cancellation request is issued.
+   */
   async cancel(request: Address, signal?: AbortSignal) {
     return this.run(request.chatId, async () => {
       signal?.throwIfAborted()
@@ -110,12 +137,29 @@ export class ApplicationChatController extends Service {
     })
   }
 
-  async selectModel(request: Address & { readonly provider: string; readonly model: string; readonly reasoningEffort?: string }, signal?: AbortSignal) {
+  /**
+   * Resolve and durably record the chat model selection.
+   * @param request - Trusted owner and requested provider, model and reasoning effort.
+   * @param signal - Cancellation checked before mutation begins.
+   * @returns Resolved model selection after durable readiness.
+   */
+  async selectModel(
+    request: Address & { readonly provider: string; readonly model: string; readonly reasoningEffort?: string },
+    signal?: AbortSignal,
+  ) {
     return this.run(request.chatId, async () => {
       signal?.throwIfAborted()
       const agent = await this.activate(request)
-      const resolved = await this.ctx.llm.resolveCallConfig({ provider: request.provider, model: request.model, ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(request.reasoningEffort) }) })
-      const selected: ModelSelection = { provider: resolved.provider, model: resolved.model, ...(resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort }) }
+      const resolved = await this.ctx.llm.resolveCallConfig({
+        provider: request.provider,
+        model: request.model,
+        ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(request.reasoningEffort) }),
+      })
+      const selected: ModelSelection = {
+        provider: resolved.provider,
+        model: resolved.model,
+        ...(resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort }),
+      }
       agent.session.append('model/selection', selected)
       const selection = this.selections.get(agent)
       if (selection === undefined) throw new Error('Application Agent has no model selection')
@@ -125,6 +169,12 @@ export class ApplicationChatController extends Service {
     })
   }
 
+  /**
+   * Read durable chat events after authorizing the requested owner.
+   * @param request - Chat identity and trusted owner.
+   * @param signal - Cancellation propagated to the Session observation.
+   * @returns Detached event list; unauthorized owners reject.
+   */
   async events(request: Address, signal?: AbortSignal): Promise<readonly SessionEvent[]> {
     signal?.throwIfAborted()
     await this.ctx.karakaIdentity.authorize(request.chatId, request.owner)
@@ -132,7 +182,12 @@ export class ApplicationChatController extends Service {
     return [...observed.events]
   }
 
-  /** Subscribe before reading the baseline, then deliver each subsequent sequence once. */
+  /**
+   * Subscribe before reading the baseline, then deliver each subsequent sequence once.
+   * @param request - Chat identity and trusted owner, reauthorized before each live delivery.
+   * @param supplied - Cancellation combined with controller disposal.
+   * @returns Snapshot-first stream of durable events and transient text deltas; sequence gaps reject.
+   */
   async *follow(request: Address, supplied: AbortSignal): AsyncIterable<FollowFrame> {
     const signal = AbortSignal.any([supplied, this.lifetime.signal])
     let wake = Promise.withResolvers<void>()
@@ -147,7 +202,7 @@ export class ApplicationChatController extends Service {
       queued.push({ type: 'text-delta', cursor: agent.session.seq - 1, text: frame.chunk.text })
       wake.resolve()
     }, { global: true })
-    const abort = () => wake.resolve()
+    const abort = (): void => { wake.resolve() }
     signal.addEventListener('abort', abort, { once: true })
     try {
       signal.throwIfAborted()
@@ -205,19 +260,11 @@ export class ApplicationChatController extends Service {
   }
 
   private installSelection(agent: Agent): void {
-    let lastUsed = this.ctx.agentDefaultModel.currentSelection()
-    let pending: ModelSelection | undefined
-    for (const event of agent.session.snapshotEvents()) {
-      if (event.type === 'model/selection') {
-        pending = { provider: event.data.provider, model: event.data.model, ...(event.data.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(event.data.reasoningEffort) }) }
-      }
-      if (event.type === 'request/header') {
-        const { provider, model, reasoningEffort } = event.data.header.config
-        lastUsed = { provider, model, ...(reasoningEffort === undefined || event.data.header.adapterDefaults?.reasoningEffort === true ? {} : { reasoningEffort }) }
-        if (pending?.provider === provider && pending.model === model && pending.reasoningEffort === reasoningEffort) pending = undefined
-      }
+    const state = applicationState(this.ctx, agent.session)
+    const selection: ModelSelectionRef = {
+      current: state.pending ?? state.lastUsed ?? this.ctx.agentDefaultModel.currentSelection(),
+      assembled: undefined,
     }
-    const selection: ModelSelectionRef = { current: pending ?? lastUsed, assembled: undefined }
     agent.ctx.effect(() => installModelSelection(agent.ctx, selection))
     this.selections.set(agent, selection)
   }
@@ -229,12 +276,4 @@ export class ApplicationChatController extends Service {
     void pending.then(() => this.operations.delete(pending), () => this.operations.delete(pending))
     return pending
   }
-}
-
-function hasRequest(agent: Agent, id: string): boolean {
-  const isRequest = (message: { readonly source: { readonly kind: string; readonly rpcId?: string } }) => message.source.kind === 'user' && message.source.rpcId === id
-  if ([...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(isRequest)) return true
-  return agent.session.snapshotEvents().some(event => event.type === 'agent/inbox/spliced'
-    ? event.data.inserted.some(isRequest)
-    : event.type === 'user/message' && isRequest(event.data))
 }

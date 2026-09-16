@@ -3,6 +3,12 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { ApplicationBridge, Config } from './index.ts'
 
+/**
+ * Create an MCP HTTP transport that renews credentials for every request.
+ * @param config - Endpoint and static request headers.
+ * @param bridge - Current application credentials.
+ * @returns An unconnected transport that rejects redirects.
+ */
 export function createTransport(config: Config, bridge: ApplicationBridge): Transport {
   const endpoint = new URL(config.url)
   if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') throw new Error('MCP endpoint must use HTTP or HTTPS')

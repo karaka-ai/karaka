@@ -51,6 +51,8 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
  * their trusted publishing against the repository that runs the workflow.
  */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+/** Private fork packages are outside the DSH publication family. */
+const karakaPackageDirectory = /^packages\/karaka\/([^/]+)$/
 /** Packages that participate in the experimental policy. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** npm namespace reserved for experimental packages. */
@@ -329,7 +331,20 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     && manifest.name !== undefined
     && publicNativePackages.has(manifest.name)
 
-  if (isPublicNativePackage) {
+  const karakaDirectory = karakaPackageDirectory.exec(dir)
+  if (karakaDirectory === null && manifest.name?.startsWith('@karaka-ai/')) {
+    errors.push(`${label}: Karaka packages must live in packages/karaka/<name>`)
+  }
+
+  if (karakaDirectory !== null) {
+    const expectedName = `@karaka-ai/${karakaDirectory[1]}`
+    if (manifest.name !== expectedName) {
+      errors.push(`${label}: Karaka package name must be ${expectedName}`)
+    }
+    if (manifest.private !== true) {
+      errors.push(`${label}: Karaka package must set "private": true`)
+    }
+  } else if (isPublicNativePackage) {
     if (manifest.private === true) {
       errors.push(`${label}: published Landlock package must not set "private": true`)
     }

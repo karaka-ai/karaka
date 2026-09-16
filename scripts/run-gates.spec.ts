@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi, type MockInstance } from 'vitest'
 import {
   cliGateOptions,
+  collectDescendants,
   defaultConcurrency,
   formatGateResultReason,
   gatesForMode,
@@ -927,6 +928,37 @@ describe('process-table parsing', () => {
 
   it('drops blank and malformed lines', () => {
     expect(parsePidPpidLines('  123   1\n\ncommand not found\n999 abc\n')).toEqual([[123, 1]])
+  })
+})
+
+describe('process-table descendants', () => {
+  it('returns reachable descendants in breadth-first order without changing the rows', () => {
+    const rows: Array<[number, number]> = [[4, 2], [2, 1], [3, 1], [5, 3], [8, 9]]
+    const original = structuredClone(rows)
+    expect(collectDescendants(1, rows)).toEqual([2, 3, 4, 5])
+    expect(rows).toEqual(original)
+    expect(collectDescendants(99, rows)).toEqual([])
+  })
+
+  it.each<{ name: string; rows: Array<[number, number]>; expected: number[] }>([
+    { name: 'root self-link', rows: [[1, 1], [2, 1]], expected: [2] },
+    { name: 'back-edge to root', rows: [[2, 1], [1, 2], [3, 2]], expected: [2, 3] },
+    { name: 'descendant cycle', rows: [[2, 1], [3, 2], [2, 3], [4, 3]], expected: [2, 3, 4] },
+    { name: 'duplicate rows', rows: [[2, 1], [2, 1], [3, 2], [3, 2]], expected: [2, 3] },
+  ])('visits each descendant once with $name', ({ rows, expected }) => {
+    expect(collectDescendants(1, rows)).toEqual(expected)
+  })
+
+  it('walks a wide process table without a variadic call limit', () => {
+    const children = Array.from({ length: 250_000 }, (_, index) => index + 3)
+    const rows: Array<[number, number]> = [[2, 1]]
+    for (const pid of children) rows.push([pid, 2])
+    expect(collectDescendants(1, rows)).toEqual([2, ...children])
+  })
+
+  it('walks a deep process chain without recursive calls', () => {
+    const rows: Array<[number, number]> = Array.from({ length: 20_000 }, (_, index) => [index + 2, index + 1])
+    expect(collectDescendants(1, rows)).toEqual(rows.map(([pid]) => pid))
   })
 })
 

@@ -63,7 +63,7 @@
   },
   "scripts": {
     "prepare:source": "node scripts/prepare-source.mjs",
-    "build": "node scripts/build-local.mjs"
+    "build": "pnpm --dir ../../.. run build:lib"
   },
   "main": "lib/index.js",
   "bin": {

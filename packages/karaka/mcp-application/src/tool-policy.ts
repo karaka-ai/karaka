@@ -7,7 +7,15 @@ import { applicationToolNames, registerPolicy } from './policy.ts'
 
 export const name = 'karaka-tool-policy'
 export const inject = ['tools']
-export interface Config { mode: 'native' | 'ptc' | 'both'; allow?: string[]; deny?: string[] }
+/** Tool presentation and inherited allow/deny lists for one Agent preset. */
+export interface Config {
+  /** Tool presentation mode. Default: native. */
+  mode: 'native' | 'ptc' | 'both'
+  /** Allowed public names; omission preserves an ancestor's restriction. */
+  allow?: string[]
+  /** Denied public names; deny overrides allow throughout the scope chain. */
+  deny?: string[]
+}
 export const Config = z.object({
   mode: z.union(['native', 'ptc', 'both']).default('native'),
   // An omitted list must stay omitted; Schemastery otherwise defaults arrays to [].
@@ -15,6 +23,7 @@ export const Config = z.object({
   deny: (z.array(String) as z<string[] | undefined>).default(undefined),
 }) as z<Config>
 
+/** Mount tool presentation and reversible Agent-scoped restrictions. */
 export function apply(ctx: Context, config: Config): void {
   Presentation.apply(ctx, { mode: config.mode })
   if (config.allow === undefined && config.deny === undefined) return

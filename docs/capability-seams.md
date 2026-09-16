@@ -7,6 +7,14 @@ A service can be a core spine service, a swappable capability seam, or a bundle/
 
 ```mermaid
 flowchart LR
+  pkg__karaka_ai_identity["@karaka-ai/identity"]
+  svc_karakaIdentity["ctx.karakaIdentity<br/>Application-owned durable conversations"]
+  pkg__karaka_ai_transport_http["@karaka-ai/transport-http"]
+  pkg__karaka_ai_mcp_application["@karaka-ai/mcp-application"]
+  pkg__karaka_ai_server_auth["@karaka-ai/server-auth"]
+  svc_serverAuth["ctx.serverAuth<br/>Application server authentication"]
+  pkg__karaka_ai_browser_auth["@karaka-ai/browser-auth"]
+  svc_karakaBrowserAuth["ctx.karakaBrowserAuth<br/>Browser Connection credential verification"]
   pkg_attachment["attachment"]
   svc_attachments["ctx.attachments<br/>Durable binary attachment storage"]
   pkg_attachment_local["attachment-local"]
@@ -224,6 +232,9 @@ flowchart LR
   pkg_cordis_host_runner["cordis-host-runner"]
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
+  pkg__karaka_ai_browser_auth --> svc_karakaBrowserAuth
+  pkg__karaka_ai_identity --> svc_karakaIdentity
+  pkg__karaka_ai_server_auth --> svc_serverAuth
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
   pkg_agent_loop --> svc_agentLoop
@@ -383,6 +394,9 @@ flowchart LR
   svc_jobs --> pkg_tool_jobs
   svc_jobs --> pkg_tool_subagent
   svc_jobs --> pkg_tool_terminal
+  svc_karakaBrowserAuth --> pkg__karaka_ai_transport_http
+  svc_karakaIdentity --> pkg__karaka_ai_mcp_application
+  svc_karakaIdentity --> pkg__karaka_ai_transport_http
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
@@ -391,6 +405,8 @@ flowchart LR
   svc_sandboxPolicy --> pkg_bash_sandbox
   svc_sandboxPolicy --> pkg_fs_sandbox
   svc_sandboxPolicy --> pkg_terminal_bash
+  svc_serverAuth --> pkg__karaka_ai_mcp_application
+  svc_serverAuth --> pkg__karaka_ai_transport_http
   svc_sessionPersistence --> pkg_agent_loop
   svc_sessionPersistence --> pkg_hooks_claude_code
   svc_sessionPersistence --> pkg_hooks_codex
@@ -474,6 +490,9 @@ flowchart LR
 
 | ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.karakaIdentity` | `core` | `@karaka-ai/identity` | - | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | The [identity package](../packages/karaka/identity/README.md) authorizes application owners before resolving durable conversation and session references. |
+| `ctx.serverAuth` | `seam` | `@karaka-ai/server-auth` | `@karaka-ai/server-auth` | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | The [server-auth package](../packages/karaka/server-auth/README.md) declares replaceable inbound and outbound authentication and supplies the shared-bearer provider. |
+| `ctx.karakaBrowserAuth` | `core` | `@karaka-ai/browser-auth` | - | `@karaka-ai/transport-http` | - | The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity. |
 | `ctx.attachments` | `seam` | [`attachment`](../packages/attachment/attachment) | [`attachment-local`](../packages/attachment/attachment-local) | [`api-session-controller`](../packages/api/session-controller), [`tool-fs`](../packages/fs/tool-fs), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-deepseek`](../packages/llm/llm-deepseek) | - | The host commits accepted images before session events; provider adapters resolve authorized durable references into provider-native content. |
 | `ctx.fileUploads` | `core` | [`client-file-upload`](../packages/client/file-upload) | - | [`api-session-controller`](../packages/api/session-controller) | - | Owns streaming intake, durable storage, and staged receipt lifetime; the Session controller binds receipts to accepted submissions. |
 | `ctx.llm` | `seam` | [`llm`](../packages/llm/llm) | [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-replay`](../packages/test-support/llm-replay) | [`agent-loop`](../packages/core/agent-loop), [`compaction-basic`](../packages/compaction/compaction-basic) | - | Adapters register provider implementations; the loop and compaction call the provider-neutral stream service. |

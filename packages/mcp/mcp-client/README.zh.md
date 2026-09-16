@@ -129,6 +129,13 @@ kind: "package-reference"
 
 工具调用会发送一次未缓存的 `tools/call` 请求，携带原始 MCP 名称、JSON 参数、中止信号与配置的超时；公开名称绝不会发给服务器，也绝不会被解析还原。规范成功值是 `{ content: JsonValue[], structuredContent? }`，为程序化调用方与 PTC 模式调用方保留完整的 MCP JSON 块。受支持且已声明的 `outputSchema` 会验证 `structuredContent`；不受支持的 schema 词汇回退为不受约束的 `JsonValue`。MCP 的 `isError` 结果会在任何图片持久化之前抛出，使注册表产生失败的工具结果。图片批次会先整体解码并校验，再保存任一成员；任何拒绝都会把每张图片投影为诊断文本。
 
+<a id="programmatic-extensions"></a>
+### 程序化扩展
+
+应用插件可以从包根导入 `startConnection` 和 `resolveReconnectPolicy`，并通过第四个参数传入可选的 `ConnectionExtensions`。这些回调是程序化输入，不是 `cordis.yml` 字段。省略它们时使用配置的 DSH 传输、普通 Tools 注册和不带应用元数据的调用。调用方负责启动失败策略、命名空间协调，以及将返回句柄的 `dispose()` 注册到自身插件生命周期。
+
+自定义传输工厂为每次尝试提供一个新的未连接传输；监督器负责关闭和重连生命周期。工具准备在构建新目录时、移除旧注册之前执行，因此准入失败保留旧目录。准备过程接收原始 MCP 工具描述，并保留每个定义的名称和远程分派身份。自定义注册负责其发布的所有贡献，失败时回滚部分工作，并返回完整清理函数。每次调用的元数据在远程分派前解析，拒绝会阻止请求。[Karaka 应用适配器](../../karaka/mcp-application/README.zh.md)通过这些扩展实现自身认证、模式准入和作用域策略。
+
 ### 环境清洗（stdio）
 
 子进程环境以子进程 seam 的 `scrubbedParentEnv()` 为基座——删除匹配 `/KEY|PASSWORD|SECRET|TOKEN/i` 的环境名称与所有 `DSH_*` 名称——再在其上合并配置的 `env`，因此显式覆盖得以保留。实际 spawn 由 MCP SDK 负责；本包共享清洗定义，而非 spawn 路径。

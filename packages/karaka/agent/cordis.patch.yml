@@ -15,7 +15,6 @@
     - id: llm-deepseek
       name: '@deepseek-ai/dsh-llm-deepseek'
       config:
-        baseURL: !!js process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com'
         apiKeyEnv: DEEPSEEK_API_KEY
         thinking: disabled
     - id: llm-retry

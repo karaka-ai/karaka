@@ -1,2 +1,4 @@
-/** Karaka application profile; launch through the upstream dsh CLI. */
-export const name = "karaka-agent"
+/** Karaka profile bundle metadata; the patch composes the application through DSH. */
+
+/** Stable bundle identity for package consumers. */
+export const name = 'karaka-agent'

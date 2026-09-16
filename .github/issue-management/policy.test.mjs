@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import test from 'node:test'
+import config from './config.json' with { type: 'json' }
 
 import {
   auditIssue,
@@ -18,6 +19,8 @@ import {
   validatePullRequest,
 } from './policy.mjs'
 
+const repositoryPath = `/repos/${config.organization}/${config.repository}`
+
 const projectGraphqlData = ({
   projectItem = true,
   priority = null,
@@ -32,7 +35,7 @@ const projectGraphqlData = ({
   organization: {
     projectV2: {
       id: 'project-id',
-      title: 'DSH Issue Management',
+      title: config.projectTitle,
       fields: {
         nodes: [
           {
@@ -279,11 +282,11 @@ test('removes reserved labels from Issues before validation', async (t) => {
   assert.deepEqual(validateIssue(repaired), [])
   assert.deepEqual(requests, [
     {
-      url: 'https://api.github.com/repos/deepseek-harness/deepseek-harness/issues/42/labels/kind%2Fbug-fix',
+      url: `https://api.github.com${repositoryPath}/issues/42/labels/kind%2Fbug-fix`,
       method: 'DELETE',
     },
     {
-      url: 'https://api.github.com/repos/deepseek-harness/deepseek-harness/issues/42/labels/bug-fix',
+      url: `https://api.github.com${repositoryPath}/issues/42/labels/bug-fix`,
       method: 'DELETE',
     },
   ])
@@ -327,18 +330,18 @@ test('deletes a stale audit comment after repairing its only violation', async (
   assert.deepEqual(
     requests.map(({ url, method }) => ({ path: new URL(url).pathname + new URL(url).search, method })),
     [
-      { path: '/repos/deepseek-harness/deepseek-harness/issues/42', method: 'GET' },
+      { path: `${repositoryPath}/issues/42`, method: 'GET' },
       { path: '/graphql', method: 'POST' },
       {
-        path: '/repos/deepseek-harness/deepseek-harness/issues/42/labels/kind%2Fbug-fix',
+        path: `${repositoryPath}/issues/42/labels/kind%2Fbug-fix`,
         method: 'DELETE',
       },
       {
-        path: '/repos/deepseek-harness/deepseek-harness/issues/42/comments?per_page=100',
+        path: `${repositoryPath}/issues/42/comments?per_page=100`,
         method: 'GET',
       },
       {
-        path: '/repos/deepseek-harness/deepseek-harness/issues/comments/99',
+        path: `${repositoryPath}/issues/comments/99`,
         method: 'DELETE',
       },
     ],
@@ -372,7 +375,9 @@ test('separates resolving and informational references', () => {
   )
 })
 
-test('converts PR creation timestamps to Shanghai Project dates', () => {
+test('uses Kolkata Project dates by default and accepts an explicit time zone', () => {
+  assert.equal(projectDate('2026-08-27T18:29:59Z'), '2026-08-27')
+  assert.equal(projectDate('2026-08-27T18:30:00Z'), '2026-08-28')
   assert.equal(projectDate('2026-08-27T15:59:59Z', 'Asia/Shanghai'), '2026-08-27')
   assert.equal(projectDate('2026-08-27T16:00:00Z', 'Asia/Shanghai'), '2026-08-28')
   assert.throws(() => projectDate('invalid', 'Asia/Shanghai'), /无效的 PR 创建时间/)
@@ -388,9 +393,9 @@ test('initializes every referenced Issue only for a PR opened event', async () =
 
   await initializePullRequestStartDates(pull, 'opened', initialize)
   assert.deepEqual(writes, [
-    { number: 4, date: '2026-08-28' },
-    { number: 7, date: '2026-08-28' },
-    { number: 12, date: '2026-08-28' },
+    { number: 4, date: '2026-08-27' },
+    { number: 7, date: '2026-08-27' },
+    { number: 12, date: '2026-08-27' },
   ])
 
   for (const action of ['edited', 'synchronize', 'reopened']) {
@@ -440,7 +445,7 @@ test('reads Priority and Status from Project custom fields', async (t) => {
   assert.equal(issue.priority, 'P1')
   assert.equal(issue.status, 'Inbox')
   assert.deepEqual(urls, [
-    'https://api.github.com/repos/deepseek-harness/deepseek-harness/issues/42',
+    `https://api.github.com${repositoryPath}/issues/42`,
     'https://api.github.com/graphql',
   ])
 })
@@ -655,7 +660,7 @@ test('toggles automation-owned work on request changes and repeated review reque
   let status = nextResolvingIssueStatus(
     'In review',
     'changes-requested',
-    'dsh-issue-management',
+    config.lifecycleActor,
   )
   assert.equal(status, 'In progress')
   status = nextResolvingIssueStatus(status, 'review-requested')

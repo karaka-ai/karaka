@@ -1,4 +1,5 @@
 /** Tool authoring uses the same DSH definitions and error identity as the server. */
+
 export {
   defineTool,
   ToolArgsError,

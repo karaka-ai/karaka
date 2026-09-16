@@ -1,21 +1,100 @@
-# Karaka identity
+---
+description: "Durable application ownership, Session lineage authorization, and owner-filtered references for Karaka deployments."
+kind: "package-reference"
+---
 
-`@karaka-ai/identity` adds `ctx.karakaIdentity` beside the original DSH Session, Agent, JSONL and query services. It changes none of their implementation files or durable event/header vocabulary. Configure an absolute `root` dedicated to this server's authority records and retain it alongside the JSONL session store in backups.
+# @karaka-ai/identity
 
-The plugin registers a dedicated original DSH JSON backend and schema-validated storage domain. Its `karaka_identity.json` file stores immutable application/tenant/user owners and a reservation, bound or ready state. Binding includes the original Session's immutable source fields, excluding the physical format version so upstream generation migrations do not change identity. Malformed authority or mismatching/missing acknowledged data refuses startup.
+English | [中文](README.zh.md)
 
-The controller holds `withChatLock` across reservation, original Agent creation or authorized resume, and acknowledgement. Creation awaits `bind` inside original Agent setup; `markReady` flushes original JSONL before writing readiness. A same-owner retry can replace an unmaterialized attempt's binding, but cannot claim an existing unowned log or recreate missing acknowledged data. Authorization precedes the original resume call because resume may repair the log before its setup callback.
+## Summary
 
-Tools derive identity from their executing original Session. Background and in-process child Sessions follow server-written `parentSession` headers to the bound authority root. Startup observations and live headers support synchronous catalog registration; execution performs asynchronous authority checks. Ordinary DSH Sessions receive no application owner. Cycles, missing ancestors and inconsistent roots grant no application access. HTTP input cannot supply lineage to this service.
+Keep application, tenant, and user ownership durable across chat creation and restart. Authorize a chat before resuming its DSH Session, and inherit ownership through trusted parent headers. Filter Session references to the same owner. Back up authority records together with Session logs and their ancestors.
 
-Select `@karaka-ai/identity/session-reference` instead of the original SessionReference provider in Karaka composition. This subclass retains upstream parsing, ranking, snapshots, budgets, spill files and durable context. Its public method overrides authorize every reference before the original content read and filter candidates before applying the result cap. Application Agents can reference only the same application/tenant/user; ordinary Agents cannot reference application chats. The inherited remote method and pre-step listener both dispatch through these overrides. `ownerOfId` supplies read-only authorization for cold candidates without resuming them.
+## Table of Contents
 
-Workflow and PTC workers reuse the original implementations: workflow workers send child requests back to a host `WorkerRun` retaining the original parent Agent; PTC workers invoke host binding closures retaining the original execution Agent. Neither route requires copying identity into worker data or opening a second authority store. The host child/MCP lifecycle enforces ownership. Source tracing establishes these routes; it is not a separately executed worker check.
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
-Original session-query tools retain workspace authorization. The application controller creates cwd-free roots; supported in-process spawn, fork and continuation inherit the original immutable cwd, and presets change composition rather than that header. Those application flows therefore retain same-session history access and the original refusal of workspace-free cross-session search. Application-wide history search would require an explicit owner-aware consumer; it is not implemented by changing the generic query engine.
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+Mount `@karaka-ai/identity` in `cordis.yml` with DSH storage, Sessions, and Session persistence. Configure an absolute `root` dedicated to this server’s authority records. Preserve this directory alongside the JSONL store in backups.
+
+Hold `withChatLock` across reservation, Agent creation or authorized resume, and acknowledgement. Bind the actual unpublished Session inside Agent setup; `markReady` flushes Session data before recording readiness. Authorization must precede resume because resume can repair persisted data.
+
+Select `@karaka-ai/identity/session-reference` as the Session reference provider. Application Agents can reference only the same application, tenant, and user; ordinary DSH Agents cannot reference application chats. Candidates are filtered before applying the result limit.
+
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Implementation internals — click to expand</summary>
+
+The [authority service](src/index.ts) stores reserved, bound, or ready records in the DSH JSON storage domain. [Bindings](src/records.ts) compare immutable Session fields without including the physical format version. Corrupt authority, conflicting bindings, and missing acknowledged data prevent access or startup. A same-owner retry may recreate an unmaterialized attempt, but cannot adopt an existing unowned log.
+
+Tools derive owners from their executing Session and server-written `parentSession` lineage. Cached observations support synchronous catalog selection; execution resolves authority again. Cycles, missing ancestors, and conflicting owners grant no application access. Ordinary DSH Sessions have no application owner.
+
+No invariant companion is published because the authority service checks durable records against observed Session headers at reservation, binding, authorization, and recovery; no separate diagnostic projection is maintained.
+
+</details>
+
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [Session](../../core/session/README.md): immutable headers and event logs.
+
+- [Session references](../../context/session-reference/README.md): reference content and budgets.
+
+- [Server authentication](../server-auth/README.md): authenticated application identities.
+
+-----
+
+<a id="model-experience"></a>
+## Model Experience
+
+### Authorization
+
+#### What the model sees
+
+`karakaIdentity` adds no prompt text. The Session reference provider permits owner-authorized context through the original DSH reference renderer; tool consumers use ownership to select available tools.
+
+#### Token effect
+
+Ownership records and checks add no model tokens; admitted reference content retains the DSH reference provider’s token budgets.
+
+#### KV Cache effect
+
+Authority checks do not alter an existing request prefix; authorized reference content and consumer tool selection can change subsequent model requests.
 
 ## Known Limitations and Deferred Work
 
-The writer lock uses the original native POSIX flock entry and supports Linux/macOS. Other platforms fail to start; there is no unlocked fallback. Keep the permanent lock file intact. All Karaka processes accessing one authority directory must use this plugin; filesystem operators and separate ordinary DSH deployments must not modify its session or authority storage concurrently. A backup/export containing only a JSONL child log lacks Karaka authority; preserve the authority file and ancestor logs together. Independent child retention, external subagent-provider identity and Windows authority locking remain unimplemented. DSH's Windows semaphore helper is internal to its JSONL package and is not exported in the published artifact, so this plugin does not import that source-only implementation. Root coordinates one end-to-end scenario; no package test suite has been run.
+<a id="known-limitations-and-deferred-work"></a>
 
-There is no separate `./invariant` entry: the authority checks are executed at reservation, binding, authorization and recovery, where original headers and durable records can disagree. No generic diagnostic registration is needed to invoke those checks.
+Deployments must account for these constraints.
+
+- The exclusive writer lock requires native POSIX flock and supports Linux/macOS. Windows authority locking is unsupported; no unlocked fallback is provided. Keep the permanent lock file intact.
+- All processes accessing an authority directory must use this plugin. Preserve the authority file and ancestor logs together; isolated child-log backups cannot reconstruct ownership. Independent child retention and external subagent-provider identity are unsupported.
+- Generic Session query tools retain workspace authorization. Cwd-free application roots have same-session history access; application-wide history search requires an owner-aware consumer.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

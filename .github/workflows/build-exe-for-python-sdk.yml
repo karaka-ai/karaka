@@ -362,6 +362,7 @@ jobs:
           }
 
       - name: Preflight installed-wheel real API test (POSIX)
+        id: live-api-posix
         if: >-
           inputs.ci
           && runner.os != 'Windows'
@@ -373,11 +374,15 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-            echo "::error::DEEPSEEK_API_KEY_EXTERNAL is empty; the installed-wheel real API test cannot self-skip."
-            exit 1
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping installed-wheel live API test: DEEPSEEK_API_KEY_EXTERNAL is not configured."
+            echo "Installed-wheel live API test skipped: configure DEEPSEEK_API_KEY_EXTERNAL to enable it." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Preflight installed-wheel real API test (Windows)
+        id: live-api-windows
         if: >-
           inputs.ci
           && runner.os == 'Windows'
@@ -389,16 +394,15 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:DEEPSEEK_API_KEY)) {
-            throw 'DEEPSEEK_API_KEY_EXTERNAL is empty; the installed-wheel real API test cannot self-skip.'
+            'enabled=false' >> $env:GITHUB_OUTPUT
+            Write-Output '::notice::Skipping installed-wheel live API test: DEEPSEEK_API_KEY_EXTERNAL is not configured.'
+            'Installed-wheel live API test skipped: configure DEEPSEEK_API_KEY_EXTERNAL to enable it.' >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            'enabled=true' >> $env:GITHUB_OUTPUT
           }
 
       - name: Run installed-wheel real API black-box test (POSIX)
-        if: >-
-          inputs.ci
-          && runner.os != 'Windows'
-          && (github.event_name != 'pull_request'
-              || !(github.event.pull_request.head.repo.fork
-                   || github.event.pull_request.user.login == 'dependabot[bot]'))
+        if: steps.live-api-posix.outputs.enabled == 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
           DEEPSEEK_BASE_URL: https://api.deepseek.com
@@ -413,12 +417,7 @@ jobs:
             --installed-wheel
 
       - name: Run installed-wheel real API black-box test (Windows)
-        if: >-
-          inputs.ci
-          && runner.os == 'Windows'
-          && (github.event_name != 'pull_request'
-              || !(github.event.pull_request.head.repo.fork
-                   || github.event.pull_request.user.login == 'dependabot[bot]'))
+        if: steps.live-api-windows.outputs.enabled == 'true'
         shell: pwsh
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
