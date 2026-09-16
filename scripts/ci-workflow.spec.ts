@@ -258,7 +258,8 @@ describe('CI workflow', () => {
       isRecord(step) && step.name === 'Configure persistent pnpm store' && typeof step.run === 'string'
     ))
     expect(serialStore).toBeDefined()
-    expect(serialStore!.run).toContain('F:\\.pnpm-store')
+    expect(serialStore!.run).toContain('[IO.Path]::GetPathRoot($env:GITHUB_WORKSPACE)')
+    expect(serialStore!.run).toContain("'.pnpm-store'")
     const serialInstall = serialSteps.find((step): step is Record<string, unknown> & { run: string } => (
       isRecord(step) && step.name === 'Install (immutable)' && typeof step.run === 'string'
     ))
