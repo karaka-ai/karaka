@@ -607,7 +607,7 @@ describe('headless stream-json snapshots', () => {
       configPath: teamConfigPath,
       binArgs: [
         teamConfigPath,
-        '请明确使用 Agent Teams，把调研和实现拆给两个 teammate，等待完成后汇总。',
+        '请先运行 workflow 检查，再使用 Agent Teams 把调研和实现拆给两个 teammate，等待完成后汇总。',
       ],
       tsconfigPath,
       processTimeoutMs: 60_000,
@@ -620,6 +620,15 @@ describe('headless stream-json snapshots', () => {
         const parent = logs.find(log => typeof log.header.parentSession !== 'string')
         if (parent === undefined) throw new Error('Agent Teams snapshot did not persist its Lead')
         const rows = parseJsonl(parent.content)
+        const workflowChild = logs.find(log => parseJsonl(log.content).some(row => row.type === 'subagent/descriptor'
+          && (row.data as JsonObject).mode === 'one-shot'))
+        if (workflowChild === undefined) throw new Error('Team profile did not persist its workflow child')
+        const workflowRows = parseJsonl(workflowChild.content)
+        expect(workflowRows.find(row => row.type === 'subagent/descriptor')?.data)
+          .toMatchObject({ mode: 'one-shot', provider: 'spawn' })
+        expect(workflowRows.filter(row => row.type === 'user/message'
+          && ((row.data as JsonObject).source as JsonObject).kind === 'user').map(row => row.data))
+          .toEqual([expect.objectContaining({ content: [{ type: 'text', text: 'TEAM_WORKFLOW_CHILD' }] })])
         const members = rows.filter(row => row.type === 'team/member')
           .map(row => ((row.data as JsonObject).member as JsonObject))
         const tasks = rows.filter(row => row.type === 'team/task')
@@ -668,9 +677,22 @@ describe('headless stream-json snapshots', () => {
           if (data.name !== 'team_task_update' || typeof data.arguments !== 'string') return false
           return (JSON.parse(data.arguments) as JsonObject).action === 'complete'
         })
+        const identityReminders = logs.flatMap((log) => {
+          if (log === parent || log === workflowChild) return []
+          const initial = parseJsonl(log.content).find(row => row.type === 'user/message'
+            && ((row.data as JsonObject).source as JsonObject).kind === 'user')
+          if (initial === undefined) throw new Error('Teammate Session has no initial task')
+          const content = (initial.data as JsonObject).content as JsonObject[]
+          expect(content).toHaveLength(2)
+          const identity = content[0]!.text
+          if (typeof identity !== 'string') throw new Error('Teammate initial task has no identity text')
+          return [identity.trimEnd()]
+        }).sort()
         projection = {
           sessions: logs.length,
+          workflowStopReason: (rows.find(row => row.type === 'tool-workflow/run-end')?.data as JsonObject)?.stopReason,
           memberEdges: members.length,
+          identityReminders,
           activeMembers: members.filter(member => member.phase === 'active').map(member => member.name).sort(),
           tasks: latestTasks.map(task => ({
             subject: task.subject,
@@ -705,9 +727,17 @@ describe('headless stream-json snapshots', () => {
         ],
         "checkedRoster": true,
         "deliveredMessages": 2,
+        "identityReminders": [
+          "<system-reminder>
+      You are teammate "implementer".
+      </system-reminder>",
+          "<system-reminder>
+      You are teammate "researcher".
+      </system-reminder>",
+        ],
         "memberEdges": 4,
         "queuedMessages": 2,
-        "sessions": 3,
+        "sessions": 4,
         "steerEvidence": {
           "completedAfterMessage": true,
           "enteredOpenTurn": true,
@@ -727,6 +757,7 @@ describe('headless stream-json snapshots', () => {
           },
         ],
         "waited": true,
+        "workflowStopReason": "completed",
       }
     `)
   }, 75_000)

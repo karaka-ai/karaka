@@ -262,12 +262,13 @@ class SystemdScopeOwner implements BoundProcessOwner {
    * Prove an active unit with no processes is the empty managed range rather
    * than a launch still placing its payload. systemd ends a scope only on the
    * populated-to-empty transition, so a payload killed before it entered the
-   * cgroup leaves the unit active forever. Requested termination plus a
-   * departed client makes that leftover conclusive: the client forked every
-   * process it will ever fork.
+   * cgroup leaves the unit active forever. A departed client cannot add another
+   * payload; a consumed request proves the payload already entered the scope,
+   * even while its direct-process exit notification is pending.
    */
   private emptyRange(tasksCurrent: number | undefined): boolean {
-    return this.terminationRequested && tasksCurrent === 0 && !this.direct.running()
+    return this.terminationRequested && tasksCurrent === 0
+      && (!this.direct.running() || !existsSync(this.startup.files.requestPath))
   }
 
   /** Release a leftover empty scope so the transient unit is collected and cannot accumulate. */

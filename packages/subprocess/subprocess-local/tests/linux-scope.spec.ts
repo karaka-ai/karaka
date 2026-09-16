@@ -487,6 +487,25 @@ describe('Linux scope establishment and quiescence', () => {
     launched.result.owner.cleanup?.()
   })
 
+  it('settles a consumed empty scope before its launcher reports exit after a failed kill', async () => {
+    denyProcessGroups()
+    const spawnSync = recordingSystemctl()
+      .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Invalid argument' })
+    const launched = launch(async () => activeUnitWithTasks('0'), { spawnSync: spawnSync as never })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    try {
+      await expect(launched.result.owner.waitForExit()).resolves.toBeUndefined()
+      expect(launched.child.exitCode).toBeNull()
+      expect(launched.child.signalCode).toBeNull()
+      expect(spawnSync.mock.calls.map(call => call[1]?.[1])).toEqual(['kill', 'stop'])
+    } finally {
+      launched.child.exit(null, 'SIGKILL')
+      await launched.result.direct
+      launched.result.owner.cleanup?.()
+    }
+  })
+
   it.each([
     { tasks: '1', clientRunning: false },
     { tasks: '[not set]', clientRunning: false },
@@ -496,7 +515,7 @@ describe('Linux scope establishment and quiescence', () => {
     const spawnSync = recordingSystemctl()
       .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Invalid argument' })
     const launched = launch(async () => activeUnitWithTasks(tasks), { spawnSync: spawnSync as never })
-    consumeLinuxLaunchRequest(launched.requestPath)
+    if (!clientRunning) consumeLinuxLaunchRequest(launched.requestPath)
     launched.result.owner.signal('SIGKILL')
     if (!clientRunning) launched.child.exit(null, 'SIGKILL')
     await expect(launched.result.owner.waitForExit()).rejects.toThrow('Invalid argument')
