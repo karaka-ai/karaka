@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -78,7 +78,7 @@ describe('browser dependency discovery', () => {
     await expect(browserBundledExternals(root)).rejects.toThrow('has no browser build config')
   })
 
-  it('follows shell workspace aliases, CSS assets and lazy imports without writing output', async () => {
+  it.each([false, true])('follows shell aliases, CSS and lazy imports without writing output (symlinked root: %s)', async (linked) => {
     const root = fixture()
     library(root, 'shell-lib')
     library(root, 'lazy-lib')
@@ -104,7 +104,13 @@ describe('browser dependency discovery', () => {
     }`)
     write(root, 'apps/web/dist/sentinel.txt', 'untouched')
 
-    expect(await browserBundledExternals(root)).toEqual(new Set(['shell-lib', 'lazy-lib', 'asset-lib']))
+    const scanRoot = linked ? join(fixture(), 'linked') : root
+    if (linked) symlinkSync(root, scanRoot, 'junction')
+    try {
+      expect(await browserBundledExternals(scanRoot)).toEqual(new Set(['shell-lib', 'lazy-lib', 'asset-lib']))
+    } finally {
+      if (linked) unlinkSync(scanRoot)
+    }
     expect(readFileSync(join(app, 'dist/sentinel.txt'), 'utf8')).toBe('untouched')
     expect(existsSync(join(app, 'dist/index.html'))).toBe(false)
     expect(existsSync(join(root, 'packages/client/static/lib'))).toBe(false)
