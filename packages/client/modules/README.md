@@ -71,6 +71,8 @@ The Node half snapshots each client bundle and available source map before publi
 
 ### Boot manifest injection
 
+The bundle route follows the injected `webServer` lifetime: it registers when the service is ready and is removed and re-registered when that service is replaced. Module composition and `fetchBundle()` remain available without a Web server.
+
 The host contributes structured index rows that inject, into `<head>`: the `window.__ModuleLoader__` queue facade, advisory preloads for every application combo, the parser-blocking bootstrap combo scripts, then the boot graph before the shell reads it. A Web carrier renders those rows into its index response; a shell-owned carrier can render the same rows without a Web server. The facade's `create()` materializes the modules bundle, delegates construction to its `createClientModuleSystem` export, and leaves the same facade in live-registration mode.
 
 ### Source map

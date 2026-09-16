@@ -33,3 +33,7 @@ Stable required entry ids are part of application assembly. Renaming one require
 ## Testing
 
 App-boot unit tests cover absent and disabled required ids, optional import failure, config evaluation failure, synchronous and asynchronous `apply()` failure, pending dependencies, and required failure teardown. The built Web-profile acceptance serves the full UI with optional failures and exits nonzero without readiness when the required HTTP port is occupied or `modules` or `connection` cannot activate.
+
+The [Web process matrix](../../../../apps/cli/tests/profiles/web/tests/web-failure-matrix.expected.e2e.ts) independently exercises optional and required failures at startup and after native patch-file edits. Authenticated HTTP requests and plugin lifecycle files distinguish a usable application from a surviving process. These keyless process checks complement the [controlled-delivery unit tests](../testing/2026-09-09-user-patch-hmr-test-delivery.md): unit tests isolate reconciliation failures, while the process tests also require the shipped launcher, native watcher, and bounded shutdown to work together.
+
+The matrix enables Chokidar's `awaitWriteFinish` to acknowledge stable file contents before each reload; otherwise its short change-event suppression window can discard the next test edit. Native events remain required, and assertions wait for observed activation or failure rather than a fixed settling sleep. This is explicit test configuration, not evidence for the default watcher timing.

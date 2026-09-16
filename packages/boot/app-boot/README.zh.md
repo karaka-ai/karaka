@@ -54,7 +54,7 @@ profile 是同一套 dsh 安装提供不同应用界面的方式：`web`、`head
 - **`.env`**——你的普通环境层：调用目录的文件优先于 harness home 的文件，两者都低于继承环境。在文件中设置的进程启动变量（如 `PATH`、`DSH_*`、`XDG_*`）会被拒绝：请改为导出这些变量。四个代理名（`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`）只从 harness home 的文件接受，绝不从调用目录的文件接受——后者随 clone 一起到来。对于只想加载某个目录 `.env` 的非产品 bin，文件缺失不影响启动，文件无法加载时输出一行带标签的警告。
 - **`cordis.patch.yml`**——你的 tweak 层，应用在所有组合包层之后（先应用逐 profile 的文件，再应用 home 级文件，因此后者优先级更高）：替换某个条目的整个配置（重述你要保留的字段）、插入新条目，或在启动时插值 `!!js` 表达式。patch 指定的条目不存在时输出 stderr 警告；空文件或仅含注释的文件会导致启动失败——如需禁用该层，请改用 `[]`。
 
-带 `patchReload: live` 的 profile 会监视两份用户 patch 文件。解析失败会保留运行中的配置；插件激活失败会被报告，并可能留下部分应用的配置树。后续有效编辑可以恢复它。Loader 更改不会回滚。`startup` profile 既不安装这些监视器，也不安装 launcher 的仅监视 HMR（热模块替换）回退。
+带 `patchReload: live` 的 profile 会监视两份用户 patch 文件，并应用[重载失败策略](#startup-and-reload-failures)。`startup` profile 既不安装这些监视器，也不安装 launcher 的仅监视 HMR（热模块替换）回退。
 
 插入条目的插件名可以是绝对文件系统路径、文件 URL 或包标识符。patch 加载会把 `insert` 条目及其嵌套分组中的绝对路径以及相对于 patch 文件的 `./` 或 `../` 路径转换为文件 URL；对已有条目名称的断言及替换用的 `config` 值保持原样。
 
@@ -62,21 +62,28 @@ profile 是同一套 dsh 安装提供不同应用界面的方式：`web`、`head
 
 启动前，你可以打印应用将挂载的确切配置：dump 会以 `!!js` 表达式原样展示组合后的条目列表，并按注释分组标明每个源文件及其 patch 层，输出是一份可加载的 YAML 文档。未匹配到任何行的 patch 会连同其层标签一起报告；配置缺失、无法解析或字段无效都会使 dump 失败。
 
-### 启动失败时你会看到什么
+<a id="startup-and-reload-failures"></a>
+### 启动与重载失败
 
-Loader 结算后，app-boot 按稳定 id 对每个已启用 entry 分类。Optional failure 输出一次警告，并让 active sibling 继续运行。Required failure 输出相同的 entry 详情，然后拆卸应用并拒绝启动。
+Loader 结算后，app-boot 将 optional 失败报告为警告；若已启用的 required 条目无法激活，则拒绝启动。表中的“终止启动”指释放已挂载插件并以非零码退出，不报告就绪；“继续”指保留成功运行的插件。后续配置 HMR 不会再次执行 required 启动审计，也不会回滚整个更新。
 
-| 失败模式 | Entry 结果 | 启动措施 |
-|---|---|---|
-| 根 YAML 无法读取或解析，或不是 entry list | Bootstrap Include 失败 | 拒绝并拆卸；不接受部分应用 |
-| Plugin module 无法 import | Entry 没有 fiber | Optional 时警告；required 时拒绝并拆卸 |
-| Entry 的 `disabled: !!js` 表达式抛出异常 | Entry 无法确定禁用状态；报告求值错误 | Optional 时警告；required 时拒绝并拆卸 |
-| Config expression 求值或 plugin config schema 在 activation 时失败 | Fiber 为 `FAILED`，保留校验错误 | Optional 时警告；required 时拒绝并拆卸 |
-| 同步 `apply()` throw | Fiber 为 `FAILED`，保留抛出的错误 | Optional 时警告；required 时拒绝并拆卸 |
-| 异步 `apply()` throw | Fiber 为 `FAILED`，保留抛出的错误 | Optional 时警告；required 时拒绝并拆卸 |
-| 必需的 injected service 始终未出现 | Fiber 保持 `PENDING`，并指出缺失 service | Optional 时警告；required 时拒绝并拆卸 |
+| 失败模式 | Optional 条目启动时 | Required 条目启动时 | 后续配置 HMR |
+|---|---|---|---|
+| 根配置或必需 overlay 缺失、不可读、格式错误，或包含无效条目 | 终止启动 | 终止启动 | 拒绝格式错误或无效的实时 patch，不改变运行中的配置；有效修改可以应用 |
+| 模块 import 失败或模块求值抛出异常 | 警告；继续 | 终止启动 | 报告错误；保留成功的兄弟插件；修正 import 后可以激活 |
+| 插件配置 schema 校验失败 | 警告；继续 | 终止启动 | 新条目保持未激活；现有条目保留原实例与配置；有效修正可以应用 |
+| 配置 `!!js` 求值抛出异常 | 警告；继续 | 终止启动 | 报告错误；保留成功的兄弟插件；有效修正后可以激活 |
+| `disabled: !!js` 求值抛出异常 | 警告；继续 | 终止启动 | 报告求值错误，不将条目当作已禁用；有效修正后可以激活 |
+| 同步 `apply()` throw | 警告；继续 | 终止启动 | 报告错误；保留成功的兄弟插件；修正配置后可以激活 |
+| 异步 `apply()` throw | 结算后警告；继续 | 结算后终止启动 | 结算后报告错误；保留成功的兄弟插件；修正配置后可以激活 |
+| 注入的服务不可用 | 警告；继续，条目等待依赖 | 终止启动 | 条目继续等待；补上缺失的提供方后可以激活 |
+| HTTP 端口绑定失败 | 警告；继续，但该端点不可用 | 终止启动 | 进程继续运行，但失败的端点不可用；修正配置后可以恢复 |
+| 脱离 `apply()` 返回 Promise 的异步任务产生未处理 rejection | 致命错误：释放应用并以非零码退出 | 致命错误：释放应用并以非零码退出 | 致命错误：释放应用并以非零码退出，与条目 id 无关 |
+| 条目缺失或被显式禁用 | 忽略 | 忽略 | 不激活该条目；不执行 required 启动审计 |
 
-App-boot 读取 failed fiber 来报告已记录的错误，并在一个进程检查点内合并 Loader 重复的 rejection 通知。无关的未处理 rejection 仍然致命。之后的 config HMR 会报告失败，但不会再次应用 required 启动策略，也不会恢复旧 plugin config；有效修改可以恢复失败的 entry。
+上面的 required 列表包含 `modules` 与 `connection`；只要其中一个已启用条目失败，Web 就无法成功启动。Optional 提供方失败也可能使 required 消费方无法激活。现有条目的新配置在更新前被 schema 校验拒绝，并不等于对兄弟插件的变更做事务回滚。
+
+[Web 进程矩阵](../../../apps/cli/tests/profiles/web/tests/web-failure-matrix.expected.e2e.ts)和[启动验收测试](../../../apps/cli/tests/profiles/web/tests/web-best-effort-startup.expected.e2e.ts)通过随附 Web profile 验证这些结果；[app-boot 测试](tests/app-boot.spec.ts)还覆盖根 Include 失败。
 
 如果你的应用持有终端，它可以在进程退出前把终端交还，你的 shell 绝不会残留在 raw 模式。交还过程有界：卡住的清理只会延迟致命退出，而不会取消它。
 
@@ -98,7 +105,7 @@ App-boot 读取 failed fiber 来报告已记录的错误，并在一个进程检
 
 - **与渠道无关的库。** 此包不包含 loader 钩子，也不提供开发模式接口；[`dsh` 应用](../../../apps/cli/README.zh.md) 持有自己的 Node 源码启动钩子，并在启动序列中使用这些 helper，构建后的消费方则使用普通 Node 包解析。
 - **两个 Loader builtin。** `mountRootInclude` 把 `cordis:include` 与 `cordis:group` 注册为 Loader builtin：group 行能把一个提供方与它的消费方放进同一个 `isolate` realm，而位于本工作区之外的 agent preset 无法按名称解析 `@deepseek-ai/cordis-plugin-group`。两者都通过宿主的模块管线加载，而非被包含树自身的说明符解析。
-- **由 consumer 持有严格语义。** 普通 Loader group 保留成功 sibling。App-boot 在首次结算后应用全局 required-entry policy；agent preset 与动态多 entry 组合在需要 all-or-nothing setup 时，持有并拆卸各自的独立 generation。
+- **由 consumer 持有严格语义。** 普通 Loader group 保留成功 sibling。App-boot 在首次结算后应用全局 required-entry policy；agent preset 与动态多 entry 组合在需要 all-or-nothing setup 时，持有并拆卸各自的独立 generation。App-boot 读取 failed fiber 来报告已记录的错误，并在一个进程检查点内合并 Loader 重复的 rejection 通知。
 - **Profile 模块后备机制。** 裸插件 specifier 由 Loader 从配置目录解析。普通 Node 会为安装依赖闭包中的每个包维护一个符号链接。打包可执行文件无法让操作系统符号链接进入 pkg 的 `/snapshot` 树，因此会按 Node ESM 条件读取已安装包的 export map，并写入重新导出虚拟模块 URL 的真实代理包。缺失 export 保持不可用，错误 export map 会让启动失败，跨进程 writer lock 则会在不暴露部分代理的情况下替换陈旧条目。所选外部组合包若不在安装闭包中，则会获得 profile 本地的 `.dsh-module-fallback` 链接；已有 pnpm 条目优先，后续闭包发现会排除投影链接，清理也只删除 dsh 自有链接。
 - **更新完成。** App boot 通过 `internal/update` waterfall 观察重启失败。实时 patch 重载在检查激活状态前等待配置树中的 fiber；单独调用 `Fiber.update()` 或 `Entry.update()` 不能确定重启成功。
 - **两阶段失败标签。** `boot()` 区分 `host preparation failed`（`prepare` 在任何配置树条目挂载前抛出）与 `plugin tree failed to load`。插件诊断包含原始堆栈、嵌套原因和聚合错误中的各项失败。原因链出现循环时，诊断遍历会终止，不会替换原始原因。

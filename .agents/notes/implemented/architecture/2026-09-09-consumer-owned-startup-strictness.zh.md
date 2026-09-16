@@ -33,3 +33,7 @@ Required id 为 `agent-loop`、`webserver`、`modules`、`connection`、`headles
 ## 测试
 
 App-boot 单元测试覆盖缺失和禁用的 required id、optional import failure、config evaluation failure、同步和异步 `apply()` failure、pending dependency，以及 required failure teardown。构建后的 Web-profile acceptance 会在 optional failure 存在时继续提供完整 UI，并在 required HTTP port 被占用或 `modules`、`connection` 无法激活时以非零码退出，且不报告就绪。
+
+[Web 进程矩阵](../../../../apps/cli/tests/profiles/web/tests/web-failure-matrix.expected.e2e.ts)分别验证启动时和原生补丁文件修改后的 optional 与 required 失败。经过认证的 HTTP 请求和插件生命周期文件区分可用应用与仅存活的进程。这些无需密钥的进程检查与[受控事件投递单元测试](../testing/2026-09-09-user-patch-hmr-test-delivery.zh.md)互补：单元测试隔离配置协调失败，进程测试还要求随附启动器、原生监听器和有界关闭流程协同工作。
+
+矩阵启用 Chokidar 的 `awaitWriteFinish`，在每次重载前确认文件内容已稳定；否则它的短暂 change 事件抑制窗口可能丢弃下一次测试编辑。测试仍然依赖原生事件，并等待观察到激活或失败，而不是固定时长的休眠。这是显式测试配置，不能证明默认监听器的时序行为。
