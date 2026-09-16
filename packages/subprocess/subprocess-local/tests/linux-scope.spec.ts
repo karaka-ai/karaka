@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { existsSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import {
   launchLinuxScope,
   prepareLinuxTerminalScope,
@@ -9,6 +10,7 @@ import {
   probeLinuxManager,
   probeLinuxNative,
   probeLinuxScope,
+  signalLinuxDirectProcess,
 } from '../src/linux-scope.ts'
 import type { LinuxScopeInternals } from '../src/linux-scope.ts'
 import {
@@ -42,6 +44,8 @@ class FakeChild extends EventEmitter {
   stdin = new PassThrough()
   stdout = new PassThrough()
   stderr = new PassThrough()
+  control = new PassThrough()
+  stdio = [this.stdin, this.stdout, this.stderr, null, null, null, null, this.control]
   kills: NodeJS.Signals[] = []
 
   kill(signal: NodeJS.Signals): boolean {
@@ -111,6 +115,7 @@ function spec() {
 function launch(
   query: LinuxScopeInternals['systemctlQuery'],
   overrides: LinuxScopeInternals = {},
+  request: SubprocessSpawnSpec = spec(),
 ) {
   const child = new FakeChild()
   let options: { env?: NodeJS.ProcessEnv; cwd?: string; detached?: boolean } | undefined
@@ -120,7 +125,7 @@ function launch(
   })
   const spawnSync = vi.fn(() => ({ status: 0, stdout: '', stderr: '' }))
   const systemctlQuery = overrides.systemctlQuery ?? query
-  const result = launchLinuxScope(spec(), { TARGET: 'yes' }, {
+  const result = launchLinuxScope(request, { TARGET: 'yes' }, {
     spawn: overrides.spawn ?? spawn as never,
     spawnSync: overrides.spawnSync ?? spawnSync as never,
     ...systemctlQuery === undefined ? {} : { systemctlQuery },
@@ -138,6 +143,26 @@ function launch(
 }
 
 describe('Linux native capability selection', () => {
+  it.each([
+    { delivered: true, error: undefined, accepted: true },
+    { delivered: false, error: undefined, accepted: false },
+    { delivered: false, error: 'ESRCH', accepted: true },
+    { delivered: false, error: 'EPERM', accepted: false },
+  ])('distinguishes direct signal delivery=$delivered and absence=$error', ({ delivered, error, accepted }) => {
+    const probe = vi.spyOn(process, 'kill').mockImplementation(() => {
+      if (error !== undefined) throw Object.assign(new Error(error), { code: error })
+      return true
+    })
+    expect(signalLinuxDirectProcess(123, () => delivered)).toBe(accepted)
+    if (delivered) expect(probe).not.toHaveBeenCalled()
+    else expect(probe).toHaveBeenCalledExactlyOnceWith(123, 0)
+  })
+
+  it('checks direct absence after a signal operation throws', () => {
+    vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('absent'), { code: 'ESRCH' }) })
+    expect(signalLinuxDirectProcess(123, () => { throw new Error('signal failed') })).toBe(true)
+  })
+
   it('rechecks bootstrap and literal transient-scope support', () => {
     const spawnSync = vi.fn(() => ({ status: 0, error: undefined }))
     const runnerAvailable = vi.fn(() => true)
@@ -425,6 +450,8 @@ describe('Linux scope establishment and quiescence', () => {
     const killFailed = launch(async () => activeUnit(), {
       spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'permission denied' })) as never,
     })
+    denyProcessGroups()
+    vi.spyOn(killFailed.child, 'kill').mockReturnValue(false)
     killFailed.result.owner.signal('SIGKILL')
     await expect(killFailed.result.owner.waitForExit()).rejects.toThrow('could not signal')
     killFailed.result.owner.cleanup?.()
@@ -487,6 +514,133 @@ describe('Linux scope establishment and quiescence', () => {
     launched.result.owner.cleanup?.()
   })
 
+  it.each([
+    { state: 'empty', fresh: activeUnitWithTasks('0'), settles: true },
+    { state: 'inactive', fresh: activeUnit('inactive'), settles: true },
+    { state: 'populated', fresh: activeUnitWithTasks('1'), settles: false },
+    { state: 'unknown', fresh: activeUnitWithTasks('[not set]'), settles: false },
+  ].flatMap(value => ['delivered', 'already absent'].map(delivery => ({ ...value, delivery }))))(
+    'joins a $delivery fallback kill before deciding a $state scope', async ({ fresh, settles, delivery }) => {
+      denyProcessGroups()
+      const firstRead = Promise.withResolvers<ReturnType<typeof activeUnit>>()
+      const queried = Promise.withResolvers<undefined>()
+      const query = vi.fn()
+        .mockImplementationOnce(() => { queried.resolve(undefined); return firstRead.promise })
+        .mockResolvedValueOnce(fresh)
+      const sleep = vi.fn(async () => { throw new Error('unexpected poll delay') })
+      const spawnSync = recordingSystemctl()
+        .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Invalid argument' })
+      const launched = launch(query, { sleep, spawnSync: spawnSync as never }, {
+        ...spec(), stdio: { ...spec().stdio, control: 'pipe' },
+      })
+      if (delivery === 'already absent') {
+        vi.spyOn(launched.child, 'kill').mockReturnValue(false)
+        vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('absent'), { code: 'ESRCH' }) })
+      }
+      consumeLinuxLaunchRequest(launched.requestPath)
+      launched.result.owner.signal('SIGKILL')
+      let completed = false
+      const waiting = launched.result.owner.waitForExit().finally(() => { completed = true })
+      void waiting.catch(() => {})
+      try {
+        await queried.promise
+        firstRead.resolve(activeUnitWithTasks('1'))
+        await new Promise<void>(resolve => setImmediate(resolve))
+        expect(completed).toBe(false)
+        expect(query).toHaveBeenCalledOnce()
+        expect(sleep).not.toHaveBeenCalled()
+        launched.child.exit(null, 'SIGKILL')
+        if (settles) await expect(waiting).resolves.toBeUndefined()
+        else await expect(waiting).rejects.toThrow('Invalid argument')
+        expect(query).toHaveBeenCalledTimes(2)
+        expect(sleep).not.toHaveBeenCalled()
+        expect(launched.result.control).toBe(launched.child.control)
+        expect(launched.child.stdout.destroyed).toBe(false)
+        expect(launched.child.control.destroyed).toBe(false)
+      } finally {
+        launched.child.exit(null, 'SIGKILL')
+        await launched.result.direct
+        launched.child.stdout.destroy()
+        launched.child.stderr.destroy()
+        launched.child.control.destroy()
+        launched.result.owner.cleanup?.()
+      }
+    },
+  )
+
+  it('reports failed scope and direct kill submission without awaiting direct exit', async () => {
+    denyProcessGroups()
+    const query = vi.fn(async () => activeUnitWithTasks('1'))
+    const launched = launch(query, {
+      spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'permission denied' })) as never,
+    })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    vi.spyOn(launched.child, 'kill').mockReturnValue(false)
+    launched.result.owner.signal('SIGKILL')
+    try {
+      await expect(launched.result.owner.waitForExit()).rejects.toThrow('permission denied')
+      expect(launched.child.signalCode).toBeNull()
+      expect(query).toHaveBeenCalledOnce()
+    } finally {
+      launched.child.exit(null, 'SIGKILL')
+      await launched.result.direct
+      launched.result.owner.cleanup?.()
+    }
+  })
+
+  it('reports a fresh surviving range immediately when direct exit precedes its query', async () => {
+    denyProcessGroups()
+    const query = vi.fn(async () => activeUnitWithTasks('1'))
+    const launched = launch(query, {
+      spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'Invalid argument' })) as never,
+    })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    launched.child.exit(null, 'SIGKILL')
+    await expect(launched.result.owner.waitForExit()).rejects.toThrow('Invalid argument')
+    expect(query).toHaveBeenCalledOnce()
+    await launched.result.direct
+    launched.result.owner.cleanup?.()
+  })
+
+  it('keeps a direct launch error observable while joining its settlement', async () => {
+    denyProcessGroups()
+    const firstRead = Promise.withResolvers<ReturnType<typeof activeUnit>>()
+    const query = vi.fn()
+      .mockImplementationOnce(() => firstRead.promise)
+      .mockResolvedValueOnce(activeUnit('inactive'))
+    const launched = launch(query, {
+      spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'Invalid argument' })) as never,
+    })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    const waiting = launched.result.owner.waitForExit()
+    firstRead.resolve(activeUnitWithTasks('1'))
+    await new Promise<void>(resolve => setImmediate(resolve))
+    const failure = new Error('direct process error')
+    const directFailure = expect(launched.result.direct).rejects.toBe(failure)
+    launched.child.emit('error', failure)
+    await directFailure
+    await expect(waiting).resolves.toBeUndefined()
+    expect(query).toHaveBeenCalledTimes(2)
+    launched.result.owner.cleanup?.()
+  })
+
+  it('retains state-query errors without awaiting direct settlement', async () => {
+    denyProcessGroups()
+    const failure = new Error('manager unreachable')
+    const launched = launch(async () => { throw failure }, {
+      spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'Invalid argument' })) as never,
+    })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    await expect(launched.result.owner.waitForExit()).rejects.toBe(failure)
+    expect(launched.child.signalCode).toBeNull()
+    launched.child.exit(null, 'SIGKILL')
+    await launched.result.direct
+    launched.result.owner.cleanup?.()
+  })
+
   it('settles a consumed empty scope before its launcher reports exit after a failed kill', async () => {
     denyProcessGroups()
     const spawnSync = recordingSystemctl()
@@ -515,6 +669,7 @@ describe('Linux scope establishment and quiescence', () => {
     const spawnSync = recordingSystemctl()
       .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Invalid argument' })
     const launched = launch(async () => activeUnitWithTasks(tasks), { spawnSync: spawnSync as never })
+    if (clientRunning) vi.spyOn(launched.child, 'kill').mockReturnValue(false)
     if (!clientRunning) consumeLinuxLaunchRequest(launched.requestPath)
     launched.result.owner.signal('SIGKILL')
     if (!clientRunning) launched.child.exit(null, 'SIGKILL')
@@ -754,7 +909,7 @@ describe('Linux PTY bootstrap reuse', () => {
     directories.push(linuxLaunchFilesFromLocator(requestPath).directory)
     let running = true
     const kill = vi.fn()
-    const owner = scope.bindOwner({ running: () => running, signal: kill })
+    const owner = scope.bindOwner({ running: () => running, signal: kill.mockReturnValue(true), settled: Promise.resolve() })
     owner.signal(signal)
     expect(kill).toHaveBeenCalledExactlyOnceWith(signal)
     running = false
@@ -777,7 +932,7 @@ describe('Linux PTY bootstrap reuse', () => {
     if (requestPath === undefined) throw new Error('missing PTY request')
     expect(scope.args.slice(-3)).toEqual(['--', 'bash', '--noprofile'])
     expect(consumeLinuxLaunchRequest(requestPath)).toEqual({ cwd: '/target', env: { TARGET: 'yes' } })
-    const owner = scope.bindOwner({ running: () => false, signal: vi.fn() })
+    const owner = scope.bindOwner({ running: () => false, signal: vi.fn(() => true), settled: Promise.resolve() })
     await expect(owner.waitForExit()).resolves.toBeUndefined()
     expect(scope.resolveOutcome({ exitCode: 0, signal: null })).toEqual({ exitCode: 0, signal: null })
     scope.cleanup()
@@ -802,7 +957,7 @@ describe('Linux PTY bootstrap reuse', () => {
     const requestPath = scope.env[SUBPROCESS_RUNNER_ENV]
     if (requestPath === undefined) throw new Error('missing PTY request')
     directories.push(linuxLaunchFilesFromLocator(requestPath).directory)
-    scope.bindOwner({ running: () => true, signal: vi.fn() })
+    scope.bindOwner({ running: () => true, signal: vi.fn(() => true), settled: Promise.resolve() })
     expect(() => scope.resolveOutcome({ exitCode: 1, signal: null })).toThrow(
       'before its bootstrap consumed',
     )

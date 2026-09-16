@@ -157,7 +157,10 @@ export function probeLinuxNative(internals: LinuxScopeInternals = {}): boolean {
 
 interface DirectRange {
   running(): boolean
-  signal(signal: 'SIGTERM' | 'SIGKILL'): void
+  /** Report successful delivery or proven direct-process absence. */
+  signal(signal: 'SIGTERM' | 'SIGKILL'): boolean
+  /** Direct exit/error settlement, independent of output drain and managed-range completion. */
+  settled: Promise<unknown>
 }
 
 class LinuxScopeStartup {
@@ -182,6 +185,7 @@ class SystemdScopeOwner implements BoundProcessOwner {
   private terminationRequested = false
   private observation: Promise<void> | undefined
   private killFailure: Error | undefined
+  private directKillSettlement: Promise<void> | undefined
   private wakeGeneration = 0
   private wakeWaiter: { generation: number; resolve: () => void } | undefined
 
@@ -201,7 +205,8 @@ class SystemdScopeOwner implements BoundProcessOwner {
     if (this.direct.running()) this.startup.terminationSignals.add(signal)
     this.observeRequestConsumption()
     const directFallbackRequired = this.establishment === 'pending'
-    if (directFallbackRequired && this.direct.running()) this.direct.signal(signal)
+    let directSignalled = false
+    if (directFallbackRequired && this.direct.running()) directSignalled = this.direct.signal(signal)
     const result = this.runSync(this.systemctl, [
       '--user',
       'kill',
@@ -211,16 +216,23 @@ class SystemdScopeOwner implements BoundProcessOwner {
     ], { encoding: 'utf8', env: managerEnvironment(), timeout: SYSTEMCTL_TIMEOUT_MS })
     this.wakeObservation()
     if (result.error === undefined && result.status === 0) {
-      if (signal === 'SIGKILL') this.killFailure = undefined
+      if (signal === 'SIGKILL') {
+        this.killFailure = undefined
+        this.directKillSettlement = undefined
+      }
       return
     }
-    if (!directFallbackRequired && this.direct.running()) this.direct.signal(signal)
+    if (!directFallbackRequired && this.direct.running()) directSignalled = this.direct.signal(signal)
     if (signal === 'SIGKILL') {
       const output = `${result.stdout}\n${result.stderr}`
       if (!MISSING_UNIT.test(output)) {
         this.killFailure = result.error ?? new Error(
           `systemctl could not signal ${this.unit}: ${output.trim() || `exit ${String(result.status)}`}`,
         )
+        // The direct outcome retains errors; this barrier only joins its physical settlement.
+        this.directKillSettlement = directSignalled
+          ? this.direct.settled.then(() => {}, () => {})
+          : undefined
       }
     }
   }
@@ -321,6 +333,7 @@ class SystemdScopeOwner implements BoundProcessOwner {
   private async rangeActive(): Promise<boolean> {
     this.observeRequestConsumption()
     const generation = this.wakeGeneration
+    const directRunning = this.direct.running()
     const result = await this.query(this.systemctl, [
       '--user',
       'show',
@@ -349,7 +362,16 @@ class SystemdScopeOwner implements BoundProcessOwner {
         this.releaseEmptyRange()
         return false
       }
-      if (this.killFailure !== undefined) throw this.killFailure
+      if (this.killFailure !== undefined) {
+        if (directRunning && this.directKillSettlement !== undefined) {
+          const settlement = this.directKillSettlement
+          this.directKillSettlement = undefined
+          await settlement
+          // A query preceding direct exit cannot prove that its signalled processes survived.
+          return this.rangeActive()
+        }
+        throw this.killFailure
+      }
       return true
     }
     if (!MISSING_UNIT.test(output)) {
@@ -446,11 +468,29 @@ function directOutcome(
   })
 }
 
-function signalChildGroup(child: ReturnType<typeof spawn>, signal: 'SIGTERM' | 'SIGKILL'): void {
+/**
+ * Send a direct-process signal, distinguishing an absent PID from failed delivery.
+ * @param pid - owned direct-process identity whose exit notification can still be pending.
+ * @param send - platform signal operation; true means the signal was submitted.
+ * @returns whether the signal was submitted or the owned PID is already absent.
+ */
+export function signalLinuxDirectProcess(pid: number, send: () => boolean): boolean {
   try {
-    process.kill(-(child.pid as number), signal)
+    if (send()) return true
+  } catch { /* A failed signal still permits an independent absence observation. */ }
+  try {
+    process.kill(pid, 0)
+    return false
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH'
+  }
+}
+
+function signalChildGroup(child: ReturnType<typeof spawn>, signal: 'SIGTERM' | 'SIGKILL'): boolean {
+  try {
+    return process.kill(-(child.pid as number), signal)
   } catch {
-    try { child.kill(signal) } catch { /* The direct process already exited. */ }
+    return signalLinuxDirectProcess(child.pid as number, () => child.kill(signal))
   }
 }
 
@@ -535,12 +575,14 @@ export function launchLinuxScope(
     cleanupLinuxLaunchFiles(files)
     throw error
   }
+  const direct = directOutcome(child, startup)
   const owner = new SystemdScopeOwner(
     `${unitBase}.scope`,
     startup,
     {
       running: () => child.pid !== undefined && child.exitCode === null && child.signalCode === null,
-      signal: (signal) => { signalChildGroup(child, signal) },
+      signal: signal => signalChildGroup(child, signal),
+      settled: direct,
     },
     internals.systemctl ?? 'systemctl',
     internals.spawnSync ?? spawnSync,
@@ -552,7 +594,7 @@ export function launchLinuxScope(
     stdout: child.stdout,
     stderr: child.stderr,
     control: controlPipe(child, spec.stdio.control),
-    direct: directOutcome(child, startup),
+    direct,
     owner,
   }
 }

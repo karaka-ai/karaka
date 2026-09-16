@@ -35,6 +35,7 @@ import {
   prepareLinuxTerminalScope,
   probeLinuxManager,
   probeLinuxNative,
+  signalLinuxDirectProcess,
 } from './linux-scope.ts'
 import { launchWindowsJob, probeWindowsJob } from './windows-job.ts'
 import { targetEnvironment } from './runner-launch.ts'
@@ -281,11 +282,12 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     }
     // oxlint-disable-next-line eslint/prefer-const -- The owner can query readiness before the handle is published.
     let handle: LocalTerminalHandle | undefined
+    const directSettlement = Promise.withResolvers<void>()
     const owner = scope?.bindOwner({
       running: () => handle?.running ?? true,
-      signal: (signal) => {
-        try { terminal.kill(signal) } catch { /* Direct process already exited. */ }
-      },
+      settled: directSettlement.promise,
+      // node-pty swallows signal errors; the scope owner requires their delivery result.
+      signal: signal => signalLinuxDirectProcess(terminal.pid, () => process.kill(terminal.pid, signal)),
     })
     handle = new LocalTerminalHandle(
       terminal,
@@ -297,6 +299,7 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     )
     this.terminals.add(handle)
     const release = async (): Promise<void> => {
+      directSettlement.resolve()
       await handle.terminate()
       this.terminals.delete(handle)
     }

@@ -5,6 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessSpawnSpec, SubprocessTerminalHandle, SubprocessTerminalSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { childEnv } from '../src/spawn.ts'
+import { signalLinuxDirectProcess } from '../src/linux-scope.ts'
 
 function mockWin32ForIsolatedRuntime(): void {
   vi.doMock('@deepseek-ai/dsh-win32-process', () => ({
@@ -388,14 +389,15 @@ describe('LocalSubprocessRuntime', () => {
       ...await importOriginal<typeof import('../src/process-inspector.ts')>(),
       createProcessInspector: () => inspector,
     }))
+    vi.doMock('../src/linux-scope.ts', async importOriginal => ({
+      ...await importOriginal<typeof import('../src/linux-scope.ts')>(),
+      probeLinuxNative: () => false,
+    }))
     try {
       const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
       const ctx = new Context()
       const fiber = await ctx.plugin(IsolatedLocalSubprocessRuntime)
       const service = ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
-      // Pins the containment choice: with the host's native scope a mocked PTY
-      // exit races the scope bootstrap.
-      service.internals = { platform: 'darwin' }
       const handle = await ctx.subprocess.spawnTerminal({
         argv: ['shell'], cwd: process.cwd(), rows: 24, cols: 80, graceMs: 1,
       })
@@ -407,6 +409,7 @@ describe('LocalSubprocessRuntime', () => {
     } finally {
       vi.doUnmock('node-pty')
       vi.doUnmock('../src/process-inspector.ts')
+      vi.doUnmock('../src/linux-scope.ts')
       unmockWin32ForIsolatedRuntime()
       vi.resetModules()
     }
@@ -415,8 +418,13 @@ describe('LocalSubprocessRuntime', () => {
   it('wraps Linux terminals in the selected scope and binds owner liveness', async () => {
     let exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined
     let launcherRunning: (() => boolean) | undefined
-    let launcherSignal: ((signal: 'SIGTERM' | 'SIGKILL') => void) | undefined
-    const terminalKill = vi.fn(() => { throw new Error('terminal already exited') })
+    let launcherSignal: ((signal: 'SIGTERM' | 'SIGKILL') => boolean) | undefined
+    let launcherSettlement: Promise<unknown> | undefined
+    const directProbe = vi.spyOn(process, 'kill').mockImplementation((_pid, signal) => {
+      if (signal === 0) return true
+      throw Object.assign(new Error('denied'), { code: 'EPERM' })
+    })
+    const terminalKill = vi.fn(() => {})
     const terminal = {
       pid: 123,
       onData: () => ({ dispose: () => {} }),
@@ -434,9 +442,10 @@ describe('LocalSubprocessRuntime', () => {
       terminateForHostExit: vi.fn(),
     }
     const launcherStates: boolean[] = []
-    const bindOwner = vi.fn((direct: { running(): boolean; signal(signal: 'SIGTERM' | 'SIGKILL'): void }) => {
+    const bindOwner = vi.fn((direct: { running(): boolean; signal(signal: 'SIGTERM' | 'SIGKILL'): boolean; settled: Promise<unknown> }) => {
       launcherRunning = () => direct.running()
-      launcherSignal = (signal) => { direct.signal(signal) }
+      launcherSignal = signal => direct.signal(signal)
+      launcherSettlement = direct.settled
       launcherStates.push(direct.running())
       return owner
     })
@@ -468,6 +477,7 @@ describe('LocalSubprocessRuntime', () => {
     mockWin32ForIsolatedRuntime()
     vi.doMock('node-pty', () => ({ spawn: nodePtySpawn }))
     vi.doMock('../src/linux-scope.ts', () => ({
+      signalLinuxDirectProcess,
       launchLinuxScope: vi.fn(),
       prepareLinuxTerminalScope,
       probeLinuxManager,
@@ -505,17 +515,31 @@ describe('LocalSubprocessRuntime', () => {
       expect(bindOwner).toHaveBeenCalledOnce()
       expect(launcherStates).toEqual([true])
       expect(launcherRunning?.()).toBe(true)
-      expect(() => { launcherSignal?.('SIGTERM') }).not.toThrow()
-      expect(terminalKill).toHaveBeenCalledExactlyOnceWith('SIGTERM')
+      expect(launcherSignal?.('SIGTERM')).toBe(false)
+      expect(terminalKill).not.toHaveBeenCalled()
+      directProbe.mockImplementationOnce(() => true)
+      expect(launcherSignal?.('SIGKILL')).toBe(true)
+      directProbe.mockImplementation(() => { throw Object.assign(new Error('absent'), { code: 'ESRCH' }) })
+      expect(launcherSignal?.('SIGKILL')).toBe(true)
+      expect(directProbe.mock.calls).toEqual([
+        [123, 'SIGTERM'], [123, 0], [123, 'SIGKILL'], [123, 'SIGKILL'], [123, 0],
+      ])
+      let directSettled = false
+      void launcherSettlement?.then(() => { directSettled = true })
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect(directSettled).toBe(false)
 
       exitListener?.({ exitCode: 0 })
       expect(launcherRunning?.()).toBe(false)
+      await launcherSettlement
+      expect(directSettled).toBe(true)
       await handle.done
       await new Promise(resolve => setImmediate(resolve))
       expect(owner.signal).toHaveBeenCalledExactlyOnceWith('SIGTERM')
       expect(owner.waitForExit).toHaveBeenCalledOnce()
     } finally {
       await fiber?.dispose()
+      directProbe.mockRestore()
       vi.doUnmock('node-pty')
       vi.doUnmock('../src/linux-scope.ts')
       unmockWin32ForIsolatedRuntime()
@@ -553,6 +577,7 @@ describe('LocalSubprocessRuntime', () => {
     mockWin32ForIsolatedRuntime()
     vi.doMock('node-pty', () => ({ spawn: nodePtySpawn }))
     vi.doMock('../src/linux-scope.ts', () => ({
+      signalLinuxDirectProcess,
       launchLinuxScope: vi.fn(),
       prepareLinuxTerminalScope,
       probeLinuxManager: () => true,
@@ -725,6 +750,7 @@ describe('LocalSubprocessRuntime', () => {
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
     vi.doMock('../src/linux-scope.ts', () => ({
+      signalLinuxDirectProcess,
       launchLinuxScope,
       prepareLinuxTerminalScope: vi.fn(),
       probeLinuxManager,
@@ -803,6 +829,7 @@ describe('LocalSubprocessRuntime', () => {
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
     vi.doMock('../src/linux-scope.ts', () => ({
+      signalLinuxDirectProcess,
       launchLinuxScope: vi.fn(),
       prepareLinuxTerminalScope: vi.fn(),
       probeLinuxManager,
