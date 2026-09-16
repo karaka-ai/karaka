@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, ToolCallId  } from '@deepseek-ai/dsh-llm'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { Scope } from '@deepseek-ai/dsh-scope'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { CodeRuntime } from '@deepseek-ai/dsh-code-runtime'
 import type { CodeRunRequest, CodeRunResult } from '@deepseek-ai/dsh-code-runtime'
 import ToolRuntime, { CodeRunFailedError, RUN_CODE_NAME, TOOL_ABORTED_BEFORE_DISPATCH, defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
@@ -117,6 +117,38 @@ async function runCode(
 }
 
 describe('mode-aware wire contribution', () => {
+  it.each([
+    { mode: 'ptc', language: 'typescript' },
+    { mode: 'both', language: 'typescript' },
+    { mode: 'ptc', language: 'python' },
+    { mode: 'both', language: 'python' },
+  ] as const)('preserves literal braces in the $language SDK under $mode', async ({ mode, language }) => {
+    const { ctx, systemPrompt } = await setup({ mode, runtime: { language } })
+    try {
+      systemPrompt.variable('model', () => 'actual-model')
+      const description = 'Expand {{item}} with {{model}} or {{ model }}.'
+      ctx.tools.register(defineTool({
+        name: 'template',
+        description,
+        parameters: { value: { type: 'string', description, enum: ['{{item}}', '{{model}}'], required: true } },
+        output: {
+          schema: { type: 'string', enum: ['{{item}}', '{{model}}'] },
+          render: (_args, value) => [{ type: 'text', text: value }],
+        },
+        execute: args => Promise.resolve(args.value),
+      }))
+      const assembly = await systemPrompt.assemble()
+      const sdk = assembly.sections.find(section => section.name === 'tools:sdk')
+      expect(sdk).toBeDefined()
+      const prompt = renderPrompt(assembly)
+      expect(prompt).toContain(description)
+      expect(prompt).toContain(sdk!.text)
+      expect(prompt).not.toContain('actual-model')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it("mode 'native' contributes every schema, no run_code, no SDK section — and needs no runtime", async () => {
     const { ctx, systemPrompt } = await setup({ mode: 'native', runtime: false })
     registerEcho(ctx)

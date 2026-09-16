@@ -191,6 +191,10 @@ interface ToolArgsMap {
     /** The task for the subagent. It already sees this conversation's completed turns, so build on them freely and state only what is new. */
     prompt: string;
   } & Record<string, JsonValue>;
+  /** Echo template text such as {{item}}, {{model}}, or {{ item }} without substitution. */
+  template_echo: {
+    text: string;
+  } & Record<string, JsonValue>;
   /** Record and update a structured task list for the current work. Send the ENTIRE list every call — it REPLACES the previous list (there are no partial updates, no per-item edits). Use it to plan multi-step work and show progress: add one todo per concrete step before you start. Mark every todo being actively worked on `in_progress` — several at once when work genuinely runs in parallel (e.g. concurrent subagents or background commands), one for sequential work; while work remains, at least one task should be `in_progress`. Mark a todo `completed` the moment it is done (do not batch completions), and allow no `in_progress` item only once all work is complete. Skip the list for trivial single-step tasks. Statuses: `pending` (not started), `in_progress` (being worked on now), `completed` (finished). */
   todo_write: {
     /** The COMPLETE task list, replacing any previous list. */
@@ -466,6 +470,7 @@ interface ToolOutputMap {
     runId: string;
     output: JsonValue[];
   };
+  template_echo: string;
   todo_write: {
     todos: ({
       content: string;

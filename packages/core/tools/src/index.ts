@@ -13,7 +13,7 @@ import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { assertNever, deepFreeze, snapshotJsonValue, type JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { ToolProviderResult } from '@deepseek-ai/dsh-system-prompt'
+import type { PromptSection, ToolProviderResult } from '@deepseek-ai/dsh-system-prompt'
 import type { CodeRuntime } from '@deepseek-ai/dsh-code-runtime'
 // Type-only: makes `ctx.get('approval')` resolve to the ApprovalService
 // augmentation. The seam stays optional at runtime — see `serviceAsk`.
@@ -844,7 +844,7 @@ export class ToolRuntime extends Service {
    * `both` renders empty: native calls do execute there, so the rule is false.
    * @returns the section registration.
    */
-  private collapseSection(): { name: string; order: number; text: (context: { scope?: ScopeKey }) => string } {
+  private collapseSection(): PromptSection {
     return {
       name: 'tools:ptc-only',
       order: this.ctx.systemPrompt.getSectionOrder('PTC_ONLY'),
@@ -864,10 +864,11 @@ export class ToolRuntime extends Service {
    * dropped from the rendered prompt.
    * @returns the section registration.
    */
-  private sdkSection(): { name: string; order: number; text: (context: { scope?: ScopeKey }) => string } {
+  private sdkSection(): PromptSection {
     return {
       name: 'tools:sdk',
       order: this.ctx.systemPrompt.getSectionOrder('TOOLS_SDK'),
+      interpolate: false,
       // Regenerate from the calling scope's visible tools in stable order.
       text: (context) => {
         const mode = this.modeFor(context.scope)
