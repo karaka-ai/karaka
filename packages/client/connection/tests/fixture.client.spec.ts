@@ -1635,6 +1635,35 @@ describe('fixture Connection RPC', () => {
     vi.unstubAllGlobals()
   })
 
+  it.each(['turn-end', 'omitted', 'past-end'] as const)('forks through the completed turn for a %s anchor', async (anchor) => {
+    vi.stubGlobal('__fxTiming', (globalThis as Record<string, unknown>).__fxTiming)
+    const { rpc } = createFixtureFaces()
+    const sessions = createSessionClient(rpc)
+    const sourceId = sid('fx-alpha')
+    const initial = await sessions.history({ sessionId: sourceId, maxMessages: 1000 })
+    if (!initial.result.ok) throw new Error('source history failed')
+    const events = historyEvents(initial.result.value.records)
+    const boundary = events.findLast(event => event.type === 'turn/end')
+    if (boundary === undefined) throw new Error('source has no completed turn')
+    expect(initial.result.value.hasMore).toBe(false)
+    expect((await sessions.rename({ sessionId: sourceId, title: 'Title after the selected turn' })).result.ok).toBe(true)
+    const source = await sessions.history({ sessionId: sourceId, maxMessages: 1000 })
+    if (!source.result.ok) throw new Error('source history after rename failed')
+    const fork = await rpc.call('/api', 'session/fork', {
+      args: { request: {
+        sessionId: sourceId,
+        ...(anchor === 'omitted' ? {} : { atSeq: anchor === 'turn-end' ? boundary.seq : events.length + 100 }),
+      } },
+    })
+    if (!fork.ok) throw new Error('fork failed')
+    const childId = (fork.value as { sessionId: SessionId }).sessionId
+    const child = await sessions.history({ sessionId: childId, maxMessages: 1000 })
+    if (!child.result.ok) throw new Error('child history failed')
+    expect(child.result.value.hasMore).toBe(false)
+    expect(historyEvents(child.result.value.records)).toEqual(events.slice(0, boundary.seq + 1))
+    expect(await sessions.history({ sessionId: sourceId, maxMessages: 1000 })).toMatchObject({ result: source.result })
+  })
+
   it('covers the migrated Remote dispatch table', async () => {
     const rpc = createFixtureConnectionRpc()
     const sessions = createSessionClient(rpc)
