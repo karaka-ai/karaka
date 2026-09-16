@@ -3,7 +3,7 @@ import { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type {
   AttachmentStore,
   ImageAttachmentRef,
-  ImageRequestPolicy,
+  ImageRequestTarget,
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import { ToolCallId, createMessage, createUserMessage, offloadedImageText } from '@deepseek-ai/dsh-llm'
@@ -38,7 +38,7 @@ function requestImage(value: ImageAttachmentRef, data: Uint8Array): RequestImage
 function projectionStore(
   readImageRequest: (
     value: ImageAttachmentRef,
-    policy: ImageRequestPolicy,
+    target: ImageRequestTarget,
     signal?: AbortSignal,
   ) => Promise<RequestImageAttachment> = vi.fn((value: ImageAttachmentRef) => (
     Promise.resolve(requestImage(value, Uint8Array.of(1)))

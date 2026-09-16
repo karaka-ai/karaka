@@ -1003,8 +1003,13 @@
     },
     {
       "doc": "docs/subsystems/attachment.md",
-      "symbol": "ImageRequestPolicy",
+      "symbol": "ImageRequestTarget",
       "source": "packages/attachment/attachment/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/attachment.md",
+      "symbol": "ProjectedDimensions",
+      "source": "packages/attachment/attachment/src/request-projection.ts"
     },
     {
       "doc": "docs/subsystems/attachment.md",

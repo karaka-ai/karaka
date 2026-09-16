@@ -1,6 +1,6 @@
 /**
  * Provider-side request-image pricing for DeepSeek routes: reproduces the
- * adapter's deterministic request projection (per-model pixel budget,
+ * adapter's deterministic request projection (per-model request target,
  * oldest-first offload under the raw-byte and count budgets) and prices every
  * retained image with the published vision-token accounting. Consumed
  * synchronously by the token meter through `LlmAdapter.imageRequestPricing`;
@@ -11,38 +11,57 @@
 
 import { offloadedImageText, offloadedImagePrefixCount, requestImageHandleText, textOnlyImageText } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentAccessResolver, LlmImageRequestPrice, LlmImageRequestPricing } from '@deepseek-ai/dsh-llm'
-import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
-import type { ImageAttachmentRef, ImageRequestPolicy } from '@deepseek-ai/dsh-attachment'
-import { deepSeekImageTokens } from './image-tokens.ts'
+import { longEdgeDimensions, requestImageDimensions } from '@deepseek-ai/dsh-attachment'
+import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
+import { deepSeekImageTokens, deepSeekRequestImageDimensions } from './image-tokens.ts'
 import type { DeepSeekCatalogModel, DeepSeekConnectionOptions } from './adapter.ts'
 
 /** Default bound on accumulated file-referenced image bytes per request. */
 export const DEFAULT_MAX_REQUEST_FILES_BYTES = 128 * 1024 * 1024
 /** Provider request image-count limit. */
 export const DEFAULT_MAX_IMAGES_PER_REQUEST = 600
-/** Default total-pixel budget for harness request-image projection. */
-export const DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET = 640_000
 /** Total-pixel budget matching provider low-detail image input. */
 export const DEFAULT_LOW_DETAIL_IMAGE_PIXEL_BUDGET = 512 * 512
 /** Encoded-byte target for one deterministic model-request image; the smallest quality-ladder output is used when no quality fits. */
-export const DEFAULT_REQUEST_IMAGE_MAX_BYTES = 1024 * 1024
+export const DEFAULT_REQUEST_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+/**
+ * Provider per-side limit for a request carrying 15 or more images, applied
+ * to every request image so the image count never changes a projection.
+ */
+export const REQUEST_IMAGE_MAX_DIMENSION = 4096
 
 /**
- * Resolve the request-image budgets owned by one DeepSeek model route.
+ * Resolve the encoded-byte target one DeepSeek model route applies to every request image.
  * @param model - Advertised model route and its optional image overrides.
- * @returns Complete pixel and encoded-byte budgets.
+ * @returns the route's encoded-byte target.
  * @internal
  */
-export function resolveRequestImagePolicy(model: DeepSeekCatalogModel): ImageRequestPolicy {
-  const maxPixels = model.imagePixelBudget === 'low'
-    ? DEFAULT_LOW_DETAIL_IMAGE_PIXEL_BUDGET
-    : model.imagePixelBudget ?? DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET
-  return {
-    maxPixels,
-    maxBytes: model.imageMaxBytes === undefined
-      ? DEFAULT_REQUEST_IMAGE_MAX_BYTES
-      : model.imageMaxBytes,
-  }
+export function resolveRequestImageMaxBytes(model: DeepSeekCatalogModel): number {
+  return model.imageMaxBytes ?? DEFAULT_REQUEST_IMAGE_MAX_BYTES
+}
+
+/**
+ * Resolve the deterministic request target one DeepSeek model route chooses
+ * for one source image: the published token grid unless the model overrides
+ * it with a pixel budget, then the provider per-side limit, then the route's
+ * encoded-byte target. Small images are never enlarged.
+ * @param model - Advertised model route and its optional image overrides.
+ * @param source - intrinsic dimensions of the normalized attachment.
+ * @returns Complete request dimensions and encoded-byte target.
+ * @internal
+ */
+export function resolveRequestImageTarget(
+  model: DeepSeekCatalogModel,
+  source: Pick<ImageAttachmentRef, 'width' | 'height'>,
+): ImageRequestTarget {
+  const budget = model.imagePixelBudget === 'low' ? DEFAULT_LOW_DETAIL_IMAGE_PIXEL_BUDGET : model.imagePixelBudget
+  const projected = budget === undefined
+    ? deepSeekRequestImageDimensions(source.width, source.height)
+    : requestImageDimensions(source.width, source.height, budget)
+  const capped = Math.max(projected.width, projected.height) > REQUEST_IMAGE_MAX_DIMENSION
+    ? longEdgeDimensions(source.width, source.height, REQUEST_IMAGE_MAX_DIMENSION)
+    : projected
+  return { ...capped, maxBytes: resolveRequestImageMaxBytes(model) }
 }
 
 /**
@@ -79,11 +98,11 @@ export function deepSeekImageRequestPricing(
   if (catalogModel?.inputModalities?.includes('image') !== true) {
     return { priceImages: images => images.map(textOnlyPrice) }
   }
-  const policy = resolveRequestImagePolicy(catalogModel)
+  const maxBytes = resolveRequestImageMaxBytes(catalogModel)
   return {
     priceImages: (images) => {
       const offloaded = offloadedImagePrefixCount(
-        images.map(ref => Math.min(ref.bytes, policy.maxBytes)),
+        images.map(ref => Math.min(ref.bytes, maxBytes)),
         {
           maxBytes: connection.maxRequestFilesBytes,
           maxImages: connection.maxImagesPerRequest,
@@ -95,10 +114,10 @@ export function deepSeekImageRequestPricing(
         if (index < offloaded) {
           return { visualTokens: 0, text: offloadedImageText(ref, resolveAccess?.(ref)) }
         }
-        const dimensions = requestImageDimensions(ref.width, ref.height, policy.maxPixels)
+        const target = resolveRequestImageTarget(catalogModel, ref)
         return {
-          visualTokens: deepSeekImageTokens(dimensions.width, dimensions.height),
-          text: requestImageHandleText(ref, dimensions, resolveAccess?.(ref)),
+          visualTokens: deepSeekImageTokens(target.width, target.height),
+          text: requestImageHandleText(ref, target, resolveAccess?.(ref)),
         }
       })
     },

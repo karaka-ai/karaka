@@ -14,7 +14,7 @@ import LocalAttachments from '@deepseek-ai/dsh-attachment-local'
 import type {
   ImageAttachmentLimits,
   ImageAttachmentRef,
-  ImageRequestPolicy,
+  ImageRequestTarget,
   RequestImageAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
@@ -92,7 +92,7 @@ class E2eAttachmentStore extends AttachmentStore {
 
   override readImageRequest(
     _ref: ImageAttachmentRef,
-    _policy: ImageRequestPolicy,
+    _target: ImageRequestTarget,
     _signal?: AbortSignal,
   ): Promise<RequestImageAttachment> {
     return Promise.resolve(this.version)
