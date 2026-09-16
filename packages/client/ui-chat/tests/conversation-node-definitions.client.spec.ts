@@ -1433,7 +1433,7 @@ describe('built-in conversation node Definitions', () => {
 
     expect(node(snapshot(value), 'context')?.data).toMatchObject({
       kind: 'context',
-      provenance: { role: 'inject', label: 'demo-skill' },
+      producer: { role: 'inject', label: 'demo-skill' },
       form: 'instructions',
     })
   })

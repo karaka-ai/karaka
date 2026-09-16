@@ -87,7 +87,7 @@ describe('helpers (pure)', () => {
     const bare = 'node'
     const relative = './sandbox-runner'
 
-    it('attributes ENOENT/EACCES with argv[0] provenance and a usable workdir', () => {
+    it('attributes ENOENT/EACCES when path or syscall identifies argv[0] and the workdir is usable', () => {
       for (const runnerProgram of [absolute, bare, relative]) {
         expect(isRunnerSpawnFailure({ code: 'ENOENT', syscall: `spawn ${runnerProgram}`, path: runnerProgram }, runnerProgram, workdir)).toBe(true)
         expect(isRunnerSpawnFailure({ code: 'EACCES', syscall: `spawn ${runnerProgram}`, path: runnerProgram }, runnerProgram, workdir)).toBe(true)
@@ -96,7 +96,7 @@ describe('helpers (pure)', () => {
       }
     })
 
-    it('rejects mismatched provenance, foreign codes, unusable workdirs, and non-object errors', () => {
+    it('rejects mismatched runner evidence, foreign codes, unusable workdirs, and non-object errors', () => {
       expect(isRunnerSpawnFailure({ code: 'ENOENT', syscall: 'spawn', path: 'other' }, 'node', workdir)).toBe(false)
       expect(isRunnerSpawnFailure({ code: 'ENOENT', syscall: 'spawn other', path: 'node' }, 'node', workdir)).toBe(false)
       expect(isRunnerSpawnFailure({ code: 'EMFILE', syscall: 'spawn', path: 'node' }, 'node', workdir)).toBe(false)
@@ -300,7 +300,7 @@ describe.skipIf(!pwshAvailable())('SandboxPwshExecutor', () => {
     expect(denied.sandbox).toEqual({ mode: 'read-only', denied: true, enforcement: 'full' })
   }, 30_000)
 
-  it('background provider rejections with runner provenance settle as runnerFailed facts', async () => {
+  it('background provider rejections with runner identity settle as runnerFailed facts', async () => {
     const { executor } = await setup(() => ({
       argv: ['definitely-not-a-real-runner', '--', 'pwsh'],
       enforcement: 'full',

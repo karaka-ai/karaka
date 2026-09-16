@@ -18,7 +18,7 @@ The continuation manager delivers the account itself, from inside the disposal t
 
 When a resident Activation settles, `notifySettlement()` resolves the child's durable direct parent and sends it one user-role message: the epoch's outcome as a sentence the parent can act on, then the child's final assistant content, or a statement that it produced none. Delivery is unconditional for every child whose id a caller actually received. It does not consult whether the child reported, and it keeps no bookkeeping that could make the promise conditional — that unconditionality is what lets `tool-subagent` promise a runtime notice containing the outcome and any final assistant message. A materialization rolled back before its first accepted message stays silent, because the caller was told that child was not established.
 
-### Provenance
+### Runtime source
 
 The notice carries `{ kind: 'subagent-settled', form: 'notice', summary, senderSessionId }`. It is deliberately not the `agent-message` kind used by `send_message`. An Agent message is content the child chose; this is the runtime stating what became of the child. Merging them would credit the child with words it never wrote, and would make a durable log unable to distinguish "the child said it was done" from "the harness observed that it stopped". The `notice` form also gives a UI the collapsed one-line presentation this message wants, where `relay` presents Agent correspondence.
 

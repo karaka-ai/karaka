@@ -2,7 +2,7 @@
 
 Status: implemented
 
-[English](2026-09-06-agent-request-freeze-provenance.md) | 中文
+[English](2026-09-06-agent-request-freeze-evidence.md) | 中文
 
 ## 问题
 

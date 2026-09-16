@@ -244,7 +244,7 @@ def test_advanced_snapshot_normalizes_catalog_child_creation_time() -> None:
     ) == {"type": "fixture/event", "data": {"childCreatedAt": 1788246207176}}
 
 
-def test_snapshot_comparison_preserves_opaque_generation_provenance() -> None:
+def test_snapshot_comparison_preserves_opaque_generation_qualifiers() -> None:
     normalize = SMOKE["normalize_session_format_comparison"]
     expected = {
         "header": {"type": "session", "version": 0, "otherVersion": 7},

@@ -28,7 +28,7 @@ Shell output ending in a recognized spill-policy notice uses generic output: exp
 
 ## Consequences
 
-Rows and Details share terminal derivation for nested calls without a second renderer or presentation hint. Generic fallback and settled-persistent behavior remain separate from terminal-card eligibility. The parent-child relationship still controls tree placement, not terminal rendering. Text recognition cannot authenticate output: a tool can print the same notice. A match selects conservative generic presentation, not proof of spill provenance or process status.
+Rows and Details share terminal derivation for nested calls without a second renderer or presentation hint. Generic fallback and settled-persistent behavior remain separate from terminal-card eligibility. The parent-child relationship still controls tree placement, not terminal rendering. Text recognition cannot authenticate output: a tool can print the same notice. A match selects conservative generic presentation, not proof of spill source or process status.
 
 ## Verification
 

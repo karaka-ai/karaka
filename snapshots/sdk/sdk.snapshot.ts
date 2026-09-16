@@ -20,7 +20,7 @@ import {
   assertSessionFixtureVersion,
   captureExpectedWorkspaceSnapshot,
   captureWorkspaceSnapshot,
-  normalizeSessionFormatProvenance,
+  normalizeSessionFormatMetadata,
   normalizeSessionLog,
   normalizeSessionSnapshots,
   normalizeStdout,
@@ -364,7 +364,7 @@ function normalizeNotifications(notifications: readonly HarnessNotification[], c
   const normalizedEvents = events.length === 0
     ? []
     : scrubModelRequestBulk(normalizeSessionLog(
-      normalizeSessionFormatProvenance(typedLog),
+      normalizeSessionFormatMetadata(typedLog),
       ctx,
       typedFeedback ? { identityMode: 'preserve' } : {},
     )).trimEnd().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)

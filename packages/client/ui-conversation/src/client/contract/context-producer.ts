@@ -11,7 +11,7 @@
 export type ContextRole = 'inject' | 'recall'
 
 /** Role and producer name presented for one logged non-user message. */
-export interface ContextProvenanceView {
+export interface ContextProducerView {
   /** The role this context plays in the model-facing conversation. */
   role: ContextRole
   /**

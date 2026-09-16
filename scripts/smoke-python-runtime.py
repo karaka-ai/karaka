@@ -2204,7 +2204,7 @@ def project_session_snapshot(records: list[dict[str, object]]) -> list[dict[str,
     return projected
 
 
-SESSION_FORMAT_PROVENANCE = "{{sessionFormatVersion}}"
+SESSION_FORMAT_TOKEN = "{{sessionFormatVersion}}"
 
 
 def expand_snapshot_stream_member(member: object) -> list[dict[str, object]]:
@@ -2293,7 +2293,7 @@ def normalize_session_format_comparison(
     value: object,
     source_session_version: int | None = None,
 ) -> object:
-    """Canonicalize only generation provenance that differs across immutable Session files."""
+    """Canonicalize only generation metadata that differs across immutable Session files."""
     if isinstance(value, list):
         return [
             normalize_session_format_comparison(expanded, source_session_version)
@@ -2308,7 +2308,7 @@ def normalize_session_format_comparison(
         for key, item in value.items()
     }
     if normalized.get("type") == "session" and "version" in normalized:
-        normalized["version"] = SESSION_FORMAT_PROVENANCE
+        normalized["version"] = SESSION_FORMAT_TOKEN
         normalized.setdefault("isSeeded", False)
         ordered_header = {
             key: normalized[key]
@@ -2328,7 +2328,7 @@ def normalize_session_format_comparison(
 
 
 def normalize_snapshot_comparison_text(name: str, content: str) -> str:
-    """Normalize Session generation provenance only while comparing committed expected outputs."""
+    """Normalize Session generation metadata only while comparing committed expected outputs."""
     if name.startswith("session") and name.endswith(".jsonl"):
         parsed = [json.loads(line) for line in content.splitlines() if line]
         header = parsed[0] if parsed else None

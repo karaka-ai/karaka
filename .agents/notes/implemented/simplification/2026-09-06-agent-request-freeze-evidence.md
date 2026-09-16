@@ -2,7 +2,7 @@
 
 Status: implemented
 
-English | [中文](2026-09-06-agent-request-freeze-provenance.zh.md)
+English | [中文](2026-09-06-agent-request-freeze-evidence.zh.md)
 
 ## Problem
 
@@ -28,7 +28,7 @@ Apple M4 Pro, macOS arm64, Node 24.19.0; independent worktree dependencies and b
 
 The same 800-turn, four-tools-per-historical-turn history and 40 live requests complete in every sample: 13,923 events, no live tool calls. The repeat median is 72.9% below the isolated original. The historical 70 ms M4 expectation rounds above both optimized medians; applying the shared 2× CI scale and 1.25× headroom produced the 175 ms budget used in the table. These remain local reference measurements, not hosted-runner expectations. The explicit hosted calibration below owns the enforced request-history budget; no other case or memory budget changes here.
 
-The first optimized slot also measures cold tool continuation: totals 185.839958, 185.235583, 185.865917, 189.213459, 185.279417; median 185.839958 ms. Every sample completes 40 requests and 160 tool calls with 14,143 events. Retained heap samples are 22.591591, 22.590355, 22.594795, 22.591743, 22.594681 MiB, below the unchanged 28.75 MiB budget. The earlier baseline's approximately 22.295 MiB highlights the small provenance-table cost; weak keys prevent the table itself retaining replaced messages.
+The first optimized slot also measures cold tool continuation: totals 185.839958, 185.235583, 185.865917, 189.213459, 185.279417; median 185.839958 ms. Every sample completes 40 requests and 160 tool calls with 14,143 events. Retained heap samples are 22.591591, 22.590355, 22.594795, 22.591743, 22.594681 MiB, below the unchanged 28.75 MiB budget. The earlier baseline's approximately 22.295 MiB highlights the small freeze-evidence table cost; weak keys prevent the table itself retaining replaced messages.
 
 The same slot's shipped SDK profile completes 100 turns, 200 requests, and 800 real reads per sample. Totals are 1428.555292, 1160.396333, 1139.843500, 1135.834750, 1155.890334 ms; median 1155.890334 ms. The first sample includes 461.829250 ms boot time versus 164–169 ms for the others and is retained, not discarded. Provider serialization, network time, and browser rendering remain excluded as specified by the baseline owner.
 
@@ -70,7 +70,7 @@ Deterministic controls call the timed case's `assertRequestHistoryBudget`. They 
 
 Request construction still scans message identities and allocates a fresh array; it avoids recursively traversing already-proven history. Each loop pays one complete traversal for restored history. Local headers remain a per-request cost. Message values, request markers, previous request snapshots, cancellation, and serialized SDK outputs keep their existing behavior.
 
-The [focused tests](../../../../packages/core/agent-loop/tests/request-freeze.spec.ts) exercise shallow-frozen restored roots with mutable descendants, wrapper identity and mutability, successful-only provenance, repeated requests, same-id compaction replacements, a fresh loop, nested tool schemas, adapter and `NO_ADAPTER` stop arrays, held requests, and live cancellation. Reconstruction and cancellation suites cover adjacent loop semantics. Performance measurements use the unchanged [continuation workload](../../../../benchmarks/agent-continuation/workload.ts), not a smaller synthetic microbenchmark.
+The [focused tests](../../../../packages/core/agent-loop/tests/request-freeze.spec.ts) exercise shallow-frozen restored roots with mutable descendants, wrapper identity and mutability, successful-only freeze evidence, repeated requests, same-id compaction replacements, a fresh loop, nested tool schemas, adapter and `NO_ADAPTER` stop arrays, held requests, and live cancellation. Reconstruction and cancellation suites cover adjacent loop semantics. Performance measurements use the unchanged [continuation workload](../../../../benchmarks/agent-continuation/workload.ts), not a smaller synthetic microbenchmark.
 
 Validation runs 646 Agent-loop and LLM tests with 100% statement, branch, function, and line coverage of agent.ts. Keyless TypeScript SDK bash-tool and multi-turn snapshots pass against rebuilt libraries. Python sdk-minimal and sdk-snapshot checks pass against an independently packaged node24-macos-arm64 executable. Neither SDK requires an expected-output change. The packaging deploy temporarily removes workspace dependency links; a frozen-lockfile install restores them before source checks, without a tracked dependency change.
 

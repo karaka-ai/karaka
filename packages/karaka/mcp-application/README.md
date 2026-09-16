@@ -41,7 +41,7 @@ Input schemas must use the supported object-rooted DSH JSON Schema subset. The r
 
 Each endpoint owns a private catalog. Authorized Agent scopes receive admitted definitions, and invocation metadata comes from trusted Session ownership. Policy changes refresh scoped registrations. Discovery builds the complete next catalog before replacing the previous generation; connection disposal waits for in-flight discovery and removes its contributions.
 
-The package uses the shared [DSH MCP client extensions](../../mcp/mcp-client/README.md#programmatic-extensions) for connection supervision, discovery and rich result conversion. Karaka supplies authenticated HTTP transports, verified invocation metadata, strict schema admission and scoped catalog registration. The [provenance record](UPSTREAM.json) identifies the shared implementation and application-owned adapters.
+The package uses the shared [DSH MCP client extensions](../../mcp/mcp-client/README.md#programmatic-extensions) for connection supervision, discovery and rich result conversion. Karaka supplies authenticated HTTP transports, verified invocation metadata, strict schema admission and scoped catalog registration. The [upstream source record](UPSTREAM.json) identifies the shared implementation and application-owned adapters.
 
 No runtime invariant companion is published: asynchronous catalog refresh has no independent server-to-tool snapshot. The executor rechecks ownership and policy before each dispatch.
 

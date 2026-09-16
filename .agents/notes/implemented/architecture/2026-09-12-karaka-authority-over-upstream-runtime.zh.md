@@ -14,7 +14,7 @@ Karaka 应用配置复用 DSH 的 Session、Agent、循环、Tools、JSONL、查
 
 Karaka HTTP 操作通过公开 API 调用原始引擎。Profile 使用上游 DSH 启动器；其就绪通知触发独立的 [Karaka 启动守卫](../../../../packages/karaka/transport-http/src/startup.ts)。守卫仅在所有已启用的 Loader 条目均处于活动状态时接收后端或浏览器请求。导入、激活、依赖等待或禁用表达式异常使入口保持关闭，并请求以退出码 1 执行有时限的进程关闭。实际禁用的条目仍是可选的。Webserver 注入通过 DSH 已有的必需条目策略，使守卫自身的失败成为致命启动错误。独立维护的 SDK 使用这些路由，不再嵌入另一套 Session 实现。
 
-Karaka MCP 包拥有应用工具目录。连接监督和丰富结果转换通过[程序化扩展](2026-09-14-shared-mcp-extensions-for-karaka.zh.md)使用共享 DSH 实现；该决策取代本记录中复制 MCP 的部分。[来源清单](../../../../packages/karaka/mcp-application/UPSTREAM.json)记录共享代码与自有适配器。没有复制依赖实现。应用工具在符合条件的各个 Agent 作用域注册，不在全局注册；工具必须同时获得端点许可和预设的明确允许，继承作用域中的拒绝规则优先。缺省或仅有拒绝列表的策略不会授予应用工具；普通工具限制和展示仍使用上游实现。每次发出请求都解析当前凭据，每次执行都从实际 Agent 获取可信身份。携带凭据的 MCP HTTP 请求拒绝重定向。
+Karaka MCP 包拥有应用工具目录。连接监督和丰富结果转换通过[程序化扩展](2026-09-14-shared-mcp-extensions-for-karaka.zh.md)使用共享 DSH 实现；该决策取代本记录中复制 MCP 的部分。[上游来源记录](../../../../packages/karaka/mcp-application/UPSTREAM.json)记录共享代码与自有适配器。没有复制依赖实现。应用工具在符合条件的各个 Agent 作用域注册，不在全局注册；工具必须同时获得端点许可和预设的明确允许，继承作用域中的拒绝规则优先。缺省或仅有拒绝列表的策略不会授予应用工具；普通工具限制和展示仍使用上游实现。每次发出请求都解析当前凭据，每次执行都从实际 Agent 获取可信身份。携带凭据的 MCP HTTP 请求拒绝重定向。
 
 MCP 桥接层仅接纳受支持的对象根输入模式，并在发送请求前使用原有 DSH 辅助函数验证参数。本地产生的 `ToolArgsError`/`INVALID_ARGS` 证明应用回调尚未执行，配额策略因此可以接纳修正后的请求。远程错误不能证明操作没有产生效果。本地插件通过 `@karaka-ai/agent/tools` 获取同一套工具定义、错误类和编写工具所需的类型。
 

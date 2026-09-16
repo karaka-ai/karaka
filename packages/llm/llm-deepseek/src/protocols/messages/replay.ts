@@ -31,7 +31,7 @@ export function replayState(model: string, blocks: ReplayBlock[]): ReplayEnvelop
 }
 
 /** Validate native replay, discarding unusable metadata before serializing durable content.
- * @param message - durable assistant content and provenance.
+ * @param message - durable assistant content and source metadata.
  * @param model - target model; cross-model signatures are not portable.
  * @param onDegrade - diagnostic for unusable metadata; receives no message content or signatures.
  * @returns index-aligned metadata, absent for foreign, cross-model or degraded history.
@@ -51,7 +51,7 @@ function validateReplay(message: Message, model: string): ReplayBlock[] | undefi
   const envelope = object(message.source.replayState, 'INVALID_REPLAY_STATE')
   const response = object(envelope.response, 'INVALID_REPLAY_STATE')
   if (response.kind !== 'deepseek-messages' || response.version !== 1) return fail('unsupported kind or version')
-  if (response.model !== message.source.model) return fail('model does not match assistant provenance')
+  if (response.model !== message.source.model) return fail('model does not match assistant source model')
   if (!Array.isArray(envelope.blocks) || envelope.blocks.length !== message.content.length) return fail('block count mismatch')
   const blocks = envelope.blocks.map((value, index): ReplayBlock => {
     const block = object(value, 'INVALID_REPLAY_STATE')
