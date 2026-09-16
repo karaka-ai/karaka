@@ -33,6 +33,8 @@ The [bundle patch](cordis.patch.yml) composes a complete application rather than
 
 `KARAKA_MCP_URL` enables the [application MCP bridge](../mcp-application/README.md). Endpoint allow/deny settings and preset permissions both constrain tools. `KARAKA_BROWSER_AUTH` enables [browser authentication](../browser-auth/README.md); browser origins must also be configured through `KARAKA_BROWSER_ORIGINS`. The [HTTP transport](../transport-http/README.md) owns the public route and ownership rules.
 
+The profile explicitly disables the `session-log-deepseek` plugin's additional `dsh_session_log` request contribution. Ordinary model requests and local JSONL persistence continue unchanged. A deployment can opt in by setting `config.enabled: true` on that row in its profile patch.
+
 ### Author tools and browser clients
 
 Tool plugins import `defineTool`, `ToolArgsError`, and their authoring types from `@karaka-ai/agent/tools`. This entry reexports the DSH definitions used by the server, preserving runtime identity. It neither mounts a plugin nor grants tool access. Presets configure `@karaka-ai/agent/tool-policy`; browser clients import `@karaka-ai/agent/browser`.

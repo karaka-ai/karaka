@@ -33,6 +33,8 @@ Karaka CLI 启动此包的 `karaka-agent` 可执行文件。该文件准备 `kar
 
 `KARAKA_MCP_URL` 启用[应用 MCP 桥接](../mcp-application/README.zh.md)。端点允许/拒绝设置与 preset 权限共同约束工具。`KARAKA_BROWSER_AUTH` 启用[浏览器认证](../browser-auth/README.zh.md)；还必须通过 `KARAKA_BROWSER_ORIGINS` 配置浏览器来源。[HTTP 传输](../transport-http/README.zh.md) 定义公开路由和归属规则。
 
+此 profile 显式禁用 `session-log-deepseek` 插件向请求附加 `dsh_session_log` 的功能。普通模型请求和本地 JSONL 持久化保持不变。部署方可在自己的 profile 补丁中，将该配置项的 `config.enabled` 设为 `true` 以启用此功能。
+
 ### 编写工具和浏览器客户端
 
 工具插件从 `@karaka-ai/agent/tools` 导入 `defineTool`、`ToolArgsError` 及其编写类型。此入口重新导出服务端使用的 DSH 定义，保持运行时身份一致。它既不挂载插件，也不授予工具访问权限。preset 配置 `@karaka-ai/agent/tool-policy`；浏览器客户端导入 `@karaka-ai/agent/browser`。
