@@ -1,6 +1,7 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -250,6 +251,117 @@ describe('headless stream-json snapshots', () => {
     if (refreshing) await writeFile(headlessReasoningExpected, result.stderr)
     expect(result.stderr).toBe(await readFile(headlessReasoningExpected, 'utf8'))
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it('projects the same run as JSON events under a generated session identity', async () => {
+    const task = 'Prove the machine-readable product headless profile path.'
+    const result = await runLoaderSmoke({
+      label: 'product headless profile json snapshot',
+      tempDirPrefix: 'headless-snapshot-profile-json-',
+      binScript: dshBinScript,
+      configPath: headlessOverlayPath,
+      binArgs: [
+        '--profile', 'headless', '--patch', headlessOverlayPath,
+        '--json', task,
+      ],
+      tsconfigPath,
+      env: {
+        DSH_PERMISSION_MODE: 'danger-full-access',
+        DSH_TELEMETRY_DISABLED: '1',
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
+    })
+
+    const events = result.stdout.trim().split('\n').map(line => JSON.parse(line) as JsonObject)
+    expect(events[0]).toMatchObject({ type: 'session' })
+    expect(events[0]?.sessionId).toMatch(/^session-/)
+    expect(typeof events[0]?.cwd).toBe('string')
+    expect(events.at(-1)).toMatchObject({ type: 'final', text: 'CLI tool round trip complete: CLI_TOOL_ROUND_TRIP' })
+    expect(events.map(event => event.type)).toContain('thinking')
+    expect(events.map(event => event.type)).toContain('tool_call')
+    expect(events.map(event => event.type)).toContain('tool_result')
+    expect(events.map(event => event.type)).not.toContain('error')
+    expect(result.stderr).toBe('')
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it('fails the JSON run when --session-id names no stored Session', async () => {
+    const result = await runLoaderSmoke({
+      label: 'product headless profile unknown session',
+      tempDirPrefix: 'headless-snapshot-profile-unknown-session-',
+      binScript: dshBinScript,
+      configPath: headlessOverlayPath,
+      binArgs: [
+        '--profile', 'headless', '--patch', headlessOverlayPath,
+        '--json', '--session-id', 'headless-unknown-session', 'Continue the conversation.',
+      ],
+      tsconfigPath,
+      expectedExitCode: 1,
+      env: {
+        DSH_TELEMETRY_DISABLED: '1',
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
+    })
+
+    const events = result.stdout.trim().split('\n').map(line => JSON.parse(line) as JsonObject)
+    expect(events).toEqual([{
+      type: 'error',
+      message: 'session "headless-unknown-session" does not exist; omit --session-id to start a new Session',
+    }])
+    expect(result.stderr).toContain('omit --session-id to start a new Session')
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+  it('resumes one persisted Session across two real --session-id wakes', async () => {
+    const firstTask = 'Record the first wake of the resume proof.'
+    const secondTask = 'Continue from the first wake of the resume proof.'
+    const env = {
+      DSH_PERMISSION_MODE: 'danger-full-access',
+      DSH_TELEMETRY_DISABLED: '1',
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+    }
+    const cwd = await mkdtemp(join(tmpdir(), 'headless-session-resume-'))
+    try {
+      const first = await runLoaderSmoke({
+        label: 'product headless profile resume first wake',
+        cwd,
+        binScript: dshBinScript,
+        configPath: headlessOverlayPath,
+        binArgs: ['--profile', 'headless', '--patch', headlessOverlayPath, '--json', firstTask],
+        tsconfigPath,
+        env,
+      })
+      const firstEvents = first.stdout.trim().split('\n').map(line => JSON.parse(line) as JsonObject)
+      expect(firstEvents[0]).toMatchObject({ type: 'session' })
+      const sessionId = firstEvents[0]?.sessionId
+      if (typeof sessionId !== 'string') throw new Error('the first wake reported no Session identity')
+
+      const second = await runLoaderSmoke({
+        label: 'product headless profile resume second wake',
+        cwd,
+        binScript: dshBinScript,
+        configPath: headlessOverlayPath,
+        binArgs: [
+          '--profile', 'headless', '--patch', headlessOverlayPath,
+          '--json', '--session-id', sessionId, secondTask,
+        ],
+        tsconfigPath,
+        env,
+        inspect: async (inspected) => {
+          const logs = await persistedLogs(inspected, join(inspected, '.dsh', 'sessions'))
+          expect(logs).toHaveLength(1)
+          const content = logs[0]?.content ?? ''
+          expect(content).toContain(firstTask)
+          expect(content).toContain(secondTask)
+        },
+      })
+      const secondEvents = second.stdout.trim().split('\n').map(line => JSON.parse(line) as JsonObject)
+      expect(secondEvents[0]).toMatchObject({ type: 'session', sessionId })
+      expect(secondEvents.at(-1)).toMatchObject({
+        type: 'final',
+        text: 'CLI tool round trip complete: CLI_TOOL_ROUND_TRIP',
+      })
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  }, LOADER_SMOKE_TEST_TIMEOUT_MS * 2)
 
   it('prints a terminal model failure through the product headless profile command', async () => {
     const result = await runLoaderSmoke({
