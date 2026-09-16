@@ -40,7 +40,7 @@ Node 内置的 `fetch` 会忽略 `HTTP_PROXY` 与 `HTTPS_PROXY`。开发者运�
 
 URL 层策略未受影响：仅 `http(s)`、禁止内嵌凭据、长度上限与跨域重定向拒绝在每一跳上依然生效。
 
-**派生的子进程通过环境获得策略；执行模型代码的 worker 什么也不获得。** `proxyEnvironmentForChild()` 并入 `scrubbedParentEnv()`——每个 spawner 本就共享的那一个函数。workflow worker **不**接收它：它执行的是模型编写的脚本体，而代理 URL 可能携带 `user:password`。这与 code runtime 保持的隔离相同，也是 `docs/defensive-patterns.md` 的要求，因此 workflow 自身的请求直连。
+**派生的子进程通过环境获得策略；执行模型代码的 worker 什么也不获得。** `proxyEnvironmentForChild()` 并入 `scrubbedParentEnv()`——每个 spawner 本就共享的那一个函数。workflow worker **不**接收它：它执行的是模型编写的脚本体，而代理 URL 可能携带 `user:password`。这与 PTC runtime 保持的隔离相同，也是 `docs/defensive-patterns.md` 的要求，因此 workflow 自身的请求直连。
 
 子进程拿到的是用户自己的值，而这恰恰曾把它弄坏。Node 在 `NODE_USE_ENV_PROXY` 下会在运行程序之前先解析 `HTTP_PROXY` 与 `HTTPS_PROXY`，遇到 `http:`/`https:` 之外的协议直接退出；于是一个为 `curl` 保留的 `socks4://` 会让每个 Node 子进程——MCP server、subagent CLI、`npm`——在第一行之前就终结，而本进程此前只报告过该协议保持直连。在 Node 24.17 上实测：`socks4://`、`ftp://` 与畸形值均以 1 退出；`socks5://` 恰好在该版本被接受。现在只要子进程收到的某个值是本包拒绝过的，就扣下该标志，这样的子进程直连，`curl` 仍读到为它保留的值。若改为把解析后的值交给子进程，Node 固然能继续走代理，代价却是悄悄改写用户为另一工具设置的值。
 
@@ -70,7 +70,7 @@ URL 层策略未受影响：仅 `http(s)`、禁止内嵌凭据、长度上限与
 
 **读取操作系统的代理设置。** 本次变更中被否决。所调研的六个产品中只有 Codex 与 Reasonix 这样做，且 Codex 把它放在默认关闭的开关之后。在作者机器上实测，它什么也读不到：代理软件把设置写在了 Wi-Fi 服务上，而主接口是一块没有代理的 USB 以太网卡，因此 `scutil --proxy` 报告无代理，而导出的环境变量却工作正常。它还需要自带的绕过匹配器，因为操作系统的列表含有 undici 与 Node 都不匹配的 CIDR 条目。
 
-**也把代理给 `code-runtime` worker。** 被否决。模型编写的程序在那里运行时完全没有环境变量——这比派生命令得到的 scrubbed 环境更严——而代理 URL 可能携带凭据。把带凭据的 URL 交给模型代码去访问网络是错误的取舍；该排除已记入那个包的限制清单。
+**也把代理配置交给模型编写的代码。** 不采纳，因为代理 URL 可能携带凭据。Node ptc-runtime 进程与 workflow worker 不在程序环境中提供这些设置；直接网络访问仍受程序执行策略约束。
 
 ## Consequences
 

@@ -26,7 +26,7 @@ import type {
 import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 
 class EmptySandbox extends SandboxProvider {
-  confine(_argv: readonly string[], _policy: SandboxPolicy): ConfinedArgv {
+  async confine(_argv: readonly string[], _policy: SandboxPolicy): Promise<ConfinedArgv> {
     return { argv: [], enforcement: 'full', denialSignatures: [], runnerFailureRules: [] }
   }
 }
@@ -34,7 +34,7 @@ class EmptySandbox extends SandboxProvider {
 class RecordingSandbox extends SandboxProvider {
   calls: { argv: readonly string[]; policy: SandboxPolicy }[] = []
 
-  confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv {
+  async confine(argv: readonly string[], policy: SandboxPolicy): Promise<ConfinedArgv> {
     this.calls.push({ argv, policy })
     return { argv: ['/sandbox', '--', ...argv], enforcement: 'full', denialSignatures: [], runnerFailureRules: [] }
   }
@@ -181,6 +181,29 @@ describe('BashTerminalBackend startup rollback', () => {
     await expect(spawning).rejects.toBe(reason)
     expect(close).toHaveBeenCalledWith('PTY startup failed')
     initialization.resolve(undefined)
+  })
+
+  it('does not allocate a terminal when confinement resolves after cancellation', async () => {
+    const ctx = new Context()
+    await ctx.plugin(RecordingSandbox)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SandboxPolicyService, { mode: 'workspace-write', workspaceRoot: '/workspace' })
+    const entered = Promise.withResolvers<AbortSignal>()
+    const response = Promise.withResolvers<ConfinedArgv>()
+    vi.spyOn(ctx.sandbox, 'confine').mockImplementation((_argv, _policy, signal) => {
+      entered.resolve(signal!)
+      return response.promise
+    })
+    const spawnTerminal = vi.fn(async () => terminalHandle())
+    const backend = new BashTerminalBackend(ctx, config(), spawnTerminal)
+    const controller = new AbortController()
+    const spawning = backend.spawn(spec(agent(ctx), controller.signal))
+    const signal = await entered.promise
+    controller.abort(new Error('cancel confinement'))
+    expect(signal.aborted).toBe(true)
+    response.resolve({ argv: ['bash'], enforcement: 'full', denialSignatures: [], runnerFailureRules: [] })
+    await expect(spawning).rejects.toThrow('cancel confinement')
+    expect(spawnTerminal).not.toHaveBeenCalled()
   })
 
   it('wraps confined argv, scrubs the environment, and returns initialized sessions', async () => {

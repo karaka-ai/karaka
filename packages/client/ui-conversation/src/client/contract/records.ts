@@ -158,7 +158,7 @@ export interface ToolResultNode {
   /** Unix epoch ms from the tool/result session event. */
   time: number
   callId: string
-  /** Parent Tool call for a Code Dispatch result; absent on a root Session result. */
+  /** Parent Tool call for a PTC dispatch result; absent on a root Session result. */
   parentCallId?: string
   /** Call head backfilled from the in-window tool/call; null when window truncation left the call outside (card head shows callId). */
   call: { name: string; argsRaw: string } | null
@@ -264,7 +264,7 @@ export type ConversationNode =
 /** In-flight tool card material: tool/call seen, tool/result not yet. */
 export interface RunningToolCall {
   callId: string
-  /** Parent Tool call for a Code Dispatch start; absent on a root Session call. */
+  /** Parent Tool call for a PTC dispatch start; absent on a root Session call. */
   parentCallId?: string
   name: string
   argsRaw: string

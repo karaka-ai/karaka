@@ -4549,7 +4549,7 @@ SHA-256: `e3528b95cff70d83a080a96666877da3f9dc205e71955d6bc5b9b315b9e0da22`
 
 SHA-256: `3cfc3a56502da1f8c6153c2c56657bab4b749056968634dd0991d325ec1c919f`
 
-来源：[`packages/core/tools/src/index.ts:673`](../packages/core/tools/src/index.ts)
+来源：[`packages/core/tools/src/index.ts:674`](../packages/core/tools/src/index.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|

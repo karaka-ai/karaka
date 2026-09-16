@@ -14,7 +14,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { assertNever, deepFreeze, snapshotJsonValue, type JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { PromptSection, ToolProviderResult } from '@deepseek-ai/dsh-system-prompt'
-import type { CodeRuntime } from '@deepseek-ai/dsh-code-runtime'
+import type { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 // Type-only: makes `ctx.get('approval')` resolve to the ApprovalService
 // augmentation. The seam stays optional at runtime — see `serviceAsk`.
 import type {} from '@deepseek-ai/dsh-user-approval'
@@ -22,24 +23,24 @@ import type { ToolCallView, ToolResultView } from './presentation.ts'
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from './json-schema.ts'
 import type { JsonSchemaNode } from './json-schema.ts'
 import { createRunCodeTool, RUN_CODE_NAME } from './ptc.ts'
-import type { CodeSdkLanguage } from './ptc.ts'
+import type { PtcSdkLanguage } from './ptc.ts'
 import { renderToolsSdk } from './ts-types.ts'
 import type { ToolSdkSchema } from './ts-types.ts'
 import { renderToolsSdkPy } from './py-types.ts'
 
 /**
  * Language → SDK-section renderer. The registry looks up the loaded
- * `ctx.codeRuntime.language` in this table when assembling the `tools:sdk`
+ * `ctx.ptcRuntime.language` in this table when assembling the `tools:sdk`
  * section under a non-native mode; a runtime whose language is not a key
  * fails the assembly loudly (same idiom as `toolOrder` violations). Adding a
- * new backend language is three parallel edits — a {@link CodeSdkLanguage}
+ * new backend language is three parallel edits — a {@link PtcSdkLanguage}
  * member, an entry here, and a `RUN_CODE_FLAVORS` entry in `ptc.ts` for
  * its `run_code` schema strings — plus the renderer function this table points
  * at. The `satisfies` clause pins this table's key set to that union, which
  * the flavor table is checked against too, so any of the three left out is a
  * typecheck failure. What no check reaches is the prose that names the values
- * instead of deriving them: the seam's `dsh-code-runtime` README pair, its
- * `CodeRuntime.language` JSDoc, and `docs/subsystems/code-runtime.md`
+ * instead of deriving them: the seam's `dsh-ptc-runtime` README pair, its
+ * `PtcRuntime.language` JSDoc, and `docs/subsystems/ptc-runtime.md`
  * with its zh pair, plus this package's own README pair and the
  * {@link Config.mode} JSDoc.
  */
@@ -53,7 +54,7 @@ const PTC_ONLY_INSTRUCTION = `\`${RUN_CODE_NAME}\` is the only tool you can call
 const SDK_RENDERERS: Record<string, (schemas: ToolSdkSchema[]) => string> = {
   typescript: renderToolsSdk,
   python: renderToolsSdkPy,
-} satisfies Record<CodeSdkLanguage, (schemas: ToolSdkSchema[]) => string>
+} satisfies Record<PtcSdkLanguage, (schemas: ToolSdkSchema[]) => string>
 
 export {
   defineTool,
@@ -650,7 +651,7 @@ export interface Config {
    * sends only `run_code` plus a generated SDK prompt and collapses the
    * executor to the same surface (a model-direct call may only name
    * `run_code`; `run_code` SDK sub-dispatches keep every visible tool); `both`
-   * sends both forms. PTC mode requires a `ctx.codeRuntime` whose `language`
+   * sends both forms. PTC mode requires a `ctx.ptcRuntime` whose `language`
    * has a registered SDK renderer (TypeScript or Python) and fail prompt
    * assembly when it is absent or has no renderer. Under `ptc`, native names
    * in `toolOrder` are invalid.
@@ -873,11 +874,11 @@ export class ToolRuntime extends Service {
       text: (context) => {
         const mode = this.modeFor(context.scope)
         if (mode === 'native') return ''
-        const runtime = this.requireCodeRuntime(mode)
+        const runtime = this.requirePtcRuntime(mode)
         // Own-property read: a language like `toString`/`constructor` would
         // otherwise resolve an inherited Object.prototype member as a renderer.
         const render = SDK_RENDERERS[runtime.language]
-        /* v8 ignore next -- requireCodeRuntime rejects an unknown language before this runs. */
+        /* v8 ignore next -- requirePtcRuntime rejects an unknown language before this runs. */
         if (render === undefined) throw new Error(`dsh-tools: no SDK renderer for ${runtime.language}`)
         return render(this.sdkSchemas(context.scope))
       },
@@ -912,13 +913,19 @@ export class ToolRuntime extends Service {
    * and only for scopes whose mode actually presents it.
    * @returns the shared transport definition.
    */
-  private requireCodeTransport(): ToolDefinition {
+  private requirePtcTransport(): ToolDefinition {
     this.ptcTransport ??= createRunCodeTool(this, {
-      requireRuntime: () => this.requireCodeRuntime(this.defaultMode),
+      requireRuntime: () => this.requirePtcRuntime(this.defaultMode),
+      peekApprover: () => this.ctx.get('approval'),
+      resolveSandboxPolicy: (exec) => {
+        const policy = this.ctx.get('sandboxPolicy')
+        if (policy === undefined) throw new Error('dsh-tools: confined PTC runtime requires sandboxPolicy')
+        return policy.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })
+      },
       // The language-aware description/parameters getters read the runtime
       // without demanding one, so a native-default process can still project
       // the transport for an agent that chose code.
-      peekRuntime: () => this.ctx.get('codeRuntime'),
+      peekRuntime: () => this.ctx.get('ptcRuntime'),
       maxParallel: this.maxParallelSubCalls,
       shapeDispatchLog: dispatch => this.shapeDispatchLog(dispatch),
     })
@@ -982,7 +989,7 @@ export class ToolRuntime extends Service {
     // flavor-table guard would otherwise surface first. This keeps the
     // renderer-table rejection the canonical assembly-time error for a
     // language with no SDK renderer.
-    this.requireCodeRuntime(mode)
+    this.requirePtcRuntime(mode)
     const schemas = [...view.visible.values()].map(definition => this.schemaOf(definition, false))
     if (mode === 'ptc') {
       return {
@@ -994,10 +1001,10 @@ export class ToolRuntime extends Service {
   }
 
   /**
-   * Resolve the code runtime or throw the actionable misconfiguration error.
+   * Resolve the PTC runtime or throw the actionable misconfiguration error.
    * Read at use time (assembly / run_code execution), NOT via static
    * `inject`: an inject entry would hold `ctx.tools` — and every tool plugin
-   * behind it — hostage to a code runtime existing even under `mode:
+   * behind it — hostage to a PTC runtime existing even under `mode:
    * 'native'`.
    *
    * Assembly and `run_code` execution read separately, so the language is not
@@ -1007,10 +1014,10 @@ export class ToolRuntime extends Service {
    * other. Binding it is deferred until a second backend ships (the first
    * point it is testable).
    */
-  private requireCodeRuntime(mode: ToolPresentationMode): CodeRuntime {
-    const runtime = this.ctx.get('codeRuntime')
+  private requirePtcRuntime(mode: ToolPresentationMode): PtcRuntime {
+    const runtime = this.ctx.get('ptcRuntime')
     if (!runtime) {
-      throw new Error(`dsh-tools: mode "${mode}" requires a code runtime — load a ctx.codeRuntime implementation (e.g. @deepseek-ai/dsh-code-runtime-worker-thread) or set tools mode to "native"`)
+      throw new Error(`dsh-tools: mode "${mode}" requires a PTC runtime — load a ctx.ptcRuntime implementation (e.g. @deepseek-ai/dsh-ptc-runtime-node) or set tools mode to "native"`)
     }
     if (!Object.hasOwn(SDK_RENDERERS, runtime.language)) {
       const known = Object.keys(SDK_RENDERERS).map(name => JSON.stringify(name)).join(', ')
@@ -1178,7 +1185,7 @@ export class ToolRuntime extends Service {
     // changes. Per scope: a native agent must not find `run_code` in its
     // dispatch table because some other agent in the process presents it.
     if (this.modeFor(scope) !== 'native') {
-      visible.set(RUN_CODE_NAME, this.requireCodeTransport())
+      visible.set(RUN_CODE_NAME, this.requirePtcTransport())
     }
     return { visible, knownNames, restrictableNames }
   }

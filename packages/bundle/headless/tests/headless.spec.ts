@@ -39,6 +39,8 @@ interface ObservationStub {
 
 /** Runner invocation options layered over the scripted Agent factory. */
 interface BenchOptions {
+  /** Provider-resolved cwd, which can differ from the harness process directory. */
+  filesystemCwd?: string
   task?: string
   useStdin?: boolean
   readStdin?: () => Promise<string>
@@ -123,6 +125,13 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
   run(): Promise<{ code: number; out: string; err: string; order: string[] }>
 }> {
   const ctx = new Context()
+  if (options.filesystemCwd !== undefined) {
+    const cwd = options.filesystemCwd
+    ctx.provide('fs', {
+      resolve: async () => ({ targetKey: cwd, displayPath: cwd }),
+      processPath: () => cwd,
+    } as never)
+  }
   let out = ''
   let err = ''
   const order: string[] = []
@@ -215,6 +224,41 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
 }
 
 describe('headless runner', () => {
+  it('records a fresh Session in the filesystem provider working directory', async () => {
+    const cwd = '/remote/workspace'
+    const test = await bench({
+      before(session) { expect(session.header.cwd).toBe(cwd) },
+      afterPrompt(session, message) { appendTurn(session, 1, message, 'remote answer', true) },
+    }, { filesystemCwd: cwd })
+    try { expect(await test.run()).toMatchObject({ code: 0, out: 'remote answer\n' }) }
+    finally { await test.ctx.fiber.dispose() }
+  })
+
+  it('reports the provider cwd in its opening JSON event', async () => {
+    const cwd = '/remote/workspace'
+    const test = await bench({
+      afterPrompt(session, message) { appendTurn(session, 1, message, 'remote answer', true) },
+    }, { filesystemCwd: cwd, json: true })
+    try {
+      const result = await test.run()
+      expect(result.code).toBe(0)
+      expect(JSON.parse(result.out.split('\n')[0] as string)).toMatchObject({ type: 'session', cwd })
+    } finally { await test.ctx.fiber.dispose() }
+  })
+
+  it('resumes against the provider cwd instead of the host launch directory', async () => {
+    const cwd = '/remote/workspace'
+    const test = await bench({
+      afterPrompt(session, message) { appendTurn(session, 1, message, 'remote resumed', true) },
+    }, {
+      filesystemCwd: cwd, sessionId: 'session-exact',
+      observe: async () => ({ header: { cwd, origin: 'user' }, events: [], [Symbol.dispose]() {} }),
+    })
+    test.ctx.sessions.create(brandString<SessionId>('session-exact'), { meta: { cwd } })
+    try { expect(await test.run()).toMatchObject({ code: 0, out: 'remote resumed\n' }) }
+    finally { await test.ctx.fiber.dispose() }
+  })
+
   it('aggregates the final text across the complete idle-to-idle interval and flushes before exit', async () => {
     const test = await bench({
       before(session) {

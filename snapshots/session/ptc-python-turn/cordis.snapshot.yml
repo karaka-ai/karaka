@@ -28,12 +28,12 @@
   config:
     mode: ptc
 
-- id: code-runtime
+- id: ptc-runtime
   disabled: true
 
 - insert:
-    - id: code-runtime-python
-      name: '@deepseek-ai/dsh-experimental-code-runtime-python'
+    - id: ptc-runtime-python
+      name: '@deepseek-ai/dsh-experimental-ptc-runtime-python'
 
 - id: system-prompt
   name: '@deepseek-ai/dsh-system-prompt'

@@ -264,7 +264,7 @@ def write_advanced_profile_patch(root: Path, name: str, sessions: Path) -> Path:
             },
         },
         {"insert": [
-            {"id": "code-runtime", "name": "@deepseek-ai/dsh-code-runtime-worker-thread"},
+            {"id": "ptc-runtime", "name": "@deepseek-ai/dsh-ptc-runtime-node"},
             {"id": "cordis-host-runner", "name": "@deepseek-ai/dsh-cordis-host-runner"},
             {"id": "cordis-tool", "name": "@deepseek-ai/dsh-tool-cordis"},
         ]},

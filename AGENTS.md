@@ -19,6 +19,7 @@ packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
   llm/         LLM capability: Service Definition/Consumer + DeepSeek providers
   shell/        bash capability: Service Definition + local/pwsh providers + shell Consumers
   subprocess/  subprocess capability + local process-tree provider + shared Win32 library
+  ssh/         SSH connection + remote filesystem/subprocess/sandbox providers
   terminal/         persistent sessions
   fs/          filesystem capability + policy
   lsp/         language-server capability

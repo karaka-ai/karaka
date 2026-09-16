@@ -83,6 +83,8 @@ interface SubprocessStdio {
   stdin: SubprocessStdinMode
   stdout: SubprocessOutputMode
   stderr: SubprocessOutputMode
+  /** Request a separate byte-mode duplex channel; omission creates none. */
+  control?: 'pipe'
 }
 ```
 
@@ -150,6 +152,8 @@ interface SubprocessHandle {
   readonly stdout: Readable | undefined
   /** The child's raw stderr, present iff spawned with `stderr: 'pipe'`. */
   readonly stderr: Readable | undefined
+  /** Separate caller-owned byte channel when requested; native startup failure may leave it absent. */
+  readonly control: Duplex | undefined
   /** Offset-based readers for collect-mode streams (also readable after exit). */
   readonly collected: SubprocessCollectedOutputs
   /** Resolves with spawned-command exit facts; rejects for spawn or provider failures. */

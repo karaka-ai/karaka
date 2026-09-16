@@ -31,8 +31,10 @@ const windowsUnsupportedPackages = process.platform === 'win32'
       'packages/shell/tool-bash',
       'packages/hooks/*',
       'packages/terminal/terminal-bash',
-      'packages/experimental/code-runtime-python',
+      'packages/experimental/ptc-runtime-python',
       'packages/sandbox/sandbox-local',
+      // OpenSSH multiplexing and Unix-socket helper streams require POSIX endpoints.
+      'packages/ssh/*',
     ]
   : []
 
@@ -210,6 +212,8 @@ export default defineConfig({
         'packages/*/*/src/types.ts',
         'packages/*/*/src/bin.ts',
         'packages/*/*/src/worker.ts',
+        // The built Node entry invokes the independently covered process bootstrap through fd 7.
+        'packages/ptc-runtime/ptc-runtime-node/src/process-entry.ts',
         // Dynamic Host/Client composition is covered by its focused lifecycle
         // tests and assembled application checks rather than per-file coverage.
         'packages/self-modification/*/src/**/*.{ts,tsx}',

@@ -162,7 +162,9 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-client-web': ['lib/**/*.css'],
   '@deepseek-ai/dsh-client-ui-theme': ['lib/styles'],
   // The CPython side ships as source .py files, published as-is rather than built.
-  '@deepseek-ai/dsh-experimental-code-runtime-python': ['py/**/*.py'],
+  '@deepseek-ai/dsh-experimental-ptc-runtime-python': ['py/**/*.py'],
+  // The isolated Node bootstrap is a separately launched bundle.
+  '@deepseek-ai/dsh-ptc-runtime-node': ['lib/process.js'],
   // The shipped preset compositions travel inside the roster package.
   '@deepseek-ai/dsh-agent-presets': ['presets'],
   // The Web Host mounts the default-off settings owner independently of each
@@ -176,11 +178,19 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // also shares its generated FFI code through a hashed runtime chunk.
   '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js'],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
+  '@deepseek-ai/dsh-subprocess': ['lib/control.js'],
+  // SSH launches a private helper and shares wire definitions and TLS setup
+  // between that helper and the connection owner.
+  '@deepseek-ai/dsh-ssh': [
+    'lib/helper.js', 'lib/protocol.js', 'lib/schemas.js',
+    'lib/protocol-*.js', 'lib/schemas-*.js', 'lib/stream-security-*.js',
+  ],
   // Ordinary native containment ships a path-loaded runner and its shared
   // runner chunk beside the existing node-pty permission repair.
   '@deepseek-ai/dsh-subprocess-local': [
     'lib/runner.js',
     'lib/runner-*.js',
+    'lib/output.js',
     'scripts/ensure-spawn-helper.mjs',
   ],
   // tsdown shares the repository/pack code between the lib entry and the bin

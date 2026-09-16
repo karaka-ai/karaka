@@ -16,6 +16,8 @@ Ordinary pipes do not cover one requirement. A persistent terminal needs PTY all
 
 `ctx.fs` and `ctx.subprocess` together define one execution world. Providers mounted together must describe the same path namespace, executables, processes, and terminal sessions; higher capabilities consume those two interfaces rather than name the provider.
 
+Foreground Bash and PowerShell calls use one executor deadline for asynchronous confinement preparation and process execution. Preparation expiry returns an outcome without process-exit or signal facts, and late argv cannot start a process; background preparation follows caller cancellation only. The protected execution result tells subclasses whether the subprocess provider was called, so enforcement facts are attached only after publication.
+
 The filesystem interface owns the path facts that another capability needs without exposing its opaque target identity: a canonical process path, canonical `file:` URI, and containment. Existing whole and streaming text operations remain filesystem-owned; protocol consumers enforce their own retention limits while consuming the stream.
 
 The subprocess interface owns executable lookup and process primitives: ordinary raw or collected process spawning and `spawnTerminal()`. An ordinary handle keeps target identity private: `.done` reports the direct target, while `terminate()` and `waitForExit()` control and observe the same provider-managed range. The [native-containment decision](2026-08-28-subprocess-native-containment.md) owns local Linux scopes, Windows Jobs, and their disclosed fallbacks. The terminal operation is one deep primitive whose handle owns text I/O, foreground groups, signalling, and one awaited TERM-to-KILL operation that settles in-flight handle calls and reaches quiescence for every member of its provider-owned range; an observational fallback limits that range to identities it can still observe. Its signal cancels allocation only; the published handle owns its lifetime. Prompt detection, idle inference, scrollback, sandbox policy, and owner lifecycle remain in the PTY consumer.
@@ -28,7 +30,7 @@ Generic consumers use that execution world:
 
 ## Remote provider ownership
 
-The [E2B provider removal](../simplification/2026-09-11-remove-e2b-providers.md) supersedes the E2B realization of this decision. The filesystem/subprocess agreement and asynchronous terminal contracts remain in force for remote implementations.
+The [E2B provider removal](../simplification/2026-09-11-remove-e2b-providers.md) supersedes the E2B realization of this decision. The filesystem/subprocess agreement and asynchronous terminal contracts remain in force for remote implementations. The [POSIX SSH providers](2026-09-11-posix-ssh-runtime.md) realize them through one installed helper and independent stream channels.
 
 A remote provider owns mutable files, command and terminal processes, language-server processes, and provider-private runtime files. The host owns Cordis and plugin objects, the agent loop, agent/session/goal state, session logs and persistence, model transport, authority, skills, subagent orchestration, terminal readiness and LSP protocol state. Moving execution does not imply workspace synchronization or durable remote handles.
 
@@ -60,7 +62,7 @@ The local filesystem, subprocess, terminal and LSP suites cover path identity, e
 
 ## Consequences
 
-A remote execution provider implements only its shared sandbox owner plus filesystem and subprocess adapters. Bash, PTY, and LSP compose above them, so fixes to those capabilities remain provider-neutral.
+A remote execution family supplies its shared connection owner and matching filesystem, subprocess and, for confined calls, sandbox providers. Bash, PTY, and LSP compose above them, so fixes to those capabilities remain provider-neutral.
 
 The fundamental interfaces are wider, and a filesystem/subprocess pair must agree on one execution world. The added operations are limited to facts and lifecycle mechanics that current generic consumers require; model schemas, protocol framing, readiness policy, and presentation do not leak into the providers.
 

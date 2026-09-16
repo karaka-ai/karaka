@@ -19,8 +19,8 @@
 
 - insert:
     # PTC mode is a core execution capability, not a Web component.
-    - id: code-runtime
-      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+    - id: ptc-runtime
+      name: '@deepseek-ai/dsh-ptc-runtime-node'
 
     - id: headless-startup
       name: '@deepseek-ai/dsh-headless/startup'

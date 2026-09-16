@@ -17,6 +17,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
+import type {} from '@deepseek-ai/dsh-fs'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
@@ -207,7 +208,7 @@ function currentPreset(header: AdoptableHeader, events: Iterable<SessionEvent>, 
 }
 
 /** Reject a Session the one-shot runner must not adopt. */
-function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId): void {
+function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId, cwd: string): void {
   const preset = currentPreset(header, events, sessionId)
   if (preset !== undefined) {
     // This bundle composes no preset roster, so resuming the session here would
@@ -223,8 +224,8 @@ function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>
   if (header.cwd === undefined) {
     throw new Error(`session "${sessionId}" recorded no working directory, so it cannot be adopted`)
   }
-  if (header.cwd !== process.cwd()) {
-    throw new Error(`session "${sessionId}" was recorded in "${header.cwd}", not "${process.cwd()}"`)
+  if (header.cwd !== cwd) {
+    throw new Error(`session "${sessionId}" was recorded in "${header.cwd}", not "${cwd}"`)
   }
 }
 
@@ -238,6 +239,7 @@ function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>
  * @param sessionId - exact Session identity to adopt.
  * @param agentOptions - provider/model pair for this run.
  * @param setup - per-Agent scope setup installing the model selection.
+ * @param cwd - working directory resolved in the mounted filesystem.
  * @returns the resumed Agent.
  */
 async function resolveAgent(
@@ -246,6 +248,7 @@ async function resolveAgent(
   sessionId: SessionId,
   agentOptions: { provider: string; model: string },
   setup: (agentCtx: Context) => void,
+  cwd: string,
 ): Promise<Agent> {
   // Resuming promises the caller a log a later process can continue. Without a
   // durable log the run would succeed, print the id, and still lose the whole
@@ -267,17 +270,17 @@ async function resolveAgent(
     // The runner cannot claim an exclusive interval over an Agent it did not
     // create, so it refuses the identity; the adoptability rules run first so a
     // real mismatch is named instead of the generic refusal.
-    assertAdoptable(live.session.header, liveEvents(live.session), sessionId)
+    assertAdoptable(live.session.header, liveEvents(live.session), sessionId, cwd)
     throw new Error(`session "${sessionId}" is live in this process, so the one-shot runner cannot own an exclusive run interval`)
   }
   try {
     using observation = await query.observeSession(sessionId)
-    assertAdoptable(observation.header, observation.events, sessionId)
+    assertAdoptable(observation.header, observation.events, sessionId, cwd)
     const { agent } = await agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
     // The observation is a snapshot: another writer may have appended a preset
     // selection before this process took the write lease. Re-check the log
     // resume actually attached, now that no other process can append.
-    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId)
+    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
     return agent
   } catch (error: unknown) {
     if (!(error instanceof SessionQueryError) || error.code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
@@ -337,23 +340,25 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     installModelSelection(agentCtx, selected)
   }
   const sessionId = brandString<SessionId>(config.sessionId ?? `session-${randomUUID()}`)
+  const fs = ctx.get('fs')
+  const cwd = fs === undefined ? process.cwd() : fs.processPath(await fs.resolve('.'))
   const agent = config.sessionId === undefined
     ? (await agents.create({
       sessionId,
-      meta: { cwd: process.cwd() },
+      meta: { cwd },
       agentOptions,
       setup,
     })).agent
-    : await resolveAgent(ctx, agents, sessionId, agentOptions, setup)
+    : await resolveAgent(ctx, agents, sessionId, agentOptions, setup, cwd)
   await agent.whenIdle()
   if (config.sessionId !== undefined) {
     // The resume-time check read a snapshot; an overlay can still append a
     // preset selection between it and the interval this run now owns, so
     // re-read the log the runner holds before submitting the task.
-    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId)
+    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
   }
   const firstSeq = agent.session.seq
-  const projection = config.json === true ? projectJsonRun(ctx, agent, io.stdout) : undefined
+  const projection = config.json === true ? projectJsonRun(ctx, agent, io.stdout, { cwd }) : undefined
   const stopReasoning = projection === undefined ? streamReasoning(ctx, agent, io.stderr) : undefined
   try {
     try {

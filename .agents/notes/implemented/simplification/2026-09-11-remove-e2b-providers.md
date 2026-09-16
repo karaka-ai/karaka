@@ -42,7 +42,7 @@ The [native containment](../architecture/2026-08-28-subprocess-native-containmen
 
 A remote provider needs a concrete execution use case and evidence for shared file/process coordinates, policy enforcement, bounded transport retention, independent control progress, precise channel closure and managed cancellation. Source and built compositions must exercise those behaviors. A connection loss cannot justify replaying a possibly executed program or claiming unobserved cleanup succeeded.
 
-SSH remains a possible transport for those providers: binary channels avoid the E2B command SDK's retained-output path, but ordinary SSH exec does not map arbitrary child descriptors. A remote helper still owns control-stream bridging, file semantics, process lifetime and remote policy enforcement. The retained interfaces permit that work without claiming a replacement is already available.
+The [POSIX SSH providers](../architecture/2026-09-11-posix-ssh-runtime.md) use binary channels outside the E2B command SDK's retained-output path. Ordinary SSH exec does not map arbitrary child descriptors, so their remote helper owns control-stream bridging, file semantics, process lifetime and remote policy enforcement. That implementation uses the retained interfaces; the E2B integration remains retired.
 
 ## Verification
 

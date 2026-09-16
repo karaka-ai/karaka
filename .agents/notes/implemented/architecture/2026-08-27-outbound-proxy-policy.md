@@ -40,7 +40,7 @@ This keeps `proxyForUrl()` and the dispatcher answering from one set of values. 
 
 The URL-level policy is untouched: `http(s)` only, no embedded credentials, the length cap, and the cross-origin redirect refusal all still apply on every hop.
 
-**A spawned child gets the policy through its environment; a model-executing worker gets nothing.** `proxyEnvironmentForChild()` merges into `scrubbedParentEnv()`, the one function every spawner already shares. The workflow worker does NOT receive it: it executes the model-authored script body, and a proxy URL may carry `user:password`. That is the same containment the code runtime keeps and `docs/defensive-patterns.md` requires, so a workflow's own requests go direct.
+**A spawned child gets the policy through its environment; a model-executing worker gets nothing.** `proxyEnvironmentForChild()` merges into `scrubbedParentEnv()`, the one function every spawner already shares. The workflow worker does NOT receive it: it executes the model-authored script body, and a proxy URL may carry `user:password`. That is the same containment the PTC runtime keeps and `docs/defensive-patterns.md` requires, so a workflow's own requests go direct.
 
 The child keeps the user's own values, and that is what once broke it. Node parses `HTTP_PROXY` and `HTTPS_PROXY` under `NODE_USE_ENV_PROXY` before running the program and exits on any scheme other than `http:` or `https:`; a `socks4://` kept for `curl` therefore ended every Node child — MCP servers, subagent CLIs, `npm` — before its first line, while this process had reported only that the scheme stayed direct. Measured on Node 24.17: `socks4://`, `ftp://`, and a malformed value all exit 1; `socks5://` happens to be accepted there. The flag is now withheld whenever a value the child receives is one this package refused, so such a child connects directly and `curl` still reads the value it was kept for. Handing the child the resolved value instead would have kept Node proxied at the price of silently rewriting what the user set for another tool.
 
@@ -70,7 +70,7 @@ Weighed against that, telemetry is the one outbound channel whose loss costs the
 
 **Read the operating system's proxy settings.** Rejected for this change. Only Codex and Reasonix among six surveyed products do it, and Codex keeps it behind a default-off flag. Measured on the author's machine, it would have found nothing: the proxy application had written the setting to the Wi-Fi service while the primary interface was a USB ethernet adapter with no proxy, so `scutil --proxy` reported none while the exported variables worked. It also needs its own bypass matcher, because an operating system list carries CIDR entries that neither undici nor Node matches.
 
-**Give the `code-runtime` worker the proxy too.** Rejected. Model-authored programs run there with no ambient environment at all — a stronger containment than the scrubbed environment spawned commands get — and a proxy URL may carry credentials. Handing model code a credentialed URL to reach the network is the wrong trade; the exclusion is recorded in that package's limitations.
+**Give model-authored code the proxy too.** Rejected because a proxy URL may carry credentials. Node ptc-runtime processes and workflow workers keep those settings outside the program environment; direct network use remains subject to the program's execution policy.
 
 ## Consequences
 

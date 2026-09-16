@@ -18,9 +18,9 @@ Status: implemented
 
 `plugin-config dispose graces reach the real ACP run` 配置 5000ms 的 dispose 宽限。在 150ms 时，托管镜像在 scope 还无法接受信号时就升级了信号——`systemctl` 的 kill 失败（`Failed to send signal SIGKILL to auxiliary processes: Invalid argument`），teardown 上报了一个配置从未要求的失败。该用例的 mock 按设计既拒绝 stdin EOF 也拒绝 `SIGTERM`，因此用例会等满两个宽限（约 10s），并自带 30s 的用例预算，高于本地单测入口授予的 5000ms 默认值。
 
-`packages/experimental/code-runtime-python/tests/runtime.spec.ts` 的两个非法 UTF-8 残余用例都用 `time.sleep(0.001)` 控制写入节奏：`os.sched_yield()` 会让被抢占的读端把多次写入合并成一个分块，而被包裹的 `Buffer.concat` 测量的正是该分块（在正确实现下，托管镜像测得 2563，超过了 2048 的界）。两个用例的载荷都保持在该界之上——`0xFF` 用例 3200 字节，CESU-8 用例 1100 个 `ED A0 80` 序列（3300 原始字节，超过按原始字节计费会触及的 3072 字节预算）——因此少计仍然会在 2048 之上触发 flush。两者各自带有 20s 的用例预算，容纳带节奏的写入与解释器启动。
+`packages/experimental/ptc-runtime-python/tests/runtime.spec.ts` 的两个非法 UTF-8 残余用例都用 `time.sleep(0.001)` 控制写入节奏：`os.sched_yield()` 会让被抢占的读端把多次写入合并成一个分块，而被包裹的 `Buffer.concat` 测量的正是该分块（在正确实现下，托管镜像测得 2563，超过了 2048 的界）。两个用例的载荷都保持在该界之上——`0xFF` 用例 3200 字节，CESU-8 用例 1100 个 `ED A0 80` 序列（3300 原始字节，超过按原始字节计费会触及的 3072 字节预算）——因此少计仍然会在 2048 之上触发 flush。两者各自带有 20s 的用例预算，容纳带节奏的写入与解释器启动。
 
-`packages/experimental/code-runtime-python/tests/stray-fragments.spec.ts` 的原生输出分块封存测试保留真实 Python 子进程，但把 stdout 读取拆成单字节事件。操作系统的管道合并无法保证达到封存一块所需的 1024 个片段：[run 34465259316](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34465259316) 的全部断言通过，却未覆盖该分支。可控读取覆盖反复封存和末尾换行合并；精确输出与复制总量上限检测字节丢失和前缀反复复制。
+`packages/experimental/ptc-runtime-python/tests/stray-fragments.spec.ts` 的原生输出分块封存测试保留真实 Python 子进程，但把 stdout 读取拆成单字节事件。操作系统的管道合并无法保证达到封存一块所需的 1024 个片段：[run 34465259316](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34465259316) 的全部断言通过，却未覆盖该分支。可控读取覆盖反复封存和末尾换行合并；精确输出与复制总量上限检测字节丢失和前缀反复复制。
 
 Linux coverage 通道授予 `DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'`，与 Windows coverage 通道一致，因为当该通道的分区、worker 与同级门禁共用一个宿主时，`subprocess-local` 与 `bash-sandbox` 的处置用例会超过 5000ms 默认值。
 

@@ -34,6 +34,9 @@
     },
     {
       "path": "../../session-query/session-query"
+    },
+    {
+      "path": "../../fs/fs"
     }
   ]
 }
