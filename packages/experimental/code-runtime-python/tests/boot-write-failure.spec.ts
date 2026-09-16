@@ -2,16 +2,13 @@ import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { PassThrough } from 'node:stream'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 
 /**
- * A synchronous `proto.write` throw on the fd-3 pipe is the one boot path a real
- * subprocess cannot be coerced into from a test: the pipe accepts queued bytes
- * until the kernel buffer fills, and a same-tick EPIPE needs fd 3 already closed
- * before the first write. `spawn` is mocked so fd 3 throws on the boot frame,
- * which is exactly the branch that regressed. The mock is confined to this file
- * so the real-subprocess suite in runtime.spec.ts is untouched.
+ * Mocked subprocess pipes control synchronous write failures and backpressure
+ * transitions independently of kernel buffering. The real-subprocess suite
+ * remains in runtime.spec.ts.
  */
 const { execFileSyncMock, spawnMock } = vi.hoisted(() => ({ execFileSyncMock: vi.fn(), spawnMock: vi.fn() }))
 vi.mock('node:child_process', async (importOriginal) => {
@@ -128,7 +125,67 @@ function fakeChildBackpressuredThenDestroyed(): { child: EventEmitter; proto: Pa
   return { child, proto }
 }
 
-describe('PythonCodeRuntime — boot-write failure', () => {
+describe('PythonCodeRuntime — controlled subprocess pipes', () => {
+  it('preserves pending replies across compaction while the pipe stays backpressured', async () => {
+    const spawned = Promise.withResolvers<undefined>()
+    let written = Promise.withResolvers<undefined>()
+    const replies: unknown[] = []
+    const proto = new PassThrough()
+    const stdout = new PassThrough()
+    const stderr = new PassThrough()
+    const stdin = new PassThrough()
+    const child = Object.assign(new EventEmitter(), { stdout, stderr, stdio: [stdin, stdout, stderr, proto] })
+    proto.write = (chunk: unknown) => {
+      const frame = JSON.parse(String(chunk)) as { type: string }
+      if (frame.type !== 'reply') return true
+      replies.push(frame)
+      written.resolve(undefined)
+      return false
+    }
+    spawnMock.mockImplementation(() => { spawned.resolve(undefined); return child })
+    const ctx = new Context()
+    const fiber = await ctx.plugin(PythonCodeRuntime)
+    const runtime = ctx.codeRuntime as InstanceType<typeof PythonCodeRuntime>
+    const run = runtime.run({
+      program: 'return 1',
+      bindings: [{ global: 'tools', functions: { echo: async (value: unknown) => value as number } }],
+    })
+    onTestFinished(async () => {
+      await fiber.dispose()
+      await run
+      for (const stream of [stdin, stdout, stderr, proto]) stream.destroy()
+    })
+    const calls = (start: number): void => {
+      proto.emit('data', Buffer.from(Array.from({ length: 512 }, (_, offset) => JSON.stringify({
+        type: 'call', id: start + offset, global: 'tools', name: 'echo', args: start + offset,
+      })).join('\n') + '\n'))
+    }
+    const drainThrough = async (count: number): Promise<void> => {
+      while (replies.length < count) {
+        written = Promise.withResolvers<undefined>()
+        expect(proto.listenerCount('drain')).toBe(1)
+        proto.emit('drain')
+        await written.promise
+      }
+    }
+    await spawned.promise
+    proto.emit('data', Buffer.from('{"type":"boot-ack"}\n'))
+    calls(0)
+    await written.promise
+    await drainThrough(256)
+    calls(512)
+    await drainThrough(768)
+    calls(1024)
+    // Each write remains blocked until this fixture emits drain, keeping
+    // pending replies behind the consumed-prefix compaction at frame 1024.
+    await drainThrough(1536)
+    expect(replies).toEqual(Array.from({ length: 1536 }, (_, id) => ({ type: 'reply', id, ok: true, value: id })))
+    proto.emit('drain')
+    proto.emit('data', Buffer.from('{"type":"done","value":"done"}\n'))
+    expect(await run).toMatchObject({ value: 'done' })
+    expect(proto.listenerCount('drain')).toBe(0)
+  })
+
   it('force-kills a version probe that exceeds its load-time deadline', async () => {
     const ctx = new Context()
     const fiber = await ctx.plugin(PythonCodeRuntime)

@@ -318,6 +318,7 @@ class SystemdScopeOwner implements BoundProcessOwner {
 
   private async rangeActive(): Promise<boolean> {
     this.observeRequestConsumption()
+    const generation = this.wakeGeneration
     const result = await this.query(this.systemctl, [
       '--user',
       'show',
@@ -326,6 +327,8 @@ class SystemdScopeOwner implements BoundProcessOwner {
       '--property=ActiveState',
       '--property=TasksCurrent',
     ])
+    // A signal invalidates state queried before its delivery and direct fallback.
+    if (generation !== this.wakeGeneration) return true
     const output = `${result.stdout}\n${result.stderr}`
     if (result.status === 0) {
       const { loadState, activeState, tasksCurrent } = this.parseUnitState(result.stdout)
@@ -340,11 +343,11 @@ class SystemdScopeOwner implements BoundProcessOwner {
       if (!['active', 'activating', 'reloading', 'deactivating'].includes(activeState)) {
         throw new Error(`systemctl returned unknown ActiveState for ${this.unit}: ${JSON.stringify(activeState)}`)
       }
-      if (this.killFailure !== undefined) throw this.killFailure
       if (this.emptyRange(tasksCurrent)) {
         this.releaseEmptyRange()
         return false
       }
+      if (this.killFailure !== undefined) throw this.killFailure
       return true
     }
     if (!MISSING_UNIT.test(output)) {

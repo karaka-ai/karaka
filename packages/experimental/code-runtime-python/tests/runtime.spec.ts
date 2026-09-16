@@ -5411,54 +5411,6 @@ describe('PythonCodeRuntime — hostile peer', () => {
     expect(result.value).toContain('duplicate dict key')
   }, 30_000)
 
-  it('compacts the reply queue mid-drain without dropping pending frames', async () => {
-    // A reply larger than the writable high-water mark makes the FIRST write
-    // return false, suspending the drain loop; the frames queued behind it
-    // push the drain's consumed head past MAX_PENDING_REPLIES, so the resumed
-    // drain compacts the queue mid-run. The child reads fd 3 itself (blocking
-    // the asyncio pump, so its reads cannot race the host's pushes) and sends
-    // a second wave of calls AFTER reading part of the first wave's replies —
-    // those replies are still pending when the drain's head crosses the
-    // compaction bound, so a compaction that dropped pending frames would
-    // leave the child's reply count short and the read loop spinning to the
-    // wall clock. No fixed sleep: the child's reads pace at the drain's
-    // delivery rate (each write blocks until the child reads), and the host
-    // finishes pushing all of a wave within milliseconds — orders of magnitude
-    // before the head crosses the bound — so the queue is always full at the
-    // splice. Newlines are counted per chunk (each reply carries exactly one),
-    // never by re-scanning the accumulated total, which would be O(n²).
-    const { runtime } = await setup({ maxWallMs: 60_000 })
-    const result = await runtime.run({
-      program: [
-        'import os',
-        'frame = b\'{"type":"call","id":%d,"global":"tools","name":"big","args":{}}\\n\'',
-        'for i in range(1024):',
-        '    view = memoryview(frame % i)',
-        '    while view:',
-        '        view = view[os.write(3, view):]',
-        'seen = 0',
-        'while seen < 500:',
-        '    chunk = os.read(3, 65536)',
-        '    if not chunk:',
-        '        break',
-        '    seen += chunk.count(b"\\n")',
-        'for i in range(500):',
-        '    view = memoryview(frame % (1024 + i))',
-        '    while view:',
-        '        view = view[os.write(3, view):]',
-        'while seen < 1524:',
-        '    chunk = os.read(3, 65536)',
-        '    if not chunk:',
-        '        break',
-        '    seen += chunk.count(b"\\n")',
-        'return "done"',
-      ].join('\n'),
-      bindings: [{ global: 'tools', functions: { big: async () => 'x'.repeat(65 * 1024) } }],
-    })
-    expect(result.error).toBeUndefined()
-    expect(result.value).toBe('done')
-  }, 60_000)
-
   it('bounds a flood of zero-byte log lines through the per-entry separator charge', async () => {
     // Blank print() lines carry zero content bytes; without the +1 separator
     // charge they would bypass maxLogBytes entirely and grow the retained

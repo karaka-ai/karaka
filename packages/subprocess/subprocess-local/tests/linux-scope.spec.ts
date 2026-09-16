@@ -430,6 +430,82 @@ describe('Linux scope establishment and quiescence', () => {
     killFailed.result.owner.cleanup?.()
   })
 
+  it('rechecks a pre-signal observation before reporting a failed final kill', async () => {
+    denyProcessGroups()
+    const beforeKill = Promise.withResolvers<ReturnType<typeof activeUnit>>()
+    const query = vi.fn()
+      .mockImplementationOnce(() => beforeKill.promise)
+      .mockResolvedValueOnce(activeUnit('inactive'))
+    const sleep = vi.fn(async () => {})
+    const launched = launch(query, {
+      sleep,
+      spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'Invalid argument' })) as never,
+    })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    const waiting = launched.result.owner.waitForExit()
+    launched.result.owner.signal('SIGKILL')
+    launched.child.exit(null, 'SIGKILL')
+    beforeKill.resolve(activeUnit())
+    await expect(waiting).resolves.toBeUndefined()
+    await expect(launched.result.direct).resolves.toEqual({ exitCode: null, signal: 'SIGKILL' })
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(sleep).not.toHaveBeenCalled()
+    launched.result.owner.cleanup?.()
+  })
+
+  it('does not accept a pre-signal empty observation when the fresh range remains populated', async () => {
+    denyProcessGroups()
+    const beforeKill = Promise.withResolvers<ReturnType<typeof activeUnit>>()
+    const query = vi.fn()
+      .mockImplementationOnce(() => beforeKill.promise)
+      .mockResolvedValueOnce(activeUnitWithTasks('1'))
+    const launched = launch(query, {
+      spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'Invalid argument' })) as never,
+    })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    const waiting = launched.result.owner.waitForExit()
+    launched.result.owner.signal('SIGKILL')
+    launched.child.exit(null, 'SIGKILL')
+    beforeKill.resolve(activeUnit('inactive'))
+    await expect(waiting).rejects.toThrow('Invalid argument')
+    await launched.result.direct
+    expect(query).toHaveBeenCalledTimes(2)
+    launched.result.owner.cleanup?.()
+  })
+
+  it('accepts a confirmed empty range after a failed final kill', async () => {
+    denyProcessGroups()
+    const spawnSync = recordingSystemctl()
+      .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Invalid argument' })
+    const launched = launch(async () => activeUnitWithTasks('0'), { spawnSync: spawnSync as never })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    launched.child.exit(null, 'SIGKILL')
+    await expect(launched.result.owner.waitForExit()).resolves.toBeUndefined()
+    await expect(launched.result.direct).resolves.toEqual({ exitCode: null, signal: 'SIGKILL' })
+    expect(spawnSync.mock.calls.map(call => call[1]?.[1])).toEqual(['kill', 'stop'])
+    launched.result.owner.cleanup?.()
+  })
+
+  it.each([
+    { tasks: '1', clientRunning: false },
+    { tasks: '[not set]', clientRunning: false },
+    { tasks: '0', clientRunning: true },
+  ])('retains a failed kill with tasks=$tasks and clientRunning=$clientRunning', async ({ tasks, clientRunning }) => {
+    denyProcessGroups()
+    const spawnSync = recordingSystemctl()
+      .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Invalid argument' })
+    const launched = launch(async () => activeUnitWithTasks(tasks), { spawnSync: spawnSync as never })
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    if (!clientRunning) launched.child.exit(null, 'SIGKILL')
+    await expect(launched.result.owner.waitForExit()).rejects.toThrow('Invalid argument')
+    expect(spawnSync).toHaveBeenCalledOnce()
+    if (clientRunning) launched.child.exit(null, 'SIGKILL')
+    await launched.result.direct
+    launched.result.owner.cleanup?.()
+  })
+
   it('reports command-query failures from the default systemctl adapter', async () => {
     childProcessMocks.execFile.mockImplementationOnce((...args: unknown[]) => {
       const callback = args.at(-1) as (error: Error | null, stdout: string, stderr: string) => void

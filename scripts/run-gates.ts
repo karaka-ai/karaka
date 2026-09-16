@@ -1506,10 +1506,10 @@ export function taskkillArgs(rootPid: number, descendants: number[]): string[][]
 }
 
 /**
- * Collect each reachable descendant once, excluding the root even in cyclic tables.
- * @param root - the process whose descendants are wanted.
- * @param rows - pid/parent-pid pairs from one process-table enumeration.
- * @returns descendant pids in breadth-first order, preserving sibling row order.
+ * Walk a process-table snapshot without revisiting duplicate or cyclic PID links.
+ * @param root - process whose descendants are collected; excluded from the result.
+ * @param rows - observed PID and parent PID pairs.
+ * @returns distinct reachable descendants in breadth-first order.
  */
 export function collectDescendants(root: number, rows: Array<[number, number]>): number[] {
   const byParent = new Map<number, number[]>()
@@ -1520,11 +1520,11 @@ export function collectDescendants(root: number, rows: Array<[number, number]>):
   }
   const seen = new Set([root])
   const queue = [root]
-  for (const pid of queue) {
-    for (const child of byParent.get(pid) ?? []) {
-      if (seen.has(child)) continue
-      seen.add(child)
-      queue.push(child)
+  for (const parent of queue) {
+    for (const pid of byParent.get(parent) ?? []) {
+      if (seen.has(pid)) continue
+      seen.add(pid)
+      queue.push(pid)
     }
   }
   return queue.slice(1)
