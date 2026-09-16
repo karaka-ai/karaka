@@ -299,6 +299,7 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     )
     this.terminals.add(handle)
     const release = async (): Promise<void> => {
+      // terminate() can wait on this direct-exit promise.
       directSettlement.resolve()
       await handle.terminate()
       this.terminals.delete(handle)

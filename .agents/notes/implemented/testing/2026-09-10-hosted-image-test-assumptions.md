@@ -12,7 +12,7 @@ The [failover leg](../process/2026-09-09-blacksmith-failover-leg.md) runs this s
 
 The cases declare the host properties they depend on.
 
-Terminal cases that drive a mocked PTY exit pin the containment they need (`internals = { platform: 'darwin' }` in `packages/subprocess/subprocess-local/tests/local.spec.ts`); under the host's native scope the mocked exit races the scope bootstrap and fails as `terminal scope exited before its bootstrap consumed the launch request`. Mocking the `linux-scope.ts` probes to reach the same path was removed: the platform pin skips both probes, so the mock could not change the selected path.
+Terminal tests with mocked PTY exits in `packages/subprocess/subprocess-local/tests/local.spec.ts` select fallback containment explicitly. Cases that do not exercise platform selection use `internals = { platform: 'darwin' }`. The terminal-release lifecycle case leaves the platform unset and makes `probeLinuxNative` return false to exercise the host’s default platform selection without starting a real Linux scope. Both arrangements prevent a mocked exit from racing the scope bootstrap. A probe mock alongside the platform pin is redundant because the pin bypasses that probe.
 
 `disposal contains a spawn-failure rejection that races teardown` asserts the settlement contract instead of one winner of the race: a bootstrap that published its pre-exec failure rejects with that failure, and a teardown that stopped the bootstrap first settles as the requested `SIGTERM`. Only the Linux scope records the stopped arm, because the win32 job owner turns a cancelled start into a rejection and the fallback launcher rejects the missing directory.
 
@@ -32,7 +32,7 @@ The Windows folder-dialog smoke probes `CoCreateInstance(CLSID_FileOpenDialog)` 
 
 **Raising only the lane's per-test budget.** Rejected: a wider budget does not change the cases whose cost or behaviour is deterministic — a trapped ACP child still waits out both graces, and a coalesced reader still inflates the measured peak.
 
-**Keeping the `linux-scope.ts` probe mocks.** Rejected as inert: the platform pin selects the fallback path before either probe is called, so the mock changed no execution path.
+**Combining a platform pin with probe mocks.** Rejected as redundant: the pin selects fallback before the native probe is called. A the host’s default platform selection test instead leaves the platform unset and controls the probe result.
 
 **Cutting the illegal-UTF-8 payloads to keep the cases fast.** Rejected: below the 2048 bound the assertion can no longer fail for the undercount it names, which leaves the regression unguarded.
 

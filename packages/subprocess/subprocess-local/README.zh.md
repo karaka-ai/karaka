@@ -62,6 +62,8 @@ Linux 普通进程和终端进程即使在 bootstrap 消费启动请求前被取
 
 ### 可能出错的地方
 
+Linux 直接进程的 `SIGKILL` 获得确认后，等待其退出没有独立的截止时间。若进程无限期阻塞在不可中断的内核 I/O 中，dispose 也可能一直等待；`graceMs` 和 scope 查询的轮询预算不限制此等待。
+
 无法解析的可执行文件会明确报出稳定错误。当 spawn 或提供方故障使 direct outcome 无法产生时，`done` 会 reject；该 rejection 不能证明 target 是否已经开始执行。若所选 owner 无法再证明其范围为空，`waitForExit()` 会 reject，清理仍会尝试终止。越过保留尾部的读取是 `lossy` 的，并在 spill 文件存在时指向它。fallback 进程组或已观察终端 session 可能遗漏在观察前逃逸的后代——见下文限制。
 
 -----

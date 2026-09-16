@@ -487,11 +487,13 @@ export function signalLinuxDirectProcess(pid: number, send: () => boolean): bool
 }
 
 function signalChildGroup(child: ReturnType<typeof spawn>, signal: 'SIGTERM' | 'SIGKILL'): boolean {
+  let groupSignalled = false
   try {
-    return process.kill(-(child.pid as number), signal)
-  } catch {
-    return signalLinuxDirectProcess(child.pid as number, () => child.kill(signal))
-  }
+    groupSignalled = process.kill(-(child.pid as number), signal)
+  } catch { /* A missing or inaccessible group still permits a direct-process attempt. */ }
+  if (groupSignalled && signal === 'SIGTERM') return true
+  // Group success can reflect another member; joining direct exit requires its own SIGKILL submission.
+  return signalLinuxDirectProcess(child.pid as number, () => child.kill(signal))
 }
 
 /** Linux PTY invocation and owner for the exact one-shot scope/bootstrap. */

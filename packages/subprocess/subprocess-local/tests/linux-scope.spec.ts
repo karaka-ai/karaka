@@ -293,7 +293,7 @@ describe('Linux scope establishment and quiescence', () => {
     expect(existsSync(linuxLaunchFilesFromLocator(requestPath).directory)).toBe(false)
   })
 
-  it('uses the scope alone after establishment and the direct range only when scope signalling fails', async () => {
+  it.each(['SIGTERM', 'SIGKILL'] as const)('uses the scope alone after establishment and the direct range only when scope %s fails', async (signal) => {
     const spawnSync = vi.fn()
       .mockReturnValueOnce({ status: 0, stdout: '', stderr: '' })
       .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'scope signal failed' })
@@ -306,12 +306,13 @@ describe('Linux scope establishment and quiescence', () => {
     result.owner.signal('SIGTERM')
     expect(processKill).not.toHaveBeenCalled()
 
-    result.owner.signal('SIGKILL')
-    expect(processKill).toHaveBeenCalledExactlyOnceWith(-321, 'SIGKILL')
+    result.owner.signal(signal)
+    expect(processKill).toHaveBeenCalledExactlyOnceWith(-321, signal)
+    expect(child.kills).toEqual(signal === 'SIGKILL' ? ['SIGKILL'] : [])
     expect(spawnSync).toHaveBeenCalledTimes(2)
 
-    child.exit(null, 'SIGKILL')
-    await expect(result.direct).resolves.toEqual({ exitCode: null, signal: 'SIGKILL' })
+    child.exit(null, signal)
+    await expect(result.direct).resolves.toEqual({ exitCode: null, signal })
     result.owner.cleanup?.()
   })
 
@@ -519,9 +520,13 @@ describe('Linux scope establishment and quiescence', () => {
     { state: 'inactive', fresh: activeUnit('inactive'), settles: true },
     { state: 'populated', fresh: activeUnitWithTasks('1'), settles: false },
     { state: 'unknown', fresh: activeUnitWithTasks('[not set]'), settles: false },
-  ].flatMap(value => ['delivered', 'already absent'].map(delivery => ({ ...value, delivery }))))(
-    'joins a $delivery fallback kill before deciding a $state scope', async ({ fresh, settles, delivery }) => {
-      denyProcessGroups()
+  ].flatMap(value => ['delivered', 'already absent'].map(delivery => ({ ...value, delivery })))
+    .flatMap(value => [false, true].map(groupAccepted => ({ ...value, groupAccepted }))))(
+    'joins a $delivery direct kill with groupAccepted=$groupAccepted before deciding a $state scope', async ({ fresh, settles, delivery, groupAccepted }) => {
+      vi.spyOn(process, 'kill').mockImplementation((pid) => {
+        if (pid < 0 && groupAccepted) return true
+        throw Object.assign(new Error('absent'), { code: 'ESRCH' })
+      })
       const firstRead = Promise.withResolvers<ReturnType<typeof activeUnit>>()
       const queried = Promise.withResolvers<undefined>()
       const query = vi.fn()
@@ -533,10 +538,8 @@ describe('Linux scope establishment and quiescence', () => {
       const launched = launch(query, { sleep, spawnSync: spawnSync as never }, {
         ...spec(), stdio: { ...spec().stdio, control: 'pipe' },
       })
-      if (delivery === 'already absent') {
-        vi.spyOn(launched.child, 'kill').mockReturnValue(false)
-        vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('absent'), { code: 'ESRCH' }) })
-      }
+      const directKill = vi.spyOn(launched.child, 'kill')
+      if (delivery === 'already absent') directKill.mockReturnValue(false)
       consumeLinuxLaunchRequest(launched.requestPath)
       launched.result.owner.signal('SIGKILL')
       let completed = false
@@ -547,6 +550,7 @@ describe('Linux scope establishment and quiescence', () => {
         firstRead.resolve(activeUnitWithTasks('1'))
         await new Promise<void>(resolve => setImmediate(resolve))
         expect(completed).toBe(false)
+        expect(directKill).toHaveBeenCalledExactlyOnceWith('SIGKILL')
         expect(query).toHaveBeenCalledOnce()
         expect(sleep).not.toHaveBeenCalled()
         launched.child.exit(null, 'SIGKILL')
@@ -584,6 +588,35 @@ describe('Linux scope establishment and quiescence', () => {
     } finally {
       launched.child.exit(null, 'SIGKILL')
       await launched.result.direct
+      launched.result.owner.cleanup?.()
+    }
+  })
+
+  it.each(['live', 'permission denied'])('reports scope failure when another group member accepts the kill and the direct PID probe is %s', async (probe) => {
+    const processKill = vi.spyOn(process, 'kill').mockImplementation((pid) => {
+      if (pid < 0 || probe === 'live') return true
+      throw Object.assign(new Error('direct process permission denied'), { code: 'EPERM' })
+    })
+    const query = vi.fn(async () => activeUnitWithTasks('1'))
+    const launched = launch(query, {
+      spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'scope permission denied' })) as never,
+    })
+    const directKill = vi.spyOn(launched.child, 'kill').mockReturnValue(false)
+    consumeLinuxLaunchRequest(launched.requestPath)
+    launched.result.owner.signal('SIGKILL')
+    let failure: unknown
+    const waiting = launched.result.owner.waitForExit().catch((error: unknown) => { failure = error })
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect(failure).toHaveProperty('message', expect.stringContaining('scope permission denied'))
+      expect(launched.child.signalCode).toBeNull()
+      expect(query).toHaveBeenCalledOnce()
+      expect(directKill).toHaveBeenCalledExactlyOnceWith('SIGKILL')
+      expect(processKill.mock.calls).toEqual([[-321, 'SIGKILL'], [321, 0]])
+    } finally {
+      launched.child.exit(null, 'SIGKILL')
+      await launched.result.direct
+      await waiting
       launched.result.owner.cleanup?.()
     }
   })
@@ -876,15 +909,15 @@ describe('Linux scope establishment and quiescence', () => {
     result.owner.cleanup?.()
   })
 
-  it('runs direct fallback before the exact synchronous scope kill on host exit', () => {
+  it('signals the group and direct process before the exact synchronous scope kill on host exit', () => {
     const events: string[] = []
     const { child, result } = launch(async () => missingUnit(), {
       spawnSync: vi.fn(() => { events.push('scope'); return { status: 0 } }) as never,
     })
     child.kill = vi.fn(() => { events.push('direct'); return true })
-    vi.spyOn(process, 'kill').mockImplementation(() => { events.push('direct'); return true })
+    vi.spyOn(process, 'kill').mockImplementation(() => { events.push('group'); return true })
     result.owner.terminateForHostExit()
-    expect(events).toEqual(['direct', 'scope'])
+    expect(events).toEqual(['group', 'direct', 'scope'])
     result.owner.cleanup?.()
   })
 })

@@ -62,6 +62,8 @@ Linux ordinary and terminal cancellation preserves the observed termination sign
 
 ### What can go wrong
 
+After an acknowledged Linux direct-process `SIGKILL`, waiting for its exit has no independent deadline. A process blocked indefinitely in uninterruptible kernel I/O can keep disposal pending; `graceMs` and scope-query polling budgets do not bound this wait.
+
 An executable that cannot be resolved fails loud with a stable error. `done` rejects when spawn or provider failure prevents a direct outcome, and that rejection does not prove whether target execution began. `waitForExit()` rejects if the selected owner can no longer prove its range empty, and cleanup still attempts termination. A read past the retained tail is `lossy` and points at the spill file when one exists. A fallback process group or observed terminal session can miss a descendant that escapes before observation — see the limitations below.
 
 -----
