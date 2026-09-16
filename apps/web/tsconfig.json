@@ -56,6 +56,7 @@
     "tests/remote-welcome.e2e.ts",
     "tests/workspace-new-session-folding.e2e.ts",
     "tests/workspace-management.e2e.ts",
+    "tests/workspace-recency.e2e.ts",
     "tests/replay-round-trip.e2e.ts",
     "tests/hmr-live.e2e.ts",
     "tests/preview-boot.e2e.ts",

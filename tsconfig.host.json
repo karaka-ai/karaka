@@ -44,6 +44,7 @@
     "apps/web/tests/remote-welcome.e2e.ts",
     "apps/web/tests/workspace-new-session-folding.e2e.ts",
     "apps/web/tests/workspace-management.e2e.ts",
+    "apps/web/tests/workspace-recency.e2e.ts",
     "apps/web/tests/replay-round-trip.e2e.ts",
     "apps/web/tests/hmr-live.e2e.ts",
     "apps/web/tests/preview-boot.e2e.ts",
