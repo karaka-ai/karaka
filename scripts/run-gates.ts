@@ -741,6 +741,7 @@ function docSyncLeafGates(options: {
     pnpmScript('tool-catalog', 'verify-tool-catalog', { label: 'tool catalog' }),
     pnpmScript('config-catalog', 'verify-config-catalog', { label: 'config catalog' }),
     pnpmScript('persistence-catalog', 'verify-persistence-catalog', { label: 'persistence catalog' }),
+    pnpmScript('persistence-changes', 'verify-persistence-changes', { label: 'persistence type history' }),
     pnpmScript('session-format-catalog', 'verify-session-format-catalog', { label: 'Session format catalog' }),
     pnpmScript('public-repository-links', 'verify-public-repository-links', { label: 'public repository links', quick: true }),
     pnpmScript('concrete-terms', 'verify-concrete-terms', { label: 'concrete terms', quick: true }),
