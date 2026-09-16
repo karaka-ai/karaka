@@ -154,6 +154,8 @@
     "verify-tool-catalog": "tsx scripts/gen-tool-catalog.ts --check",
     "gen-config-catalog": "tsx scripts/gen-config-catalog.ts",
     "verify-config-catalog": "tsx scripts/gen-config-catalog.ts --check",
+    "gen-dependency-catalog": "tsx scripts/gen-dependency-catalog.ts",
+    "verify-dependency-catalog": "tsx scripts/gen-dependency-catalog.ts --check",
     "gen-doc-graphs": "tsx scripts/gen-doc-graphs.ts",
     "verify-doc-graphs": "tsx scripts/gen-doc-graphs.ts --check",
     "gen-persistence-catalog": "tsx scripts/gen-persistence-catalog.ts",

@@ -213,6 +213,13 @@ describe('gate graph validation', () => {
     expect(quick).toEqual(full.filter(gate => gate.quick === true))
   })
 
+  it('checks the recorded npm dependency catalog in both documentation aggregates', () => {
+    for (const mode of ['doc-sync', 'doc-quick'] as const) {
+      expect(withPnpmEntrypoint(() => gatesForMode(mode).find(gate => gate.id === 'dependency-catalog')))
+        .toMatchObject({ args: ['/private/pnpm.cjs', 'run', 'verify-dependency-catalog'] })
+    }
+  })
+
   it('keeps the hygiene aggregate aligned with the package script checks', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('hygiene').map(subject => subject.id))
 
