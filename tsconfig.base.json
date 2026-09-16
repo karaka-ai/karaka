@@ -33,6 +33,7 @@
       "@karaka-ai/server-auth": ["./packages/karaka/server-auth/src/index.ts"],
       "@karaka-ai/browser-auth": ["./packages/karaka/browser-auth/src/index.ts"],
       "@karaka-ai/transport-http": ["./packages/karaka/transport-http/src/index.ts"],
+      "@karaka-ai/transport-http/startup": ["./packages/karaka/transport-http/src/startup.ts"],
       "@karaka-ai/mcp-application": ["./packages/karaka/mcp-application/src/index.ts"],
       "@karaka-ai/identity/session-reference": ["./packages/karaka/identity/src/session-reference.ts"],
       "@karaka-ai/mcp-application/tool-policy": ["./packages/karaka/mcp-application/src/tool-policy.ts"],

@@ -86,5 +86,6 @@
 | `internal/plugin` | - | `inspector`, `loader`, [`lsp-stdio`](../packages/lsp/lsp-stdio), `modules` |
 | `internal/service` | - | [`agent-presets`](../packages/preset/agent-presets), `gateway` |
 | `internal/status` | - | [`agent`](../packages/core/agent), `inspector` |
+| `internal/update` | - | [`app-boot`](../packages/boot/app-boot) |
 
 Maintenance mode: generated: Cordis event declarations and producer/listener edges are resolved from the repository TypeScript Program.

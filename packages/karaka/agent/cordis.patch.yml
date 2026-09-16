@@ -1,5 +1,7 @@
 # Karaka application ingress uses original DSH engine and storage implementations.
 - insert:
+    - id: karaka-startup
+      name: '@karaka-ai/transport-http/startup'
     - id: timer
       name: '@deepseek-ai/cordis-plugin-timer'
     - id: credentials
@@ -85,6 +87,7 @@
         failOnStartupError: true
     - id: webserver
       name: '@deepseek-ai/dsh-host-webserver'
+      inject: [karakaStartup]
       config:
         host: !!js process.env.KARAKA_HOST ?? '127.0.0.1'
         port: !!js Number(process.env.KARAKA_PORT ?? 8787)

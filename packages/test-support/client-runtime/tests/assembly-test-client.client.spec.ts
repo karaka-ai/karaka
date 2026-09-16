@@ -136,7 +136,24 @@ describe('TestClient (jsdom)', () => {
     await client.reload(SIDEBAR)
     await client.flush()
     expect(client.ctx.slots.entries(SIDEBAR_SETTINGS)).toHaveLength(1)
-    await client.unload(SIDEBAR)
+    const cleanupStarted = Promise.withResolvers<undefined>()
+    const releaseCleanup = Promise.withResolvers<undefined>()
+    const sidebar = [...client.ctx.loader.entries()].find(entry => entry.options.name === SIDEBAR)!
+    sidebar.fiber!.ctx.effect(() => async () => {
+      cleanupStarted.resolve(undefined)
+      await releaseCleanup.promise
+    })
+    let unloaded = false
+    const unloading = client.unload(SIDEBAR).then(() => { unloaded = true })
+    try {
+      await cleanupStarted.promise
+      await client.flush()
+      expect(unloaded).toBe(false)
+    } finally {
+      releaseCleanup.resolve(undefined)
+      await unloading
+    }
+    expect(unloaded).toBe(true)
     await client.flush()
     expect(client.ctx.slots.entries(SIDEBAR_SETTINGS)).toHaveLength(0)
     await expect(client.reload(SIDEBAR)).rejects.toThrow(`no Loader entry named ${SIDEBAR}`)

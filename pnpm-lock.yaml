@@ -1262,6 +1262,9 @@ importers:
       '@deepseek-ai/dsh-package-manifest':
         specifier: workspace:^
         version: link:../../util/package-manifest
+      chokidar:
+        specifier: 4.0.3
+        version: 4.0.3
       js-yaml:
         specifier: ^4.2.0
         version: 4.2.0
@@ -1299,9 +1302,6 @@ importers:
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
-      chokidar:
-        specifier: 4.0.3
-        version: 4.0.3
 
   packages/boot/cmdline:
     devDependencies:
@@ -7215,6 +7215,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:^
+        version: link:../../../vendor/loader
       '@deepseek-ai/dsh-agent':
         specifier: workspace:^
         version: link:../../core/agent

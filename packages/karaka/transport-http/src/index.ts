@@ -20,14 +20,14 @@ import {
   type ApplicationIdentity,
 } from '@karaka-ai/sdk'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type {} from '@deepseek-ai/dsh-cmdline'
+import type {} from './startup.ts'
 import type {} from '@karaka-ai/server-auth'
 import type {} from '@karaka-ai/browser-auth'
 import { mountBrowserRoutes } from './browser-routes.ts'
 import { json, readObject, writeEvent } from './http.ts'
 
 export const name = 'karaka-transport-http'
-export const inject = ['serverAuth', 'karakaIdentity', 'agents', 'sessions', 'sessionQuery', 'sessionPersistence', 'sessionProjections', 'agentDefaultModel', 'llm', 'webServer']
+export const inject = ['serverAuth', 'karakaIdentity', 'agents', 'sessions', 'sessionQuery', 'sessionPersistence', 'sessionProjections', 'agentDefaultModel', 'llm', 'webServer', 'karakaStartup']
 
 /** HTTP transport configuration. */
 export interface Config {
@@ -75,10 +75,7 @@ interface ActiveHttpRequest {
 
 /** Mount authenticated application routes onto the shared Host web server. */
 export function apply(ctx: Context, config: Config): void {
-  const appReady = ctx.get('appReady')
-  if (appReady === undefined) throw new Error('Karaka HTTP transport requires launcher readiness')
-  let ready = false
-  ctx.effect(() => appReady.onReady(() => { ready = true }))
+  const startup = ctx.karakaStartup
   new ApplicationChatController(ctx)
   const base = normalizeBase(config.path ?? KARAKA_APPLICATION_API_PATH)
   const maxBodyBytes = config.maxBodyBytes ?? 1_048_576
@@ -104,7 +101,7 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'prefix',
       path: routeBase,
       handler: (request, response) => {
-        if (!ready) {
+        if (!startup.ready) {
           json(response, 503, { code: 'STARTING', message: 'Application is starting' })
           return
         }
@@ -129,7 +126,7 @@ export function apply(ctx: Context, config: Config): void {
     if (config.browserOrigins === undefined || config.browserOrigins.length === 0) throw new Error('Browser transport requires explicit origins')
     const browserBase = normalizeBase(config.browserPath)
     if (browserBase === base || browserBase.startsWith(`${base}/`) || base.startsWith(`${browserBase}/`)) throw new Error('Browser and backend paths must be disjoint')
-    mountBrowserRoutes(ctx, config, () => ready)
+    mountBrowserRoutes(ctx, config, () => startup.ready)
   }
 
   if (config.handleQuestions === false) return

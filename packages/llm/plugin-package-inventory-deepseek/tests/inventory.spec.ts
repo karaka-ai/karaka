@@ -194,6 +194,7 @@ describe('DeepSeek plugin package inventory', () => {
 
     await ctx.loader.create({ name: 'versioned-plugin/plugin.mjs' })
     await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(composition).href } })
+    await ctx.loader.await()
 
     const prepared = await ctx.deepseekLlmApiExtensions.prepare({ body: { messages: [] }, signal: SIGNAL })
     expect(prepared.fields.dsh_plugin_packages?.packages).toEqual([

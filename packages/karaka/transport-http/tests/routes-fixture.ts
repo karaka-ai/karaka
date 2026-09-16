@@ -38,10 +38,7 @@ export async function fixture(config: Config = { path: '/api', handleQuestions: 
       return () => { const index = routes.indexOf(route); if (index >= 0) routes.splice(index, 1) }
     },
   } as unknown as typeof ctx.webServer)
-  let markReady = (): void => {}
-  ctx.provide('appReady', {
-    onReady: (callback: () => void) => { markReady = callback; if (ready) callback(); return () => {} },
-  } as unknown as typeof ctx.appReady)
+  ctx.provide('karakaStartup', { get ready() { return ready } })
   const authenticate = vi.fn(async (): Promise<AuthenticatedApplication | undefined> => ({ applicationId: ApplicationId('app') }))
   ctx.provide('serverAuth', { authenticate } as unknown as typeof ctx.serverAuth)
   const browserAuthenticate = vi.fn(async (): Promise<BrowserCaller | undefined> => ({ kind: 'application' as const, owner, expiresAt: Date.now() + 60_000 }))
@@ -86,7 +83,7 @@ export async function fixture(config: Config = { path: '/api', handleQuestions: 
       ...init,
     })
   }
-  return { ...state, routes, request, markReady: () => { markReady() }, authenticate, browserAuthenticate, removeBrowserAuth,
+  return { ...state, routes, request, markReady: () => { ready = true }, authenticate, browserAuthenticate, removeBrowserAuth,
     listAgents, create, prompt, cancel, selectModel, events, follow, snapshot }
 }
 

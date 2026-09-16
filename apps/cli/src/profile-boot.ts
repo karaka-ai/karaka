@@ -368,6 +368,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
           await ctx.loader.create({ name: '@deepseek-ai/cordis-plugin-timer' })
         }
         await ctx.loader.create({ name: '@deepseek-ai/cordis-plugin-hmr', config: { root: [] } })
+        await ctx.loader.await()
       }
       await watchUserPatches(ctx, {
         binName: NAME,

@@ -271,19 +271,27 @@ describe('headless stream-json snapshots', () => {
     await expect(result.stderr).toMatchFileSnapshot(headlessFailureExpected)
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('prints the original Loader activation error through the assembled one-shot app', async () => {
+  it('warns about an unrelated activation error and completes the headless task', async () => {
     const result = await runLoaderSmoke({
-      label: 'headless startup activation error snapshot',
+      label: 'headless best-effort startup snapshot',
       tempDirPrefix: 'headless-snapshot-startup-error-',
-      binScript,
-      libBinScript: binScript,
+      binScript: dshBinScript,
       configPath: startupFailureConfigPath,
-      binArgs: [startupFailureConfigPath, 'unreachable task'],
+      binArgs: [
+        '--profile', 'headless',
+        '--patch', headlessOverlayPath,
+        '--patch', startupFailureConfigPath,
+        'Complete the task despite the unrelated startup failure.',
+      ],
       tsconfigPath,
-      expectedExitCode: 1,
+      env: {
+        DSH_PERMISSION_MODE: 'danger-full-access',
+        DSH_TELEMETRY_DISABLED: '1',
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      },
     })
-    expect(result.stdout).toBe('')
-    await expect(result.stderr.replace(startupFailurePluginUrl, './activation-error.mjs'))
+    expect(result.stdout).toBe('CLI tool round trip complete: CLI_TOOL_ROUND_TRIP\n')
+    await expect(result.stderr.replaceAll(startupFailurePluginUrl, './activation-error.mjs'))
       .toMatchFileSnapshot(startupFailureExpected)
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 

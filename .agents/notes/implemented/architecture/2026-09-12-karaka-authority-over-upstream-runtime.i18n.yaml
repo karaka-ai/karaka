@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-12-karaka-authority-over-upstream-runtime.md
-2026-09-12-karaka-authority-over-upstream-runtime.md: 5c3d99865b62825e794fdea34c9893f9f81d5ca1
-2026-09-12-karaka-authority-over-upstream-runtime.zh.md: 24e916209b6caa33b42a31e0b118b8644ee677b4
+2026-09-12-karaka-authority-over-upstream-runtime.md: e5aebfb812d7a726dc60bf0e159a5670fd53162f
+2026-09-12-karaka-authority-over-upstream-runtime.zh.md: d4d10fdbf6c39a2ec4d26575fa8a80bdab563044
