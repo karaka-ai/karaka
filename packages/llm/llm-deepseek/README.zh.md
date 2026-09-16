@@ -1,5 +1,5 @@
 ---
-description: "面向用户与维护者的 DeepSeek chat-completions 适配器说明：配置 deepseek-official 路由、thinking 与图片输入。"
+description: "通过同一 DeepSeek 配置选择 Chat Completions 或 Messages 协议，并配置模型、推理与图片输入。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包可通过 `deepseek-official` 路由流式调用 DeepSeek 模型，包括配置 thinking 与推理强度、向视觉模型输入图片，以及查看建议性模型目录。端点、凭据、目录与 thinking 策略均按请求解析，因此有效的用户设置更改会在下一个请求生效，无需重启进程。它适合 DeepSeek 官方 API 或 OpenAI 兼容网关；由于路由名不同，可与 pi-ai 包并用。
+使用本包可通过 `deepseek-official` 调用 DeepSeek 模型，在 Cordis YAML 中选择 Chat Completions 或 Messages 协议。两种协议共用凭据、端点配置和模型目录；有效的设置更改在后续请求生效，进行中的请求保留原配置。Web 始终显示 DeepSeek，并提供 API 地址和密钥编辑。它可与 [pi-ai 适配器](../llm-pi-ai/README.zh.md)并用。
 
 ## 目录
 
@@ -36,6 +36,7 @@ kind: "package-reference"
 ```yaml
 - name: '@deepseek-ai/dsh-llm-deepseek'
   config:
+    protocol: chat-completions   # chat-completions | messages
     apiKeyEnv: DEEPSEEK_API_KEY  # credential reference, resolved per request
     baseURL: https://api.deepseek.com # optional; $DEEPSEEK_BASE_URL then this default
     reasoningEffort: high        # optional; off | low | high | max
@@ -50,8 +51,9 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
+| `protocol` | `chat-completions` | Cordis YAML 中选择 `chat-completions` 或 `messages`；Web 不提供选择器 |
 | `apiKeyEnv` | `DEEPSEEK_API_KEY` | 按请求解析的凭据引用：先经凭据 seam，再到环境变量 |
-| `baseURL` | `https://api.deepseek.com` | 端点基址；设置了 `$DEEPSEEK_BASE_URL` 时优先 |
+| `baseURL` | 按协议选择官方根地址 | 显式值优先，其次 `$DEEPSEEK_BASE_URL`，最后采用当前协议的官方端点 |
 | `thinking` | `enabled` | 部署策略；`disabled` 把所有请求锁定为 `off` |
 | `reasoningEffort` | `high` | 默认强度：`off`、`low`、`high` 或 `max` |
 | `maxTokens` | `256,000` | 单次请求输出上限；模型自身上限与显式请求值优先 |
@@ -72,11 +74,27 @@ kind: "package-reference"
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-llm-deepseek)是每个受支持字段及其 JSDoc 的穷尽式真源。
 
+<a id="choose-a-protocol"></a>
+### 选择协议
+
+通过 Cordis 补丁将已有插件切换到 Messages：
+
+```yaml
+- id: llm-deepseek
+  config:
+    protocol: messages
+    baseURL: https://api.deepseek.com/anthropic
+```
+
+`protocol` 默认为 `chat-completions`，官方根地址为 `https://api.deepseek.com`；`messages` 的官方根地址为 `https://api.deepseek.com/anthropic`。只有未提供 `baseURL` 或环境覆盖时才使用官方默认值。切换协议保留已有端点覆盖，用户需要填写与选定协议兼容的地址。Chat 追加 `/chat/completions`，Messages 追加 `/v1/messages`；除去末尾斜线之外，不推测或删除自定义路径中的 `/v1` 等后缀。两种协议共用 `llm-deepseek` 设置、`apiKeyEnv` 与 `deepseek-official`，因此已保存的模型选择仍然有效。
+
+Messages 以内容块发送文本、思考、工具调用和工具结果，以 `output_config.effort` 发送推理强度，并使用内联 base64 图片。声明 `systemPromptUpdate: in-history` 的模型保留初始顶层 system，在对应 user/tool-result 轮次之后发送新的 system 快照；未声明能力时，使用最新快照作为顶层 system。回放元数据记录 Messages 格式、模型和签名；Chat 请求只序列化持久化内容，不发送这些签名。无效的 Messages 回放元数据产生警告并省略签名，不丢弃文本或工具历史。
+
 ### 带 thinking 与图片的流式调用
 
 支持图片的路由为每个持久引用选定请求目标，再把它解析为确定性请求版本。省略 `imagePixelBudget` 时按官方公布的视觉 token 网格定目标，即 14 px patch、3:1 降采样、单图最多 1024 token，因此正方形图片最多保留 1302×1302 像素，16:9 图片以 1708×961 发送、对应提供方 1708×966 的网格；正整数会用总像素预算取代网格，`low` 使用总计 512×512 像素。每张请求图片单边最多 4096 像素，这是提供方对包含 15 张及以上图片的请求的限制；`imageMaxBytes` 默认为 2 MiB。带 alpha 的图片使用 effort 0 的 WebP，不透明图片使用 JPEG，并采用 85/75/60 质量阶梯；全部候选都超过目标时保留最小输出。每张保留图片前都有文本，注明完整附件 id 与实际请求尺寸。当前文件系统可以映射附件提供方的宿主对象时，该文本还携带只读执行世界路径与可写副本使用的扩展名。纯文本与未列出路由接收稳定附件占位符，而持久历史继续保留图片引用。
 
-适配器通常通过 DeepSeek Files API 上传这些确切请求字节，并发送 file-id 块。文件解析失败或超时会用相同请求版本的 base64 data URL 重建整份 chat 请求；一次请求绝不混用 file id 与内联图片。缓存 id 按端点与 API key 限定作用域，在到期前刷新，根据提供方的陈旧文件错误失效，并通过带等待方局部取消的 singleflight 解析。配额失败会先删除一批配置数量的最旧 harness 文件，再重试一次上传。
+Chat Completions 通常通过 DeepSeek Files API 上传这些确切请求字节，并发送 file-id 块。文件解析失败或超时会用相同请求版本的 base64 data URL 重建整份 chat 请求；一次请求绝不混用 file id 与内联图片。缓存 id 按端点与 API key 限定作用域，在到期前刷新，根据提供方的陈旧文件错误失效，并通过带等待方局部取消的 singleflight 解析。配额失败会先删除一批配置数量的最旧 harness 文件，再重试一次上传。
 
 Files 模式通过 `maxRequestFilesBytes` 与 `maxImagesPerRequest` 限制保留请求版本；内联回退有独立 base64 预算。两种模式都按配置的字节或数量量子移除最旧前缀。每张省略图片都有自己的模型可见占位符，包含显示名或附件 id，以及可用时的规范化尺寸、媒体类型与当前只读路径。分阶高水位策略避免每新增一张图片都改写旧请求前缀。
 
@@ -112,13 +130,13 @@ Files 模式通过 `maxRequestFilesBytes` 与 `maxImagesPerRequest` 限制保留
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：`Config` schema、按请求解析、settings 与凭据接线 |
-| [`src/adapter.ts`](src/adapter.ts) | `DeepSeekAdapter`：模型解析、图片投影、Files 回退、带空闲超时的流式调用 |
-| [`src/file-store.ts`](src/file-store.ts) + [`src/files-api.ts`](src/files-api.ts) | 限定作用域的上传缓存、到期、陈旧 id 恢复、配额清理与远程文件操作 |
-| [`src/serialize.ts`](src/serialize.ts) | 协议序列化：thinking 默认值、Files 或内联图片块、历史规则 |
-| [`src/sse.ts`](src/sse.ts) | 直接 `fetch` 流的 `eventsource-parser` SSE 分帧 |
-| [`src/translate.ts`](src/translate.ts) | 把 SSE 载荷翻译为 harness `StreamChunk` 值；工具调用的 `id` 与 `name` 是身份，后续分片重复发送空串或 null 时保留已建立的值 |
-| [`src/types.ts`](src/types.ts) | 上述模块共享的协议级类型 |
+| [`src/index.ts`](src/index.ts) | settings、凭据与提供方注册 |
+| [`src/config.ts`](src/config.ts) | schema 与请求配置解析 |
+| [`src/adapter.ts`](src/adapter.ts) | 按协议分派，并冻结已准备请求的配置 |
+| [`src/common/models.ts`](src/common/models.ts) | 共享模型目录 |
+| [`src/common/model-info.ts`](src/common/model-info.ts) | 共享模型能力与推理选项 |
+| [`src/protocols/chat-completions/adapter.ts`](src/protocols/chat-completions/adapter.ts) | Chat 传输、Files 缓存、图片投影与请求扩展 |
+| [`src/protocols/messages/adapter.ts`](src/protocols/messages/adapter.ts) | Messages 传输、序列化、内联图片与原生回放 |
 
 ### 协议流程
 
@@ -178,6 +196,8 @@ loop 保留的响应块会追加到下一个请求，并保留其更早的可复
 
 ## 已知限制与延期工作
 
+- Messages 不使用 DeepSeek Files API 或 Chat 专属请求扩展；Responses 协议尚未实现，配置值 `responses` 会被拒绝。
+
 <a id="known-limitations-and-deferred-work"></a>
 
 
@@ -189,6 +209,7 @@ loop 保留的响应块会追加到下一个请求，并保留其更早的可复
 - **跳过插件新增的内容块类型**——核心文本与受支持图片块会被序列化，空工具输出以字面量 `(no output)` 过线。
 - **图片是仅用于输入的持久附件**——不支持直接外部 URL 与 assistant 图片输出；DeepSeek 输入通常使用 Files API，仅在单次请求恢复时使用内联 base64。
 - 默认目录预注册 `deepseek-flash` 及其文本、图片和历史内更新能力，不探测网关可用性。网关开放该 ID 前，请求可能以 `INVALID_REQUEST` 失败。配置 `DEEPSEEK_API_KEY` 和支持该 ID 的网关后，设置 `DEEPSEEK_FLASH_E2E=1` 可启用[本包 e2e 测试文件](tests/adapter.e2e.ts)中的 Chat Completions 协议验证。
+- [Messages system 更新 e2e](tests/messages/adapter.e2e.ts) 要求通过 `DEEPSEEK_IN_HISTORY_MODEL` 指定支持该能力的模型，例如 `deepseek-flash`，并使用 `high` 思考强度。该变量未设置或为空时跳过；普通 `off` 文本检查仍在有凭据时运行。关闭思考时已知的指令遵循不稳定，使这些 system 更新检查不适合使用 `off`。
 
 <a id="dev-note"></a>
 ### 开发备注

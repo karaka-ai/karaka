@@ -26,7 +26,7 @@ import * as PluginPackageInventoryDeepSeek from '@deepseek-ai/dsh-plugin-package
 import * as SessionLogDeepSeek from '@deepseek-ai/dsh-session-log-deepseek'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import type { Config } from '@deepseek-ai/dsh-llm-deepseek'
-import type { WireMessage, WireRequest } from '../src/types.ts'
+import type { WireMessage, WireRequest } from '../src/protocols/chat-completions/types.ts'
 import { assemble, type AssembledResult } from './assemble.ts'
 
 /**

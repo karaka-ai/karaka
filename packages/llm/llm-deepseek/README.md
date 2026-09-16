@@ -1,5 +1,5 @@
 ---
-description: "The DeepSeek chat-completions adapter for users and maintainers configuring the deepseek-official route, thinking, and image input."
+description: "Configure DeepSeek models, thinking, and image input through Chat Completions or Messages under one provider."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to stream DeepSeek models through the `deepseek-official` route, including configurable thinking and reasoning effort, image input for vision models, and an advisory model catalog. Endpoint, credentials, catalog, and thinking policy resolve for each request, so valid user-settings changes apply to the next request without restarting the process. Choose it for DeepSeek's official API or an OpenAI-compatible gateway; it can run beside the pi-ai package because they use different route names.
+Use this package to stream DeepSeek models through `deepseek-official`, choosing Chat Completions or Messages in Cordis YAML. Both protocols share credentials, endpoint configuration, and the model catalog. Valid settings changes apply to subsequent requests; in-flight requests retain their original configuration. Web displays DeepSeek and lets users edit the API address and key. It can run beside the [pi-ai adapter](../llm-pi-ai/README.md).
 
 ## Table of Contents
 
@@ -36,6 +36,7 @@ Choose this adapter when the deployment targets DeepSeek's official API, optiona
 ```yaml
 - name: '@deepseek-ai/dsh-llm-deepseek'
   config:
+    protocol: chat-completions   # chat-completions | messages
     apiKeyEnv: DEEPSEEK_API_KEY  # credential reference, resolved per request
     baseURL: https://api.deepseek.com # optional; $DEEPSEEK_BASE_URL then this default
     reasoningEffort: high        # optional; off | low | high | max
@@ -50,8 +51,9 @@ A request selects the route with `provider: deepseek-official`; the model id pas
 
 | Field | Default | Meaning |
 |---|---|---|
+| `protocol` | `chat-completions` | Choose `chat-completions` or `messages` in Cordis YAML; Web has no protocol selector |
 | `apiKeyEnv` | `DEEPSEEK_API_KEY` | Credential reference resolved per request through the credentials seam, then the environment |
-| `baseURL` | `https://api.deepseek.com` | Endpoint base; `$DEEPSEEK_BASE_URL` wins when set |
+| `baseURL` | Selected protocol’s official root | Explicit value, then `$DEEPSEEK_BASE_URL`, then the selected protocol default |
 | `thinking` | `enabled` | Deployment policy; `disabled` locks every request to `off` |
 | `reasoningEffort` | `high` | Default effort: `off`, `low`, `high`, or `max` |
 | `maxTokens` | `256,000` | Per-request output cap; a model's own cap and explicit request values win |
@@ -72,15 +74,31 @@ A request selects the route with `provider: deepseek-official`; the model id pas
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-llm-deepseek) is the exhaustive source for every accepted field and its JSDoc.
 
+<a id="choose-a-protocol"></a>
+### Choose a protocol
+
+Switch the existing plugin to Messages with a Cordis patch:
+
+```yaml
+- id: llm-deepseek
+  config:
+    protocol: messages
+    baseURL: https://api.deepseek.com/anthropic
+```
+
+`protocol` defaults to `chat-completions`, whose official root is `https://api.deepseek.com`; `messages` uses `https://api.deepseek.com/anthropic`. An official default applies only without an explicit `baseURL` or environment override. Switching protocols retains endpoint overrides, so users must supply an address compatible with the selected protocol. Chat appends `/chat/completions`; Messages appends `/v1/messages`. Apart from trailing slashes, neither infers or removes custom path suffixes such as `/v1`. Both share the `llm-deepseek` settings section, `apiKeyEnv`, and `deepseek-official`, so saved model selections remain valid.
+
+Messages sends text, thinking, tool calls, and tool results as content blocks, reasoning effort as `output_config.effort`, and images as inline base64. Models declaring `systemPromptUpdate: in-history` retain the initial top-level system and send new system snapshots after their corresponding user/tool-result turn; undeclared models use the latest snapshot as the top-level system. Replay metadata identifies the Messages format, model, and signatures. Chat requests serialize durable content without those signatures. Invalid Messages replay metadata emits a warning and omits signatures while retaining text and tool history.
+
 ### Streaming with thinking and images
 
 An image-capable route chooses each durable reference's request target and resolves it into a deterministic request version. Omitting `imagePixelBudget` sizes the target on the published vision token grid of 14px patches, 3:1 downsampling, and at most 1024 tokens per image, so a square image keeps up to 1302×1302 pixels and a 16:9 image is sent as 1708×961 for the provider's 1708×966 grid; a positive integer replaces the grid with a total-pixel budget, and `low` uses 512×512 total pixels. Every request image is capped at 4096 pixels per side, the provider limit for requests carrying 15 or more images, and `imageMaxBytes` defaults to 2 MiB. Alpha images use WebP effort 0 and opaque images use JPEG on the 85/75/60 quality ladder, keeping the smallest output when every candidate exceeds the target. Every retained image is preceded by text naming its complete attachment id and actual request dimensions. When the current filesystem maps the attachment provider's host object, that text also carries a read-only execution-world path and the extension for a writable copy. Text-only and unlisted routes receive stable attachment placeholders while durable history keeps the image references.
 
-The adapter normally uploads those exact request bytes through the DeepSeek Files API and sends file-id blocks. A failed or timed-out file resolution rebuilds the whole chat request with the same request versions as base64 data URLs; one request never mixes file ids and inline images. Cached ids are scoped by endpoint and API key, refreshed before expiry, invalidated from provider stale-file errors, and resolved through singleflight with waiter-local cancellation. Quota failure deletes one configured batch of the oldest harness-owned files before one upload retry.
+Chat Completions normally uploads those exact request bytes through the DeepSeek Files API and sends file-id blocks. A failed or timed-out file resolution rebuilds the whole chat request with the same request versions as base64 data URLs; one request never mixes file ids and inline images. Cached ids are scoped by endpoint and API key, refreshed before expiry, invalidated from provider stale-file errors, and resolved through singleflight with waiter-local cancellation. Quota failure deletes one configured batch of the oldest harness-owned files before one upload retry.
 
 Files mode bounds retained request versions by `maxRequestFilesBytes` and `maxImagesPerRequest`; inline fallback has its own base64 budget. Both remove an oldest prefix in configured byte or count quanta. Each omitted image gets its own model-visible placeholder with its display name or attachment id and, when available, normalized dimensions, media type, and current read-only path. The stepped high-watermark policy avoids rewriting an old request prefix after every new image.
 
-`reasoningEffort` selects the advertised default. Exact-model metadata exposes ordered `off`, `low`, `high`, and `max` efforts with selection guidance when deployment policy permits thinking. `low`, `high`, and `max` enable thinking and serialize as `reasoning_effort`, while adapter-owned `off` sends `thinking.type: disabled` instead. An unsupported value fails with `UNSUPPORTED_REASONING_EFFORT` before network I/O, and `thinking: disabled` rejects any non-`off` effort at plugin load. Requests with `purpose: 'session-title'` force thinking off to reserve output for visible title text.
+`reasoningEffort` selects the advertised default. Exact-model metadata exposes ordered `off`, `low`, `high`, and `max` efforts with selection guidance when deployment policy permits thinking. `low`, `high`, and `max` enable thinking and serialize as `reasoning_effort` for Chat Completions or `output_config.effort` for Messages, while adapter-owned `off` sends `thinking.type: disabled` instead. An unsupported value fails with `UNSUPPORTED_REASONING_EFFORT` before network I/O, and `thinking: disabled` rejects any non-`off` effort at plugin load. Requests with `purpose: 'session-title'` force thinking off to reserve output for visible title text.
 
 ### Dynamic configuration
 
@@ -88,7 +106,7 @@ Connection facts are re-read once per operation through the optional settings an
 
 ### Provider-specific request fields
 
-When `ctx.deepseekLlmApiExtensions` is present, the adapter prepares its registered top-level fields from the exact serialized base request before `fetch`. Preparation or field collisions fail before HTTP; after a 2xx response, the adapter accepts every captured contribution before consuming SSE. Transport and non-2xx failures do not accept them. Shipped compositions use this for the optional incremental `dsh_session_log` field and the default-on active `dsh_plugin_packages` inventory; both stay outside model input.
+In Chat Completions, when `ctx.deepseekLlmApiExtensions` is present, the adapter prepares its registered top-level fields from the exact serialized base request before `fetch`. Preparation or field collisions fail before HTTP; after a 2xx response, the adapter accepts every captured contribution before consuming SSE. Transport and non-2xx failures do not accept them. Shipped compositions use this for the optional incremental `dsh_session_log` field and the default-on active `dsh_plugin_packages` inventory; both stay outside model input.
 
 ### Failures and recovery
 
@@ -112,13 +130,13 @@ The plugin is built on one explicit resolve step and one registration fact. `res
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: `Config` schema, per-request resolution, settings and credential wiring |
-| [`src/adapter.ts`](src/adapter.ts) | The `DeepSeekAdapter`: model resolution, image projection, Files fallback, streaming with idle timeout |
-| [`src/file-store.ts`](src/file-store.ts) + [`src/files-api.ts`](src/files-api.ts) | Scoped upload caching, expiry, stale-id recovery, quota cleanup, and remote file operations |
-| [`src/serialize.ts`](src/serialize.ts) | Wire serialization: thinking defaults, Files or inline image blocks, history rules |
-| [`src/sse.ts`](src/sse.ts) | `eventsource-parser` SSE framing for the direct `fetch` stream |
-| [`src/translate.ts`](src/translate.ts) | SSE payload translation into harness `StreamChunk` values; tool-call `id` and `name` are identity, so a continuation delta repeating them empty or null leaves the established value alone |
-| [`src/types.ts`](src/types.ts) | Wire-level types shared by the modules above |
+| [`src/index.ts`](src/index.ts) | Settings, credentials, and provider registration |
+| [`src/config.ts`](src/config.ts) | Schema and request-local configuration resolution |
+| [`src/adapter.ts`](src/adapter.ts) | Protocol dispatch with frozen prepared-call configuration |
+| [`src/common/models.ts`](src/common/models.ts) | Shared model catalog |
+| [`src/common/model-info.ts`](src/common/model-info.ts) | Shared model capabilities and reasoning choices |
+| [`src/protocols/chat-completions/adapter.ts`](src/protocols/chat-completions/adapter.ts) | Chat transport, Files cache, image projection, and request extensions |
+| [`src/protocols/messages/adapter.ts`](src/protocols/messages/adapter.ts) | Messages transport, serialization, inline images, and native replay |
 
 ### Wire flow
 
@@ -178,6 +196,8 @@ Loop-retained response blocks append to the next request and preserve its earlie
 
 ## Known Limitations and Deferred Work
 
+- Messages does not use the DeepSeek Files API or Chat-specific request extensions. Responses is not implemented; configuration rejects `responses`.
+
 <a id="known-limitations-and-deferred-work"></a>
 
 
@@ -189,6 +209,7 @@ These limits define where the adapter stops and future work begins. They are cur
 - **Plugin-added content block types are skipped** — core text and supported image blocks are serialized, and empty tool output crosses the wire as the literal `(no output)`.
 - **Images are input-only durable attachments** — direct external URLs and assistant image output are not supported; DeepSeek input normally uses the Files API and uses inline base64 only for per-request recovery.
 - The default catalog pre-registers `deepseek-flash` and its text/image and in-history capabilities without probing gateway availability. Requests can fail with `INVALID_REQUEST` until the gateway enables the id. With `DEEPSEEK_API_KEY` and a supporting gateway configured, `DEEPSEEK_FLASH_E2E=1` enables the Chat Completions check in [this package's e2e suite](tests/adapter.e2e.ts).
+- The [Messages system-update e2e checks](tests/messages/adapter.e2e.ts) require `DEEPSEEK_IN_HISTORY_MODEL` to name a supported model, such as `deepseek-flash`, and run with `high` effort. They skip when that variable is unset or empty; ordinary `off` text checks remain enabled with credentials. Known instruction-following instability with thinking disabled makes these system-update checks unsuitable for `off`.
 
 <a id="dev-note"></a>
 ### Dev Note

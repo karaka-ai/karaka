@@ -14,7 +14,7 @@ import type { ImageAttachmentAccessResolver, LlmImageRequestPrice, LlmImageReque
 import { longEdgeDimensions, requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
 import { deepSeekImageTokens, deepSeekRequestImageDimensions } from './image-tokens.ts'
-import type { DeepSeekCatalogModel, DeepSeekConnectionOptions } from './adapter.ts'
+import type { DeepSeekCatalogModel, DeepSeekConnectionOptions } from './types.ts'
 
 /** Default bound on accumulated file-referenced image bytes per request. */
 export const DEFAULT_MAX_REQUEST_FILES_BYTES = 128 * 1024 * 1024

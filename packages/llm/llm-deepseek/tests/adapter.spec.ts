@@ -21,8 +21,8 @@ import DeepSeekLlmApiExtensionRegistry from '@deepseek-ai/dsh-deepseek-llm-api-e
 import type { PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
-import { httpErrorCode } from '../src/adapter.ts'
-import { resolveRequestImageTarget } from '../src/request-pricing.ts'
+import { httpErrorCode } from '../src/protocols/chat-completions/adapter.ts'
+import { resolveRequestImageTarget } from '../src/common/request-pricing.ts'
 import { assemble } from './assemble.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 import type { Behavior } from './mock-server.ts'
@@ -1647,6 +1647,15 @@ describe('DeepSeekAdapter against a mock server', () => {
 })
 
 describe('plugin registration and config', () => {
+  it('defaults to Chat Completions and resolves the selected protocol endpoint without rewriting overrides', () => {
+    expect(resolveAdapterOptions({})).toMatchObject({ protocol: 'chat-completions', baseURL: 'https://api.deepseek.com' })
+    expect(resolveAdapterOptions({ protocol: 'messages' })).toMatchObject({ protocol: 'messages', baseURL: 'https://api.deepseek.com/anthropic' })
+    for (const baseURL of ['https://gateway.example/custom/v1', 'https://gateway.example/v1/messages']) {
+      expect(resolveAdapterOptions({ protocol: 'messages', baseURL }).baseURL).toBe(baseURL)
+    }
+    expect(() => resolveAdapterOptions({ protocol: 'responses' } as unknown as LlmDeepSeek.Config)).toThrow(/protocol/)
+  })
+
   it('keeps wire helpers off the package root', () => {
     for (const helper of [
       'httpErrorCode',

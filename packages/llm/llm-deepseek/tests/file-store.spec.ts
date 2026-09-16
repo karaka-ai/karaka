@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
-import { DeepSeekFileStore, MAX_CHAT_IMAGE_BYTES } from '../src/file-store.ts'
-import { DeepSeekFileId } from '../src/file-id.ts'
-import { deepSeekFileScope, DeepSeekUploadIndex } from '../src/upload-index.ts'
+import { DeepSeekFileStore, MAX_CHAT_IMAGE_BYTES } from '../src/protocols/chat-completions/file-store.ts'
+import { DeepSeekFileId } from '../src/protocols/chat-completions/file-id.ts'
+import { deepSeekFileScope, DeepSeekUploadIndex } from '../src/protocols/chat-completions/upload-index.ts'
 
 const REF: ImageAttachmentRef = {
   attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`),

@@ -36,6 +36,8 @@
     "apps/web/tests/plugin-config.e2e.ts",
     "apps/web/tests/settings-chrome.e2e.ts",
     "apps/web/tests/models-settings.e2e.ts",
+    "apps/web/tests/deepseek-messages-settings.e2e.ts",
+    "apps/web/tests/deepseek-messages-chat.e2e.ts",
     "apps/web/tests/models-settings-recovery.e2e.ts",
     "apps/web/tests/onboarding-deepseek-config.e2e.ts",
     "apps/web/tests/onboarding-usable-provider.e2e.ts",

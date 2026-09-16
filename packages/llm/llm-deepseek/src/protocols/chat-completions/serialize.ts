@@ -18,11 +18,7 @@ import type {
   WireUserContentPart,
 } from './types.ts'
 
-/** Adapter-level request defaults (from plugin config). */
-export interface RequestDefaults {
-  thinking?: 'enabled' | 'disabled' | undefined
-  reasoningEffort?: 'off' | 'low' | 'high' | 'max' | undefined
-}
+import type { RequestDefaults } from '../../common/types.ts'
 
 interface ResolvedThinking {
   thinking?: 'enabled' | 'disabled'

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { offloadedImageText, requestImageHandleText, textOnlyImageText } from '@deepseek-ai/dsh-llm'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import { deepSeekImageRequestPricing } from '../src/request-pricing.ts'
+import { deepSeekImageRequestPricing } from '../src/common/request-pricing.ts'
 import { resolveAdapterOptions } from '../src/index.ts'
 import type { Config } from '../src/index.ts'
 

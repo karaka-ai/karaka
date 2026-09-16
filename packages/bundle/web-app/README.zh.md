@@ -36,6 +36,10 @@ dsh --profile web --no-open --port 8080
 
 启动后你会看到 `dsh web:` 行，其根 URL 携带新的进程 token。除非 `--no-open` 或 SSH 会话抑制，否则默认浏览器会打开该 URL、取得签名 cookie，再重定向到不含认证参数的根页面。页面加载且你可以与 agent 对话，就说明成功了。两种可预期的失败：前端未构建时，启动会以构建提示停止（checkout 中运行 `pnpm run build`）；浏览器无法打开时，stderr 会打印不含凭据的诊断，但服务器会继续运行——请自行打开已打印的启动 URL。
 
+**设置 → 模型**显示 **DeepSeek**，使用 `DEEPSEEK_API_KEY`。默认模型为 `deepseek-official` / `deepseek-flash`（DeepSeek-V41-Flash）。[DeepSeek 插件](../../llm/llm-deepseek/README.zh.md#choose-a-protocol)默认使用 Chat Completions；在 Cordis YAML 中设置 `protocol: messages` 可切换协议。Web 不提供协议选择器。
+
+已保存的模型选择优先于组合默认值。两种协议共用 `deepseek-official` 与 `llm-deepseek` 设置，因此切换协议不改变模型选择或复制凭据。端点覆盖保持原值；设置卡片允许用户填写兼容的 API 地址。
+
 ### 配置
 
 大多数用户不需要设置这些；命令行 flag 会提供给下面四个设置——`--host`、`--port` 与 `--trusted-host` 来自本次调用，`--no-open` 仅对本次调用关闭浏览器交接：
