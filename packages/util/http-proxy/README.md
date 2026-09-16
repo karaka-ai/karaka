@@ -29,7 +29,7 @@ Nothing to mount, and nothing to configure. The `dsh` launcher resolves and inst
 
 ### Writing a new outbound call
 
-Plain `fetch()` is proxied, and so is any SDK that reaches `globalThis.fetch` — the MCP HTTP transport and the pi-ai provider stack both do. An SDK that builds its own transport does **not**, and two of the ones this repository ships turned out to: the OTLP exporter posts through `node:http`, and the E2B SDK constructs its own undici dispatcher. Assume nothing about an SDK; check it.
+Plain `fetch()` is proxied, and so is any SDK that reaches `globalThis.fetch` — the MCP HTTP transport and the pi-ai provider stack both do. Verify each SDK's actual transport; exceptions belong under [Known Limitations and Deferred Work](#known-limitations-and-deferred-work).
 
 | You are writing | Use |
 |---|---|
@@ -41,11 +41,9 @@ Plain `fetch()` is proxied, and so is any SDK that reaches `globalThis.fetch` �
 
 `proxyRouteFor` answers with the transport that answer assumed, not just the answer: its proxied arm carries the dispatcher already routing by this policy. A caller that read the policy and then built its own transport could have an unmount land between the two and send the request somewhere its branch never cleared.
 
-An SDK that builds its own transport reaches none of this, and two of the ones this repository ships do. E2B takes a proxy URL of its own and is handed `route.proxy`. The OTLP telemetry exporter posts through `node:http`, and is deliberately left direct — see the limitation below.
-
 Constructing `new Agent(...)` and passing it as `dispatcher` overrides the global one and silently bypasses the proxy. `verify-no-bare-dispatcher` rejects that outside this package. One call site legitimately owns its transport — `web-fetch-http` pins a request to addresses it validated, which is per-request state a process-wide dispatcher cannot hold — and says so with a `proxy-exempt:` comment on the line.
 
-That gate cannot see inside an SDK, so every outbound call site in the repository also carries an `egress.spec.ts` that drives its real code path through a fake proxy and asserts the proxy saw the request — or, for telemetry, that it did not. A new call site adds one. It is the only thing that catches an SDK changing transports underneath us, in either direction: it is how the OTLP and E2B gaps were found, and it is what would catch an upgrade that started routing telemetry silently.
+That gate cannot see inside an SDK, so each outbound call site carries an `egress.spec.ts` that drives its actual transport through a fake proxy and checks the observed route. Every new outbound call site must include that transport test. Telemetry asserts its direct-route exception. These tests detect dependency changes that alter routing without changing the call site.
 
 ### What the policy reads
 

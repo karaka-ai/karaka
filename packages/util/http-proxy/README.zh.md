@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 编写新的出站调用
 
-普通 `fetch()` 已经走代理，任何最终落到 `globalThis.fetch` 的 SDK 也一样——MCP HTTP 传输与 pi-ai 提供方栈都是如此。自建传输的 SDK 则不会走代理，而本仓库随附的 SDK 中已有两个如此。不要对任何 SDK 想当然，去查。
+普通 `fetch()` 会走代理，任何使用 `globalThis.fetch` 的 SDK 也一样——MCP HTTP 传输与 pi-ai 提供方栈都使用它。应验证每个 SDK 的实际传输；例外见[已知限制与延后工作](#known-limitations-and-deferred-work)。
 
 | 你要写的东西 | 使用 |
 |---|---|
@@ -41,11 +41,9 @@ kind: "package-reference"
 
 `proxyRouteFor` 给出的不只是答案，还有该答案所假定的传输：走代理的那一支携带着此刻正按该策略路由的 dispatcher。若调用方先读策略、再自建传输，卸载就可能落在两次读取之间，把请求发往其分支从未放行的去处。
 
-自建传输的 SDK 接触不到上述任何一条，而本仓库随附的 SDK 里有两个如此。E2B 接受自有代理 URL，现在接收 `route.proxy`。OTLP 遥测导出器通过 `node:http` 投递，被有意保留为直连——见下方限制一节。
-
 构造 `new Agent(...)` 再作为 `dispatcher` 传入会覆盖全局 dispatcher，从而静默绕开代理。`verify-no-bare-dispatcher` 会在本包之外拒绝该写法。有一处调用点确实自有传输——`web-fetch-http` 会把请求钉在它已校验过的地址上，而这是进程级 dispatcher 无法承载的单次请求状态——它在该行用 `proxy-exempt:` 注释说明。
 
-该门禁看不进 SDK 内部，因此仓库中每一个出网点都另有一份 `egress.spec.ts`：它驱动该点的真实代码路径穿过一个假代理，并断言代理确实收到了请求——遥测那份则断言代理什么也没收到。新增出网点就补一份。它是唯一能双向发现 SDK 在我们脚下更换传输的手段：OTLP 与 E2B 这两个漏洞正是这样被发现的，而某次升级若开始静默地把遥测送去代理，也由它拦下。
+该门禁看不进 SDK 内部，因此每个出网点都配有 `egress.spec.ts`，通过假代理驱动实际传输并检查观察到的路由。每个新的出网点必须包含该传输测试。遥测断言其直连例外。这些测试可发现调用点不变但依赖变更改变路由的情况。
 
 ### 策略读取哪些值
 

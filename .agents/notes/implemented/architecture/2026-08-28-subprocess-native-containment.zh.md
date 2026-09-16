@@ -59,7 +59,7 @@ selector 是 per-spawn locator 或 sentinel，不是凭据或持久格式。Linu
 - 无需密钥的 [`bash-startup-timeout`](../../../../snapshots/session/bash-startup-timeout/snapshot.yml) Session 快照固定模型可见的超时结果。Linux user-systemd fixture 通过输入屏障保持启动请求未消费，并验证取消与 range settlement。
 - 真实 Linux user-systemd 测试会分别通过生产入口运行一条普通命令与一条 `node-pty` `setsid`／reparent 场景。它们证明 scope signalling 与 collection、裸可执行文件查找、逃逸后代终止、range settlement，以及不变的 PTY PID、session、控制终端、前台输入、`/dev/tty`、readiness 与 startup-failure 语义。
 - native Windows 测试证明 suspended creation、resume 前 Job assignment、继承 stdio、默认后代继承、direct result、termination、active-process zero、异常／disconnected runner cleanup、kill-on-close 与同步 host-exit termination。source、built 与 Python packaged 冒烟测试进入同一 runner core。
-- 公共 seam 类型、local 与 E2B provider、LSP 与 subagent 消费方、shell fixture、README、Cordis catalog 与 keyless subprocess API snapshot 都不包含普通 PID；terminal PID 保留。
+- 公共 seam 类型、local provider、LSP 与 subagent 消费方、shell fixture、README、Cordis catalog 与 keyless subprocess API snapshot 都不包含普通 PID；terminal PID 保留。
 
 ## Alternatives considered
 

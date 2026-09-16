@@ -59,7 +59,7 @@ This note owns the current native-containment mechanism. It partially updates th
 - A keyless [`bash-startup-timeout`](../../../../snapshots/session/bash-startup-timeout/snapshot.yml) Session snapshot pins the model-facing timeout result. A Linux user-systemd fixture holds the launch request unconsumed at an input barrier and verifies cancellation plus range settlement.
 - Real Linux user-systemd tests run one ordinary and one `node-pty` `setsid`/reparent scenario through the production entry. They prove scope signalling and collection, bare executable lookup, escaped-descendant termination, range settlement, and unchanged PTY PID, session, controlling-terminal, foreground-input, `/dev/tty`, readiness, and startup-failure semantics.
 - Native Windows tests prove suspended creation, Job assignment before resume, inherited stdio, default descendant inheritance, direct result, termination, active-process zero, abnormal/disconnected runner cleanup, kill-on-close, and synchronous host-exit termination. Source, built, and Python packaged smokes enter the same runner core.
-- Public seam types, local and E2B providers, LSP and subagent consumers, shell fixtures, READMEs, the Cordis catalog, and the keyless subprocess API snapshot contain no ordinary PID; terminal PID remains.
+- Public seam types, local provider, LSP and subagent consumers, shell fixtures, READMEs, the Cordis catalog, and the keyless subprocess API snapshot contain no ordinary PID; terminal PID remains.
 
 ## Alternatives considered
 

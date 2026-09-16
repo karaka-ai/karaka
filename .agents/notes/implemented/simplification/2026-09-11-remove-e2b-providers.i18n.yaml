@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-09-11-remove-e2b-providers.md
+2026-09-11-remove-e2b-providers.md: 87bec5b728f64443e7132aa9b40feb684f9a0d0f
+2026-09-11-remove-e2b-providers.zh.md: 3048a61ed28232bda2f86ddc6ba6b003060ff87d

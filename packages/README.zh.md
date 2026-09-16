@@ -36,7 +36,6 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`feedback/`](feedback/README.zh.md) | 人类反馈的采集与命令 |
 | [`identity/`](identity/README.zh.md) | 共享匿名身份 |
 | [`llm/`](llm/README.zh.md) | LLM（大语言模型）能力系列：抽象服务 + 提供方适配器 |
-| [`e2b/`](e2b/README.zh.md) | E2B 远程运行时提供方 |
 | [`subprocess/`](subprocess/README.zh.md) | 子进程能力系列：Service Definition + 本地进程树提供方 |
 | [`shell/`](shell/README.zh.md) | Bash 能力系列：执行器 seam、本地实现、面向模型的工具 |
 | [`terminal/`](terminal/README.zh.md) | 持久 PTY 能力系列：限定所有者范围的会话、本地实现、面向模型的工具 |
@@ -83,7 +82,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 <a id="release-expectations"></a>
 ## 发布预期
 
-大多数组属于产品组，提供稳定 API。例外：`e2b/` 是 POC，`experimental/` 不发布，`test-support/`、`runtime-diagnostics/` 与 `util/` 是兼容性预期较低的支持组。
+大多数组属于产品组，提供稳定 API。例外：`experimental/` 不发布，`test-support/`、`runtime-diagnostics/` 与 `util/` 是兼容性预期较低的支持组。
 
 -----
 
