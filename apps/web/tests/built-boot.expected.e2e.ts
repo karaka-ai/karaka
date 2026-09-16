@@ -101,7 +101,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   // Skip the resident fixture's three questions, then resolve its approval so
   // the ordinary composer bar (which owns ContextMeter) resumes.
   for (let index = 0; index < 3; index += 1) {
-    fireEvent.click(await screen.findByRole('button', { name: 'Skip this question' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }))
   }
   fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }))
 
