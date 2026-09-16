@@ -472,7 +472,8 @@ describe('persistence changes current-tree commands', () => {
     }
   })
 
-  it('executes the real CLI against a source-only temporary checkout without Git history', () => {
+  // Six real CLI processes and TypeScript extraction share the Windows coverage test budget.
+  it('executes the real CLI against a source-only temporary checkout without Git history', { timeout: 90_000 }, () => {
     const root = fixture()
     const physical = join(root, 'packages/session/session-persistence-jsonl/src')
     mkdirSync(physical, { recursive: true })

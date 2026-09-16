@@ -305,7 +305,8 @@ interface SessionEventMap {
     expect(() => extractPersistenceSchema(fixture(source))).toThrow(error)
   })
 
-  it('includes every real repository event and fingerprints every reachable node', () => {
+  // Repository-wide TypeScript extraction and reachable-node hashing use the Windows coverage test budget.
+  it('includes every real repository event and fingerprints every reachable node', { timeout: 90_000 }, () => {
     const root = resolve(import.meta.dirname, '..')
     const model = extractPersistenceSchema(root)
     expect(model.roots.filter(root => root.kind === 'event').map(root => root.event).sort())
