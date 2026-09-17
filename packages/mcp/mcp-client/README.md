@@ -119,6 +119,8 @@ This section explains the design decisions behind the bridge and points at the c
 | [`src/transport.ts`](src/transport.ts) | Transport factory: stdio spawn with scrubbed env, Streamable HTTP |
 | — | No runtime invariant companion is published; MCP generations contribute through the tool registry, but the bridge exposes no independent server-to-tool snapshot after an asynchronous resync. |
 
+The exported `createMcpToolDefinition(ctx, options)` adapts an upstream tool schema and raw-result callback to the same canonical values, errors, and durable image projection. Callers own registration, cancellation deadlines, and provider teardown. The native Cua Driver provider uses this adapter without opening an MCP transport.
+
 ### Lifecycle and sync
 
 `apply` resolves the reconnect policy, reserves the `serverName` inside the current registration scope, starts the supervisor, and awaits the initial connection plus discovery. Independent Agent scopes may reuse the same namespace because their tools and transports are isolated; a duplicate inside one scope fails at load. The supervisor serializes every sync — initial, notification, and reconnect — through one queue so two syncs can never interleave their dispose-previous/register-next swap. Disposal cancels pending reconnects, closes the live client, waits for the in-flight attempt and queued syncs to quiesce, and unregisters the current generation.
@@ -135,6 +137,8 @@ A tool call sends an uncached `tools/call` request carrying the raw MCP name, th
 Application plugins can import `startConnection` and `resolveReconnectPolicy` from the package root and pass optional `ConnectionExtensions` as the fourth argument. These callbacks are programmatic inputs, not `cordis.yml` fields. Omitting them uses the configured DSH transport, ordinary Tools registration and calls without application metadata. The caller owns startup failure policy, namespace coordination and registering the returned handle's `dispose()` with its plugin lifecycle.
 
 A custom transport factory supplies a fresh unconnected transport for each attempt; the supervisor owns its closure and reconnect lifecycle. Tool preparation runs while building the next catalog, before the old registrations are removed, so admission failure retains the old catalog. Preparation receives the original MCP tool descriptor and preserves each definition's name and remote dispatch identity. Custom registration owns every contribution it publishes, rolls back partial work on failure and returns its complete disposer. Per-call metadata resolves before remote dispatch, and rejection prevents the request. The [Karaka application adapter](../../karaka/mcp-application/README.md) uses these extensions for its own authentication, schema admission and scoped policy.
+
+The public `createMcpToolDefinition` factory retains its `call(args, signal)` callback. Metadata-enabled discovery creates a factory delegate for each actual ToolExecution and retains that delegate through final content projection; the same execution and final policy result reach its finalizer. Calls without metadata use the factory directly.
 
 ### Environment scrubbing (stdio)
 

@@ -119,6 +119,8 @@ kind: "package-reference"
 | [`src/transport.ts`](src/transport.ts) | 传输工厂：带清洗环境的 stdio spawn、Streamable HTTP |
 | — | 不发布运行时不变式伴生入口；MCP 世代会通过工具注册表发挥作用，但桥接在异步重新同步后不提供独立的服务器工具映射快照。 |
 
+导出的 `createMcpToolDefinition(ctx, options)` 将上游工具 schema 和原始结果回调适配到相同的规范值、错误和持久化图像投影。调用方负责注册、取消截止时间和提供方卸载。原生 Cua Driver 提供方使用此适配函数，无需打开 MCP 传输。
+
 ### 生命周期与同步
 
 `apply` 解析重连策略、在当前注册作用域内预留 `serverName`、启动监督器，并等待初始连接加发现完成。独立 agent（智能体）作用域可以复用相同 namespace，因为其工具与传输彼此隔离；同一作用域内重复会在加载时失败。监督器把所有同步——初始、通知与重连——串行到同一条队列，因此两次同步绝不会交错执行各自的先 dispose 后注册交换。dispose 会取消待执行的重连、关闭活动客户端、等待进行中的尝试与排队同步完全停稳，然后注销当前世代。
@@ -135,6 +137,8 @@ kind: "package-reference"
 应用插件可以从包根导入 `startConnection` 和 `resolveReconnectPolicy`，并通过第四个参数传入可选的 `ConnectionExtensions`。这些回调是程序化输入，不是 `cordis.yml` 字段。省略它们时使用配置的 DSH 传输、普通 Tools 注册和不带应用元数据的调用。调用方负责启动失败策略、命名空间协调，以及将返回句柄的 `dispose()` 注册到自身插件生命周期。
 
 自定义传输工厂为每次尝试提供一个新的未连接传输；监督器负责关闭和重连生命周期。工具准备在构建新目录时、移除旧注册之前执行，因此准入失败保留旧目录。准备过程接收原始 MCP 工具描述，并保留每个定义的名称和远程分派身份。自定义注册负责其发布的所有贡献，失败时回滚部分工作，并返回完整清理函数。每次调用的元数据在远程分派前解析，拒绝会阻止请求。[Karaka 应用适配器](../../karaka/mcp-application/README.zh.md)通过这些扩展实现自身认证、模式准入和作用域策略。
+
+公开的 `createMcpToolDefinition` 工厂保留 `call(args, signal)` 回调。启用元数据的发现流程为每个实际 ToolExecution 创建工厂委托，并保留到最终内容投影；同一执行对象和策略处理后的最终结果传入其终结器。不带元数据的调用直接使用工厂。
 
 ### 环境清洗（stdio）
 

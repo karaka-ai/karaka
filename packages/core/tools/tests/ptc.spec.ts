@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, ToolCallId  } from '@deepseek-ai/dsh-llm'
+import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
@@ -874,6 +875,53 @@ describe('the sub-dispatch scheduler (native concurrency contract)', () => {
 })
 
 describe('the run_code dispatch bridge', () => {
+  it('keeps each concurrent run bound to its own immutable schema snapshot', async () => {
+    const { ctx, runtime } = await setup({ mode: 'ptc' })
+    let description = 'original description'
+    let parameters = { type: 'object', properties: { value: { type: 'string', description: 'original value' } } }
+    ctx.tools.register({
+      name: 'probe',
+      get description() { return description },
+      get parameters() { return parameters },
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: () => Promise.resolve('done'),
+    })
+    const seen: ToolSchema[] = []
+    ctx.on('tools/pre-execute', (exec, next) => {
+      if (exec.name === 'probe') {
+        expect(exec.schema).toBeDefined()
+        expect(Object.isFrozen(exec.schema)).toBe(true)
+        expect(Object.isFrozen(exec.schema!.parameters)).toBe(true)
+        seen.push(exec.schema!)
+      }
+      return next()
+    })
+    const firstBound = Promise.withResolvers<undefined>()
+    const releaseFirst = Promise.withResolvers<undefined>()
+    runtime.behavior = async (request) => {
+      if (request.program === 'first') {
+        firstBound.resolve(undefined)
+        await releaseFirst.promise
+      }
+      const value = await request.bindings[0]!.functions.probe!({ value: request.program })
+      return { logs: [], value: JSON.stringify(value) }
+    }
+    const first = runCode(ctx, 'first')
+    try {
+      await firstBound.promise
+      description = 'replacement description'
+      parameters = { type: 'object', properties: { value: { type: 'string', description: 'replacement value' } } }
+      expect((await runCode(ctx, 'second')).isError).toBe(false)
+    } finally {
+      releaseFirst.resolve(undefined)
+    }
+    expect((await first).isError).toBe(false)
+    expect(seen.map(schema => schema.description)).toEqual(['replacement description', 'original description'])
+    expect(seen[1]!.parameters).toEqual({
+      type: 'object', properties: { value: { type: 'string', description: 'original value' } },
+    })
+  })
+
   it('bridges tool calls, returns only the curated output, and logs one event per dispatch', async () => {
     const { ctx, runtime } = await setup({ mode: 'ptc' })
     const calls = registerEcho(ctx)
@@ -1030,6 +1078,43 @@ describe('the run_code dispatch bridge', () => {
     expect(result.content[0]).toEqual({ type: 'text', text: 'caught: deliberate failure' })
   })
 
+  it('bounds pending log writes without withholding settled values from the program', async () => {
+    const { ctx, runtime } = await setup({ mode: 'ptc', maxParallelSubCalls: 1 })
+    const calls = registerEcho(ctx)
+    const { agent, events } = fakeAgent()
+    const firstLog = Promise.withResolvers<undefined>()
+    const secondLog = Promise.withResolvers<undefined>()
+    let logs = 0
+    ctx.on('tools/ptc-dispatch-log', async (_dispatch, next) => {
+      const ordinal = ++logs
+      if (ordinal === 1) await firstLog.promise
+      if (ordinal === 2) await secondLog.promise
+      return next()
+    })
+    runtime.behavior = async (request) => {
+      const echo = request.bindings[0]!.functions.echo!
+      expect(await echo({ value: 'one' })).toBe('echo:one')
+      expect(await echo({ value: 'two' })).toBe('echo:two')
+      expect(logs).toBe(2)
+      expect(events.filter(event => event.type === 'tool/ptc-dispatch')).toHaveLength(0)
+      const third = echo({ value: 'three' })
+      await Promise.resolve()
+      expect(calls).toEqual([{ value: 'one' }, { value: 'two' }])
+      firstLog.resolve(undefined)
+      expect(await third).toBe('echo:three')
+      secondLog.resolve(undefined)
+      return { logs: [], value: 'complete' }
+    }
+    try {
+      const result = await runCode(ctx, 'program', { agent })
+      expect(result.isError).toBe(false)
+      expect(events.filter(event => event.type === 'tool/ptc-dispatch')).toHaveLength(3)
+    } finally {
+      firstLog.resolve(undefined)
+      secondLog.resolve(undefined)
+    }
+  })
+
   it('a throwing tools/ptc-dispatch-log listener is contained: the original settled content is logged', async () => {
     const { ctx, runtime } = await setup({ mode: 'ptc' })
     registerEcho(ctx)
@@ -1079,10 +1164,21 @@ describe('the run_code dispatch bridge', () => {
   it('a tools/pre-execute deny reaches the program as a binding rejection', async () => {
     const { ctx, runtime } = await setup({ mode: 'ptc' })
     registerEcho(ctx)
+    const schemas: unknown[] = []
     ctx.on('tools/pre-execute', (exec, next) => {
-      if (exec.name === 'echo') return Promise.resolve({ kind: 'deny' as const, reason: 'not on my watch' })
+      if (exec.name === 'echo') {
+        schemas.push(exec.schema)
+        expect(Object.isFrozen(exec.schema)).toBe(true)
+        expect(Object.isFrozen(exec.schema?.parameters)).toBe(true)
+        return Promise.resolve({
+          kind: 'deny' as const,
+          reason: 'not on my watch',
+          info: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: ' raw\nreason ' },
+        })
+      }
       return next()
     })
+    const { agent, events } = fakeAgent()
     runtime.behavior = async (request) => {
       try {
         await request.bindings[0]!.functions.echo!({ value: 'x' })
@@ -1091,9 +1187,97 @@ describe('the run_code dispatch bridge', () => {
         return { logs: [], value: `denied: ${error instanceof Error ? error.message : String(error)}` }
       }
     }
-    const result = await runCode(ctx, 'program')
+    const result = await runCode(ctx, 'program', { agent })
     expect(result.content[0]?.type).toBe('text')
     expect((result.content[0] as { text: string }).text).toContain('not on my watch')
+    const start = events.find(event => event.type === 'tool/ptc-dispatch-start')
+    expect(start?.data).toMatchObject({
+      name: 'echo',
+      arguments: { value: 'x' },
+    })
+    expect(schemas).toEqual([{
+      name: 'echo',
+      description: 'Echo tool echo.',
+      parameters: {
+        type: 'object',
+        properties: { value: { type: 'string' } },
+        required: ['value'],
+      },
+    }])
+    const settle = events.find(event => event.type === 'tool/ptc-dispatch')
+    expect(settle?.data).toMatchObject({
+      name: 'echo',
+      isError: true,
+      error: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: ' raw\nreason ' },
+    })
+    for (const event of [start, settle]) {
+      expect(event?.data).not.toHaveProperty('description')
+      expect(event?.data).not.toHaveProperty('parameters')
+      expect(event?.data).not.toHaveProperty('schema')
+    }
+  })
+
+  it('an uncaught tools/pre-execute deny fails the program without changing the inner error identity', async () => {
+    const { ctx, runtime } = await setup({ mode: 'ptc' })
+    const calls = registerEcho(ctx)
+    ctx.on('tools/pre-execute', (exec, next) => {
+      if (exec.name === 'echo') {
+        return Promise.resolve({
+          kind: 'deny' as const,
+          reason: 'not on my watch',
+          info: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'exact denial' },
+        })
+      }
+      return next()
+    })
+    const { agent, events } = fakeAgent()
+    runtime.behavior = async (request) => {
+      await request.bindings[0]!.functions.echo!({ value: 'x' })
+      return { logs: [], value: 'unreachable' }
+    }
+
+    const result = await runCode(ctx, 'await tools.echo({ value: "x" })', { agent })
+
+    expect(result.isError).toBe(true)
+    const modelContent = result.content[0]
+    expect(modelContent?.type).toBe('text')
+    expect(modelContent?.type === 'text' ? modelContent.text : '').toContain('not on my watch')
+    expect(result.isError && result.error.info?.code).not.toBe('AUTO_REVIEW_DENIED')
+    expect(calls).toEqual([])
+    const settle = events.find(event => event.type === 'tool/ptc-dispatch')
+    expect(settle?.data).toMatchObject({
+      name: 'echo',
+      isError: true,
+      error: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'exact denial' },
+    })
+  })
+
+  it('maps a PTC pre-execute cancellation to the canonical binding rejection', async () => {
+    const { ctx, runtime } = await setup({ mode: 'ptc' })
+    const calls = registerEcho(ctx)
+    ctx.on('tools/pre-execute', (exec, next) =>
+      exec.name === 'echo' ? Promise.resolve({ kind: 'cancel' as const }) : next())
+    const { agent, events } = fakeAgent()
+    runtime.behavior = async (request) => {
+      try {
+        await request.bindings[0]!.functions.echo!({ value: 'x' })
+        return { logs: [], value: 'unreachable' }
+      } catch (error: unknown) {
+        return { logs: [], value: error instanceof Error ? error.message : String(error) }
+      }
+    }
+
+    const result = await runCode(ctx, 'program', { agent })
+
+    expect(result.isError).toBe(false)
+    expect(result.content[0]).toEqual({ type: 'text', text: 'tool call aborted before dispatch' })
+    expect(calls).toEqual([])
+    const settle = events.find(event => event.type === 'tool/ptc-dispatch')
+    expect(settle?.data).toMatchObject({
+      name: 'echo',
+      isError: true,
+      error: { name: 'AbortError', code: TOOL_ABORTED_BEFORE_DISPATCH },
+    })
   })
 
   it('rejects a binding argument that is not lossless JSON, dispatching nothing', async () => {

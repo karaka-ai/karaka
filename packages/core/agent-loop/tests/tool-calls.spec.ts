@@ -438,7 +438,13 @@ describe('tool-call scheduler: ordered middleware and additional contexts', () =
     ctx.tools.register(gated.tool)
     const post: string[] = []
     ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
-      if (exec.callId === ToolCallId('c2')) return { kind: 'deny', reason: 'blocked by policy' }
+      if (exec.callId === ToolCallId('c2')) {
+        return {
+          kind: 'deny',
+          reason: 'blocked by policy',
+          info: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'exact scope was not authorized' },
+        }
+      }
       if (exec.callId === ToolCallId('c3')) throw new Error('pre exploded')
       return next()
     })
@@ -458,6 +464,9 @@ describe('tool-call scheduler: ordered middleware and additional contexts', () =
     const results = events(agent).filter(e => e.type === 'tool/result')
     expect(results.map(e => e.data.message.source.callId)).toEqual([ToolCallId('c1'), ToolCallId('c2'), ToolCallId('c3')])
     expect((results[1]!.data.message.content[0].content[0] as { text: string }).text).toContain('blocked by policy')
+    expect(results[1]!.data.error).toEqual({
+      name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'exact scope was not authorized',
+    })
     expect((results[2]!.data.message.content[0].content[0] as { text: string }).text).toContain('pre exploded')
   })
 })

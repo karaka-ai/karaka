@@ -10,6 +10,8 @@
   "include": [
     "packages/karaka/tsdown.ts",
     "apps/web/tests/scaffold.ts",
+    "apps/web/tests/auto-review-fixture.ts",
+    "apps/web/tests/auto-review-denial.e2e.ts",
     "apps/web/tests/scaffold-generation.spec.ts",
     "apps/web/tests/default-model.e2e.ts",
     "apps/web/tests/github-ready-review.e2e.ts",
@@ -145,6 +147,9 @@
     { "path": "./packages/karaka/transport-http" },
     { "path": "./packages/karaka/agent" },
 
+    { "path": "./packages/computer-use/computer-use" },
+    { "path": "./packages/experimental/computer-use-cua-driver-mcp" },
+    { "path": "./packages/experimental/computer-use-cua-driver-native" },
     { "path": "./packages/client/ui-deliverables/tsconfig.host.json" },
     { "path": "./vendor/cosmokit" },
     { "path": "./vendor/schemastery" },
@@ -240,6 +245,7 @@
     { "path": "./packages/interaction/user-questions" },
     { "path": "./packages/interaction/user-approval" },
     { "path": "./packages/interaction/permission-presets" },
+    { "path": "./packages/experimental/auto-review" },
     { "path": "./packages/core/tools" },
     { "path": "./packages/core/agent-tool-presentation" },
     { "path": "./packages/skill/skill" },

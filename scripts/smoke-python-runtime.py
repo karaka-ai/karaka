@@ -101,6 +101,17 @@ RESTART_FIRST_SESSION_ID = "process-one"
 RESTART_SECOND_SESSION_ID = "process-two"
 SNAPSHOT_PLUGIN_CODE = """\
 return (ctx) => {
+  ctx.on('tools/pre-execute', (exec, next) => {
+    if (exec.name !== 'snapshot_double' || exec.arguments.value !== -1) return next()
+    return {
+      kind: 'deny',
+      reason: 'Auto review rejected tool "snapshot_double"; its body was not executed',
+      info: {
+        name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED',
+        reason: '  transport raw\\r\\nreason  ',
+      },
+    }
+  })
   harness.registerTool(ctx, harness.defineTool({
     name: 'snapshot_double',
     description: 'Double a number for executable snapshot verification.',
@@ -585,6 +596,21 @@ def advanced_tool_followup(
     if call_id == "advanced-code" and tool_name == "run_code":
         if "42" not in tool_text:
             raise AssertionError(f"run_code returned no dynamic-tool value: {tool_text}")
+        return tool_call_chunks("advanced-denied-native", "snapshot_double", {"value": -1})
+    if call_id == "advanced-denied-native" and tool_name == "snapshot_double":
+        if 'Auto review rejected tool "snapshot_double"; its body was not executed' not in tool_text:
+            raise AssertionError(f"native denial did not preserve the model result: {tool_text}")
+        if "transport raw" in tool_text:
+            raise AssertionError("native denial leaked its user-facing reason to the model")
+        return tool_call_chunks("advanced-denied-ptc", "run_code", {
+            "code": "try { await tools.snapshot_double({ value: -1 }) } catch (error) { return error.message }",
+            "description": "Catch a structured inner tool denial",
+        })
+    if call_id == "advanced-denied-ptc" and tool_name == "run_code":
+        if 'Auto review rejected tool "snapshot_double"; its body was not executed' not in tool_text:
+            raise AssertionError(f"PTC denial did not preserve the model result: {tool_text}")
+        if "transport raw" in tool_text:
+            raise AssertionError("PTC denial leaked its user-facing reason to the model")
         assert_advertised_tool(body, "subagent")
         return tool_call_chunks(
             "advanced-direct-child",
@@ -1330,13 +1356,21 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
             raise AssertionError(f"advanced snapshot emitted unexpected subagent lifecycle: {methods}")
         ptc_events = [event for event in result.events
                       if event.get("type") in ("tool/ptc-dispatch-start", "tool/ptc-dispatch")]
-        if [event["type"] for event in ptc_events] != ["tool/ptc-dispatch-start", "tool/ptc-dispatch"]:
+        if [event["type"] for event in ptc_events] != ["tool/ptc-dispatch-start", "tool/ptc-dispatch"] * 2:
             raise AssertionError(f"advanced snapshot emitted unexpected PTC dispatch events: {ptc_events}")
-        for event in ptc_events:
+        for index, event in enumerate(ptc_events):
             data = event["data"]
             identity = (data.get("rootCallId"), data.get("parentCallId"), data.get("subCallId"))
-            if identity != ("advanced-code", "advanced-code", "advanced-code:ptc:1"):
+            root_call = "advanced-code" if index < 2 else "advanced-denied-ptc"
+            if identity != (root_call, root_call, root_call + ":ptc:1"):
                 raise AssertionError(f"advanced snapshot emitted unexpected PTC dispatch identity: {identity}")
+            if {"description", "parameters", "schema"}.intersection(data):
+                raise AssertionError("PTC binding schema entered the packaged SDK wire")
+        errors = [event["data"]["error"] for event in result.events
+                  if event.get("type") in ("tool/result", "tool/ptc-dispatch") and "error" in event["data"]]
+        assert errors == [{
+            "name": "AutoReviewDeniedError", "code": "AUTO_REVIEW_DENIED", "reason": "  transport raw\r\nreason  ",
+        }] * 2, errors
 
         logs = read_session_logs(sessions)
         child_ids = snapshot_child_ids(result)

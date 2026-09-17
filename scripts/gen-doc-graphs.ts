@@ -124,6 +124,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity.',
   },
   {
+    key: 'computerUse',
+    pkg: 'computer-use',
+    title: 'Computer-use provider registration',
+    mode: 'seam',
+    implementations: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
+    consumers: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
+    note: 'One provider-owned name per service instance. Each provider also owns its model tools; the service has no common action API, runtime selection, or Session workflow lock.',
+  },
+  {
     key: 'attachments',
     pkg: 'attachment',
     title: 'Durable binary attachment storage',

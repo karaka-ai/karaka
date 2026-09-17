@@ -22,7 +22,8 @@ import type { ReconnectConfig } from './connection.ts'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
 import type {} from '@deepseek-ai/dsh-tools'
 
-export type { McpResult, ToolBridgeExtensions } from './tools.ts'
+export { createMcpToolDefinition } from './tools.ts'
+export type { McpResult, McpToolDefinitionOptions, ToolBridgeExtensions } from './tools.ts'
 export { resolveReconnectPolicy, startConnection } from './connection.ts'
 export type { ReconnectConfig, ResolvedReconnectPolicy, ConnectionExtensions, ConnectionHandle, ConnectionOutcome } from './connection.ts'
 

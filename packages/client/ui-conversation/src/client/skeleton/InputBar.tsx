@@ -14,7 +14,7 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { ChangeEvent, CSSProperties, KeyboardEvent, MouseEvent } from 'react'
 import clsx from 'clsx'
 import {
   IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
@@ -35,7 +35,6 @@ import { registerComposerKeymap } from '../input/editor/keymap.ts'
 import { resolveSubmitMode } from '../input/submission-policy.ts'
 import { attachmentErrorText, imageSizeText } from '../image-labels.ts'
 import { ContextMeter } from './ContextMeter.tsx'
-import { PermissionSelect } from './PermissionSelect.tsx'
 import css from './InputBar.module.css'
 
 export type InputBarProps = ComposerBarProps
@@ -43,7 +42,7 @@ export type InputBarProps = ComposerBarProps
 export const InputBar = memo(function InputBar({
   useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
   retryFileUpload,
-  toggleCommandMenu, stop, command, t,
+  toggleCommandMenu, stop, t,
   renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher,
   useProjection, sessionId, variant, disabled: inert = false, blocked,
   workspacePickerOpen = false, onRequestWorkspace,
@@ -112,10 +111,6 @@ export const InputBar = memo(function InputBar({
   }, [notice, showToast])
   const cardRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
-
-  // The Access seat's data: the host-computed permissions projection
-  // (undefined = capability absent → the chip renders nothing).
-  const permissions = useProjection('permissions')
 
   // A continuable child without its live parent cannot accept human input,
   // but its independent Stop below stays available while it runs.
@@ -372,13 +367,6 @@ export const InputBar = memo(function InputBar({
     if (!empty && !disabled && !machineBusy && !uploadsPending) keyboard.submit(primarySubmitMode)
   }
 
-  // The Access seat: the projection-fed permission chip (renders nothing
-  // while the permissions key is absent — permission-less host or Draft —
-  // or while the command face is absent with the session).
-  const accessSelect: ReactNode = command === undefined
-    ? null
-    : <PermissionSelect key={sessionId} value={permissions} locked={locked} command={command} t={t} />
-
   // Claim ghost hint: rendered by CSS as generated content after the last
   // paragraph while the claim's args are blank (a hint implies a single-line
   // token draft). The translated per-command hint wins over the claim's own.
@@ -509,7 +497,7 @@ export const InputBar = memo(function InputBar({
               onChange={onPickFiles}
             />
             <div className={css.modes}>
-              {accessSelect}
+              {sessionId === undefined ? null : renderSlot('conversation.input.permission', { locked })}
               {sessionId === undefined ? null : renderSlot('conversation.input.plan', { locked })}
             </div>
             {input === undefined || sessionId === undefined
