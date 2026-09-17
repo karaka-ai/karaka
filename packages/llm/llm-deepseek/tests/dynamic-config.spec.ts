@@ -8,7 +8,7 @@ import AttachmentStore, { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-
 import type {
   ImageAttachmentLimits,
   ImageAttachmentRef,
-  ImageRequestPolicy,
+  ImageRequestTarget,
   RequestImageAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
@@ -70,7 +70,7 @@ class StaticAttachmentStore extends AttachmentStore {
 
   override readImageRequest(
     ref: ImageAttachmentRef,
-    _policy: ImageRequestPolicy,
+    _target: ImageRequestTarget,
     _signal?: AbortSignal,
   ): Promise<RequestImageAttachment> {
     return Promise.resolve({

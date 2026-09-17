@@ -42,6 +42,7 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
   'package-reference': '.agents/skills/dsh-doc/templates/package-reference.md',
   'package-library': '.agents/skills/dsh-doc/templates/package-library.md',
   'package-bundle': '.agents/skills/dsh-doc/templates/package-bundle.md',
+  'persistence-change': '.agents/skills/dsh-doc/templates/persistence-change.md',
 }
 
 /**
@@ -347,6 +348,17 @@ describe('dsh-doc skill consolidation', () => {
     for (const file of files) {
       const metadata = readFrontmatter(file)
       expect(packageReadmeMetadataErrors(file, metadata), file).toEqual([])
+    }
+  })
+
+  it('maps persistence transition records to their dedicated document kind', () => {
+    const files = globSync('docs/persistence-changes/*.md', { cwd: root })
+      .filter(file => !/\/README(?:\.zh)?\.md$/u.test(file.replaceAll('\\', '/')))
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) {
+      const metadata = readFrontmatter(file)
+      expect(metadata.kind, file).toBe('persistence-change')
+      expect(typeof metadata.description === 'string' && metadata.description.trim().length > 0, file).toBe(true)
     }
   })
 

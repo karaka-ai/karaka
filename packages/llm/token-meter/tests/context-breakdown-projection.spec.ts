@@ -323,7 +323,7 @@ describe('contextBreakdown session projection', () => {
       content: [{ type: 'text', text: 'rewritten question' }], source: { kind: 'user' },
     }), { surfaceOp: { op: 'replace', startSeq: question, endSeq: question }, sourceEventSeqs: [question] }).seq
     expect(question).toBeGreaterThan(middle)
-    // Provenance can cite a surviving prompt outside the replaced span.
+    // Source-event references can cite a surviving prompt outside the replaced span.
     session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'middle summary' }], source: { kind: 'user' },
     }), { surfaceOp: { op: 'replace', startSeq: question, endSeq: middle }, sourceEventSeqs: [question, middle, tail] })

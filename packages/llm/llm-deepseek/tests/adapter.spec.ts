@@ -21,8 +21,8 @@ import DeepSeekLlmApiExtensionRegistry from '@deepseek-ai/dsh-deepseek-llm-api-e
 import type { PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
-import { httpErrorCode } from '../src/adapter.ts'
-import { resolveRequestImagePolicy } from '../src/request-pricing.ts'
+import { httpErrorCode } from '../src/protocols/chat-completions/adapter.ts'
+import { resolveRequestImageTarget } from '../src/common/request-pricing.ts'
 import { assemble } from './assemble.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 import type { Behavior } from './mock-server.ts'
@@ -141,22 +141,29 @@ function successfulSseResponse(): Response {
   })
 }
 
-describe('request image policy', () => {
+describe('request image target', () => {
   it.each([
     [
       { id: 'default' },
-      { maxPixels: 640_000, maxBytes: 1024 * 1024 },
+      { width: 1302, height: 1302, maxBytes: 2 * 1024 * 1024 },
     ],
     [
       { id: 'low', imagePixelBudget: 'low' as const },
-      { maxPixels: 512 * 512, maxBytes: 1024 * 1024 },
+      { width: 512, height: 512, maxBytes: 2 * 1024 * 1024 },
     ],
     [
       { id: 'custom', imagePixelBudget: 320_000, imageMaxBytes: 512_000 },
-      { maxPixels: 320_000, maxBytes: 512_000 },
+      { width: 565, height: 565, maxBytes: 512_000 },
     ],
-  ])('resolves route-owned defaults and overrides for %s', (model, expected) => {
-    expect(resolveRequestImagePolicy(model)).toEqual(expected)
+  ])('resolves route-owned defaults and overrides for %s on a 4096x4096 source', (model, expected) => {
+    expect(resolveRequestImageTarget(model, { width: 4096, height: 4096 })).toEqual(expected)
+  })
+
+  it('caps every request image at the provider per-side limit', () => {
+    expect(resolveRequestImageTarget({ id: 'default' }, { width: 8192, height: 78 }))
+      .toEqual({ width: 4096, height: 39, maxBytes: 2 * 1024 * 1024 })
+    expect(resolveRequestImageTarget({ id: 'custom', imagePixelBudget: 640_000 }, { width: 10_000, height: 100 }))
+      .toEqual({ width: 4096, height: 41, maxBytes: 2 * 1024 * 1024 })
   })
 
   it('answers image request pricing from the current connection snapshot', () => {
@@ -407,7 +414,7 @@ describe('DeepSeekAdapter against a mock server', () => {
       bytes: 3,
     }])
     expect(signalSeen[0]).toBeInstanceOf(AbortSignal)
-    expect(policies).toEqual([{ maxPixels: 640_000, maxBytes: 1024 * 1024 }])
+    expect(policies).toEqual([{ width: 1, height: 1, maxBytes: 2 * 1024 * 1024 }])
   })
 
   it('falls back to one all-base64 request when Files API resolution fails', async () => {
@@ -621,7 +628,7 @@ describe('DeepSeekAdapter against a mock server', () => {
 
     expect(attachmentMocks.readImageRequest).toHaveBeenCalledWith(
       recent,
-      { maxPixels: 640_000, maxBytes: 1024 * 1024 },
+      { width: 1, height: 1, maxBytes: 2 * 1024 * 1024 },
       expect.any(AbortSignal),
     )
     const body = server.requests[0] as { messages: unknown[] }
@@ -672,13 +679,13 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(attachmentMocks.readImageRequest).toHaveBeenNthCalledWith(
       1,
       imageRef,
-      { maxPixels: 512 * 512, maxBytes: 512_000 },
+      { width: 1, height: 1, maxBytes: 512_000 },
       expect.any(AbortSignal),
     )
     expect(attachmentMocks.readImageRequest).toHaveBeenNthCalledWith(
       2,
       imageRef,
-      { maxPixels: 320_000, maxBytes: 1024 * 1024 },
+      { width: 1, height: 1, maxBytes: 2 * 1024 * 1024 },
       expect.any(AbortSignal),
     )
   })
@@ -1640,6 +1647,15 @@ describe('DeepSeekAdapter against a mock server', () => {
 })
 
 describe('plugin registration and config', () => {
+  it('defaults to Chat Completions and resolves the selected protocol endpoint without rewriting overrides', () => {
+    expect(resolveAdapterOptions({})).toMatchObject({ protocol: 'chat-completions', baseURL: 'https://api.deepseek.com' })
+    expect(resolveAdapterOptions({ protocol: 'messages' })).toMatchObject({ protocol: 'messages', baseURL: 'https://api.deepseek.com/anthropic' })
+    for (const baseURL of ['https://gateway.example/custom/v1', 'https://gateway.example/v1/messages']) {
+      expect(resolveAdapterOptions({ protocol: 'messages', baseURL }).baseURL).toBe(baseURL)
+    }
+    expect(() => resolveAdapterOptions({ protocol: 'responses' } as unknown as LlmDeepSeek.Config)).toThrow(/protocol/)
+  })
+
   it('keeps wire helpers off the package root', () => {
     for (const helper of [
       'httpErrorCode',

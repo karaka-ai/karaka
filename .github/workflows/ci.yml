@@ -308,6 +308,25 @@ jobs:
           if (( install_status != 0 )); then exit "$install_status"; fi
           exit "$sandbox_status"
 
+      # Blacksmith's Ubuntu HTTP archive endpoints can be unreachable while HTTPS works.
+      - name: Use HTTPS for Ubuntu archives on Blacksmith
+        if: vars.DSH_CI_FAILOVER_LINUX == 'blacksmith'
+        run: |
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          apt = Path('/etc/apt')
+          sources = [apt / 'sources.list', apt / 'blacksmith-ubuntu-mirrors.txt',
+                     *(apt / 'sources.list.d').glob('*.list'),
+                     *(apt / 'sources.list.d').glob('*.sources')]
+          for source in sources:
+              if source.is_file():
+                  source.write_text(re.sub(
+                      r'http://((?:[a-z]{2}\.)?archive\.ubuntu\.com|security\.ubuntu\.com)/',
+                      r'https://\1/', source.read_text()))
+          PY
+
       - name: Install Playwright Chromium and hosted dependencies
         if: vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
         run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install --with-deps chromium

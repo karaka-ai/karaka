@@ -548,9 +548,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['an AttachmentError when the durable reference is invalid.'],
       },
       {
-        signature: 'readImageRequest( ref: ImageAttachmentRef, policy: ImageRequestPolicy, signal?: AbortSignal, ): Promise<RequestImageAttachment>',
+        signature: 'readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, ): Promise<RequestImageAttachment>',
         description: 'Generate or read one deterministic model-request version from the stored normalized image.',
-        parameters: [{ name: 'ref', description: 'durable provider-independent normalized attachment reference.' }, { name: 'policy', description: 'exact route pixel budget and encoded-byte target; a target no ladder quality meets yields the smallest ladder output.' }, { name: 'signal', description: 'optional cancellation.' }],
+        parameters: [{ name: 'ref', description: 'durable provider-independent normalized attachment reference.' }, { name: 'target', description: 'route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.' }, { name: 'signal', description: 'optional cancellation.' }],
         returns: 'request bytes and the cache/upload identity covering every transform input.',
       },
     ],
@@ -639,29 +639,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Fires after any flush that recomposed the graph (row added/removed, or a rebuilt rev change). Pull model: listeners re-read graph.',
         parameters: [{ name: 'listener', description: 'notified with no payload.' }],
         returns: 'the unsubscriber.',
-      },
-    ],
-  },
-  {
-    key: 'codeRuntime',
-    summary: 'Registers one `ctx.codeRuntime` implementation.',
-    description: 'Registers one `ctx.codeRuntime` implementation. Program, budget, abort, and substrate failures resolve in CodeRunResult; only Service Definition contract misuse rejects. Implementations bridge structured-cloneable bindings, materialize each declared namespace rejection class, treat programs as hostile peers, isolate runs from one another, and terminate and await in-flight runs during disposal.',
-    methods: [
-      {
-        signature: 'abstract readonly language: string',
-        description: 'The source language run expects `program` to be written in, as a lowercase identifier. Informational, not gating — a consumer that generates language-specific presentation (typed SDK stubs, usage instructions) switches on it and fails loud on a language it cannot present. Well-known values: `\'typescript\'` and `\'python\'`, those `dsh-tools` presents; the TypeScript backend is released, the Python backend is experimental and private (not published).',
-        parameters: [],
-      },
-      {
-        signature: 'abstract readonly isolation: string',
-        description: 'The execution substrate, as a lowercase identifier. Informational, not gating — a descriptor so deployments and diagnostics can tell backends apart, not a security claim. Well-known values: `\'worker-thread\'`, `\'process\'`, `\'container\'`.',
-        parameters: [],
-      },
-      {
-        signature: 'abstract run(request: CodeRunRequest): Promise<CodeRunResult>',
-        description: 'Execute one program against the request\'s bindings and capture what it emitted. See the class doc for the resolution contract (error is a result field; rejection means Service Definition contract misuse only).',
-        parameters: [{ name: 'request', description: 'the program, its bindings, and the abort signal; the request carries everything the runtime acts on, with no hidden defaults.' }],
-        returns: 'the run\'s outcome: completion value (when transferable), the ordered log capture, and the failure (if any).',
       },
     ],
   },
@@ -867,30 +844,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Create one child directory for a Remote caller\'s in-app browser.',
         parameters: [{ name: 'path', description: 'absolute existing parent directory.' }, { name: 'name', description: 'single non-blank path segment.' }],
         returns: 'the created directory\'s absolute path.',
-      },
-    ],
-  },
-  {
-    key: 'e2b',
-    summary: 'Creates one lazily consumable E2B SDK handle and deletes the sandbox at timeout or disposal.',
-    description: 'Creates one lazily consumable E2B SDK handle and deletes the sandbox at timeout or disposal. Creation begins at plugin construction; adapters await getSandbox before their first operation.',
-    methods: [
-      {
-        signature: 'readonly cwd: string',
-        description: 'Validated remote working directory shared by provider adapters.',
-        parameters: [],
-      },
-      {
-        signature: 'readonly runtimeRoot: string',
-        description: 'Remote directory reserved for adapter-owned process and terminal state.',
-        parameters: [],
-      },
-      {
-        signature: 'async getSandbox(): Promise<Sandbox>',
-        description: 'Return the shared live SDK handle.',
-        parameters: [],
-        returns: 'the created sandbox after the configured cwd exists.',
-        throws: ['when E2B rejects creation or the service is disposing.'],
       },
     ],
   },
@@ -1486,14 +1439,44 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'ptcRuntime',
+    summary: 'Registers one `ctx.ptcRuntime` implementation.',
+    description: 'Registers one `ctx.ptcRuntime` implementation. Program, budget, abort, and substrate failures resolve in PtcRunResult; only Service Definition contract misuse rejects. Implementations bridge structured-cloneable bindings, materialize each declared namespace rejection class, treat programs as hostile peers, isolate runs from one another, and terminate and await in-flight runs during disposal.',
+    methods: [
+      {
+        signature: 'abstract readonly language: string',
+        description: 'The source language run expects `program` to be written in, as a lowercase identifier. Informational, not gating — a consumer that generates language-specific presentation (typed SDK stubs, usage instructions) switches on it and fails loud on a language it cannot present. Well-known values: `\'typescript\'` and `\'python\'`, those `dsh-tools` presents; the TypeScript backend is released, the Python backend is experimental and private (not published).',
+        parameters: [],
+      },
+      {
+        signature: 'abstract readonly isolation: string',
+        description: 'The execution substrate, as a lowercase identifier. Informational, not gating — a descriptor so deployments and diagnostics can tell backends apart, not a security claim. Well-known values: `\'worker-thread\'`, `\'process\'`, `\'container\'`.',
+        parameters: [],
+      },
+      {
+        signature: 'abstract resolve(request: PtcRunRequest): PtcRunSpec',
+        description: 'Resolve supported options and provider defaults before execution.',
+        parameters: [{ name: 'request', description: 'Program, bindings, cancellation and optional execution choices.' }],
+        returns: 'Complete directory, deadline and supported authority for run.',
+        throws: ['When an explicit choice is invalid or unsupported by this provider.'],
+      },
+      {
+        signature: 'abstract run(spec: PtcRunSpec): Promise<PtcRunResult>',
+        description: 'Execute resolved inputs; program outcomes resolve as result fields.',
+        parameters: [{ name: 'spec', description: 'directory, deadline, program, bindings, cancellation and supported policy.' }],
+        returns: 'Captured output and the execution outcome.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
     methods: [
       {
-        signature: 'abstract confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv',
+        signature: 'abstract confine(argv: readonly string[], policy: SandboxPolicy, signal?: AbortSignal): Promise<ConfinedArgv>',
         description: 'Wrap `argv` so it executes confined under `policy` on this host; the caller spawns the returned argv in place of its own.',
-        parameters: [{ name: 'argv', description: 'the exact argv the caller is about to spawn (program plus arguments), NOT a shell string — a shell-shaped consumer passes `[\'bash\', \'-c\', command]`.' }, { name: 'policy', description: 'the file-effect policy this execution runs under, carried per call (see {@link SandboxPolicy}).' }],
+        parameters: [{ name: 'argv', description: 'the exact argv the caller is about to spawn (program plus arguments), NOT a shell string — a shell-shaped consumer passes `[\'bash\', \'-c\', command]`.' }, { name: 'policy', description: 'the file-effect policy this execution runs under, carried per call (see {@link SandboxPolicy}).' }, { name: 'signal', description: 'cancellation while the provider resolves the policy and runner.' }],
         returns: 'the argv to spawn instead, plus the enforcement completeness the selected backend achieves for it.',
       },
     ],
@@ -2223,7 +2206,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'shell',
     summary: 'Abstract bash execution service.',
-    description: 'Abstract bash execution service. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.shell` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- run rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a ShellRunResult.\n- start returns immediately; no timeout applies to background processes. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on stderr.\n- ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.\n- A still-running background process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a background process survives an executor-only reload.',
+    description: 'Abstract bash execution service. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.shell` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- run rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a ShellRunResult.\n- start resolves after launch preparation; cancellation or setup failure rejects before publishing a handle. No timeout applies to background processes. Once published, `done` settles at process close and never rejects; subprocess provider failures settle as `killed` with the error on stderr.\n- ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.\n- A still-running background process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a background process survives an executor-only reload.',
     methods: [
       {
         signature: 'abstract resolve(request: ShellExecRequest): ShellExecSpec',
@@ -2233,15 +2216,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'abstract run(spec: ShellExecSpec): Promise<ShellRunResult>',
-        description: 'Run a command in the foreground; resolves when it finishes.',
+        description: 'Run preparation and the foreground command under the resolved timeout.',
         parameters: [{ name: 'spec', description: 'a resolved spec from {@link resolve}, never a raw request.' }],
         returns: 'the outcome; nonzero exits, timeout kills, and abort kills resolve with a descriptive result rather than reject.',
+        throws: ['on preparation failure or caller cancellation before process publication.'],
       },
       {
-        signature: 'abstract start(spec: ShellExecSpec): ShellProcess',
-        description: 'Start a background process and return its handle immediately.',
+        signature: 'abstract start(spec: ShellExecSpec): Promise<ShellProcess>',
+        description: 'Prepare a background process asynchronously and publish its live handle.',
         parameters: [{ name: 'spec', description: 'a resolved spec from {@link resolve}, never a raw request.' }],
-        returns: 'the live process handle (reads, kill, quiescence promise).',
+        returns: 'the live process handle after preparation; cancellation or setup failure rejects.',
       },
     ],
   },
@@ -2317,6 +2301,35 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Persist `input.content` to a session-scoped spill artifact.',
         parameters: [{ name: 'input', description: 'the owner, caller-supplied source fields, suggested name, and full text to save.' }],
         returns: 'the saved artifact\'s {@link SpillRef}; rejects on a storage failure.',
+      },
+    ],
+  },
+  {
+    key: 'ssh',
+    summary: 'One non-reconnecting SSH session; loss invalidates all active operations.',
+    description: 'One non-reconnecting SSH session; loss invalidates all active operations.',
+    methods: [
+      {
+        signature: 'readonly ready: Promise<Hello>',
+        description: 'Verified remote helper coordinates; callers must await this before launch.',
+        parameters: [],
+      },
+      {
+        signature: 'async request<T>(method: string, params: unknown, result: z.ZodType<T>, signal?: AbortSignal, wait: boolean = false): Promise<T>',
+        description: 'Send a helper operation; cancellation never replays an ambiguous mutation.',
+        parameters: [{ name: 'method', description: 'the private helper operation.' }, { name: 'params', description: 'JSON request fields validated by the helper.' }, { name: 'result', description: 'response validation before returning provider-visible data.' }, { name: 'signal', description: 'cancellation, which does not undo completed remote effects.' }, { name: 'wait', description: 'allow a process observation to outlast the administrative deadline.' }],
+        returns: 'the validated remote result.',
+      },
+      {
+        signature: 'async connectStream(endpoint: SshStreamEndpoint, signal?: AbortSignal): Promise<Socket>',
+        description: 'Forward one authenticated stream through an independent SSH channel.',
+        parameters: [{ name: 'endpoint', description: 'private coordinates issued by this connection\'s helper.' }, { name: 'signal', description: 'cancellation of allocation and the resulting socket.' }],
+        returns: 'a paused socket; attach a consumer before resuming it.',
+      },
+      {
+        signature: 'dispose(): Promise<void>',
+        description: 'Tear down the helper\'s remote managed ranges before releasing the SSH master when reachable.',
+        parameters: [],
       },
     ],
   },
@@ -3818,15 +3831,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AssembledSection',
-    declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n}',
+    declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n    interpolate?: boolean;\n}',
   },
   {
     name: 'AssistantMessage',
     declaration: 'export interface AssistantMessage extends Message {\n    readonly role: \'assistant\';\n    readonly source: ModelMessageSource;\n}',
   },
   {
-    name: 'AssistantProvenance',
-    declaration: 'export interface AssistantProvenance {\n    provider: string;\n    model: string;\n    replayState?: unknown;\n}',
+    name: 'AssistantProviderMetadata',
+    declaration: 'export interface AssistantProviderMetadata {\n    provider: string;\n    model: string;\n    replayState?: unknown;\n}',
   },
   {
     name: 'AssistantStreamFrame',
@@ -3935,34 +3948,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ClientArtifactBaseline',
     declaration: 'export interface ClientArtifactBaseline {\n    readonly path: string;\n    readonly mtimeMs: number;\n    readonly size: number;\n}',
-  },
-  {
-    name: 'CodeBindingErrorClass',
-    declaration: 'export interface CodeBindingErrorClass {\n    name: string;\n    memberNameProperty: string;\n}',
-  },
-  {
-    name: 'CodeBindingFunction',
-    declaration: 'export type CodeBindingFunction = (args: unknown) => Promise<CodeJsonValue>;',
-  },
-  {
-    name: 'CodeBindingNamespace',
-    declaration: 'export interface CodeBindingNamespace {\n    global: string;\n    functions: Record<string, CodeBindingFunction>;\n    errorClass?: CodeBindingErrorClass;\n}',
-  },
-  {
-    name: 'CodeJsonValue',
-    declaration: 'export type CodeJsonValue = null | boolean | number | string | CodeJsonValue[] | {\n    [key: string]: CodeJsonValue;\n};',
-  },
-  {
-    name: 'CodeRunFailure',
-    declaration: 'export interface CodeRunFailure {\n    kind: \'exception\' | \'timeout\' | \'abort\' | \'worker-exit\' | \'invalid-output\' | \'output-limit\';\n    message: string;\n}',
-  },
-  {
-    name: 'CodeRunRequest',
-    declaration: 'export interface CodeRunRequest {\n    program: string;\n    bindings: CodeBindingNamespace[];\n    signal?: AbortSignal;\n}',
-  },
-  {
-    name: 'CodeRunResult',
-    declaration: 'export interface CodeRunResult {\n    value?: CodeJsonValue;\n    logs: string[];\n    error?: CodeRunFailure;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -4485,8 +4470,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ImageMediaType = \'image/png\' | \'image/jpeg\' | \'image/webp\' | \'image/gif\';',
   },
   {
-    name: 'ImageRequestPolicy',
-    declaration: 'export interface ImageRequestPolicy {\n    maxPixels: number;\n    maxBytes: number;\n}',
+    name: 'ImageRequestTarget',
+    declaration: 'export interface ImageRequestTarget {\n    width: number;\n    height: number;\n    maxBytes: number;\n}',
   },
   {
     name: 'ImageVariantId',
@@ -4838,7 +4823,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModelMessageSource',
-    declaration: 'export interface ModelMessageSource extends AssistantProvenance {\n    kind: \'model\';\n}',
+    declaration: 'export interface ModelMessageSource extends AssistantProviderMetadata {\n    kind: \'model\';\n}',
   },
   {
     name: 'ModelModality',
@@ -4962,7 +4947,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PromptSection',
-    declaration: 'export interface PromptSection {\n    readonly name: string;\n    readonly order: number;\n    readonly text: string | ((context: AssembleContext) => string);\n    readonly complete?: boolean;\n}',
+    declaration: 'export interface PromptSection {\n    readonly name: string;\n    readonly order: number;\n    readonly text: string | ((context: AssembleContext) => string);\n    readonly interpolate?: boolean;\n    readonly complete?: boolean;\n}',
   },
   {
     name: 'PromptSectionOrderName',
@@ -4981,8 +4966,44 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PruneResult {\n    readonly pruned: readonly PrunedEntry[];\n    readonly charsRemoved: number;\n}',
   },
   {
+    name: 'PtcBindingErrorClass',
+    declaration: 'export interface PtcBindingErrorClass {\n    name: string;\n    memberNameProperty: string;\n}',
+  },
+  {
+    name: 'PtcBindingFunction',
+    declaration: 'export type PtcBindingFunction = (args: unknown) => Promise<PtcJsonValue>;',
+  },
+  {
+    name: 'PtcBindingNamespace',
+    declaration: 'export interface PtcBindingNamespace {\n    global: string;\n    functions: Record<string, PtcBindingFunction>;\n    errorClass?: PtcBindingErrorClass;\n}',
+  },
+  {
     name: 'PtcDispatchLog',
     declaration: 'export interface PtcDispatchLog {\n    readonly exec: ToolExecution;\n    readonly agent?: Agent;\n    readonly subCallId: ToolCallId;\n    readonly name: string;\n    readonly isError: boolean;\n    readonly content: ContentBlock[];\n}',
+  },
+  {
+    name: 'PtcJsonValue',
+    declaration: 'export type PtcJsonValue = null | boolean | number | string | PtcJsonValue[] | {\n    [key: string]: PtcJsonValue;\n};',
+  },
+  {
+    name: 'PtcRunFailure',
+    declaration: 'export interface PtcRunFailure {\n    kind: \'exception\' | \'timeout\' | \'abort\' | \'worker-exit\' | \'invalid-output\' | \'output-limit\' | \'protocol\' | \'sandbox-unavailable\';\n    message: string;\n}',
+  },
+  {
+    name: 'PtcRunRequest',
+    declaration: 'export interface PtcRunRequest {\n    program: string;\n    bindings: PtcBindingNamespace[];\n    cwd?: string;\n    timeoutMs?: number;\n    sandboxPolicy?: SandboxExecutionPolicy;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'PtcRunResult',
+    declaration: 'export interface PtcRunResult {\n    sandbox?: PtcRunSandbox;\n    value?: PtcJsonValue;\n    logs: string[];\n    error?: PtcRunFailure;\n}',
+  },
+  {
+    name: 'PtcRunSandbox',
+    declaration: 'export interface PtcRunSandbox {\n    mode: SandboxMode;\n    denied: boolean;\n    enforcement?: SandboxEnforcement;\n}',
+  },
+  {
+    name: 'PtcRunSpec',
+    declaration: 'export interface PtcRunSpec extends PtcRunRequest {\n    cwd: string;\n    timeoutMs: number;\n}',
   },
   {
     name: 'ReadFileLine',
@@ -5597,8 +5618,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionTitleEventData {\n    readonly title: string;\n    readonly messageSeqs: SessionSeq[];\n    readonly source: SessionTitleSource;\n}',
   },
   {
-    name: 'SessionTitleModelProvenance',
-    declaration: 'export interface SessionTitleModelProvenance {\n    readonly provider: string;\n    readonly model: string;\n}',
+    name: 'SessionTitleModelIdentity',
+    declaration: 'export interface SessionTitleModelIdentity {\n    readonly provider: string;\n    readonly model: string;\n}',
   },
   {
     name: 'SessionTitleObservation',
@@ -5614,11 +5635,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionTitleProviderRequest',
-    declaration: 'export interface SessionTitleProviderRequest {\n    readonly session: Session;\n    readonly messages: readonly SessionTitleUserMessage[];\n    readonly route?: SessionTitleModelProvenance;\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface SessionTitleProviderRequest {\n    readonly session: Session;\n    readonly messages: readonly SessionTitleUserMessage[];\n    readonly route?: SessionTitleModelIdentity;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'SessionTitleProviderResult',
-    declaration: 'export interface SessionTitleProviderResult {\n    readonly title: string;\n    readonly messageSeqs: readonly SessionSeq[];\n    readonly model?: SessionTitleModelProvenance;\n}',
+    declaration: 'export interface SessionTitleProviderResult {\n    readonly title: string;\n    readonly messageSeqs: readonly SessionSeq[];\n    readonly model?: SessionTitleModelIdentity;\n}',
   },
   {
     name: 'SessionTitleSnapshot',
@@ -5626,7 +5647,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionTitleSource',
-    declaration: 'export type SessionTitleSource = {\n    readonly kind: \'fallback\';\n} | {\n    readonly kind: \'provider\';\n    readonly provider: SessionTitleProviderId;\n    readonly model?: SessionTitleModelProvenance;\n} | {\n    readonly kind: \'user\';\n};',
+    declaration: 'export type SessionTitleSource = {\n    readonly kind: \'fallback\';\n} | {\n    readonly kind: \'provider\';\n    readonly provider: SessionTitleProviderId;\n    readonly model?: SessionTitleModelIdentity;\n} | {\n    readonly kind: \'user\';\n};',
   },
   {
     name: 'SessionTitleUserMessage',
@@ -5817,6 +5838,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SpillSource = {\n    kind: \'tool\';\n    toolName: string;\n    callId: ToolCallId;\n    label: string;\n} | {\n    kind: \'session-reference\';\n    sessionId: SessionId;\n    label: string;\n};',
   },
   {
+    name: 'SshStreamEndpoint',
+    declaration: 'export type SshStreamEndpoint = z.infer<typeof streamEndpointSchema>;',
+  },
+  {
     name: 'StorageBackend',
     declaration: 'export interface StorageBackend {\n    readonly kv?: KvFacet;\n    close(): Promise<void>;\n}',
   },
@@ -5926,7 +5951,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubprocessHandle',
-    declaration: 'export interface SubprocessHandle {\n    readonly stdin: Writable | undefined;\n    readonly stdout: Readable | undefined;\n    readonly stderr: Readable | undefined;\n    readonly collected: SubprocessCollectedOutputs;\n    readonly done: Promise<SubprocessOutcome>;\n    terminate(): void;\n    waitForExit(signal?: AbortSignal): Promise<boolean>;\n}',
+    declaration: 'export interface SubprocessHandle {\n    readonly stdin: Writable | undefined;\n    readonly stdout: Readable | undefined;\n    readonly stderr: Readable | undefined;\n    readonly control: Duplex | undefined;\n    readonly collected: SubprocessCollectedOutputs;\n    readonly done: Promise<SubprocessOutcome>;\n    terminate(): void;\n    waitForExit(signal?: AbortSignal): Promise<boolean>;\n}',
   },
   {
     name: 'SubprocessOutcome',
@@ -5954,7 +5979,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubprocessStdio',
-    declaration: 'export interface SubprocessStdio {\n    stdin: SubprocessStdinMode;\n    stdout: SubprocessOutputMode;\n    stderr: SubprocessOutputMode;\n}',
+    declaration: 'export interface SubprocessStdio {\n    stdin: SubprocessStdinMode;\n    stdout: SubprocessOutputMode;\n    stderr: SubprocessOutputMode;\n    control?: \'pipe\';\n}',
   },
   {
     name: 'SubprocessTerminalForeground',

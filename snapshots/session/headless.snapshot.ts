@@ -4,7 +4,7 @@ import { cp, copyFile, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile 
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { basename, delimiter, dirname, join, relative, sep } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
@@ -577,6 +577,83 @@ async function verifySessionQuerySpill(log: string, spillRoot: string, locatorRo
   expect(full).toContain('session_event_search')
 }
 
+/** Require an admitted failed job and zero process allocations before updating its recorded oracle. */
+async function verifyBackgroundConfinementFailure(log: string, cwd: string): Promise<void> {
+  const results = parseSessionLog(log).flatMap(event => event.type === 'tool/result'
+    ? event.data.message.content.filter(block => block.type === 'tool-result') : [])
+  const started = results.find(result => result.toolCallId === 'async-confinement-start')
+  const inspected = results.find(result => result.toolCallId === 'async-confinement-result')
+  expect(started).toMatchObject({ isError: false, content: [{ type: 'text', text: 'started background job bash-1' }] })
+  expect(inspected?.isError).toBe(false)
+  const text = inspected?.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+  expect(text).toContain('[status: failed,')
+  expect(text).toContain('fixture asynchronous confinement refused')
+  expect(JSON.parse(await readFile(join(cwd, 'confinement-audit.json'), 'utf8'))).toEqual({ confineCalls: 1, spawnCalls: 0 })
+}
+
+/** Exercise provider-cwd adoption through the shipped launcher without normalizing away the observation. */
+async function verifyProviderCwdResume(
+  scenario: HeadlessScenario,
+  cwd: string,
+  initial: readonly SessionLog[],
+  patches: readonly string[],
+  model: { provider: string; model: string },
+  fixture: string,
+  task: string,
+): Promise<void> {
+  const providerCwd = scenario.manifest.environment?.DSH_SNAPSHOT_PROVIDER_CWD
+  const primary = initial[0]
+  expect(providerCwd).toBeDefined()
+  expect(primary?.header.cwd).toBe(providerCwd)
+  expect(primary?.header.cwd).not.toBe(cwd)
+  const otherHostCwd = await mkdtemp(join(tmpdir(), 'dsh-provider-resume-'))
+  const env = {
+    DSH_HOME: join(cwd, '.dsh'),
+    DSH_SNAPSHOT: 'replay',
+    DSH_SNAPSHOT_FILE: fixture,
+    DSH_SNAPSHOT_PROVIDER: model.provider,
+    DSH_SNAPSHOT_MODEL: model.model,
+    DSH_PERMISSION_MODE: 'read-only',
+    DSH_TELEMETRY_DISABLED: '1',
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+  }
+  const launch = {
+    cwd: otherHostCwd,
+    binScript: dshBin,
+    configPath: patches[0] as string,
+    tsconfigPath,
+    binArgs: [
+      '--profile', 'headless',
+      ...patches.flatMap(file => ['--patch', isAbsolute(file) ? file : join(cwd, file)]),
+      '--session-id', String(primary?.header.id), task,
+    ],
+  }
+  try {
+    const refused = await runLoaderSmoke({
+      ...launch, label: 'provider-cwd mismatched resume', expectedExitCode: 1,
+      env: { ...env, DSH_SNAPSHOT_PROVIDER_CWD: `${providerCwd}/other` },
+    })
+    expect(refused.stdout).toBe('')
+    expect(refused.stderr).toContain(`was recorded in "${providerCwd}", not "${providerCwd}/other"`)
+    expect(await persistedSessions(cwd)).toEqual(initial)
+    const resumed = await runLoaderSmoke({
+      ...launch, label: 'provider-cwd matching resume',
+      binArgs: [...launch.binArgs.slice(0, -1), '--json', task],
+      env: { ...env, DSH_SNAPSHOT_PROVIDER_CWD: providerCwd },
+    })
+    const output = records(resumed.stdout)
+    expect(output[0]).toEqual({ type: 'session', sessionId: primary?.header.id, cwd: providerCwd })
+    expect(output.at(-1)).toEqual({ type: 'final', text: finalTextFromSession(primary!.content) })
+    const continued = await persistedSessions(cwd)
+    expect(continued).toHaveLength(1)
+    expect(continued[0]?.header).toEqual(primary?.header)
+    expect(continued[0]?.content.startsWith(primary!.content)).toBe(true)
+    expect(records(continued[0]!.content).filter(event => event.type === 'turn/start')).toHaveLength(2)
+  } finally {
+    await rm(otherHostCwd, { recursive: true, force: true })
+  }
+}
+
 async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly SessionLog[], ctx: NormalizeContext): Promise<void> {
   const pin = pinOf(scenario)
   const fixture = await readFile(join(pin.dir, await primaryFixtureFile(pin.dir)), 'utf8')
@@ -966,6 +1043,14 @@ describe('headless recorded-session snapshots', () => {
             if (scenario.name === 'session-query-spill') {
               await verifySessionQuerySpill(actualLogs[0]!.content, spillRoot, locatorRoot)
             }
+            if (scenario.name === 'provider-cwd') {
+              await verifyProviderCwdResume(
+                scenario, cwd, actualLogs, patches, model, join(scenario.dir, fixtureFiles[0] as string), task,
+              )
+            }
+            if (scenario.name === 'background-confinement-failure') {
+              await verifyBackgroundConfinementFailure(actualLogs[0]!.content, cwd)
+            }
             finalWorkspace = await captureWorkspaceSnapshot(cwd, {
               ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
             })
@@ -1027,6 +1112,6 @@ describe('headless recorded-session snapshots', () => {
       } else {
         expect(finalWorkspace, `${scenario.name}: a changed workspace requires workspace.final`).toEqual(initialWorkspace)
       }
-    }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+    }, scenario.name === 'provider-cwd' ? 3 * LOADER_SMOKE_TEST_TIMEOUT_MS : LOADER_SMOKE_TEST_TIMEOUT_MS)
   }
 })

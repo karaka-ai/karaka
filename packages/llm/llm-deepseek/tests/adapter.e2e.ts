@@ -14,7 +14,7 @@ import LocalAttachments from '@deepseek-ai/dsh-attachment-local'
 import type {
   ImageAttachmentLimits,
   ImageAttachmentRef,
-  ImageRequestPolicy,
+  ImageRequestTarget,
   RequestImageAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
@@ -26,7 +26,7 @@ import * as PluginPackageInventoryDeepSeek from '@deepseek-ai/dsh-plugin-package
 import * as SessionLogDeepSeek from '@deepseek-ai/dsh-session-log-deepseek'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import type { Config } from '@deepseek-ai/dsh-llm-deepseek'
-import type { WireMessage, WireRequest } from '../src/types.ts'
+import type { WireMessage, WireRequest } from '../src/protocols/chat-completions/types.ts'
 import { assemble, type AssembledResult } from './assemble.ts'
 
 /**
@@ -92,7 +92,7 @@ class E2eAttachmentStore extends AttachmentStore {
 
   override readImageRequest(
     _ref: ImageAttachmentRef,
-    _policy: ImageRequestPolicy,
+    _target: ImageRequestTarget,
     _signal?: AbortSignal,
   ): Promise<RequestImageAttachment> {
     return Promise.resolve(this.version)

@@ -20,6 +20,10 @@
     "./browser": {
       "types": "./lib/types/browser.d.ts",
       "default": "./lib/browser.js"
+    },
+    "./startup": {
+      "types": "./lib/types/startup.d.ts",
+      "default": "./lib/startup.js"
     }
   },
   "files": [
@@ -48,7 +52,8 @@
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
     "@deepseek-ai/dsh-cmdline": "workspace:^",
     "@deepseek-ai/dsh-user-approval": "workspace:^",
-    "@deepseek-ai/dsh-session-projection": "workspace:^"
+    "@deepseek-ai/dsh-session-projection": "workspace:^",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:^"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^",
@@ -73,6 +78,7 @@
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
     "@deepseek-ai/dsh-cmdline": "workspace:^",
     "@deepseek-ai/dsh-user-approval": "workspace:^",
-    "@deepseek-ai/dsh-session-projection": "workspace:^"
+    "@deepseek-ai/dsh-session-projection": "workspace:^",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:^"
   }
 }

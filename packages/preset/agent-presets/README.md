@@ -127,7 +127,7 @@ This section explains the design behind the roster and the standing mount; obser
 
 ### The mount audit
 
-A directly-plugged subtree is absent from `ctx.loader.entries()`, so no boot audit covers it; `mountPreset` proves the result usable itself and rejects three shapes: an unscoped target (the preset's tools would register globally), a row still waiting for a service the composition never supplies, and a row that published a service into the root realm (process-global, so the second preset publishing the same name collides). The invariant companion re-checks the last rule on every service notification, because a row publishing from a timer or an asynchronous continuation would escape the one-shot audit.
+A directly-plugged subtree is absent from `ctx.loader.entries()`, so no boot audit covers it; `mountPreset` proves the result usable itself and rejects an import or activation failure, an unscoped target (the preset's tools would register globally), a row still waiting for a service the composition never supplies, and a row that published a service into the root realm (process-global, so the second preset publishing the same name collides). The invariant companion re-checks the last rule on every service notification, because a row publishing from a timer or an asynchronous continuation would escape the one-shot audit.
 
 ### Authoring mechanics
 

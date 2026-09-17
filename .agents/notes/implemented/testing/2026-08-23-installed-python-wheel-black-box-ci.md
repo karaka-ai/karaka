@@ -14,7 +14,7 @@ The Python SDK unit suite drives fake peers, while the packaged-runtime workflow
 
 The required Python runtime workflow builds the pure SDK wheel and each platform runtime wheel before behavior tests. Every native target installs those two local files into a new Python 3.10 virtual environment, changes to a temporary directory outside the repository, unsets `PYTHONPATH` and `DSH_RUNTIME_MODE`, and invokes only the public Python modules plus the packaged executable.
 
-The black-box harness rejects a non-venv process, repository-relative working directory, source or editable import, unequal distribution versions, an SDK dependency that does not exactly pin the runtime version, an executable outside the installed runtime package, or an executable absent from the runtime distribution record. This provenance check runs before the first agent request, so a behavior pass cannot conceal that the wrong code ran.
+The black-box harness rejects a non-venv process, repository-relative working directory, source or editable import, unequal distribution versions, an SDK dependency that does not exactly pin the runtime version, an executable outside the installed runtime package, or an executable absent from the runtime distribution record. This installed-artifact identity check runs before the first agent request, so a behavior pass cannot conceal that the wrong code ran.
 
 ### Keyless behavior
 

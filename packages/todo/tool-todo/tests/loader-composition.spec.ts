@@ -87,6 +87,7 @@ async function boot(configLines: readonly string[]): Promise<Context> {
   } as unknown as NonNullable<typeof ctx.loader.internal>
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
   await ctx.loader.await()
+  for (const entry of ctx.loader.entries()) await entry.fiber?.await()
   return ctx
 }
 

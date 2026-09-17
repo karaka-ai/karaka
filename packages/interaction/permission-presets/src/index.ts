@@ -38,7 +38,7 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap {
-    /** Latest logged permission overrides and constructor-seed provenance. */
+    /** Latest logged permission overrides and constructor-seed status. */
     permissions: PermissionProjectionState
   }
 }
@@ -89,7 +89,7 @@ export interface KnobState {
   approval: ApprovalPolicy | null
 }
 
-/** Projection state for permission overrides and constructor-seed provenance. */
+/** Projection state for permission overrides and constructor-seed status. */
 interface PermissionProjectionState extends KnobState {
   /** Whether the log contains a constructor-seed boundary. */
   seeded: boolean

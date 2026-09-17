@@ -1,9 +1,3 @@
-- id: headless-startup
-  disabled: true
-
-- id: headless-runner
-  disabled: true
-
 - insert:
     - id: mcp-pagination-cycle
       name: '@deepseek-ai/dsh-mcp-client'

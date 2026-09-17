@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { userAgent } from '@deepseek-ai/dsh-llm'
-import { DeepSeekFileId } from '../src/file-id.ts'
+import { DeepSeekFileId } from '../src/protocols/chat-completions/file-id.ts'
 import {
   DeepSeekFilesClient,
   DeepSeekFilesError,
   isFilesQuotaError,
   MAX_FILE_UPLOAD_BYTES,
-} from '../src/files-api.ts'
+} from '../src/protocols/chat-completions/files-api.ts'
 
 function requestUrl(input: string | URL | Request): string {
   if (typeof input === 'string') return input

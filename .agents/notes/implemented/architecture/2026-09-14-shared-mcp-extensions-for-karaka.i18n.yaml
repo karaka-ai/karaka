@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-14-shared-mcp-extensions-for-karaka.md
-2026-09-14-shared-mcp-extensions-for-karaka.md: 60875f70d9e646df451ef10f57b124f00ca48647
-2026-09-14-shared-mcp-extensions-for-karaka.zh.md: 982093cd82471660353d764c024db41e7f148da0
+2026-09-14-shared-mcp-extensions-for-karaka.md: 48884977bf056174776ec606b613b2c964be9209
+2026-09-14-shared-mcp-extensions-for-karaka.zh.md: 2d6e807e7c2b76e2a3f9f9182f51c1ab02c68a77

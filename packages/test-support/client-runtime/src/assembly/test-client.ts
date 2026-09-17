@@ -303,11 +303,14 @@ export class TestClient {
   }
 
   /**
-   * Remove one Loader entry.
+   * Remove one Loader entry and wait for its plugin cleanup.
    * @param name - package name of the row.
    */
   async unload(name: string): Promise<void> {
-    await this.ctx.loader.remove(this.entryOf(name).id)
+    const entry = this.entryOf(name)
+    const disposal = entry.fiber?.dispose()
+    this.ctx.loader.remove(entry.id)
+    await disposal
   }
 
   /**

@@ -33,7 +33,7 @@ afterEach(async () => {
 })
 
 class PassthroughSandbox extends SandboxProvider {
-  confine(argv: readonly string[], _policy: SandboxPolicy): ConfinedArgv {
+  async confine(argv: readonly string[], _policy: SandboxPolicy): Promise<ConfinedArgv> {
     return { argv: [...argv], enforcement: 'full', denialSignatures: [], runnerFailureRules: [] }
   }
 }

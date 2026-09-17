@@ -28,6 +28,7 @@ const SPAWN_TIMEOUT_MS = 60_000
 const cliVersion = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
 const dshBin = join(repoRoot, 'apps/cli/lib/bin.js')
 const invalidProvider = fileURLToPath(new URL('./fixtures/invalid-provider.cordis.yml', import.meta.url))
+const webReadyExitHook = new URL('./fixtures/web-browser-open/register.mjs', import.meta.url).href
 
 async function runBuiltBin(
   args: readonly string[] = [],
@@ -400,7 +401,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
     }
   }, SPAWN_TIMEOUT_MS * 3 + 30_000)
 
-  it('reports SDK startup failure when stdin reaches EOF first', async () => {
+  it('ignores an optional SDK plugin import failure before stdin reaches EOF', async () => {
     const home = mkdtempSync(join(tmpdir(), 'dsh-built-sdk-startup-failure-'))
     const patch = join(home, 'broken-sdk.cordis.yml')
     writeFileSync(patch, [
@@ -415,9 +416,9 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
         DSH_TELEMETRY_DISABLED: '1',
         DEEPSEEK_API_KEY: 'built-sdk-startup-failure-no-call',
       }, home)
-      expect(result.code).toBe(1)
+      expect(result.code).toBe(0)
       expect(result.stdout).toBe('')
-      expect(result.stderr).toContain('plugin tree failed to load')
+      expect(result.stderr).toContain('warning: 1 entry did not activate')
       expect(result.stderr).toContain('@deepseek-ai/dsh-missing-sdk-startup-plugin')
     } finally {
       rmSync(home, { recursive: true, force: true })
@@ -756,20 +757,18 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
     }
   }, SPAWN_TIMEOUT_MS + 30_000)
 
-  it('reports a patch-overlay boot failure without hanging', async () => {
-    // The HMR main watcher's initial scan once refreshed the include
-    // mid-initial-apply, deadlocking the failing apply's rollback against the
-    // refresh drain: dsh exited 13 with no diagnostic instead of settling
-    // ([vendor/README.md](../../../vendor/README.md)).
+  it('keeps serving when an optional patch-overlay plugin fails', async () => {
     const home = mkdtempSync(join(tmpdir(), 'dsh-invalid-patch-'))
     try {
-      const result = await runBuiltBin(['--profile', 'web', '--patch', invalidProvider], {
+      const result = await runBuiltBin(['--profile', 'web', '--patch', invalidProvider, '--port', '0', '--no-open'], {
         DSH_HOME: home,
+        DSH_BROWSER_OPEN_TEST_EXIT_ON_READY: '1',
         DEEPSEEK_API_KEY: 'keyless-invalid-config',
         DSH_TELEMETRY_DISABLED: '1',
+        NODE_OPTIONS: `--import=${webReadyExitHook}`,
       })
-      expect(result.code).toBe(1)
-      expect(result.stdout).toBe('')
+      expect(result.code, result.stderr).toBe(0)
+      expect(result.stdout).toMatch(/^dsh web: http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+$/u)
       expect(result.stderr).toContain('llm-pi-ai')
     } finally {
       rmSync(home, { recursive: true, force: true })

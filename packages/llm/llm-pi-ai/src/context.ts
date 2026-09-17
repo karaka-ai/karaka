@@ -11,11 +11,12 @@ import type {
   AttachmentId,
   AttachmentStore,
   ImageAttachmentRef,
-  ImageRequestPolicy,
+  ImageRequestTarget,
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from '@earendil-works/pi-ai'
 import { toPiAssistant } from './replay.ts'
+import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.ts'
 
 /** Join the text blocks of a harness message. */
@@ -102,14 +103,14 @@ function collectImageRefs(
 async function prepareRequestImages(
   messages: readonly Message[],
   attachments: AttachmentStore,
-  policy: ImageRequestPolicy,
+  budget: PiImageRequestBudget,
   signal?: AbortSignal,
 ): Promise<Map<AttachmentId, RequestImageAttachment>> {
   const refs = new Map<AttachmentId, ImageAttachmentRef>()
   for (const message of messages) collectImageRefs(message.content, refs)
   const orderedRefs = [...refs.values()]
   const prepared = await Promise.all(orderedRefs.map(
-    ref => attachments.readImageRequest(ref, policy, signal),
+    ref => attachments.readImageRequest(ref, requestImageTarget(ref, budget), signal),
   ))
   const versions = new Map<AttachmentId, RequestImageAttachment>()
   for (const [index, ref] of orderedRefs.entries()) {
@@ -222,7 +223,20 @@ export interface PiImageRequestContext {
   /** Request-level bound on base64-encoded image payload; omission leaves every image in place. */
   maxRequestImageBytes?: number
   /** Route pixel and raw encoded-byte budgets. */
-  requestImagePolicy?: ImageRequestPolicy
+  requestImagePolicy?: PiImageRequestBudget
+}
+
+/** Per-route budgets from which each request image's target is derived. */
+export interface PiImageRequestBudget {
+  /** Total-pixel budget; larger sources are downscaled proportionally. */
+  maxPixels: number
+  /** Encoded-byte target for one request image. */
+  maxBytes: number
+}
+
+/** Deterministic request target for one source under the route budgets. */
+function requestImageTarget(ref: ImageAttachmentRef, budget: PiImageRequestBudget): ImageRequestTarget {
+  return { ...requestImageDimensions(ref.width, ref.height, budget.maxPixels), maxBytes: budget.maxBytes }
 }
 
 /**

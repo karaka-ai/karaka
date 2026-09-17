@@ -8,8 +8,8 @@ import {
   serializeMessagesWithImages,
   serializeRequest,
   serializeRequestWithImages,
-} from '../src/serialize.ts'
-import type { ImageSerializationOptions } from '../src/serialize.ts'
+} from '../src/protocols/chat-completions/serialize.ts'
+import type { ImageSerializationOptions } from '../src/protocols/chat-completions/serialize.ts'
 
 type FileResolver = Extract<ImageSerializationOptions['representation'], { kind: 'file' }>['resolveFileId']
 

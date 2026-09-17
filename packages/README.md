@@ -36,11 +36,11 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`feedback/`](feedback/README.md) | Human feedback capture and command |
 | [`identity/`](identity/README.md) | Shared anonymous identity |
 | [`llm/`](llm/README.md) | LLM capability family: abstract service + provider adapters |
-| [`e2b/`](e2b/README.md) | E2B remote-runtime providers |
 | [`subprocess/`](subprocess/README.md) | Subprocess capability family: Service Definition + local process-tree provider |
+| [`ssh/`](ssh/README.md) | POSIX remote connection with paired filesystem, subprocess and sandbox providers |
 | [`shell/`](shell/README.md) | Bash capability family: executor seam, local impl, model-facing tools |
 | [`terminal/`](terminal/README.md) | Persistent PTY capability family: owner-scoped sessions, local implementation, model-facing tools |
-| [`code-runtime/`](code-runtime/README.md) | Code-execution capability family: Service Definition + worker-thread provider + PTC mode Consumer |
+| [`ptc-runtime/`](ptc-runtime/README.md) | PTC execution capability family: Service Definition + sandboxed Node provider + PTC mode Consumer |
 | [`sandbox/`](sandbox/README.md) | Process-confinement seam; bwrap/Landlock/Seatbelt backends |
 | [`fs/`](fs/README.md) | Filesystem capability family: seam, local impl, model-facing file tools, discovery tools |
 | [`lsp/`](lsp/README.md) | LSP capability family: seam, generic stdio provider, and the `lsp` tool |
@@ -83,7 +83,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 <a id="release-expectations"></a>
 ## Release expectations
 
-Most groups are product — stable API. The exceptions: `e2b/` is a POC, `experimental/` is unreleased, and `test-support/`, `runtime-diagnostics/`, and `util/` are support with lower compatibility expectations.
+Most groups are product — stable API. The exceptions: `experimental/` is unreleased, and `test-support/`, `runtime-diagnostics/`, and `util/` are support with lower compatibility expectations.
 
 -----
 

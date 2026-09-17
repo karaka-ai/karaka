@@ -64,6 +64,9 @@
     },
     {
       "path": "../../session/session-projection"
+    },
+    {
+      "path": "../../../vendor/loader"
     }
   ]
 }

@@ -504,6 +504,7 @@ export class ClientModuleRegistry extends Service {
 
   /**
    * Build the service: subscribe, seed, and run the activation flush.
+   * Bundle routes follow the optional Web carrier's injected lifecycle.
    * @param ctx - plugin context carrying Loader and an optional Web carrier.
    */
   constructor(ctx: Context) {
@@ -540,8 +541,7 @@ export class ClientModuleRegistry extends Service {
         'client-modules: bundle route',
       )
     }
-    if (ctx.get('webServer') === undefined) ctx.inject(['webServer'], registerWebCarrier)
-    else registerWebCarrier(ctx)
+    ctx.inject(['webServer'], registerWebCarrier)
     ctx.on('webserver/index-inject', (table) => {
       table.push(...bootInjections(this.composed))
     })

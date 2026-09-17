@@ -83,6 +83,8 @@ interface SubprocessStdio {
   stdin: SubprocessStdinMode
   stdout: SubprocessOutputMode
   stderr: SubprocessOutputMode
+  /** Request a separate byte-mode duplex channel; omission creates none. */
+  control?: 'pipe'
 }
 ```
 
@@ -150,6 +152,8 @@ interface SubprocessHandle {
   readonly stdout: Readable | undefined
   /** The child's raw stderr, present iff spawned with `stderr: 'pipe'`. */
   readonly stderr: Readable | undefined
+  /** Separate caller-owned byte channel when requested; native startup failure may leave it absent. */
+  readonly control: Duplex | undefined
   /** Offset-based readers for collect-mode streams (also readable after exit). */
   readonly collected: SubprocessCollectedOutputs
   /** Resolves with spawned-command exit facts; rejects for spawn or provider failures. */
@@ -253,23 +257,6 @@ interface SubprocessOutcome {
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
-
-<a id="ctxe2b--e2bruntime"></a>
-
-### `ctx.e2b` — `E2BRuntime`
-
-Creates one lazily consumable E2B SDK handle and deletes the sandbox at timeout or disposal. Creation begins at plugin construction; adapters await getSandbox before their first operation.
-
-```ts cordis-catalog
-/**
- * Return the shared live SDK handle.
- * @returns the created sandbox after the configured cwd exists.
- * @throws when E2B rejects creation or the service is disposing.
- */
-async getSandbox(): Promise<Sandbox>
-```
-
-Source: [`packages/e2b/e2b/src/index.ts`](../../packages/e2b/e2b/src/index.ts)
 
 <a id="ctxsubprocess--subprocessruntime-abstract-seam"></a>
 

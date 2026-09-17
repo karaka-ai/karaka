@@ -23,12 +23,17 @@
       "default": "./lib/runner.js"
     },
     "./src/*": "./src/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./output": {
+      "types": "./lib/types/output.d.ts",
+      "default": "./lib/output.js"
+    }
   },
   "files": [
     "lib/index.js",
     "lib/runner.js",
     "lib/runner-*.js",
+    "lib/output.js",
     "scripts/ensure-spawn-helper.mjs",
     "lib/types/**/*.d.ts"
   ],

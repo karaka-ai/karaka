@@ -29,7 +29,7 @@ kind: "package-library"
 
 ### 启动应用 fixture
 
-`runLoaderSmoke` 接受可执行文件与配置路径、可选的完整可执行文件参数、环境覆盖、标准输入、运行前准备与清理前检查。它负责隔离工作目录、DSH 主目录、诊断、截止时间、终止、EOF 与清理；进程以零状态退出后返回两个流，失败时则拒绝并附带两个流：
+`runLoaderSmoke` 接受可执行文件与配置路径、可选的完整可执行文件参数、环境覆盖、标准输入、运行前准备与清理前检查。它负责隔离工作目录、DSH 主目录、诊断、截止时间、终止、EOF 与清理（只清理自己创建的 cwd，调用方自带的 cwd 原样保留）；进程以零状态退出后返回两个流，失败时则拒绝并附带两个流：
 
 ```text
 const result = await runLoaderSmoke({
@@ -73,7 +73,7 @@ Profile 集成 driver 使用仅限仓库内部的 `tests/fixtures/production-pro
 
 ### 设计
 
-harness 建立在一个分离之上：冒烟测试在隔离世界中的子进程里运行，测试进程只观察与断言。`runLoaderSmoke` 创建临时 cwd、在那里准备世界状态、以隔离的 DSH 主目录（临时 cwd 下的 `DSH_HOME`、`DSH_AGENTS_HOME`）spawn 解析出的可执行文件、立即关闭 stdin，并在截止时间内等待干净退出，然后在每种结果下都执行检查与清理。`runFixtureTurn` 留在进程内运行：它查找组合中的唯一根 agent，从持久收件箱收到任务起持续跟踪，直至整个 agent 完全停稳；随后汇总每步用量，并在返回前刷写会话。
+harness 建立在一个分离之上：冒烟测试在隔离世界中的子进程里运行，测试进程只观察与断言。`runLoaderSmoke` 创建临时 cwd（或复用调用方提供的 cwd）、在那里准备世界状态、以隔离的 DSH 主目录（该 cwd 下的 `DSH_HOME`、`DSH_AGENTS_HOME`）spawn 解析出的可执行文件、立即关闭 stdin，并在截止时间内等待干净退出，然后在每种结果下都执行检查，且只删除自己创建的 cwd。`runFixtureTurn` 留在进程内运行：它查找组合中的唯一根 agent，从持久收件箱收到任务起持续跟踪，直至整个 agent 完全停稳；随后汇总每步用量，并在返回前刷写会话。
 
 ### 源码地图
 

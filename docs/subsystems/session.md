@@ -272,7 +272,7 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 `SessionEventType = keyof SessionEventMap`. Because `SessionEventMap` is merge-extensible, switches over `SessionEvent` must NOT use `assertNever` — a plugin-added variant is a valid unknown value; handle the known cases and fall through `default`.
 
-Every surface event requires `surfaceOp`; known log-only events forbid both surface metadata fields. Native unknown or obsolete ignorable envelopes remain opaque. `assistant/message` embeds its provider stream and forbids `sourceEventSeqs`. System, user, and tool surface events may cite a complete non-empty set of unique earlier events when their provenance or replacement operation requires it. A `tool/result` may carry `data.error` only when its tool-result block has `isError: true`; failure identity remains optional for failed results.
+Every surface event requires `surfaceOp`; known log-only events forbid both surface metadata fields. Native unknown or obsolete ignorable envelopes remain opaque. `assistant/message` embeds its provider stream and forbids `sourceEventSeqs`. System, user, and tool surface events may cite a complete non-empty set of unique earlier events when source attribution or replacement coverage requires it. A `tool/result` may carry `data.error` only when its tool-result block has `isError: true`; failure identity remains optional for failed results.
 
 ## Surface types
 

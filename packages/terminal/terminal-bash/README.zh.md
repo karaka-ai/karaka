@@ -44,7 +44,7 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-tool-terminal'
 ```
 
-`danger-full-access` 直接启动 shell。受限模式要求同一执行世界中存在 `ctx.sandbox` 提供方：缺少时，spawn 会在 shell 启动前失败。
+`danger-full-access` 直接启动 shell。受限模式要求同一执行世界中存在 `ctx.sandbox` 提供方：缺少时，spawn 会在 shell 启动前失败。限制准备过程接收打开操作的取消信号；即使提供方稍后返回，取消仍会阻止终端分配。
 
 ### 配置
 

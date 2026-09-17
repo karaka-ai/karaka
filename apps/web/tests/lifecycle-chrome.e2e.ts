@@ -428,22 +428,15 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       await recoveryPage.context().setOffline(false)
       await expect.poll(() => recoveryPage.evaluate(() => navigator.onLine)).toBe(true)
       const connecting = recoveryPage.getByRole('button', {
-        name: 'Reconnecting automatically, reconnect now', exact: true,
+        name: 'Reconnecting, reconnect now', exact: true,
       })
       await connecting.waitFor({ timeout: 10_000 })
       expect(await connecting.innerText()).toMatch(/^Reconnecting\.{1,3}$/)
       const connectingGeometry = await connectionIndicatorGeometry(connecting)
       expect(await connectionIndicatorTextAlignment(connecting)).toBe('left')
-      // Animated dots must remain hidden with their state label during hover.
-      await connecting.evaluate((element) => {
-        for (const animation of element.getAnimations({ subtree: true })) {
-          if (!(animation instanceof CSSAnimation)) continue
-          animation.pause()
-          animation.currentTime = 1_250
-        }
-      })
+      // Hover keeps the state label; the pill never swaps copy or resizes.
       await connecting.hover()
-      expect(await connecting.innerText()).toBe('Reconnect now')
+      expect(await connecting.innerText()).toMatch(/^Reconnecting\.{1,3}$/)
       expect(await connectionIndicatorGeometry(connecting)).toEqual(connectingGeometry)
       await recoveryPage.mouse.move(0, 0)
 
@@ -461,27 +454,26 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       const indicator = connecting
       expect(await connectionIndicatorGeometry(indicator)).toEqual(connectingGeometry)
       expect(await connectionIndicatorTextAlignment(indicator)).toBe('left')
-      await indicator.hover()
       const snapshot = await captureStableAria(recoveryPage, '[class*="footArea"]', scaffold.workspaceCwd)
       await compareOrRefreshGolden(CONNECTION_ERROR_EXPECTED, snapshot, MODE)
-      const style = await indicator.evaluate((element) => {
+      const expectedColors = await recoveryPage.evaluate(() => {
         const probe = document.createElement('span')
         probe.style.color = 'var(--dsw-alias-state-warn-label)'
         probe.style.backgroundColor = 'var(--dsw-alias-state-warn-tertiary)'
         document.body.append(probe)
-        const actual = getComputedStyle(element)
         const reference = getComputedStyle(probe)
         const result = {
-          background: actual.backgroundColor,
-          color: actual.color,
-          referenceBackground: reference.backgroundColor,
-          referenceColor: reference.color,
+          background: reference.backgroundColor,
+          color: reference.color,
         }
         probe.remove()
         return result
       })
-      expect(style.background).toBe(style.referenceBackground)
-      expect(style.color).toBe(style.referenceColor)
+      // CSS transitions use the browser's animation clock independently of the mocked retry timers.
+      await expect.poll(() => indicator.evaluate((element) => {
+        const actual = getComputedStyle(element)
+        return { background: actual.backgroundColor, color: actual.color }
+      })).toEqual(expectedColors)
       expect(await indicator.locator('svg').count()).toBe(1)
       expect(await indicator.getAttribute('title')).toBeNull()
       rejectConnections = false
@@ -498,11 +490,9 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       await connecting.waitFor()
       await recoveryPage.clock.fastForward(500)
       await expect.poll(() => sockets.length).toBe(11)
-      const idleBackground = await indicator.evaluate(element => getComputedStyle(element).backgroundColor)
       await indicator.hover()
-      expect(await indicator.innerText()).toBe('Reconnect now')
+      expect(await indicator.innerText()).toMatch(/^Reconnecting\.{1,3}$/)
       const hoverBackground = await indicator.evaluate(element => getComputedStyle(element).backgroundColor)
-      expect(hoverBackground).toBe(idleBackground)
       await recoveryPage.mouse.down()
       await expect.poll(() => indicator.evaluate(element => getComputedStyle(element).backgroundColor))
         .not.toBe(hoverBackground)
@@ -513,7 +503,10 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       const recovered = recoveryPage.getByRole('status')
       await recovered.waitFor({ timeout: 10_000 })
       expect(await recovered.innerText()).toBe('Connected')
-      expect(await connectionIndicatorGeometry(recovered)).toEqual(connectingGeometry)
+      // The pill sizes to its current label; chrome height and icon box stay fixed.
+      const recoveredGeometry = await connectionIndicatorGeometry(recovered)
+      expect(recoveredGeometry.outer[3]).toBe(connectingGeometry.outer[3])
+      expect(recoveredGeometry.icon).toEqual(connectingGeometry.icon)
       expect(await connectionIndicatorTextAlignment(recovered)).toBe('left')
       await recoveryPage.clock.fastForward(2_000)
       await recovered.waitFor({ state: 'detached', timeout: 5_000 })

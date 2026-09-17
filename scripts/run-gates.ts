@@ -286,7 +286,6 @@ export function gatesForMode(selected: Mode): Gate[] {
         ...hygieneLeafGates(),
         pnpmScript('cordis-config', 'verify-cordis-config', { label: 'Cordis config' }),
         pnpmScript('runtime-closure', 'verify-runtime-closure', { label: 'runtime closure' }),
-        pnpmScript('vendored-links', 'verify-vendored-links', { label: 'vendored links' }),
       ]
     case 'doc-sync':
       return docSyncLeafGates()
@@ -741,9 +740,12 @@ function docSyncLeafGates(options: {
     pnpmScript('export-jsdoc', 'verify-export-jsdoc', { label: 'export jsdoc' }),
     pnpmScript('tool-catalog', 'verify-tool-catalog', { label: 'tool catalog' }),
     pnpmScript('config-catalog', 'verify-config-catalog', { label: 'config catalog' }),
+    pnpmScript('dependency-catalog', 'verify-dependency-catalog', { label: 'npm dependency catalog', quick: true }),
     pnpmScript('persistence-catalog', 'verify-persistence-catalog', { label: 'persistence catalog' }),
+    pnpmScript('persistence-changes', 'verify-persistence-changes', { label: 'persistence type history' }),
     pnpmScript('session-format-catalog', 'verify-session-format-catalog', { label: 'Session format catalog' }),
     pnpmScript('public-repository-links', 'verify-public-repository-links', { label: 'public repository links', quick: true }),
+    pnpmScript('concrete-terms', 'verify-concrete-terms', { label: 'concrete terms', quick: true }),
     pnpmScript('doc-refs', 'verify-doc-refs', { label: 'doc refs', quick: true }),
     pnpmScript('subsystem-pages', 'verify-subsystem-pages', { label: 'subsystem pages' }),
     pnpmScript('package-paths', 'verify-package-paths', { label: 'package paths' }),
@@ -797,7 +799,7 @@ function builtBinSmokeGate(needs: string[] = ['build']): Gate {
     // imports reach their lib/ entrypoints under plain Node. The e2e lane runs
     // unbuilt, so these files self-skip there.
     'packages/workflow/workflow-worker-thread/tests/built-worker.e2e.ts',
-    'packages/code-runtime/code-runtime-worker-thread/tests/built-lib.e2e.ts',
+    'packages/ptc-runtime/ptc-runtime-node/tests/built-lib.e2e.ts',
     'packages/session/session-persistence-jsonl/tests/built-migration-worker.e2e.ts',
     'packages/lsp/lsp-stdio/tests/built-lib.e2e.ts',
   ], {
@@ -1507,10 +1509,10 @@ export function taskkillArgs(rootPid: number, descendants: number[]): string[][]
 }
 
 /**
- * Collect each reachable descendant once, excluding the root even in cyclic tables.
- * @param root - the process whose descendants are wanted.
- * @param rows - pid/parent-pid pairs from one process-table enumeration.
- * @returns descendant pids in breadth-first order, preserving sibling row order.
+ * Walk a process-table snapshot without revisiting duplicate or cyclic PID links.
+ * @param root - process whose descendants are collected; excluded from the result.
+ * @param rows - observed PID and parent PID pairs.
+ * @returns distinct reachable descendants in breadth-first order.
  */
 export function collectDescendants(root: number, rows: Array<[number, number]>): number[] {
   const byParent = new Map<number, number[]>()
@@ -1521,11 +1523,11 @@ export function collectDescendants(root: number, rows: Array<[number, number]>):
   }
   const seen = new Set([root])
   const queue = [root]
-  for (const pid of queue) {
-    for (const child of byParent.get(pid) ?? []) {
-      if (seen.has(child)) continue
-      seen.add(child)
-      queue.push(child)
+  for (const parent of queue) {
+    for (const pid of byParent.get(parent) ?? []) {
+      if (seen.has(pid)) continue
+      seen.add(pid)
+      queue.push(pid)
     }
   }
   return queue.slice(1)

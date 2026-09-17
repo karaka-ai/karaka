@@ -143,7 +143,7 @@ class RecordingSandboxExecutor extends ShellExecutor {
     })
   }
 
-  start(spec: ShellExecSpec): ShellProcess {
+  async start(spec: ShellExecSpec): Promise<ShellProcess> {
     this.modes.push(spec.sandboxPolicy?.mode)
     return {
       status: 'completed',
@@ -173,7 +173,7 @@ class CountingStartExecutor extends ShellExecutor {
 
   run(): Promise<ShellRunResult> { return Promise.reject(new Error('unused')) }
 
-  start(): ShellProcess {
+  async start(): Promise<ShellProcess> {
     this.starts += 1
     return {
       status: 'completed',
@@ -1107,7 +1107,7 @@ describe('the model-facing bash tool builds its request from named args only (no
         stdout: { text: 'ok', truncated: false }, stderr: { text: '', truncated: false },
       })
     }
-    start(): ShellProcess {
+    async start(): Promise<ShellProcess> {
       return {
         status: 'completed',
         exitCode: 0,

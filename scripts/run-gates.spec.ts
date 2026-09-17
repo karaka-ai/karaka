@@ -188,6 +188,12 @@ describe('gate graph validation', () => {
     expect(ids).toContain('public-repository-links')
   })
 
+  it('keeps the concrete terminology policy in the documentation gate', () => {
+    const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
+
+    expect(ids).toContain('concrete-terms')
+  })
+
   it('keeps package-group subsystem ownership in the documentation gate', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
@@ -207,6 +213,13 @@ describe('gate graph validation', () => {
     expect(quick).toEqual(full.filter(gate => gate.quick === true))
   })
 
+  it('checks the recorded npm dependency catalog in both documentation aggregates', () => {
+    for (const mode of ['doc-sync', 'doc-quick'] as const) {
+      expect(withPnpmEntrypoint(() => gatesForMode(mode).find(gate => gate.id === 'dependency-catalog')))
+        .toMatchObject({ args: ['/private/pnpm.cjs', 'run', 'verify-dependency-catalog'] })
+    }
+  })
+
   it('keeps the hygiene aggregate aligned with the package script checks', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('hygiene').map(subject => subject.id))
 
@@ -214,7 +227,7 @@ describe('gate graph validation', () => {
       'rescope-vendor', 'publint', 'constraints', 'package-dependencies', 'application-entrypoints',
       'dsh-package-licenses', 'package-invariants', 'built-package-invariants', 'node-next-types',
       'optional-dependency-imports', 'client-packages', 'client-ui-i18n', 'no-bare-dispatcher', 'cordis-config',
-      'runtime-closure', 'vendored-links',
+      'runtime-closure',
     ])
     expect(defaultConcurrency('hygiene', ids.length, 8)).toEqual({
       workers: 4,
@@ -918,6 +931,30 @@ describe('fail-fast scheduling', () => {
 })
 
 describe('process-table parsing', () => {
+  it('excludes the root when a parent link returns to it', () => {
+    expect(collectDescendants(100, [[200, 100], [100, 200], [300, 200]]))
+      .toEqual([200, 300])
+  })
+
+  it('visits duplicate and cyclic descendant links only once', () => {
+    expect(collectDescendants(100, [
+      [200, 100], [200, 100], [300, 100], [200, 200], [400, 200], [200, 400], [500, 300], [900, 800],
+    ])).toEqual([200, 300, 400, 500])
+  })
+
+  it('returns no descendants for an isolated or self-parented root', () => {
+    expect(collectDescendants(100, [])).toEqual([])
+    expect(collectDescendants(100, [[100, 100]])).toEqual([])
+  })
+
+  it('walks a wide child set without spreading it into call arguments', () => {
+    const children = Array.from({ length: 150_000 }, (_, i): [number, number] => [i + 3, 2])
+    const descendants = collectDescendants(1, [[2, 1], ...children])
+    expect(descendants).toHaveLength(children.length + 1)
+    expect(descendants[0]).toBe(2)
+    expect(descendants.at(-1)).toBe(150_002)
+  })
+
   it('parses `pid ppid` rows from a POSIX ps dump', () => {
     expect(parsePidPpidLines('  123   1\n456 123\n  789 456\n')).toEqual([[123, 1], [456, 123], [789, 456]])
   })

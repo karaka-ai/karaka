@@ -1,0 +1,10 @@
+- id: llm-deepseek
+  config:
+    protocol: messages
+    models:
+      - id: deepseek-v4-flash
+        systemPromptUpdate: in-history
+
+- insert:
+    - id: prompt-update
+      name: '../../../packages/test-support/session-snapshot/tests/fixtures/in-history-prompt-update.ts'

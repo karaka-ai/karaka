@@ -26,6 +26,7 @@ class StubSubprocessRuntime extends SubprocessRuntime {
       ? { stdout: { readFrom: () => read } }
       : {}
     return {
+      control: undefined,
       stdin: undefined,
       stdout: undefined,
       stderr: undefined,

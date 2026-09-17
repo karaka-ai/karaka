@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -76,7 +76,7 @@ class FakeBash extends ShellExecutor {
     return this.handler(spec)
   }
 
-  override start(spec: ShellExecSpec): ShellProcess {
+  override async start(spec: ShellExecSpec): Promise<ShellProcess> {
     this.startCalls++
     this.specs.push(spec)
     return this.backgroundHandler(spec)
@@ -203,7 +203,7 @@ class ConfiningFakeBash extends ShellExecutor {
     })
   }
 
-  override start(spec: ShellExecSpec): ShellProcess {
+  override async start(spec: ShellExecSpec): Promise<ShellProcess> {
     this.modes.push(spec.sandboxPolicy?.mode)
     return fakeProcess()
   }
@@ -550,12 +550,10 @@ describe('per-call sandbox policy resolution', () => {
     Object.assign(agent.session.header, { cwd: sessionCwd })
     const result = await call(ctx, 'pwsh', { command: 'Write-Output hi', description: 'say hi' }, agent)
     expect(result.isError).toBe(false)
-    // The policy's workspace root is the session cwd canonicalized by the
-    // policy service (realpath + resolve), NEVER the web server's launch dir;
-    // the calling session's identity rides along for backend per-session state.
+    // The policy preserves Session cwd spelling; its enforcing provider owns canonicalization.
     expect(bash.requests[0]?.sandboxPolicy).toEqual({
       mode: 'read-only',
-      workspaceRoot: resolvePath(realpathSync.native(sessionCwd)),
+      workspaceRoot: sessionCwd,
       sessionId: 'policy-session',
     })
   })
@@ -565,7 +563,7 @@ describe('per-call sandbox policy resolution', () => {
     await call(ctx, 'pwsh', { command: 'Write-Output hi', description: 'say hi' })
     expect(bash.requests[0]?.sandboxPolicy).toEqual({
       mode: 'read-only',
-      workspaceRoot: resolvePath(realpathSync.native(process.cwd())),
+      workspaceRoot: process.cwd(),
     })
 
     // The base FakeBash advertises no sandboxMode, so the tool must not stamp

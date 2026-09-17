@@ -26,7 +26,7 @@ declare module '@deepseek-ai/cordis' {
 
 export type {
   AssistantMessage,
-  AssistantProvenance,
+  AssistantProviderMetadata,
   Message,
   MessageSource,
   MessageSourceMap,

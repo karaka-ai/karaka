@@ -44,7 +44,7 @@ Mount the terminal service, a subprocess provider, the sandbox and policy servic
 - name: '@deepseek-ai/dsh-tool-terminal'
 ```
 
-`danger-full-access` starts the shell directly. Confined modes require a same-world `ctx.sandbox` provider: without one, the spawn fails before the shell starts.
+`danger-full-access` starts the shell directly. Confined modes require a same-world `ctx.sandbox` provider: without one, the spawn fails before the shell starts. Confinement preparation receives the opening signal; cancellation prevents terminal allocation even if the provider returns later.
 
 ### Configuration
 

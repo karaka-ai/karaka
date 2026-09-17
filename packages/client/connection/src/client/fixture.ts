@@ -3249,8 +3249,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           details: { sessionId },
         })
       }
-      let cut = boundary.seq + 1
-      while (cut < log.length && log[cut]?.type !== 'turn/start') cut++
+      const cut = boundary.seq + 1
       const child: FixtureSessionSummary = {
         sessionId: sid(`fx-${nextSession++}`), updatedAt: Date.now(), running: false, blank: false,
         parentSessionId: sessionId,

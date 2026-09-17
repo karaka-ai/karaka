@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-07-31-ptc-runtime-python-fd3-protocol.md
+2026-07-31-ptc-runtime-python-fd3-protocol.md: 18ce7b44b116eee3a11528a5b515c4e02e955ee6
+2026-07-31-ptc-runtime-python-fd3-protocol.zh.md: d5eea4cfd80f10dc1d99c7c43090ca6b0ff6e19e

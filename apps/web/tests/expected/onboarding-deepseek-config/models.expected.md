@@ -31,6 +31,7 @@
         - text: 自定义设置 API 地址
         - textbox "API 地址":
           - /placeholder: https://api.deepseek.com
+        - text: 请填写与当前连接配置兼容的 API 地址。
         - region "模型目录":
           - text: 模型目录 已自定义模型目录
           - button "恢复默认模型"

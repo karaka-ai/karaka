@@ -135,7 +135,7 @@ The package-level contract is enough for most consumers; read these when you nee
 
 #### What the model sees
 
-The model receives the complete messages from `system/message`, `user/message`, `assistant/message`, and `tool/result` surface entries verbatim, the system prompt first — identities, roles, sources, and content blocks are the same values established at creation, and projections never mint identities. Direct prompts and injected context remain separate `user/message` events whose sources preserve their provenance. Embedded streams, `assistant/attempt`, boundaries, and other log-only facts add no message.
+The model receives the complete messages from `system/message`, `user/message`, `assistant/message`, and `tool/result` surface entries verbatim, the system prompt first — identities, roles, sources, and content blocks are the same values established at creation, and projections never mint identities. Direct prompts and injected context remain separate `user/message` events whose sources preserve their attribution. Embedded streams, `assistant/attempt`, boundaries, and other log-only facts add no message.
 
 #### Token effect
 

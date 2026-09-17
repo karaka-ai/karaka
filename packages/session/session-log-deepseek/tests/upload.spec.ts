@@ -83,7 +83,7 @@ describe('incremental DeepSeek session-log upload', () => {
     }>()
   })
 
-  it('uploads assistant provenance only through its embedded stream', async () => {
+  it('uploads Assistant provider metadata only through its embedded stream', async () => {
     const { ctx, session } = await harness('wire-assistant')
     const assistant = session.append('assistant/message', {
       turn: 1,
@@ -106,7 +106,7 @@ describe('incremental DeepSeek session-log upload', () => {
     }])
   })
 
-  it('uploads system append and replacement placement with unchanged data and provenance', async () => {
+  it('uploads system append and replacement placement with unchanged data and source-event references', async () => {
     const { ctx, session } = await harness('wire-system')
     const headData = { turn: 1, step: 1, message: createSystemMessage('head', 'fixture'), extra: { retained: true } }
     const head = session.append('system/message', headData, { surfaceOp: 'append' })

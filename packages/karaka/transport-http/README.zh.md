@@ -25,6 +25,8 @@ kind: "package-reference"
 
 在应用组合中挂载此插件，并提供服务器认证、身份、Agent、Session、Session 投影、查询、持久化、默认模型选择、LLM 路由、启动就绪通知及共享 Web 服务器。[SDK](package.json) 提供后端请求和事件类型。
 
+独立挂载 `@karaka-ai/transport-http/startup`，并提供启动器的 `appReady`、`appExit` 服务及 Loader。[Karaka profile](../agent/cordis.patch.yml) 让 `webserver` 注入其 `karakaStartup` 服务，因此守卫缺失或加载失败会阻止必需的 Web 服务器启动。DSH 完成启动处理后，此守卫仅在所有已启用的 Loader 条目均处于活动状态时接收 HTTP 和浏览器请求；禁用的条目会被跳过。导入、激活、依赖解析或禁用表达式失败时，入口保持关闭，并请求以退出码 1 执行有时限的关闭。此守卫不会否决 DSH 启动器自身的就绪通知。这是启动检查，而非持续的服务健康监控。
+
 后端 `path` 默认为 `/v1`，`maxBodyBytes` 默认为 1,048,576 字节。每个请求都通过 `serverAuth` 认证；应用身份来自凭证，请求体提供租户和用户标识符。无效凭证返回 401，所有权校验被拒绝时返回 403。应用就绪前请求返回 503。
 
 设置 `browserPath` 以启用浏览器访问，提供非空的 `browserOrigins` 列表，并挂载[浏览器认证](../browser-auth/README.zh.md)。后端与浏览器路径不得重叠。`browserMethods` 选择应用操作，`browserEvents` 选择审批和问题投递；两个列表默认包含所有受支持条目。后端问题投递的 `handleQuestions` 默认为 true。

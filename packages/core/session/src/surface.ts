@@ -266,7 +266,7 @@ function surfaceOpOf(event: SessionEvent): SurfaceOp | undefined {
 }
 
 /** Validate cited source-event seqs against prior log entries and the replacement range. */
-function assertProvenance(
+function assertSourceEventReferences(
   event: SessionEvent,
   shadowedSeqs: readonly SessionSeq[],
 ): void {
@@ -316,7 +316,7 @@ export function validateSurfaceMetadata(event: SessionEvent): SurfaceOp | undefi
     && (op.startSeq >= event.seq || op.endSeq >= event.seq)) {
     throw new Error(`surface replace at seq ${event.seq}: startSeq and endSeq must reference earlier events`)
   }
-  if (op !== undefined) assertProvenance(event, [])
+  if (op !== undefined) assertSourceEventReferences(event, [])
   return op
 }
 
@@ -434,7 +434,7 @@ function planSurfaceEvent(
     return { kind: 'append', seq: event.seq }
   }
   const range = replacementRange(state, surfaceOp)
-  assertProvenance(event, range.shadowedSeqs)
+  assertSourceEventReferences(event, range.shadowedSeqs)
   assertToolResultRewrite(event, range.shadowedSeqs, events, baseSeq)
   assertSystemHeadRewrite(event, state, range.startIdx, range.shadowedSeqs, events, baseSeq)
   return {
