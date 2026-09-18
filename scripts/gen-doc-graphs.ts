@@ -99,6 +99,14 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'karakaStartup',
+    pkg: '@karaka-ai/transport-http',
+    title: 'Application startup readiness',
+    mode: 'core',
+    consumers: ['@karaka-ai/transport-http'],
+    note: 'The [HTTP transport](../packages/karaka/transport-http/README.md) keeps application ingress closed until every enabled startup entry activates.',
+  },
+  {
     key: 'karakaIdentity',
     pkg: '@karaka-ai/identity',
     title: 'Application-owned durable conversations',

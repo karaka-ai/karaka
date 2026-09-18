@@ -55,6 +55,7 @@ export { REGION_BEGIN, REGION_END }
  */
 export const SERVICE_PAGE: Record<string, string> = {
   karakaIdentity: 'karaka.md',
+  karakaStartup: 'karaka.md',
   serverAuth: 'karaka.md',
   karakaBrowserAuth: 'karaka.md',
   agentLoop: 'core.md',
@@ -151,7 +152,6 @@ export const SERVICE_PAGE: Record<string, string> = {
  * to a model as `cordis_runtime_inspect what:"client"`).
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
-  karakaStartup: 'internal application admission verdict, not a service class; packages/karaka/transport-http/README.md owns startup and shutdown behavior',
   karakaApplication: 'internal HTTP controller; packages/karaka/transport-http/README.md owns the public transport API',
   appReady: 'not a service: launcher-provided successful-startup signal — packages/boot/cmdline/README.md owns the launcher contract',
   appExit: 'not a service: launcher-provided bounded process-exit callback — packages/boot/cmdline/README.md owns the launcher contract',

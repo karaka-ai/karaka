@@ -1,0 +1,63 @@
+name: Temporary catalog refresh
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-catalog-refresh-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    if: github.event.pull_request.number == 161 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install generator dependencies
+        id: install
+        run: pnpm install --frozen-lockfile
+      - name: Generate catalog artifacts
+        run: |
+          status=0
+          for generator in gen-doc-graphs gen-cordis-catalog gen-config-catalog gen-persistence-catalog; do
+            pnpm run "$generator" || status=1
+          done
+          exit "$status"
+      - name: Collect scoped patch and source revision
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          mkdir -p "$RUNNER_TEMP/catalog-refresh"
+          git rev-parse HEAD > "$RUNNER_TEMP/catalog-refresh/source-sha.txt"
+          git diff --binary -- \
+            docs/capability-seams.md docs/event-producer-consumer.md \
+            docs/agent-lifecycle.md docs/tool-execution-pipeline.md docs/graph-atlas.md \
+            apps/cli/composition.md docs/config-catalog.md \
+            docs/persistence-catalog.md docs/persistence-catalog.zh.md \
+            docs/persistence-catalog.i18n.yaml docs/persistence-schema.json \
+            docs/subsystems docs/cordis-api \
+            packages/core/session/src/known-event-types.ts \
+            packages/extensions/tool-cordis/src/api-catalog.ts \
+            > "$RUNNER_TEMP/catalog-refresh/catalog.patch"
+      - name: Upload generated patch for review
+        if: always() && steps.install.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-refresh-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/catalog-refresh
+          if-no-files-found: error
+          retention-days: 3
