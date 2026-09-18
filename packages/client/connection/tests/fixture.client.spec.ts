@@ -194,6 +194,7 @@ interface FixtureWorkspaceRequests {
     readonly beforeSessionId?: SessionId
   }
   archiveSession: { readonly sessionId: SessionId }
+  unarchiveSession: { readonly sessionId: SessionId }
 }
 
 interface FixtureWorkspaceValues {
@@ -203,6 +204,7 @@ interface FixtureWorkspaceValues {
   insertBefore: { readonly workspaceIds: readonly WorkspaceId[] }
   insertSessionBefore: { readonly workspace: FixtureWorkspaceView }
   archiveSession: { readonly archivedSessionIds: readonly SessionId[] }
+  unarchiveSession: { readonly archivedSessionIds: readonly SessionId[] }
 }
 
 type FixtureWorkspaceApi = {
@@ -471,6 +473,7 @@ function createWorkspaceApi(rpc: ClientConnectionRpc): FixtureWorkspaceApi {
     insertBefore: (request, signal) => call('insertBefore', request, signal),
     insertSessionBefore: (request, signal) => call('insertSessionBefore', request, signal),
     archiveSession: (request, signal) => call('archiveSession', request, signal),
+    unarchiveSession: (request, signal) => call('unarchiveSession', request, signal),
   }
 }
 
@@ -483,6 +486,7 @@ function createWorkspaceClient(rpc: ClientConnectionRpc): FixtureWorkspaceClient
     insertBefore: (request, signal) => api.insertBefore(req(request), signal),
     insertSessionBefore: (request, signal) => api.insertSessionBefore(req(request), signal),
     archiveSession: (request, signal) => api.archiveSession(req(request), signal),
+    unarchiveSession: (request, signal) => api.unarchiveSession(req(request), signal),
   }
 }
 
@@ -1691,6 +1695,16 @@ describe('fixture Connection RPC', () => {
     const moved = await workspaces.insertSessionBefore({ workspaceId: wsid, sessionId: attached.result.value.sessionId })
     if (!moved.result.ok) throw new Error('workspace move failed')
     expect(moved.result.value.workspace.sessionIds).toEqual([attached.result.value.sessionId])
+    const archived = await workspaces.archiveSession({ sessionId: attached.result.value.sessionId })
+    if (!archived.result.ok) throw new Error('workspace archive failed')
+    expect(archived.result.value.archivedSessionIds).toEqual([attached.result.value.sessionId])
+    const unarchived = await workspaces.unarchiveSession({ sessionId: attached.result.value.sessionId })
+    if (!unarchived.result.ok) throw new Error('workspace unarchive failed')
+    expect(unarchived.result.value.archivedSessionIds).toEqual([])
+    // A second unarchive of the same id leaves the set unchanged.
+    const repeated = await workspaces.unarchiveSession({ sessionId: attached.result.value.sessionId })
+    if (!repeated.result.ok) throw new Error('repeated workspace unarchive failed')
+    expect(repeated.result.value.archivedSessionIds).toEqual([])
   })
 
   it('folds the goal lifecycle over the Goal Remotes', async () => {
