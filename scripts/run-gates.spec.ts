@@ -272,9 +272,9 @@ describe('gate graph validation', () => {
   it('schedules the longest documentation leaves before short checks', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
-    expect(ids.slice(0, 10)).toEqual([
+    expect(ids.slice(0, 11)).toEqual([
       'doc-typecheck', 'docs-site-build', 'doc-graphs', 'markdown-links', 'type-equivalence',
-      'cordis-catalog', 'cordis-inspect-catalog', 'mermaid', 'scoped-events', 'translation-pairing',
+      'cordis-catalog', 'cordis-inspect-catalog', 'workflow-guest', 'mermaid', 'scoped-events', 'translation-pairing',
     ])
   })
 

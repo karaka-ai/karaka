@@ -94,7 +94,7 @@
     "@deepseek-ai/dsh-web-app": "workspace:^",
     "@deepseek-ai/dsh-webhook": "workspace:^",
     "@deepseek-ai/dsh-webhook-github": "workspace:^",
-    "@deepseek-ai/dsh-workflow-worker-thread": "workspace:^",
+    "@deepseek-ai/dsh-workflow-ptc": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",
     "commander": "^15.0.0",
     "js-yaml": "^4.2.0",

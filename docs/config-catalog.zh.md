@@ -1693,7 +1693,7 @@ export interface Config {
 export interface Config extends LaunchConfig {
   /** Default elapsed deadline, including nested tool and approval waits. */
   timeoutMs?: number
-  /** Maximum elapsed deadline accepted by resolve. */
+  /** Maximum numeric elapsed budget accepted by resolve. */
   maxTimeoutMs?: number
   /** Combined serialized logs, completion and diagnostic byte cap. */
   maxOutputBytes?: number
@@ -1716,7 +1716,7 @@ export interface LaunchConfig {
 }
 ```
 
-来源：[`packages/ptc-runtime/ptc-runtime-node/src/index.ts:26`](../packages/ptc-runtime/ptc-runtime-node/src/index.ts)
+来源： [`packages/ptc-runtime/ptc-runtime-node/src/index.ts:26`](../packages/ptc-runtime/ptc-runtime-node/src/index.ts)
 
 <a id="deepseek-aidsh-pwsh-local"></a>
 
@@ -3450,11 +3450,11 @@ export interface Config {
 
 来源：[`packages/webhook/webhook-github/src/index.ts:17`](../packages/webhook/webhook-github/src/index.ts)
 
-<a id="deepseek-aidsh-workflow-worker-thread"></a>
+<a id="deepseek-aidsh-workflow-ptc"></a>
 
-## `@deepseek-ai/dsh-workflow-worker-thread`
+## `@deepseek-ai/dsh-workflow-ptc`
 
-需要：`subagents`
+需要： `subagents` · `ptcRuntime` · `sandboxPolicy`
 
 ```ts config-catalog
 /** Plugin config (all optional — `static Config` supplies the defaults). */
@@ -3467,18 +3467,12 @@ export interface Config {
   maxTotalAgents?: number
   /** Items accepted by a single `parallel()`/`pipeline()` call (default 4096). */
   maxItemsPerCall?: number
-  /** vm timeout for the script's initial synchronous slice, inside the worker (default 5000 ms). */
+  /** VM timeout for the script's initial synchronous slice (default 5000 ms). */
   syncTimeoutMs?: number
-  /**
-   * How long after a cancellation an unsettled script may keep running before
-   * the run force-settles `cancelled` and its worker is TERMINATED (default
-   * 5000 ms); also bounds `dispose()`.
-   */
-  disposeGraceMs?: number
 }
 ```
 
-来源：[`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages/workflow/workflow-worker-thread/src/index.ts)
+来源： [`packages/workflow/workflow-ptc/src/index.ts:32`](../packages/workflow/workflow-ptc/src/index.ts)
 
 <a id="karaka-aibrowser-auth"></a>
 

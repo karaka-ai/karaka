@@ -366,8 +366,11 @@
         toolName: subagent_fork
         backgroundMode: one-shot
 
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+    - id: ptc-runtime
+      name: '@deepseek-ai/dsh-ptc-runtime-node'
+
+    - id: workflow-ptc
+      name: '@deepseek-ai/dsh-workflow-ptc'
       config:
         provider: spawn
 

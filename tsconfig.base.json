@@ -480,7 +480,7 @@
       "@deepseek-ai/dsh-win32-process": ["./packages/subprocess/win32-process/src"],
       "@deepseek-ai/dsh-workflow": ["./packages/workflow/workflow/src"],
       "@deepseek-ai/dsh-workflow/invariant": ["./packages/workflow/workflow/src/invariant.ts"],
-      "@deepseek-ai/dsh-workflow-worker-thread": ["./packages/workflow/workflow-worker-thread/src"],
+      "@deepseek-ai/dsh-workflow-ptc": ["./packages/workflow/workflow-ptc/src"],
       "@deepseek-ai/dsh-workspace": ["./packages/workspace/workspace/src"],
       "@deepseek-ai/dsh-workspace/invariant": ["./packages/workspace/workspace/src/invariant.ts"]
       // END generated package aliases

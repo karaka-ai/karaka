@@ -117,8 +117,9 @@
     "@deepseek-ai/dsh-web": "workspace:^",
     "@deepseek-ai/dsh-web-fetch-http": "workspace:^",
     "@deepseek-ai/dsh-web-search-deepseek": "workspace:^",
-    "@deepseek-ai/dsh-workflow-worker-thread": "workspace:^",
-    "@deepseek-ai/dsh-agent-instructions": "workspace:^"
+    "@deepseek-ai/dsh-workflow-ptc": "workspace:^",
+    "@deepseek-ai/dsh-agent-instructions": "workspace:^",
+    "@deepseek-ai/dsh-ptc-runtime-node": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^"

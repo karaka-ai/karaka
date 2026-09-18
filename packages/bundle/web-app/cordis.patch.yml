@@ -47,9 +47,6 @@
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
 
-    - id: ptc-runtime
-      name: '@deepseek-ai/dsh-ptc-runtime-node'
-
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
       config:
@@ -452,7 +449,7 @@
 - id: tool-subagent-fork
   disabled: true
 
-- id: workflow-worker-thread
+- id: workflow-ptc
   disabled: true
 
 - id: tool-workflow

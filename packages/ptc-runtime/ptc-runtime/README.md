@@ -25,7 +25,7 @@ Use `dsh-ptc-runtime` to run one model-written program against host-provided asy
 <a id="use-this-package"></a>
 ## Use this package
 
-Choose this package when you compose a deployment that executes model-written programs, consume `ctx.ptcRuntime` directly, or build a backend that runs programs. In the shipped composition, PTC mode in `dsh-tools` is the consumer: only what the program printed and returned re-enters the conversation.
+Choose this package when you compose a deployment that executes model-written programs, consume `ctx.ptcRuntime` directly, or build a backend that runs programs. PTC mode in `dsh-tools` uses it for tool programs, and `dsh-workflow-ptc` uses it for workflow orchestration. Each consumer owns the content returned to its model.
 
 ### Run a program
 
@@ -64,11 +64,11 @@ This section explains the design behind the seam; observable behavior is fully c
 
 ### Design concept
 
-The package is the Service Definition role of the PTC execution capability seam ([capability seams](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)): an abstract `PtcRuntime extends Service` registered as `ctx.ptcRuntime`, plus the vocabulary both backends and the consumer share. Providers subclass `PtcRuntime`, implement `resolve` and `run`, and register the service; the consumer (PTC mode in `dsh-tools`) generates the model-facing SDK and bridges tool dispatch. The runtime stays ignorant of tools and sessions by contract: it receives a program, named async bindings and resolved execution options, then returns captured output, the outcome and applicable sandbox facts.
+The package is the Service Definition role of the PTC execution capability seam ([capability seams](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)): an abstract `PtcRuntime extends Service` registered as `ctx.ptcRuntime`, plus the vocabulary providers and consumers share. Providers subclass `PtcRuntime`, implement `resolve` and `run`, and register the service. PTC mode in `dsh-tools` owns tool bindings, while `dsh-workflow-ptc` owns workflow hooks and child agents. The runtime stays ignorant of tools and sessions by contract: it receives a program, named async bindings and resolved execution options, then returns captured output, the outcome and applicable sandbox facts.
 
 ### Service API
 
-The readonly `timeout` descriptor exposes `{ defaultMs, maxMs }` for a provider supporting per-call overrides; `undefined` means that the consumer must omit the field. It reports presentation values, while `resolve` remains the validation and clamping authority.
+The readonly `timeout` descriptor exposes numeric `{ defaultMs, maxMs }` for consumer presentation; an absent descriptor means numeric overrides are unsupported. An omitted `timeoutMs` selects the provider default; a number requests a validated, capped elapsed budget; explicit `null` requests no elapsed deadline. A provider rejects choices it does not support. The Node workflow adapter requests `null`, while the model-facing `run_code` tool accepts only positive numeric overrides.
 
 `executionInstructions` supplies provider-owned usage guidance, or an empty string when none is needed. Consumers can include it in their program presentation without identifying the provider from its language or isolation descriptor; PTC includes it in the logged `run_code` schema.
 
@@ -78,7 +78,7 @@ The exhaustive semantics live in the [PTC runtime subsystem reference](../../../
 
 ### Vocabulary
 
-`PtcRunRequest` carries the program, host bindings, cancellation and optional execution choices. `PtcRunSpec` requires the resolved cwd and elapsed deadline. `PtcBindingNamespace` declares program globals and optional typed rejection constructors. `PtcRunResult` separates logs/value, failure and `PtcRunSandbox` facts; exact fields and provider obligations live in [`src/types.ts`](src/types.ts).
+`PtcRunRequest` carries the program, host bindings, cancellation and optional execution choices. `PtcRunSpec` requires the resolved cwd and an explicit numeric or null deadline choice. `PtcBindingNamespace` declares program globals and optional typed rejection constructors. `PtcRunResult` separates logs/value, failure and `PtcRunSandbox` facts; exact fields and provider obligations live in [`src/types.ts`](src/types.ts).
 
 ### Portable identifiers
 
@@ -112,7 +112,7 @@ Read these when the package-level contract is not enough. They move from the PTC
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through PTC mode in `dsh-tools`, which exposes `run_code` and returns program logs, values, or failures as retained tool-result tokens.
+Indirectly, through PTC mode in `dsh-tools` and the workflow adapter, which present program outcomes through their own tool results.
 
 #### KV Cache effect
 

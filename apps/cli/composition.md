@@ -136,8 +136,10 @@ flowchart LR
   cfg --> plugin_dsh_base_tool_subagent
   plugin_dsh_base_tool_subagent_fork["tool-subagent-fork<br/>@deepseek-ai/dsh-tool-subagent"]
   cfg --> plugin_dsh_base_tool_subagent_fork
-  plugin_dsh_base_workflow_worker_thread["workflow-worker-thread<br/>@deepseek-ai/dsh-workflow-worker-thread"]
-  cfg --> plugin_dsh_base_workflow_worker_thread
+  plugin_dsh_base_ptc_runtime["ptc-runtime<br/>@deepseek-ai/dsh-ptc-runtime-node"]
+  cfg --> plugin_dsh_base_ptc_runtime
+  plugin_dsh_base_workflow_ptc["workflow-ptc<br/>@deepseek-ai/dsh-workflow-ptc"]
+  cfg --> plugin_dsh_base_workflow_ptc
   plugin_dsh_base_tool_workflow["tool-workflow<br/>@deepseek-ai/dsh-tool-workflow"]
   cfg --> plugin_dsh_base_tool_workflow
   plugin_dsh_base_timeout_policy["timeout-policy<br/>@deepseek-ai/dsh-tool-call-timeout-policy"]
@@ -246,7 +248,8 @@ flowchart LR
 | `tool-subagent-list-agents` | `@deepseek-ai/dsh-tool-subagent-control/list-agents` |
 | `tool-subagent` | `@deepseek-ai/dsh-tool-subagent` |
 | `tool-subagent-fork` | `@deepseek-ai/dsh-tool-subagent` |
-| `workflow-worker-thread` | `@deepseek-ai/dsh-workflow-worker-thread` |
+| `ptc-runtime` | `@deepseek-ai/dsh-ptc-runtime-node` |
+| `workflow-ptc` | `@deepseek-ai/dsh-workflow-ptc` |
 | `tool-workflow` | `@deepseek-ai/dsh-tool-workflow` |
 | `timeout-policy` | `@deepseek-ai/dsh-tool-call-timeout-policy` |
 | `spill-local` | `@deepseek-ai/dsh-spill-local` |

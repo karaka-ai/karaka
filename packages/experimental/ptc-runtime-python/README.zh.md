@@ -117,6 +117,7 @@ kind: "package-reference"
 - **结算后到达的 `log` 帧被丢弃**——运行一旦结算，宿主侧捕获即关闭；迟到的 fd-3 `log` 帧（来自比 done 帧存活更久的线程）会被丢弃，而不是追加到 `logs`。
 - **binding 回复值没有 seam 级字节或深度上限**——`maxValueBytes` 只计量 done 帧的完成值；宽 binding 回复在宿主侧重建（`snapshotJsonValue` 遍历）并整帧编码，两侧都只受进程内存约束（与没有子进程侧预算的 binding 实参一样）。
 - **已发布 profile 均不挂载本提供方**——keyless `ptc-python-turn` 快照通过真实 Loader 替换 headless PTC 运行时；已发布 profile 使用沙箱 Node 进程后端。
+- **工作流执行需要 Node**——使用本 Python 提供方的组合禁用 `workflow-ptc`、`tool-workflow` 和 `tool-ralph`；工作流提供方在加载时拒绝不兼容的运行时。
 - **跨通道日志交错由后端决定**——Python stdout、stderr 与 fd-3 日志帧彼此独立传输；每个通道保留自身顺序，但它们在 `result.logs` 中的总顺序可能不同。
 - **需要 CPython 3.10 或更高版本**——配置的可执行文件会在加载期完成解析与版本探测；不受支持的解释器会在 `ctx.ptcRuntime` 注册前失败。
 - **诊断与临时目录前缀省略包名中的 experimental 限定词**——标记 `[dsh-ptc-runtime-python] log capture truncated at <N> bytes` 与 `dsh-ptc-runtime-python-` 目录前缀独立于 npm 包名来标识本提供方。协议镜像检查 TypeScript 与 Python 的标记字节完全相同。

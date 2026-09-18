@@ -347,9 +347,9 @@ importers:
       '@deepseek-ai/dsh-webhook-github':
         specifier: workspace:^
         version: link:../../packages/webhook/webhook-github
-      '@deepseek-ai/dsh-workflow-worker-thread':
+      '@deepseek-ai/dsh-workflow-ptc':
         specifier: workspace:^
-        version: link:../../packages/workflow/workflow-worker-thread
+        version: link:../../packages/workflow/workflow-ptc
       '@deepseek-ai/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery
@@ -1453,6 +1453,9 @@ importers:
       '@deepseek-ai/dsh-plugin-package-inventory-deepseek':
         specifier: workspace:^
         version: link:../../llm/plugin-package-inventory-deepseek
+      '@deepseek-ai/dsh-ptc-runtime-node':
+        specifier: workspace:^
+        version: link:../../ptc-runtime/ptc-runtime-node
       '@deepseek-ai/dsh-pwsh-sandbox':
         specifier: workspace:^
         version: link:../../shell/pwsh-sandbox
@@ -1612,9 +1615,9 @@ importers:
       '@deepseek-ai/dsh-web-search-deepseek':
         specifier: workspace:^
         version: link:../../web/web-search-deepseek
-      '@deepseek-ai/dsh-workflow-worker-thread':
+      '@deepseek-ai/dsh-workflow-ptc':
         specifier: workspace:^
-        version: link:../../workflow/workflow-worker-thread
+        version: link:../../workflow/workflow-ptc
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -1628,9 +1631,6 @@ importers:
       '@deepseek-ai/dsh-cmdline':
         specifier: workspace:^
         version: link:../../boot/cmdline
-      '@deepseek-ai/dsh-ptc-runtime-node':
-        specifier: workspace:^
-        version: link:../../ptc-runtime/ptc-runtime-node
       '@deepseek-ai/dsh-util-values':
         specifier: workspace:^
         version: link:../../util/values
@@ -1991,9 +1991,6 @@ importers:
       '@deepseek-ai/dsh-message-feedback':
         specifier: workspace:^
         version: link:../../feedback/message-feedback
-      '@deepseek-ai/dsh-ptc-runtime-node':
-        specifier: workspace:^
-        version: link:../../ptc-runtime/ptc-runtime-node
       '@deepseek-ai/dsh-session-log-export':
         specifier: workspace:^
         version: link:../../session-query/session-log-export
@@ -11467,9 +11464,9 @@ importers:
       '@deepseek-ai/dsh-workflow':
         specifier: workspace:^
         version: link:../workflow
-      '@deepseek-ai/dsh-workflow-worker-thread':
+      '@deepseek-ai/dsh-workflow-ptc':
         specifier: workspace:^
-        version: link:../workflow-worker-thread
+        version: link:../workflow-ptc
 
   packages/workflow/tool-workflow:
     dependencies:
@@ -11507,9 +11504,9 @@ importers:
       '@deepseek-ai/dsh-workflow':
         specifier: workspace:^
         version: link:../workflow
-      '@deepseek-ai/dsh-workflow-worker-thread':
+      '@deepseek-ai/dsh-workflow-ptc':
         specifier: workspace:^
-        version: link:../workflow-worker-thread
+        version: link:../workflow-ptc
 
   packages/workflow/workflow:
     devDependencies:
@@ -11532,7 +11529,7 @@ importers:
         specifier: workspace:^
         version: link:../../core/session
 
-  packages/workflow/workflow-worker-thread:
+  packages/workflow/workflow-ptc:
     dependencies:
       '@deepseek-ai/dsh-brand':
         specifier: workspace:^
@@ -11556,6 +11553,12 @@ importers:
       '@deepseek-ai/dsh-agent-loop-testkit':
         specifier: workspace:^
         version: link:../../test-support/agent-loop-testkit
+      '@deepseek-ai/dsh-fs':
+        specifier: workspace:^
+        version: link:../../fs/fs
+      '@deepseek-ai/dsh-fs-local':
+        specifier: workspace:^
+        version: link:../../fs/fs-local
       '@deepseek-ai/dsh-http-proxy':
         specifier: workspace:^
         version: link:../../util/http-proxy
@@ -11565,6 +11568,21 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-ptc-runtime':
+        specifier: workspace:^
+        version: link:../../ptc-runtime/ptc-runtime
+      '@deepseek-ai/dsh-ptc-runtime-node':
+        specifier: workspace:^
+        version: link:../../ptc-runtime/ptc-runtime-node
+      '@deepseek-ai/dsh-sandbox':
+        specifier: workspace:^
+        version: link:../../sandbox/sandbox
+      '@deepseek-ai/dsh-sandbox-local':
+        specifier: workspace:^
+        version: link:../../sandbox/sandbox-local
+      '@deepseek-ai/dsh-sandbox-policy':
+        specifier: workspace:^
+        version: link:../../sandbox/sandbox-policy
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
@@ -11577,6 +11595,12 @@ importers:
       '@deepseek-ai/dsh-subagent-spawn-in-process':
         specifier: workspace:^
         version: link:../../subagent/subagent-spawn-in-process
+      '@deepseek-ai/dsh-subprocess':
+        specifier: workspace:^
+        version: link:../../subprocess/subprocess
+      '@deepseek-ai/dsh-subprocess-local':
+        specifier: workspace:^
+        version: link:../../subprocess/subprocess-local
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt
@@ -11586,9 +11610,6 @@ importers:
       '@deepseek-ai/dsh-workflow':
         specifier: workspace:^
         version: link:../workflow
-      tsx:
-        specifier: ^4.19.2
-        version: 4.22.4
 
   packages/workspace/workspace:
     dependencies:
@@ -11995,9 +12016,9 @@ importers:
       '@deepseek-ai/dsh-workflow':
         specifier: workspace:^
         version: link:../../packages/workflow/workflow
-      '@deepseek-ai/dsh-workflow-worker-thread':
+      '@deepseek-ai/dsh-workflow-ptc':
         specifier: workspace:^
-        version: link:../../packages/workflow/workflow-worker-thread
+        version: link:../../packages/workflow/workflow-ptc
       '@deepseek-ai/schemastery':
         specifier: link:../../vendor/schemastery
         version: link:../../vendor/schemastery

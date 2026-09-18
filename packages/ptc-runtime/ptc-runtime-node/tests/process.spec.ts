@@ -45,5 +45,6 @@ it('boots an unbuilt source closure outside the workspace and exchanges tool rep
   }, (error) => { completed.reject(error) })
   onTestFinished(async () => { channel.close(); child.kill(); await finished })
   expect(await completed.promise).toEqual({ answer: 42, env: {} })
+  channel.close()
   await finished
 })

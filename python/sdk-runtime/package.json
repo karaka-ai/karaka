@@ -129,7 +129,7 @@
     "@deepseek-ai/dsh-web-search-exa": "workspace:^",
     "@deepseek-ai/dsh-web-search-perplexity": "workspace:^",
     "@deepseek-ai/dsh-workflow": "workspace:^",
-    "@deepseek-ai/dsh-workflow-worker-thread": "workspace:^",
+    "@deepseek-ai/dsh-workflow-ptc": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^"
   }
 }

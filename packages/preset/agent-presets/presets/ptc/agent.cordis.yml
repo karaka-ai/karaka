@@ -226,8 +226,8 @@
         backgroundMode: one-shot
         maxDepth: provider-managed
 
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+    - id: workflow-ptc
+      name: '@deepseek-ai/dsh-workflow-ptc'
       # No consumer here: `tool-workflow` is off in PTC mode and `tool-ralph`
       # below is off by default. Restore this row together with `tool-ralph`.
       disabled: true

@@ -144,12 +144,12 @@ describe('the shipped preset root', () => {
   it('omits the general workflow tool and its unused engine only from PTC', async () => {
     const ptc = await shippedEntries('ptc')
     expect(findEntry(ptc, 'tool-workflow')?.disabled).toBe(true)
-    expect(findEntry(ptc, 'workflow-worker-thread')?.disabled).toBe(true)
+    expect(findEntry(ptc, 'workflow-ptc')?.disabled).toBe(true)
 
     for (const id of ['standard', 'cordis']) {
       const entries = await shippedEntries(id)
       expect(findEntry(entries, 'tool-workflow')?.disabled, id).not.toBe(true)
-      expect(findEntry(entries, 'workflow-worker-thread')?.disabled, id).not.toBe(true)
+      expect(findEntry(entries, 'workflow-ptc')?.disabled, id).not.toBe(true)
     }
   })
 

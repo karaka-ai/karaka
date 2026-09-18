@@ -55,7 +55,7 @@ kind: "package-reference"
 | `nodeExecutable` | 当前 Node 可执行文件 | 在子进程执行世界中解析的可执行文件 |
 | `bootstrapPath` | 包内 bootstrap | 该执行世界中预先安装的构建后 bootstrap 的可选绝对路径 |
 
-[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-ptc-runtime-node)定义可接受的配置字段。`resolve(request)` 补全 cwd、封顶后的 timeout 与执行策略；`run(spec)` 接受这些已解析输入，不补缺省值。
+[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-ptc-runtime-node)定义可接受的配置字段。`resolve(request)` 补全 cwd、数值或 null 截止选择与执行策略；`run(spec)` 接受这些已解析输入，不补缺省值。
 
 ### 执行与结果
 
@@ -67,7 +67,7 @@ kind: "package-reference"
 
 PTC 消费方按 [dsh-tools](../../core/tools/README.zh.md#ptc-mode) 的说明公开逐次超时与经审批的沙箱选择。运行时只读 `timeout` 描述符向该消费方报告有效默认值与上限。 其 `executionInstructions` 在面向模型的 schema 中说明全新 Node 状态、直接 Node API、空程序环境和文件策略。
 
-经过时间截止覆盖运行时准备和执行，包括等待嵌套工具或审批的时间。它不是 CPU 计量器。超时或取消通过 Host 的受管进程所有者停止同步循环；成功完成也会清理该受管范围。选择结果后、清理前停止计时器，因此调用可能要在执行截止之后等待清理结算才返回。
+省略 `timeoutMs` 使用配置的经过时间默认值；数值请求经过验证并封顶。服务调用方可以显式传入 `timeoutMs: null` 来省略经过时间定时器，工作流适配器即如此；`run_code` 仍只接受正数覆盖值。启用的截止覆盖运行时准备和执行，包括等待嵌套工具或审批的时间。它不是 CPU 计量器。超时或取消通过 Host 的受管进程所有者停止同步循环；成功完成也会清理该受管范围。选择结果后、清理前停止计时器，因此调用可能要在执行截止之后等待清理结算才返回。
 
 ### 失败
 
@@ -87,7 +87,7 @@ Host 负责策略、截止时间、绑定查找和进程清理。子进程负责
 
 Host 擦除可擦除类型，在配置的执行世界中解析可执行文件与 bootstrap，通过 `ctx.sandbox` 等待 argv 限制准备完成，再通过 `ctx.subprocess` 启动。限制准备完成后会再次检查取消状态，因此提供方在取消后返回也无法启动程序。接管继承的控制通道后，子进程在 OS 环境中只保留可执行文件搜索路径、Windows 系统路径和临时路径，并将程序可见的 `process.env` 替换为空字典。Windows ACL 初始化接收父进程各自的 `TEMP` 和 `TMP` 值以使用共享授权锁，然后在启动程序前将二者替换为私有目录。这些原生路径使嵌套进程创建和原生临时文件 API 仍可正常工作。堆上限通过 Node argv 或为打包可执行文件由提供方构造的 `NODE_OPTIONS` 值传递；环境中的加载器和调试器标志会被丢弃。
 
-带长度分帧的 JSON 与 stdout/stderr 分开传输。Host 限制帧与排队写入，在分派前验证调用身份和已声明的绑定名，并拒绝无效通信。输出捕获计量序列化日志加完成值或诊断；固定结果信封字段与沙箱元数据不计入该账本。
+带长度分帧的 JSON 与 stdout/stderr 分开传输。Host 限制帧与排队写入，在分派前验证调用身份和已声明的绑定名，并拒绝无效通信。子进程刷新终态帧后仍保持控制通道打开，直到 Host 关闭通道。提交终态帧后，子进程忽略后续绑定回复，不再发送程序控制消息。输出捕获计量序列化日志加完成值或诊断；固定结果信封字段与沙箱元数据不计入该账本。
 
 ### 源代码与构建后 bootstrap
 
@@ -124,7 +124,7 @@ Host 擦除可擦除类型，在配置的执行世界中解析可执行文件与
 <a id="model-experience"></a>
 ## 模型体验
 
-通过 `dsh-tools` 的 PTC 模式间接提供，返回捕获日志与完成值，或带沙箱事实的失败。中间绑定通信不进入模型历史；外层结果遵循普通工具溢出策略。
+通过 `dsh-tools` 的 PTC 模式与 `dsh-workflow-ptc` 间接提供；它们通过各自的工具结果呈现程序结果。中间绑定通信不进入模型历史；外层结果遵循普通工具溢出策略。
 
 #### KV Cache effect
 
@@ -150,6 +150,6 @@ Host 擦除可擦除类型，在配置的执行世界中解析可执行文件与
 <details>
 <summary>维护者工作上下文——点击展开</summary>
 
-[timeout 讨论](../../../.agents/notes/implemented/architecture/2026-09-11-sandboxed-node-ptc-runtime.zh.md#deferred-timeout-design)记录 yield、总生命周期、审批等待计时和进程树 CPU/RSS 上限的开放选择。这些选择不改变已配置的经过时间截止。
+[timeout 讨论](../../../.agents/notes/implemented/architecture/2026-09-11-sandboxed-node-ptc-runtime.zh.md#deferred-timeout-design)记录 yield、总生命周期、审批等待计时和进程树 CPU/RSS 上限的开放选择。这些选择不改变数值截止的默认值或显式的不设截止服务选项。
 
 </details>

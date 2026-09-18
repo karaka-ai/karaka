@@ -115,10 +115,12 @@ describe('PythonPtcRuntime — seam descriptors and misuse', () => {
       expect(spec.cwd).toBe(cwd)
       expect(() => runtime.resolve({ ...request, cwd: 'relative' })).toThrow('cwd must be absolute')
       expect(() => runtime.resolve({ ...request, timeoutMs: 1 })).toThrow('per-call timeout is unsupported')
+      expect(() => runtime.resolve({ ...request, timeoutMs: null })).toThrow('per-call timeout is unsupported')
       const sandboxPolicy = { mode: 'danger-full-access' as const, workspaceRoot: cwd }
       expect(() => runtime.resolve({ ...request, sandboxPolicy })).toThrow('sandbox policy is unsupported')
       await expect(runtime.run({ ...spec, sandboxPolicy })).rejects.toThrow('unsupported execution policy or timeout')
       await expect(runtime.run({ ...spec, timeoutMs: 1 })).rejects.toThrow('unsupported execution policy or timeout')
+      await expect(runtime.run({ ...spec, timeoutMs: null })).rejects.toThrow('unsupported execution policy or timeout')
       const result = await runtime.run(runtime.resolve({ ...request, cwd, program: 'import os\nreturn os.getcwd()' }))
       expect(result.error).toBeUndefined()
       expect(result.value).toBe(realpathSync(cwd))

@@ -14,7 +14,7 @@ That tool shipped enabled in `packages/bundle/base/cordis.patch.yml` and in thre
 
 `packages/bundle/base/cordis.patch.yml` declares its `tool-ralph` row `disabled: true`, and the `standard`, `ptc`, and `cordis` presets declare their own `tool-ralph` rows the same way. The `minimal` preset carries no such row. The package, its tool contract, and its tests remain: this changes which default compositions mount the row, not whether the capability exists.
 
-The `ptc` preset also declares `workflow-worker-thread` disabled. That preset kept the engine for `ralph` alone after it dropped the general `workflow` tool, so disabling `ralph` left the engine with no consumer in that composition.
+The `ptc` preset also declares `workflow-ptc` disabled. That preset kept the engine for `ralph` alone after it dropped the general `workflow` tool, so disabling `ralph` left the engine with no consumer in that composition.
 
 Each disabled row carries its restore recipe in a local comment. An overlay row re-enables the capability for a base-backed profile from `$DSH_HOME/cordis.patch.yml` or a `--patch` file. Preset files take no patches (`packages/preset/agent-presets/README.md`), so a Web session that wants `ralph` duplicates the preset under a **new id** into `$DSH_HOME/.agent-presets` and drops `disabled`; a copy reusing the shipped id is shadowed by the shipped root, which wins duplicate ids (`packages/preset/agent-presets/src/index.ts`), and `copy()` refuses an id any root already supplies. In `ptc` the duplicate drops `disabled` from the tool row and the engine row together, because `tool-ralph` injects `ctx.workflowEngine`.
 
@@ -32,7 +32,7 @@ Each disabled row carries its restore recipe in a local comment. An overlay row 
 
 **Demote the goal tools alongside `ralph`.** Both surfaces defer independent evaluation, so the bar reads the same. Goal tools are the supported long-running path — the `ralph` description points ordinary long-running work at them — and they carry a product surface, so demoting both would leave no supported way to run long work.
 
-**Keep `workflow-worker-thread` enabled in `ptc`.** A user who removes `disabled` from `tool-ralph` in a duplicated `ptc` preset would then need one edit instead of two. It retains a provider with no consumer in the shipped composition, which `packages/AGENTS.md` rejects; the restated comment names the dependency instead.
+**Keep `workflow-ptc` enabled in `ptc`.** A user who removes `disabled` from `tool-ralph` in a duplicated `ptc` preset would then need one edit instead of two. It retains a provider with no consumer in the shipped composition, which `packages/AGENTS.md` rejects; the restated comment names the dependency instead.
 
 **Document the opt-in recipe in `docs/`.** A guide page would reach users who never open a composition file. The recipes differ by plane and are three lines each, so the row comments carry them at the point of use.
 
@@ -40,10 +40,10 @@ Each disabled row carries its restore recipe in a local comment. An overlay row 
 
 A default Web, headless, sdk, acp, or custom base-backed session no longer offers `ralph`, and neither do the `standard`, `ptc`, and `cordis` presets. To restore it a user edits a composition, so the capability is opt-in rather than merely discouraged. Existing sessions that already logged `ralph` calls still replay and render: the tool package is installed and its event types are unchanged.
 
-`ptc` mode loses the engine as well. A duplicated `ptc` preset that restores `tool-ralph` without restoring `workflow-worker-thread` leaves the tool row with an unresolved injection, which is why both rows carry the dependency in their comments.
+`ptc` mode loses the engine as well. A duplicated `ptc` preset that restores `tool-ralph` without restoring `workflow-ptc` leaves the tool row with an unresolved injection, which is why both rows carry the dependency in their comments.
 
 ## Verification
 
-`packages/preset/agent-presets/tests/shipped-root.spec.ts` pins that every preset carrying `tool-ralph` disables it, that the `minimal` roster carries no such row, that `ptc` disables `workflow-worker-thread`, and that `standard` and `cordis` keep the engine enabled for their `workflow` tool. `apps/cli/tests/web-agent-presets.e2e.ts` and `apps/web/tests/shipped-composition.e2e.ts` pin the exact default and PTC tool catalogs, so a row that stops contributing is a test failure rather than a silently shorter list. `scripts/verify-cordis-config.ts` continues to pass its plane-separation check against the disabled rows.
+`packages/preset/agent-presets/tests/shipped-root.spec.ts` pins that every preset carrying `tool-ralph` disables it, that the `minimal` roster carries no such row, that `ptc` disables `workflow-ptc`, and that `standard` and `cordis` keep the engine enabled for their `workflow` tool. `apps/cli/tests/web-agent-presets.e2e.ts` and `apps/web/tests/shipped-composition.e2e.ts` pin the exact default and PTC tool catalogs, so a row that stops contributing is a test failure rather than a silently shorter list. `scripts/verify-cordis-config.ts` continues to pass its plane-separation check against the disabled rows.
 
 Most affected recorded-session sidecars were regenerated with `DSH_SNAPSHOT=refresh pnpm run test:snapshot`, and `pnpm run test:snapshot` replays the corpus. Six sidecars were curated by hand instead, because no local run produces them. Four belong to `pwsh-tool-turn` and `persistent-pwsh-tool-turn`, which this host skips for a missing `pwsh`; their removed text is byte-identical to what the refresh removed elsewhere. The remaining two are `snapshots/web/schedule-catalog`, which no executing test writes or reads: `schedule-after.e2e.ts` reads only that directory's `catalog.expected.md` and `session.v3.jsonl`, and `assertFixtureInventory` checks only that the four files exist, so the `header.pin: true` in its `snapshot.yml` is not enforced. `snapshots/session/ralph-loop` passes under its own composition patch, which is the evidence that the demotion removed the row from the defaults without removing coverage of the tool.

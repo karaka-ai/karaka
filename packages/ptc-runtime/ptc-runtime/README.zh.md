@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当你要组合一个执行模型程序的部署、直接消费 `ctx.ptcRuntime`，或构建运行程序的后端时，选择本包。在已发布的组合中，`dsh-tools` 里的 PTC mode 是消费方：只有程序打印和返回的内容重新进入对话。
+当你要组合一个执行模型程序的部署、直接消费 `ctx.ptcRuntime`，或构建运行程序的后端时，选择本包。`dsh-tools` 中的 PTC mode 用它执行工具程序，`dsh-workflow-ptc` 用它编排工作流。每个消费方负责返回给模型的内容。
 
 ### 运行一个程序
 
@@ -64,11 +64,11 @@ binding-global 与 error-class 名称是语言可移植的：必须匹配 `[A-Za
 
 ### 设计理念
 
-本包是 PTC 执行能力 seam 的 Service Definition 角色（[能力 seam](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)）：一个注册为 `ctx.ptcRuntime` 的抽象 `PtcRuntime extends Service`，加上两个后端与消费方共享的词汇。提供方继承 `PtcRuntime`、实现 `resolve` 和 `run` 并注册服务；消费方（`dsh-tools` 中的 PTC mode）生成面向模型的 SDK 并桥接工具分发。按约定，运行时不了解工具与会话：它接收程序、具名异步绑定和已解析执行选项，然后返回捕获输出、执行结果与适用的沙箱事实。
+本包是 PTC 执行能力 seam 的 Service Definition 角色（[能力 seam](../../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)）：一个注册为 `ctx.ptcRuntime` 的抽象 `PtcRuntime extends Service`，加上提供方与消费方共享的词汇。提供方继承 `PtcRuntime`、实现 `resolve` 和 `run` 并注册服务。`dsh-tools` 中的 PTC mode 负责工具绑定，`dsh-workflow-ptc` 负责工作流钩子与子 agent。按约定，运行时不了解工具与会话：它接收程序、具名异步绑定和已解析执行选项，然后返回捕获输出、执行结果与适用的沙箱事实。
 
 ### 服务 API
 
-只读 `timeout` 描述符为支持逐次覆盖的提供方公开 `{ defaultMs, maxMs }`；`undefined` 表示消费方必须省略该字段。它报告呈现值，验证与截断仍由 `resolve` 负责。
+只读 `timeout` 描述符公开数值型 `{ defaultMs, maxMs }`，供消费方呈现；描述符缺省表示不支持数值覆盖。省略 `timeoutMs` 使用提供方默认值；数值请求经过验证和封顶的经过时间预算；显式 `null` 请求不设经过时间截止。提供方拒绝不支持的选择。Node 工作流适配器请求 `null`，而面向模型的 `run_code` 工具只接受正数覆盖值。
 
 `executionInstructions` 提供由运行时拥有的使用说明；不需要说明时返回空字符串。消费方可将其纳入程序呈现，无需根据语言或隔离描述符识别提供方；PTC 将它纳入已记录的 `run_code` schema。
 
@@ -78,7 +78,7 @@ binding-global 与 error-class 名称是语言可移植的：必须匹配 `[A-Za
 
 ### 词汇
 
-`PtcRunRequest` 携带程序、Host 绑定、取消和可选执行选择。`PtcRunSpec` 要求已解析的 cwd 与经过时间截止。`PtcBindingNamespace` 声明程序全局对象与可选的类型化拒绝构造器。`PtcRunResult` 将日志／值、失败与 `PtcRunSandbox` 事实分开；确切字段与提供方义务见 [`src/types.ts`](src/types.ts)。
+`PtcRunRequest` 携带程序、Host 绑定、取消和可选执行选择。`PtcRunSpec` 要求已解析的 cwd 和明确的数值或 null 截止选择。`PtcBindingNamespace` 声明程序全局对象与可选的类型化拒绝构造器。`PtcRunResult` 将日志／值、失败与 `PtcRunSandbox` 事实分开；确切字段与提供方义务见 [`src/types.ts`](src/types.ts)。
 
 ### 可移植标识符
 
@@ -112,7 +112,7 @@ binding-global 与 error-class 名称是语言可移植的：必须匹配标识�
 <a id="model-experience"></a>
 ## 模型体验
 
-通过 `dsh-tools` 中的 PTC mode 间接提供；后者公开 `run_code`，并将程序日志、值或失败作为保留的工具结果 token 返回。
+通过 `dsh-tools` 中的 PTC mode 与工作流适配器间接提供；它们通过各自的工具结果呈现程序结果。
 
 #### KV Cache 影响
 

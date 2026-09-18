@@ -369,7 +369,7 @@ function nodeCompatSmokeGates(options: { cliSmoke?: boolean } = {}): Gate[] {
     pnpmExec('source-worker-smoke', [
       'vitest',
       'run',
-      'packages/workflow/workflow-worker-thread/tests/source-worker.compat.spec.ts',
+      'packages/workflow/workflow-ptc/tests/source-runtime.compat.spec.ts',
     ], { label: 'source worker smoke' }),
     pnpmExec('jsonl-zstd-smoke', [
       'vitest',
@@ -734,6 +734,7 @@ function docSyncLeafGates(options: {
     pnpmScript('type-equivalence', 'verify-type-equiv', { label: 'type equivalence', quick: true }),
     pnpmScript('cordis-catalog', 'verify-cordis-catalog', { label: 'cordis catalog' }),
     pnpmScript('cordis-inspect-catalog', 'verify-cordis-inspect-catalog', { label: 'Cordis inspect catalog' }),
+    pnpmScript('workflow-guest', 'verify-workflow-guest', { label: 'workflow guest source' }),
     pnpmScript('mermaid', 'verify-mermaid'),
     pnpmScript('scoped-events', 'verify-scoped-events', { label: 'scoped events' }),
     pnpmScript('translation-pairing', 'verify-translation-pairing', { label: 'translation pairing', quick: true }),
@@ -803,7 +804,7 @@ function builtBinSmokeGate(needs: string[] = ['build']): Gate {
     // Built execution consumers: the only automated proof that package-name
     // imports reach their lib/ entrypoints under plain Node. The e2e lane runs
     // unbuilt, so these files self-skip there.
-    'packages/workflow/workflow-worker-thread/tests/built-worker.e2e.ts',
+    'packages/workflow/workflow-ptc/tests/built-runtime.e2e.ts',
     'packages/ptc-runtime/ptc-runtime-node/tests/built-lib.e2e.ts',
     'packages/session/session-persistence-jsonl/tests/built-migration-worker.e2e.ts',
     'packages/lsp/lsp-stdio/tests/built-lib.e2e.ts',

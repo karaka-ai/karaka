@@ -8,7 +8,7 @@ PTC 执行[能力 seam](../../.agents/notes/implemented/architecture/2026-06-13-
 
 ## 运行：请求进，结果出
 
-`PtcRunRequest` 包含程序、绑定、取消和可选执行选择。提供方的 `resolve` 验证支持的选择并应用部署默认值；`run` 接收目录与截止时间明确的 `PtcRunSpec`。无法强制执行所请求策略的提供方在程序执行前拒绝请求：
+`PtcRunRequest` 包含程序、绑定、取消和可选执行选择。提供方的 `resolve` 验证支持的选择并应用部署默认值；`run` 接收目录与截止选择明确的 `PtcRunSpec`。省略 timeout 使用提供方默认值，数值请求封顶的经过时间预算，`null` 请求不设经过时间截止。提供方在执行前拒绝不支持的选择：
 
 ```ts type-equiv
 /**
@@ -27,8 +27,11 @@ interface PtcRunRequest {
   bindings: PtcBindingNamespace[]
   /** Working directory in the mounted filesystem and subprocess execution world. */
   cwd?: string
-  /** Requested elapsed execution time; the provider's resolver validates and caps it. */
-  timeoutMs?: number
+  /**
+   * Elapsed execution budget in milliseconds. Omission uses provider defaults;
+   * null requests no deadline. Providers validate and cap numeric budgets or reject unsupported choices.
+   */
+  timeoutMs?: number | null
   /** Resolved authority for this execution. Providers without confinement reject an explicit policy. */
   sandboxPolicy?: SandboxExecutionPolicy
   /**
@@ -41,12 +44,12 @@ interface PtcRunRequest {
 ```
 
 ```ts type-equiv
-/** Fully resolved execution inputs; run never supplies a missing directory or timeout. */
+/** Fully resolved execution inputs; run never supplies a missing directory or deadline choice. */
 interface PtcRunSpec extends PtcRunRequest {
   /** Absolute directory in the provider's execution world. */
   cwd: string
-  /** Positive finite execution deadline in milliseconds, after provider capping. */
-  timeoutMs: number
+  /** Positive finite elapsed budget in milliseconds after provider capping, or null for no deadline. */
+  timeoutMs: number | null
 }
 ```
 
