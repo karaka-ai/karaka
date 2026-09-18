@@ -408,9 +408,16 @@
     - id: tool-goal
       name: '@deepseek-ai/dsh-tool-goal'
 
-    # Fresh-agent Ralph iteration over a build-time-fixed script.
+    # Fresh-agent Ralph iteration over a build-time-fixed script. Off by
+    # default: the tool description restricts `ralph` to runs the human
+    # explicitly asked for, and completion is a worker self-report, not an
+    # independent evaluation. An overlay row restores it for a base-backed
+    # profile (`$DSH_HOME/cordis.patch.yml`, or a `--patch <file>`):
+    #   - id: tool-ralph
+    #     disabled: false
     - id: tool-ralph
       name: '@deepseek-ai/dsh-tool-ralph'
+      disabled: true
       config:
         subagentProvider: spawn
         maxRounds: 64
