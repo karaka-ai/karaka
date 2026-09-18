@@ -1,5 +1,5 @@
 ---
-description: "The experimental group map: pre-stable prototypes that are private by default, with explicit public Agent Teams and computer-use packages."
+description: "The experimental group map: publicly installable pre-stable prototypes."
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The experimental group contains prototype capabilities whose contracts can change and carry no support promise. Packages are private by default; the allowlisted Agent Teams and Cua Driver packages are published opt-in exceptions under their existing `@deepseek-ai/dsh-experimental-*` names. The group also holds the private cross-realm Inspector, CPython subprocess backend, and browser-worker preview packages. Released products outside this group must not depend on experimental packages.
+The experimental group contains prototype capabilities whose contracts can change and carry no support promise. All current packages publish under their `@deepseek-ai/dsh-experimental-*` names, including the opt-in Agent Teams composition, Auto review, Cua Driver providers, cross-realm Inspector, CPython PTC backend, and browser-worker preview libraries. Released products outside this group must not depend on experimental packages.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ The experimental group contains prototype capabilities whose contracts can chang
 <a id="related-documentation"></a>
 ## Related documentation
 
-- [Experimental package decision](../../.agents/notes/implemented/architecture/2026-08-18-experimental-agent-teams-packages.md) — private defaults, public Agent Teams exceptions, and dependency isolation.
+- [Experimental publication decision](../../.agents/notes/implemented/process/2026-09-12-experimental-publication-denylist.md) — public defaults and private exceptions.
 - [Computer use](../../docs/subsystems/computer-use.md) — desktop provider choices.
 - [Agent Teams subsystem](../../docs/subsystems/agent-team.md) — durable Team types and the `ctx.agentTeams` service API.
 - [Experimental subtree rules](AGENTS.md) — what experimental status does and does not relax.

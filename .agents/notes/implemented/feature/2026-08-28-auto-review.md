@@ -10,7 +10,7 @@ Full access lets useful project work proceed without repeated approvals, but it 
 
 ## Decision
 
-[`dsh-experimental-auto-review`](../../../../packages/experimental/auto-review/README.md) is a private, explicitly installed source Web layer. Default Web retains Read Only, Workspace Write, and Full access. The layer contributes current-session `auto`, whose only durable identity is `permission/preset:auto`; it shares Full access's unchanged `danger-full-access + never` knobs and tool definitions. Official payloads, Headless, General settings, and new-session defaults exclude the integration.
+[`dsh-experimental-auto-review`](../../../../packages/experimental/auto-review/README.md) is an explicitly installed experimental Web layer, published under the [experimental package publication decision](../process/2026-09-12-publish-all-experimental-packages.md). Default Web retains Read Only, Workspace Write, and Full access. The layer contributes current-session `auto`, whose only durable identity is `permission/preset:auto`; it shares Full access's unchanged `danger-full-access + never` knobs and tool definitions. Headless, General settings, and new-session defaults exclude the integration.
 
 Every native call and started PTC `tools.*` inner call receives one review before its body. The outer `run_code` transport and direct Node effects in a PTC program remain outside this guarantee. There are no tool-name exemptions, cached grants, retries, configurable policy, second authorization check, or manual fallback. A repeated call receives a fresh review.
 

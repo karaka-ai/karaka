@@ -245,7 +245,7 @@ describe('gate graph validation', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('hygiene').map(subject => subject.id))
 
     expect(ids).toEqual([
-      'rescope-vendor', 'publint', 'constraints', 'package-dependencies', 'application-entrypoints',
+      'rescope-vendor', 'publint', 'constraints', 'default-product-isolation', 'package-dependencies', 'application-entrypoints',
       'dsh-package-licenses', 'package-invariants', 'built-package-invariants', 'node-next-types',
       'optional-dependency-imports', 'client-packages', 'client-ui-i18n', 'no-bare-dispatcher', 'cordis-config',
       'runtime-closure',
@@ -290,6 +290,17 @@ describe('gate graph validation', () => {
       const ids = withPnpmEntrypoint(() => gatesForMode(mode).map(subject => subject.id))
 
       expect(ids).toContain('package-dependencies')
+    },
+  )
+
+  it.each(['ci-primary', 'ci-static', 'check-all', 'hygiene'] as const)(
+    'executes default-product experimental isolation in %s',
+    (mode) => {
+      const gate = withPnpmEntrypoint(() => gatesForMode(mode)
+        .find(subject => subject.id === 'default-product-isolation'))
+
+      expect(gate?.args).toContain('verify-default-product-isolation')
+      expect(gate?.allowFailure).not.toBe(true)
     },
   )
 

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This private experimental package lets source-checkout compositions run model-generated Python in a fresh CPython 3.10+ subprocess for each request. Programs can use top-level `await` and `return`, call configured bindings, and write normal stdout/stderr while receiving explicit completion or failure results. Resource budgets and process-group teardown contain runaway work, but the subprocess is not a security boundary: direct Python operations have no filesystem sandbox, no state persists across runs, and no shipped profile enables this runtime.
+This experimental package lets explicit compositions run model-generated Python in a fresh CPython 3.10+ subprocess for each request. Programs can use top-level `await` and `return`, call configured bindings, and write normal stdout/stderr while receiving explicit completion or failure results. Resource budgets and process-group teardown contain runaway work, but the subprocess is not a security boundary: direct Python operations have no filesystem sandbox, no state persists across runs, and no shipped profile enables this runtime.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ This private experimental package lets source-checkout compositions run model-ge
 <a id="use-this-package"></a>
 ## Use this package
 
-Choose this private experimental package only in an explicit source-checkout composition. Register `PythonPtcRuntime` beside `dsh-tools`; `run(resolve(request))` executes each program in a fresh CPython 3.10+ subprocess, resolving with `result.value` on success and `result.error` on failure (the orthogonal `PtcRunFailure.kind` taxonomy classifies parse failures, thrown exceptions, invalid completions, output overflows, budget expiry, aborts, and substrate death). It rejects only for seam misuse — a malformed binding namespace, or a call after disposal. Configuration is rejected at load: a non-Unix platform; an explicit `pythonBin` that is not an executable regular file or a bare name that does not resolve on `PATH`; a non-CPython, pre-3.10, or probe-failing interpreter; a non-positive or non-integer budget; a `maxLogBytes` below the truncation-marker floor (64); a timer value `setTimeout` would clamp; a budget larger than the effective fd-3 frame cap (lowered when the host heap cannot safely parse a near-cap frame); or an `addressSpaceMb`/output-budget pair whose worst-case peak would breach `RLIMIT_AS`.
+Choose this published experimental package only in an explicit composition. Register `PythonPtcRuntime` beside `dsh-tools`; `run(resolve(request))` executes each program in a fresh CPython 3.10+ subprocess, resolving with `result.value` on success and `result.error` on failure (the orthogonal `PtcRunFailure.kind` taxonomy classifies parse failures, thrown exceptions, invalid completions, output overflows, budget expiry, aborts, and substrate death). It rejects only for seam misuse — a malformed binding namespace, or a call after disposal. Configuration is rejected at load: a non-Unix platform; an explicit `pythonBin` that is not an executable regular file or a bare name that does not resolve on `PATH`; a non-CPython, pre-3.10, or probe-failing interpreter; a non-positive or non-integer budget; a `maxLogBytes` below the truncation-marker floor (64); a timer value `setTimeout` would clamp; a budget larger than the effective fd-3 frame cap (lowered when the host heap cannot safely parse a near-cap frame); or an `addressSpaceMb`/output-budget pair whose worst-case peak would breach `RLIMIT_AS`.
 
 `resolve(request)` accepts an absolute `cwd` and uses the provider's configured `maxWallMs` deadline (600,000 ms by default). Explicit `timeoutMs` overrides and sandbox policies are unsupported and reject before execution. This provider does not advertise `sandboxMode` or return confinement facts.
 
@@ -99,7 +99,7 @@ Read these when the runtime contract is not enough. They move from the seam defi
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through PTC mode in `dsh-tools` when an explicit source-checkout composition mounts this provider; it renders the program's completion value or failure into a retained `run_code` result, and no shipped profile mounts this private package.
+Indirectly, through PTC mode in `dsh-tools` when an explicit composition mounts this provider; it renders the program's completion value or failure into a retained `run_code` result, and no shipped profile mounts this experimental package.
 
 #### KV Cache effect
 

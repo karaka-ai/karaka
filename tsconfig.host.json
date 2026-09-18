@@ -9,6 +9,8 @@
   },
   "include": [
     "packages/karaka/tsdown.ts",
+    "apps/web/product-isolation.ts",
+    "apps/web/tests/default-product-isolation.e2e.ts",
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/auto-review-fixture.ts",
     "apps/web/tests/auto-review-denial.e2e.ts",

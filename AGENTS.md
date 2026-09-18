@@ -62,7 +62,7 @@ packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
   host/                 GUI host
   client/               GUI client
   mcp/                  external tools
-  experimental/         pre-stable prototypes; private by default with explicit public exceptions
+  experimental/         pre-stable prototypes; public by default with explicit private exceptions
   test-support/         test infrastructure
   runtime-diagnostics/  runtime invariants
   util/                 zero-dependency utilities

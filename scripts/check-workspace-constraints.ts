@@ -8,7 +8,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { isPublicExperimentalPackageDirectory } from './experimental-package-policy.ts'
+import {
+  isPublicExperimentalPackageDirectory,
+  PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES,
+} from './experimental-package-policy.ts'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
 
@@ -64,7 +67,7 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
     'config/desktop.cordis.patch.yml',
   ],
   // Sourcemaps stay out by payload policy; the worker-preview surface
-  // (dist/preview.html and dist/preview/) backs private experimental
+  // (dist/preview.html and dist/preview/) backs opt-in experimental
   // packages and is not published.
   '@deepseek-ai/dsh-web-frontend': ['dist', '!dist/**/*.map', '!dist/preview.html', '!dist/preview'],
 }
@@ -160,6 +163,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-experimental-ptc-runtime-python': ['py/**/*.py'],
   // The isolated Node bootstrap is a separately launched bundle.
   '@deepseek-ai/dsh-ptc-runtime-node': ['lib/process.js'],
+  // The Host entry starts its sibling Worker by URL rather than a package export.
+  '@deepseek-ai/dsh-experimental-inspector': ['lib/worker.js'],
   // The shipped preset compositions travel inside the roster package.
   '@deepseek-ai/dsh-agent-presets': ['presets'],
   // The Web Host mounts the default-off settings owner independently of each
@@ -278,15 +283,18 @@ function usesEmittedTreeDefaults(manifest: PackageManifest): boolean {
     exportDefault(manifest, subpath)?.startsWith('./lib/types/') === true)
 }
 
-/** Experimental manifest requirements, including explicit public exceptions. */
-export function checkExperimentalManifest({ dir, manifest }: WorkspaceManifest): string[] {
+/** Experimental manifest requirements, including explicit private exceptions. */
+export function checkExperimentalManifest(
+  { dir, manifest }: WorkspaceManifest,
+  privateDirectories: readonly string[] = PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES,
+): string[] {
   if (!experimentalPackageDirectory.test(dir)) return []
   const label = manifest.name ?? dir
   const errors: string[] = []
   if (manifest.name?.startsWith(experimentalPackageNamePrefix) !== true) {
     errors.push(`${label}: experimental package name must start with ${JSON.stringify(experimentalPackageNamePrefix)}`)
   }
-  if (isPublicExperimentalPackageDirectory(dir)) {
+  if (isPublicExperimentalPackageDirectory(dir, privateDirectories)) {
     if (manifest.private === true) errors.push(`${label}: public experimental package must not set "private": true`)
     if (manifest.publishConfig?.access !== 'public') {
       errors.push(`${label}: public experimental package must set publishConfig.access to "public"`)
