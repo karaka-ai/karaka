@@ -1218,6 +1218,7 @@ def smoke_sdk_mcp(base_url: str, executable: Path | None) -> None:
 
         assert result.final_response == MCP_TEXT, result.final_response
         assert discovery_log.read_text().splitlines() == [
+            "server/discover",
             "initialize",
             "notifications/initialized",
             "tools/list",

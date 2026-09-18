@@ -1,0 +1,18 @@
+- insert:
+    - id: mcp-resources
+      name: '@deepseek-ai/dsh-mcp-resources'
+    - id: mcp-resource-catalog
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        transport: stdio
+        serverName: catalog
+        command: !!js process.execPath
+        args: !!js '[process.env.DSH_MCP_RESOURCES_FIXTURE]'
+        failOnStartupError: true
+        reconnect:
+          enabled: false
+
+- id: tools
+  name: '@deepseek-ai/dsh-tools'
+  config:
+    mode: ptc

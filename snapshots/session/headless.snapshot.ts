@@ -577,6 +577,38 @@ async function verifySessionQuerySpill(log: string, spillRoot: string, locatorRo
   expect(full).toContain('session_event_search')
 }
 
+/** Require real resource results and literal instructions before recording or replay succeeds. */
+function verifyMcpResources(log: string, ptc: boolean): void {
+  const events = parseSessionLog(log)
+  const nativeResults = events.flatMap(event => event.type === 'tool/result'
+    ? event.data.message.content.filter(block => block.type === 'tool-result')
+    : [])
+  const dispatches = events.flatMap(event => event.type === 'tool/ptc-dispatch' ? [event.data] : [])
+  const results = ptc ? dispatches : nativeResults
+  expect(results.length).toBeGreaterThanOrEqual(5)
+  expect(results.every(result => !result.isError)).toBe(true)
+  const calls = ptc ? dispatches.map(dispatch => dispatch.name)
+    : events.flatMap(event => event.type === 'tool/call' ? [event.data.name] : [])
+  expect(calls).toEqual(expect.arrayContaining(['list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource']))
+  const text = results.flatMap(result => result.content
+    .flatMap(block => block.type === 'text' ? [block.text] : [])).join('\n')
+  expect(text).toContain('memo://text')
+  expect(text).toContain('memo://greeting/{name}')
+  expect(text).toContain('MCP resource text with {{braces}} intact.')
+  expect(text).toContain('binary resource')
+  expect(text).toContain('Hello, reader.')
+  if (ptc) {
+    const output = nativeResults.flatMap(result => result.content
+      .flatMap(block => block.type === 'text' ? [block.text] : [])).join('\n')
+    expect(output).toMatch(/"binaryAvailable"\s*:\s*true/)
+  }
+  expect(log).not.toContain('bWNwLXJlc291cmNlLWJpbmFyeQ==')
+  expect(normalizedSystemPrompts(log, contextOf([log])).join('\n'))
+    .toContain('MCP_RESOURCE_INSTRUCTION: keep {{braces}} literal.')
+  expect(normalizedSystemPrompts(log, contextOf([log])).join('\n'))
+    .toContain('server argument: ["catalog"]')
+}
+
 /** Require an admitted failed job and zero process allocations before updating its recorded oracle. */
 async function verifyBackgroundConfinementFailure(log: string, cwd: string): Promise<void> {
   const results = parseSessionLog(log).flatMap(event => event.type === 'tool/result'
@@ -1022,6 +1054,9 @@ describe('headless recorded-session snapshots', () => {
               ? {}
               : { DSH_PERMISSION_MODE: scenario.manifest.permission }),
             ...scenario.manifest.environment,
+            ...(scenario.name === 'mcp-resources' || scenario.name === 'mcp-resources-ptc' ? {
+              DSH_MCP_RESOURCES_FIXTURE: join(repoRoot, 'packages/mcp/mcp-client/tests/fixtures/resources-server.ts'),
+            } : {}),
             NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
             DSH_TELEMETRY_DISABLED: '1',
           },
@@ -1042,6 +1077,9 @@ describe('headless recorded-session snapshots', () => {
             actualLogs = await persistedSessions(cwd)
             if (scenario.name === 'session-query-spill') {
               await verifySessionQuerySpill(actualLogs[0]!.content, spillRoot, locatorRoot)
+            }
+            if (scenario.name === 'mcp-resources' || scenario.name === 'mcp-resources-ptc') {
+              verifyMcpResources(actualLogs[0]!.content, scenario.name === 'mcp-resources-ptc')
             }
             if (scenario.name === 'provider-cwd') {
               await verifyProviderCwdResume(

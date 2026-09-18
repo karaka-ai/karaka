@@ -16,6 +16,9 @@ flowchart LR
   svc_serverAuth["ctx.serverAuth<br/>Application server authentication"]
   pkg__karaka_ai_browser_auth["@karaka-ai/browser-auth"]
   svc_karakaBrowserAuth["ctx.karakaBrowserAuth<br/>Browser Connection credential verification"]
+  pkg_mcp_resources["mcp-resources"]
+  svc_mcpResources["ctx.mcpResources<br/>Scoped MCP resource access"]
+  pkg_mcp_client["mcp-client"]
   pkg_computer_use["computer-use"]
   svc_computerUse["ctx.computerUse<br/>Computer-use provider registration"]
   pkg_experimental_computer_use_cua_driver_mcp["experimental-computer-use-cua-driver-mcp"]
@@ -298,6 +301,8 @@ flowchart LR
   pkg_llm_replay --> svc_llm
   pkg_lsp --> svc_lsp
   pkg_lsp_stdio --> svc_lsp
+  pkg_mcp_client --> svc_mcpResources
+  pkg_mcp_resources --> svc_mcpResources
   pkg_message_feedback --> svc_messageFeedback
   pkg_permission_presets --> svc_permissionPresets
   pkg_plan_mode --> svc_planMode
@@ -411,6 +416,7 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_mcpResources --> pkg_mcp_resources
   svc_ptcRuntime --> pkg_tools
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
@@ -509,6 +515,7 @@ flowchart LR
 | `ctx.karakaIdentity` | `core` | `@karaka-ai/identity` | - | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | The [identity package](../packages/karaka/identity/README.md) authorizes application owners before resolving durable conversation and session references. |
 | `ctx.serverAuth` | `seam` | `@karaka-ai/server-auth` | `@karaka-ai/server-auth` | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | The [server-auth package](../packages/karaka/server-auth/README.md) declares replaceable inbound and outbound authentication and supplies the shared-bearer provider. |
 | `ctx.karakaBrowserAuth` | `core` | `@karaka-ai/browser-auth` | - | `@karaka-ai/transport-http` | - | The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity. |
+| `ctx.mcpResources` | `seam` | [`mcp-resources`](../packages/mcp/mcp-resources) | [`mcp-client`](../packages/mcp/mcp-client) | [`mcp-resources`](../packages/mcp/mcp-resources) | - | Connection-owned providers serve shared resource tools in the calling agent scope. |
 | `ctx.computerUse` | `seam` | [`computer-use`](../packages/computer-use/computer-use) | [`experimental-computer-use-cua-driver-mcp`](../packages/experimental/computer-use-cua-driver-mcp), [`experimental-computer-use-cua-driver-native`](../packages/experimental/computer-use-cua-driver-native) | [`experimental-computer-use-cua-driver-mcp`](../packages/experimental/computer-use-cua-driver-mcp), [`experimental-computer-use-cua-driver-native`](../packages/experimental/computer-use-cua-driver-native) | - | One provider-owned name per service instance. Each provider also owns its model tools; the service has no common action API, runtime selection, or Session workflow lock. |
 | `ctx.attachments` | `seam` | [`attachment`](../packages/attachment/attachment) | [`attachment-local`](../packages/attachment/attachment-local) | [`api-session-controller`](../packages/api/session-controller), [`tool-fs`](../packages/fs/tool-fs), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-deepseek`](../packages/llm/llm-deepseek) | - | The host commits accepted images before session events; provider adapters resolve authorized durable references into provider-native content. |
 | `ctx.fileUploads` | `core` | [`client-file-upload`](../packages/client/file-upload) | - | [`api-session-controller`](../packages/api/session-controller) | - | Owns streaming intake, durable storage, and staged receipt lifetime; the Session controller binds receipts to accepted submissions. |

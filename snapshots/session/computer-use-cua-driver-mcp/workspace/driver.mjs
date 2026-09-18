@@ -20,7 +20,12 @@ lines.on('line', (line) => {
   }
   let result
   switch (request.method) {
+    case 'server/discover':
+      record('discover')
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32601, message: 'Method not found' } }) + '\n')
+      return
     case 'initialize':
+      record('initialize')
       if (mode === 'fail') process.exit(1)
       result = { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'cua-driver-fixture', version: '1.0.0' } }
       break

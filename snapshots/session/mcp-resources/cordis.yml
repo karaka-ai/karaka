@@ -1,11 +1,13 @@
 - insert:
-    - id: mcp-pagination-cycle
+    - id: mcp-resources
+      name: '@deepseek-ai/dsh-mcp-resources'
+    - id: mcp-resource-catalog
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         transport: stdio
-        serverName: pagination-cycle
+        serverName: catalog
         command: !!js process.execPath
-        args: !!js '[process.env.DSH_MCP_PAGINATION_FIXTURE]'
+        args: !!js '[process.env.DSH_MCP_RESOURCES_FIXTURE]'
         failOnStartupError: true
         reconnect:
           enabled: false

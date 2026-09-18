@@ -115,7 +115,7 @@ pnpm run test:e2e packages/experimental/computer-use-cua-driver-mcp/tests/instal
 - 桌面访问需要完成上游安装并取得平台权限；插件激活本身不能证明每个桌面操作都已获准。
 - 多个 Session 共享一个桌面。一次运行一个计算机使用工作流，或在外部协调；注册不会串行化 Session 的操作。
 - 驱动升级可能改变发现的目录。本提供者不支持运行时驱动切换、专用桌面权限界面或 DSH 操作抽象。
-- 启动时限、仅桥接工具的 MCP 支持及富结果限制遵循 [MCP 客户端的限制](../../mcp/mcp-client/README.zh.md#known-limitations-and-deferred-work)。
+- 启动时限及富结果限制遵循 [MCP 客户端的限制](../../mcp/mcp-client/README.zh.md#known-limitations-and-deferred-work)。
 
 <a id="dev-note"></a>
 ### 开发备注

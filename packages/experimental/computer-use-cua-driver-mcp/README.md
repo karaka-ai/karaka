@@ -115,7 +115,7 @@ This provider relies on the installed driver and the MCP bridge's supported capa
 - Desktop access requires upstream installation and platform permissions; plugin activation alone does not prove that every desktop action is permitted.
 - Sessions share one desktop. Run one computer-use workflow at a time or coordinate them externally; the registration does not serialize Session actions.
 - Driver upgrades can change the discovered catalog. The provider has no runtime driver switching, dedicated desktop permission UI, or DSH action abstraction.
-- Startup deadlines, tool-only MCP support, and rich-result restrictions follow the [MCP client's limitations](../../mcp/mcp-client/README.md#known-limitations-and-deferred-work).
+- Startup deadlines and rich-result restrictions follow the [MCP client's limitations](../../mcp/mcp-client/README.md#known-limitations-and-deferred-work).
 
 <a id="dev-note"></a>
 ### Dev Note

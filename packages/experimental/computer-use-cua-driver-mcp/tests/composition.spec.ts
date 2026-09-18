@@ -107,9 +107,27 @@ async function driverEvents(root: string): Promise<{ event: string; pid: number;
   return (await readFile(join(root, 'driver.ndjson'), 'utf8')).trim().split('\n').map(line => JSON.parse(line) as { event: string; pid: number })
 }
 
+function expectProcessExited(pid: number): void {
+  expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }))
+}
+
+async function expectActiveDriver(root: string, connectionCount: number): Promise<void> {
+  const events = await driverEvents(root)
+  const starts = events.filter(event => event.event === 'start').map(event => event.pid)
+  const probes = events.filter(event => event.event === 'discover').map(event => event.pid)
+  const drivers = events.filter(event => event.event === 'initialize').map(event => event.pid)
+  expect(probes).toHaveLength(connectionCount)
+  expect(drivers).toHaveLength(connectionCount)
+  expect(starts).toHaveLength(connectionCount * 2)
+  expect(new Set(starts)).toEqual(new Set([...probes, ...drivers]))
+  for (const pid of [...probes, ...drivers.slice(0, -1)]) expectProcessExited(pid)
+  expect(() => process.kill(drivers[connectionCount - 1]!, 0)).not.toThrow()
+}
+
 describe('installed Cua Driver Loader composition', () => {
   it('keeps upstream schemas and stores screenshot history as durable images through a real Agent', async () => {
     const { ctx, root, model } = await load()
+    await expectActiveDriver(root, 1)
     const fibers = [...ctx.loader.entries()].flatMap(entry => entry.fiber === undefined ? [] : [entry.fiber])
     expect(fibers.every(fiber => fiber.state === FiberState.ACTIVE)).toBe(true)
     expect(ctx.computerUse.providerName).toBe('cua-driver-mcp')
@@ -142,7 +160,7 @@ describe('installed Cua Driver Loader composition', () => {
     expect(ctx.tools.get(TOOL)).toBeUndefined()
     expect(ctx.computerUse.providerName).toBeUndefined()
     const events = await driverEvents(root)
-    expect(events.filter(event => event.event === 'exit').map(event => event.pid)).toEqual(events.filter(event => event.event === 'start').map(event => event.pid))
+    for (const event of events.filter(event => event.event === 'start')) expectProcessExited(event.pid)
   })
 
   it('retains exclusive ownership when the external process disconnects and reconnects', async () => {
@@ -151,7 +169,7 @@ describe('installed Cua Driver Loader composition', () => {
     expect(ctx.computerUse.providerName).toBe('cua-driver-mcp')
     expect(() => ctx.computerUse.register(ComputerUseProviderName('replacement'))).toThrow('already registered')
     await vi.waitFor(async () => {
-      expect((await driverEvents(root)).filter(event => event.event === 'start')).toHaveLength(2)
+      expect((await driverEvents(root)).filter(event => event.event === 'initialize')).toHaveLength(2)
     }, { timeout: 10_000 })
     await vi.waitFor(async () => {
       const result = await ctx.tools.execute({ name: TOOL, arguments: { display: 2 }, callId: ToolCallId('reconnected'), signal: new AbortController().signal })
@@ -159,6 +177,9 @@ describe('installed Cua Driver Loader composition', () => {
       expect(result.content[0]).toEqual({ type: 'text', text: 'Display 2' })
     })
     expect(ctx.computerUse.providerName).toBe('cua-driver-mcp')
+    await expectActiveDriver(root, 2)
+    await ctx.fiber.dispose()
+    for (const event of (await driverEvents(root)).filter(event => event.event === 'start')) expectProcessExited(event.pid)
   })
 
   it('fails the Loader entry and releases ownership when installed driver initialization fails', async () => {
@@ -169,7 +190,9 @@ describe('installed Cua Driver Loader composition', () => {
     expect(ctx.computerUse.providerName).toBeUndefined()
     expect(ctx.tools.get(TOOL)).toBeUndefined()
     const events = await driverEvents(root)
-    expect(events.filter(event => event.event === 'start')).toHaveLength(1)
-    expect(events.filter(event => event.event === 'exit')).toHaveLength(1)
+    expect(events.filter(event => event.event === 'discover')).toHaveLength(1)
+    expect(events.filter(event => event.event === 'initialize')).toHaveLength(1)
+    expect(events.filter(event => event.event === 'start')).toHaveLength(2)
+    for (const event of events.filter(event => event.event === 'start')) expectProcessExited(event.pid)
   })
 })

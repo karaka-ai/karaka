@@ -132,6 +132,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity.',
   },
   {
+    key: 'mcpResources',
+    pkg: 'mcp-resources',
+    title: 'Scoped MCP resource access',
+    mode: 'seam',
+    implementations: ['mcp-client'],
+    consumers: ['mcp-resources'],
+    note: 'Connection-owned providers serve shared resource tools in the calling agent scope.',
+  },
+  {
     key: 'computerUse',
     pkg: 'computer-use',
     title: 'Computer-use provider registration',

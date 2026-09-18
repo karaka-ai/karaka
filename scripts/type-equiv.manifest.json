@@ -2136,6 +2136,16 @@
       "symbol": "SshConnection",
       "source": "packages/ssh/ssh/src/index.ts",
       "projection": "public-api"
+    },
+    {
+      "doc": "docs/subsystems/mcp.md",
+      "symbol": "McpResourceRequest",
+      "source": "packages/mcp/mcp-resources/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/mcp.md",
+      "symbol": "McpResourceProvider",
+      "source": "packages/mcp/mcp-resources/src/index.ts"
     }
   ]
 }

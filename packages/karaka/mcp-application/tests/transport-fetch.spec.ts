@@ -1,10 +1,10 @@
 /** The SDK FetchLike callback accepts requests with omitted RequestInit fields. */
-import type { StreamableHTTPClientTransportOptions } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { StreamableHTTPClientTransportOptions } from '@modelcontextprotocol/client'
 import { expect, it, vi } from 'vitest'
 import { createTransport } from '../src/transport.ts'
 
 const sdk = vi.hoisted(() => ({ options: undefined as StreamableHTTPClientTransportOptions | undefined }))
-vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
+vi.mock('@modelcontextprotocol/client', () => ({
   StreamableHTTPClientTransport: vi.fn(function (_url: URL, options: StreamableHTTPClientTransportOptions) { sdk.options = options }),
 }))
 

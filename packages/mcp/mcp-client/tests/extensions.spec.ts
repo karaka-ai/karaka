@@ -3,10 +3,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from '@modelcontextprotocol/sdk/types.js'
+import { Client, InMemoryTransport, type Tool } from '@modelcontextprotocol/client'
+import { Server } from '@modelcontextprotocol/server'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { startConnection, resolveReconnectPolicy, type Config } from '../src/index.ts'
 import { syncTools, type ToolBridgeExtensions, type ToolDisposers } from '../src/tools.ts'
@@ -21,8 +19,8 @@ async function fixture() {
   // oxlint-disable-next-line typescript/no-deprecated -- low-level handlers expose exact protocol parameters.
   const server = new Server({ name: 'hooks', version: '1' }, { capabilities: { tools: {} } })
   onTestFinished(async () => { await server.close() })
-  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: catalog }))
-  server.setRequestHandler(CallToolRequestSchema, (request) => {
+  server.setRequestHandler('tools/list', () => ({ tools: catalog }))
+  server.setRequestHandler('tools/call', (request) => {
     called(request.params)
     return { content: [{ type: 'text', text: 'received' }] }
   })

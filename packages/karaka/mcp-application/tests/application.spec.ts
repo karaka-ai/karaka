@@ -9,7 +9,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolRunContext, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import { ApplicationId, TenantId, UserId, type ApplicationOwner, type KarakaIdentity } from '@karaka-ai/identity'
 import type { ServerAuth } from '@karaka-ai/server-auth'
-import { JSONRPCRequestSchema, type Tool } from '@modelcontextprotocol/sdk/types.js'
+import type { Tool } from '@modelcontextprotocol/client'
+import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
+import { toNodeHandler, type NodeIncomingMessageLike } from '@modelcontextprotocol/node'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { apply, inject, type Config } from '../src/index.ts'
 import { applicationToolNames, registerPolicy } from '../src/policy.ts'
@@ -31,22 +33,22 @@ async function applicationFixture() {
   await driver
   const requests: unknown[] = []
   let catalog: Tool[] = [{ name: 'read', inputSchema: { type: 'object' } }]
+  const handler = createMcpHandler(() => {
+    const mcp = new McpServer({ name: 'application-fixture', version: '1' }, { capabilities: { tools: {} } })
+    mcp.server.setRequestHandler('tools/list', async () => ({ tools: catalog }))
+    mcp.server.setRequestHandler('tools/call', async (request) => {
+      requests.push(request.params)
+      return { content: [{ type: 'text', text: 'accepted' }] }
+    })
+    return mcp
+  })
+  onTestFinished(async () => { await handler.close() })
+  const handle = toNodeHandler(handler)
   const handlers = new Set<Promise<void>>()
   const server = createServer((request, response) => {
-    if (request.method !== 'POST') { response.writeHead(405).end(); return }
-    const operation = (async () => {
-      const chunks: Buffer[] = []
-      for await (const chunk of request) chunks.push(Buffer.from(chunk as Uint8Array))
-      const parsed = JSONRPCRequestSchema.safeParse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
-      if (!parsed.success) { response.writeHead(202).end(); return }
-      const message = parsed.data
-      let result: unknown
-      if (message.method === 'initialize') result = { protocolVersion: message.params?.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'application-fixture', version: '1' } }
-      else if (message.method === 'tools/list') result = { tools: catalog }
-      else { requests.push(message.params); result = { content: [{ type: 'text', text: 'accepted' }] } }
-      response.writeHead(200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }))
-    })().catch((error: unknown) => { response.destroy(error instanceof Error ? error : new Error(String(error))) })
+    // Match the SDK's exact optional Node HTTP fields at its public adapter.
+    const operation = handle(request as NodeIncomingMessageLike, response)
+      .catch((error: unknown) => { response.destroy(error instanceof Error ? error : new Error(String(error))) })
     handlers.add(operation)
     void operation.then(() => handlers.delete(operation))
   })
