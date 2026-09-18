@@ -1,7 +1,7 @@
 /** Request conversion and durable replay validation. */
 import { describe, expect, it, vi } from 'vitest'
 import { createAssistantMessage, createMessage, createSystemMessage, createToolResultMessage, ReasoningEffortId, ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, ImageBlock, Message } from '@deepseek-ai/dsh-llm'
 import { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type { AttachmentStore, ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { resolveAdapterOptions } from '../../src/config.ts'
@@ -248,7 +248,7 @@ describe('validated configuration', () => {
 
 describe('Messages images', () => {
   const ref: ImageAttachmentRef = { attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`), mediaType: 'image/png', width: 1, height: 1, bytes: 3 }
-  const image: ContentBlock = { type: 'image', attachment: ref }
+  const image: ImageBlock = { type: 'image', attachment: ref }
   const version: RequestImageAttachment = { attachment: ref, variantId: ImageVariantId(`sha256:${'b'.repeat(64)}`), mediaType: 'image/png', bytes: 3, data: Uint8Array.of(1, 2, 3), width: 1, height: 1, depth: 'uchar', space: 'srgb', hasAlpha: false }
   const access = () => ({ readonlyPath: '/workspace/image.png' })
   const model = 'deepseek-v4-flash-vision-exp'
@@ -264,23 +264,30 @@ describe('Messages images', () => {
       { type: 'text', text: expect.stringContaining('/workspace/image.png') as string }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AQID' } },
       { type: 'text' }, { type: 'image' },
     ] })
-    expect(imagePricing(connection, model, access).priceImages([ref])[0]?.visualTokens).toBeGreaterThan(0)
-    expect(imagePricing(connection, MODEL, access).priceImages([ref])[0]?.visualTokens).toBe(0)
+    expect(imagePricing(connection, model, access).priceImages([image])[0]?.visualTokens).toBeGreaterThan(0)
+    expect(imagePricing(connection, MODEL, access).priceImages([image])[0]?.visualTokens).toBe(0)
   })
-  it('offloads an oldest prefix using exact encoded bytes and preserves durable references', async () => {
+  it('requires logged offload at exact encoded bytes and preserves durable references', async () => {
     const config = resolveAdapterOptions({
       maxInlineRequestImageBytes: 4, inlineImageOffloadByteQuantum: 1, maxImagesPerRequest: 2, imageOffloadCountQuantum: 1,
     })
     const history = [result('a', [image, image])]
     const prepared = await prepareImages(history, config, model, attachments, access, signal)
     expect(prepared.messages[0]?.content[0]).toMatchObject({ content: [image, image] })
-    expect(inlineImages(prepared.messages, prepared.versions, config, access)[0]?.content[0]).toMatchObject({ content: [{ type: 'text' }, { type: 'image' }] })
+    expect(() => inlineImages(prepared.messages, prepared.versions, config)).toThrow(expect.objectContaining({
+      failure: expect.objectContaining({ code: 'IMAGE_OFFLOAD_REQUIRED', offloadImages: 1 }) as unknown,
+    }))
+    const offloaded: ImageBlock = { ...image, offloaded: true }
+    const retry = await prepareImages([result('a', [offloaded, image])], config, model, attachments, access, signal)
+    expect(inlineImages(retry.messages, retry.versions, config)[0]?.content[0]).toMatchObject({ content: [{ type: 'text' }, { type: 'image' }] })
     expect(history[0]?.content[0]).toMatchObject({ content: [image, image] })
-    expect(imagePricing(config, model, access).priceImages([ref, ref]).map(entry => entry.visualTokens))
+    expect(imagePricing(config, model, access).priceImages([image, image]).map(entry => entry.visualTokens))
       .toEqual([expect.any(Number), expect.any(Number)])
     const large = { readImageRequest: async () => ({ ...version, bytes: 30, data: new Uint8Array(30) }) } as unknown as AttachmentStore
     const exact = await prepareImages([result('a', [image])], config, model, large, access, signal)
-    expect(inlineImages(exact.messages, exact.versions, config, access)[0]?.content[0]).toMatchObject({ content: [{ type: 'text' }] })
+    expect(() => inlineImages(exact.messages, exact.versions, config)).toThrow(expect.objectContaining({
+      failure: expect.objectContaining({ code: 'IMAGE_OFFLOAD_REQUIRED', offloadImages: 1 }) as unknown,
+    }))
   })
   it('rejects unsupported roles and unavailable image capabilities before HTTP', async () => {
     const history = [result('a', [image])]

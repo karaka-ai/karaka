@@ -173,10 +173,10 @@ describe('Cordis provider composition', () => {
     const model = 'deepseek-v4-flash-vision-exp'
     const price = () => ctx.llm.imageRequestPricing('deepseek-official', model)!
     const dummy = { attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`), width: 1, height: 1, bytes: 3, mediaType: 'image/png' as const }
-    expect(price().priceImages([dummy])[0]?.text).toBeDefined()
+    expect(price().priceImages([{ type: 'image', attachment: dummy }])[0]?.text).toBeDefined()
     await ctx.plugin(LocalAttachments, { dshHome: home })
     const attachment = await ctx.attachments.saveImage({ data: await readFile(new URL('fixtures/red.png', import.meta.url)), mediaType: 'image/png' })
-    expect(price().priceImages([attachment])[0]?.text).not.toContain('/mounted/image.png')
+    expect(price().priceImages([{ type: 'image', attachment }])[0]?.text).not.toContain('/mounted/image.png')
     class MappedFiles extends Service {
       constructor(context: Context) { super(context, 'fs') }
       processPathFromHostPath(_path: string) { return '/mounted/image.png' }
@@ -185,7 +185,7 @@ describe('Cordis provider composition', () => {
     const message = user()
     await chunks(ctx.llm.stream(options({ model, messages: [{ ...message, content: [...message.content, { type: 'image', attachment }] }] })))
     expect(JSON.stringify(http.requests[0]?.body)).toContain('/mounted/image.png')
-    expect(price().priceImages([attachment])[0]?.text).toContain('/mounted/image.png')
+    expect(price().priceImages([{ type: 'image', attachment }])[0]?.text).toContain('/mounted/image.png')
   })
 
   async function boot(...args: Parameters<typeof server>) {

@@ -1330,6 +1330,9 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
         sessions = dsh_home / "sessions"
         patch = write_advanced_profile_patch(root, "snapshot.patch.yml", sessions)
         feedback_patch = write_profile_patch(root, "feedback.patch.yml", sessions, [{"insert": [
+            {"id": "snapshot-image-offload", "name": (
+                Path(__file__).resolve().parent / "fixtures/python-snapshot-image-offload.mjs"
+            ).as_uri(), "config": {"parentSessionId": SNAPSHOT_SESSION_ID}},
             {"id": "snapshot-workflow-order", "name": (
                 Path(__file__).resolve().parent / "fixtures/python-snapshot-workflow-order.mjs"
             ).as_uri(), "config": {
@@ -1359,6 +1362,12 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
             result = harness.run(SNAPSHOT_PROMPT, session_id=SNAPSHOT_SESSION_ID)
 
         assert result.final_response == SNAPSHOT_FINAL_TEXT, result.final_response
+        offloads = [event for event in result.events if event.get("type") == "image/offload"]
+        if len(offloads) != 1 or "surfaceOp" in offloads[0]:
+            raise AssertionError(f"advanced snapshot expected one standalone image offload: {offloads}")
+        targets = offloads[0]["data"]["targets"]
+        if len(targets) != 1 or targets[0]["imageIndexes"] != [0]:
+            raise AssertionError(f"advanced snapshot selected unexpected image occurrences: {targets}")
         feedback_types = [event.get("type") for event in result.events
                           if str(event.get("type")).startswith("feedback/")]
         if feedback_types != ["feedback/record", "feedback/record", "feedback/message-put", "feedback/message-put", "feedback/message-delete"]:

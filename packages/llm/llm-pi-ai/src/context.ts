@@ -5,7 +5,7 @@
  */
 
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { contentHasImage, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, requestImageHandleText } from '@deepseek-ai/dsh-llm'
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, Message, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {
   AttachmentId,
@@ -95,8 +95,11 @@ function collectImageRefs(
   refs: Map<AttachmentId, ImageAttachmentRef>,
 ): void {
   for (const block of blocks) {
-    if (block.type === 'image') refs.set(block.attachment.attachmentId, block.attachment)
-    else if (block.type === 'tool-result') collectImageRefs(block.content, refs)
+    if (block.type === 'image') {
+      if (block.offloaded !== true) refs.set(block.attachment.attachmentId, block.attachment)
+    } else if (block.type === 'tool-result') {
+      collectImageRefs(block.content, refs)
+    }
   }
 }
 
@@ -220,7 +223,7 @@ export interface PiImageRequestContext {
   attachments: AttachmentStore
   /** Resolve current tool access separately from deterministic request-image versions. */
   resolveImageAccess: ImageAttachmentAccessResolver
-  /** Request-level bound on base64-encoded image payload; omission leaves every image in place. */
+  /** Request-level bound on the base64-encoded payload of retained images; omission leaves the bound unchecked. */
   maxRequestImageBytes?: number
   /** Route pixel and raw encoded-byte budgets. */
   requestImagePolicy?: PiImageRequestBudget
@@ -255,10 +258,11 @@ export function toPiContext(
 ): PiContext
 /**
  * Convert harness history to a pi-ai Context while resolving durable images.
- * Tool result names are recovered from preceding assistant tool calls. When
- * the accumulated base64 image payload exceeds `maxRequestImageBytes`, the
- * oldest images are replaced by text placeholders until the request fits, so
- * an image-heavy session keeps clearing gateway request-size caps.
+ * Tool result names are recovered from preceding assistant tool calls. Image
+ * occurrences the surface marks offloaded become text placeholders; when the
+ * retained occurrences' exact base64 payload still exceeds
+ * `maxRequestImageBytes`, the call fails with `IMAGE_OFFLOAD_REQUIRED` naming
+ * how many more oldest occurrences must be offloaded.
  * @param options - the harness request; `options.system`, else a leading `system` message, maps to pi-ai's single `systemPrompt` slot.
  * @param images - attachment provider, current path resolver, and request limits.
  * @param onReplayDegrade - forwarded to {@link toPiAssistant} for each assistant message.
@@ -291,21 +295,25 @@ async function toPiContextWithImages(
   }
   assertSupportedImageRoles(options.messages)
   const split = splitSystemPrompt(options)
-  const requestMessages = offloadRequestImagesWithPolicy(split.messages, {
-    representation: 'base64',
-    ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-    byteQuantum: 1,
-    byteLength: ref => Math.min(ref.bytes, requestImagePolicy.maxBytes),
-    placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),
-  })
-  const requestImages = await prepareRequestImages(requestMessages, attachments, requestImagePolicy, options.signal)
-  const exactMessages = offloadRequestImagesWithPolicy(requestMessages, {
-    representation: 'base64',
-    ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-    byteQuantum: 1,
-    byteLength: ref => (requestImages.get(ref.attachmentId) as RequestImageAttachment).bytes,
-    placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),
-  })
+  const requestImages = await prepareRequestImages(split.messages, attachments, requestImagePolicy, options.signal)
+  if (maxRequestImageBytes !== undefined) {
+    const offloadImages = requiredImageOffload(
+      split.messages,
+      { representation: 'base64', maxBytes: maxRequestImageBytes },
+      block => (requestImages.get(block.attachment.attachmentId) as RequestImageAttachment).bytes,
+    )
+    if (offloadImages > 0) {
+      throw new LlmError(
+        `pi-ai request images exceed the ${maxRequestImageBytes}-byte base64 bound; ${offloadImages} more oldest occurrence(s) must be offloaded.`,
+        IMAGE_OFFLOAD_REQUIRED_CODE,
+        { offloadImages },
+      )
+    }
+  }
+  const exactMessages = projectOffloadedImages(
+    split.messages,
+    ref => offloadedImageText(ref, resolveImageAccess(ref)),
+  )
   const toolNames = new Map<ToolCallId, string>()
   const messages: PiMessage[] = []
 

@@ -109,7 +109,7 @@ export class DeepSeekMessagesAdapter extends LlmAdapter {
           continue
         }
       }
-      const history = inline ? inlineImages(messages, versions, connection, this.dependencies.imageAccess) : messages
+      const history = inline ? inlineImages(messages, versions, connection) : messages
       const body = serialize(options, connection, history, versions, this.dependencies.imageAccess, (reason) => {
         this.dependencies.onReplayDegrade?.({ provider: options.provider, model: options.model, reason })
       }, fileIds)

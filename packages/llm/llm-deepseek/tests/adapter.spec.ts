@@ -170,10 +170,10 @@ describe('request image target', () => {
     const adapter = adapterOf({
       models: [{ id: 'vision', inputModalities: ['text', 'image'] }],
     })
-    const priced = adapter.imageRequestPricing('deepseek-official', 'vision')?.priceImages([imageRef])
+    const priced = adapter.imageRequestPricing('deepseek-official', 'vision')?.priceImages([{ type: 'image', attachment: imageRef }])
     expect(priced).toHaveLength(1)
     expect(priced?.[0]!.visualTokens).toBeGreaterThan(0)
-    const textOnly = adapter.imageRequestPricing('deepseek-official', 'unlisted')?.priceImages([imageRef])
+    const textOnly = adapter.imageRequestPricing('deepseek-official', 'unlisted')?.priceImages([{ type: 'image', attachment: imageRef }])
     expect(textOnly?.[0]!.visualTokens).toBe(0)
   })
 
@@ -189,7 +189,7 @@ describe('request image target', () => {
         : undefined),
       prepareExtensions: noExtensions,
     })
-    const priced = adapter.imageRequestPricing('deepseek-official', 'vision')?.priceImages([imageRef])
+    const priced = adapter.imageRequestPricing('deepseek-official', 'vision')?.priceImages([{ type: 'image', attachment: imageRef }])
     expect(priced?.[0]?.text).toContain('/world/img.png')
   })
 })
@@ -448,7 +448,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(files.ensureUploaded).toHaveBeenCalledTimes(1)
   })
 
-  it('reduces base64 fallback history from the configured high watermark to its half-size quantum', async () => {
+  it('fails a base64 fallback whose retained images exceed the inline bound with the count to offload', async () => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const attachments = attachmentStoreOf(ref => Promise.resolve(requestImage(ref))).store
     const files = fileStoreOf(() => Promise.reject(new LlmError('Files unavailable', 'SERVER')))
@@ -459,20 +459,16 @@ describe('DeepSeekAdapter against a mock server', () => {
       models: [{ id: 'deepseek-v4-flash-vision-exp', inputModalities: ['text', 'image'] }],
     }, attachments, files.store)
 
-    await drain(adapter.stream({
+    await expect(drain(adapter.stream({
       provider: 'deepseek-official',
       model: 'deepseek-v4-flash-vision-exp',
       messages: [createUserMessage({
         content: Array.from({ length: 21 }, () => ({ type: 'image' as const, attachment: imageRef })),
         source: { kind: 'plugin', plugin: 'test' },
       })],
-    }))
-
-    const body = JSON.stringify(server.requests[0])
-    expect(body.match(/image omitted to fit request image limits/g)).toHaveLength(11)
-    expect(body.match(/"type":"image_url"/g)).toHaveLength(10)
+    }))).rejects.toMatchObject({ code: 'IMAGE_OFFLOAD_REQUIRED', message: expect.stringContaining('11 more') as string })
+    expect(server.requests).toHaveLength(0)
   })
-
   it('discards partially resolved file ids and falls back with every retained image inline', async () => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const secondRef = { ...imageRef, attachmentId: AttachmentId(`sha256:${'c'.repeat(64)}`) }
@@ -599,7 +595,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(JSON.stringify(server.requests[0])).not.toContain('image_url')
   })
 
-  it('does not prepare an old image removed by request offload', async () => {
+  it('does not prepare a surface-offloaded image and sends its placeholder instead', async () => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const old = { ...imageRef, attachmentId: AttachmentId(`sha256:${'c'.repeat(64)}`), bytes: 3 }
     const recent = { ...imageRef, attachmentId: AttachmentId(`sha256:${'d'.repeat(64)}`), bytes: 3 }
@@ -610,8 +606,6 @@ describe('DeepSeekAdapter against a mock server', () => {
     const adapter = adapterOf({
       baseURL: server.url,
       models: [{ id: 'deepseek-v4-flash-vision-exp', inputModalities: ['text', 'image'] }],
-      maxRequestFilesBytes: 4,
-      imageOffloadByteQuantum: 2,
     }, attachmentMocks.store)
 
     await drain(adapter.stream({
@@ -619,7 +613,7 @@ describe('DeepSeekAdapter against a mock server', () => {
       model: 'deepseek-v4-flash-vision-exp',
       messages: [createUserMessage({
         content: [
-          { type: 'image', attachment: old },
+          { type: 'image', attachment: old, offloaded: true },
           { type: 'image', attachment: recent },
         ],
         source: { kind: 'plugin', plugin: 'test' },

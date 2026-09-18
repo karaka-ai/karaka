@@ -156,6 +156,11 @@ export function renderKnownEventTypes(events: AnnotatedLogEventEntry[]): string 
     ...names.map(name => `  '${name}',`),
     '])',
     '',
+    '/** Event types whose model-visible effects require an explicit pure interpreter. */',
+    'export const MESSAGE_PROJECTION_EVENT_TYPES: ReadonlySet<string> = new Set([',
+    ...events.filter(event => event.messageProjection).map(event => `  '${event.name}',`).sort(),
+    '])',
+    '',
   ].join('\n')
 }
 

@@ -401,6 +401,11 @@
         headChars: 4096
         tailChars: 1024
 
+    # When an image-capable route rejects a request as over its image budget,
+    # replace the oldest images with placeholders on the surface and retry.
+    - id: image-offload
+      name: '@deepseek-ai/dsh-compaction-image-offload'
+
     - id: tool-todo
       name: '@deepseek-ai/dsh-tool-todo'
       config:
