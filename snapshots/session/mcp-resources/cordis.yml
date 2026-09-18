@@ -1,6 +1,4 @@
 - insert:
-    - id: mcp-resources
-      name: '@deepseek-ai/dsh-mcp-resources'
     - id: mcp-resource-catalog
       name: '@deepseek-ai/dsh-mcp-client'
       config:

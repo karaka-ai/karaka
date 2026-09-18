@@ -5,7 +5,7 @@
  */
 
 import { Service, type Context } from '@deepseek-ai/cordis'
-import { NamedEntries, ScopedLayers, type ScopeLayer } from '@deepseek-ai/dsh-scope'
+import { createScope, NamedEntries, ScopedLayers, scopeOf, type ScopeKey, type ScopeLayer } from '@deepseek-ai/dsh-scope'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -36,6 +36,7 @@ export interface McpResourceProvider {
 class ResourceLayer implements ScopeLayer {
   readonly servers = new NamedEntries<McpResourceProvider>(name =>
     new Error(`MCP resource server "${name}" is already registered in this scope`))
+  disposeTools: (() => void | Promise<void>) | undefined
 
   isEmpty(): boolean {
     return this.servers.isEmpty()
@@ -48,11 +49,13 @@ export class McpResourceRuntime extends Service {
   static inject = ['tools']
 
   private readonly layers = new ScopedLayers(() => new ResourceLayer(), () => undefined)
+  /** Shared tool registrations outlive any one server's registering context. */
+  private readonly selfCtx: Context
 
   constructor(ctx: Context) {
     super(ctx, 'mcpResources')
+    this.selfCtx = ctx
 
-    registerResourceTools(ctx, (server, request, exec) => this.request(server, request, exec))
     ctx.inject(['systemPrompt'], (inner) => {
       inner.systemPrompt.section({
         name: 'mcp-resource-servers',
@@ -69,15 +72,50 @@ export class McpResourceRuntime extends Service {
   }
 
   /**
-   * Register one server in the caller's Cordis scope.
+   * Register one server and expose resource tools while that scope has providers.
    * @param server - configured server name, unique in this scope.
    * @param provider - connection-owned resource operations.
    * @returns the effect disposer for this exact registration.
    */
   register(server: string, provider: McpResourceProvider): () => void {
-    return this.layers.effect(this.ctx, layer => layer.servers.insert(server, provider), {
-      label: `mcpResources.register(${server})`,
-    })
+    const ctx = this.ctx
+    const scope = scopeOf(ctx)
+    const dispose = ctx.effect(function* (this: McpResourceRuntime) {
+      let disposal: void | Promise<void>
+      // Tools disappear synchronously; Cordis owns any pending scoped-fiber teardown.
+      yield () => disposal
+      yield this.layers.effect(ctx, (layer) => {
+        const first = layer.servers.isEmpty()
+        const remove = layer.servers.insert(server, provider)
+        try {
+          if (first) layer.disposeTools = this.registerTools(scope)
+        } catch (error) {
+          remove()
+          throw error
+        }
+        return () => {
+          remove()
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- successful provider registration owns the shared tools
+          if (layer.servers.isEmpty()) disposal = layer.disposeTools!()
+        }
+      }, { label: `mcpResources.provider(${server})` })
+    }.bind(this), `mcpResources.register(${server})`)
+    // oxlint-disable-next-line typescript/no-misused-promises -- visibility cleanup is synchronous; Cordis retains pending fiber disposal
+    return dispose
+  }
+
+  /** Own one scope's tools independently of its configured server plugins. */
+  private registerTools(scope: ScopeKey | undefined): () => void | Promise<void> {
+    const ctx = this.selfCtx
+    return ctx.effect(function* (this: McpResourceRuntime) {
+      let toolCtx = ctx
+      if (scope !== undefined) {
+        const owned = createScope(ctx, scope)
+        yield owned.rawDispose
+        toolCtx = owned.ctx
+      }
+      yield registerResourceTools(toolCtx, (server, request, exec) => this.request(server, request, exec))
+    }.bind(this), 'mcpResources.tools')
   }
 
   /** Resolve the caller-visible server before starting any network operation. */

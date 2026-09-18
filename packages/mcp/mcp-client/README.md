@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-mcp-client` lets the model call tools from external Model Context Protocol (MCP) servers as native harness tools. Configure one server per entry, and its tools appear under stable names such as `mcp__github__create_issue`. Use it for filesystem, GitHub, database, or memory servers; no server is enabled by default. Tool definitions add tokens to every model request, while a slow or crashed server can delay startup or make its tools fail until recovery. Mount the separate [MCP resources service](../mcp-resources/README.md) to discover and read resources on demand. Server instructions join the logged system prompt as literal text; MCP prompt templates are unsupported.
+`dsh-mcp-client` lets the model use tools and resources from external Model Context Protocol (MCP) servers. Configure one server per entry; its tools use names such as `mcp__github__create_issue`. No server is enabled by default. Shipped profiles already provide [shared resource discovery and reading](../mcp-resources/README.md). An empty caller scope adds no MCP tools or prompt text. Server instructions join the logged system prompt as literal text; MCP prompt templates are unsupported. Slow or crashed servers can delay startup or fail calls until recovery.
 
 ## Table of Contents
 
@@ -174,7 +174,7 @@ After discovery succeeds, SDK-admitted MCP tools appear as native tools named `m
 
 #### Token effect
 
-The tool descriptions and input schemas enter every request while the tools are registered; re-syncs replace rather than accumulate schemas, and the server-qualified name adds tokens to every tool definition and call.
+The tool descriptions and input schemas enter every request while the tools are registered; re-syncs replace rather than accumulate schemas, and the server-qualified name adds tokens to every tool definition and call. A configured client also enables the [shared resource tools and server-name prompt](../mcp-resources/README.md#model-experience).
 
 #### KV Cache effect
 
@@ -215,7 +215,7 @@ Unchanged instructions retain identical prompt text. Updated or removed instruct
 
 These limits describe what you cannot do with this plugin and when it needs operational attention. They are current package constraints, not a comparison with other MCP clients or a task backlog.
 
-- **Resources require the separate service** — mount `@deepseek-ai/dsh-mcp-resources` for discovery and reading; resource subscriptions and MCP prompt templates are unsupported.
+- **Resources are read on demand** — shipped profiles provide the [shared resource service](../mcp-resources/README.md); resource subscriptions and MCP prompt templates are unsupported.
 - **Startup and discovery timeouts are inherited from the MCP SDK** — the plugin exposes no separate connection or discovery timeout. Negotiation and discovery use the SDK's 60-second request default; discovery also uses its page limit.
 - **Reconnect handles failed negotiation and transport close** — a failed initial probe or crashed stdio child uses the configured reconnect budget. Once HTTP is connected, request failures use the SDK transport's recovery rather than respawning the connection.
 - **Image is the only durable rich-result bridge** — PNG, JPEG, WebP, and GIF enter Native context after exact capability proof. Audio and embedded-resource payloads remain execution-local with explicit diagnostics, while resource links preserve only their name and URI as text.

@@ -195,7 +195,12 @@ const TOOL_PACKAGES: ToolPackage[] = [
     source: 'packages/mcp/mcp-resources/src/tools.ts',
     requires: ['ctx.tools', 'ctx.mcpResources'],
     writes: ['tool/call', 'tool/result'],
-    async mount(ctx) { await ctx.plugin(McpResources) },
+    async mount(ctx) {
+      await ctx.plugin(McpResources)
+      ctx.mcpResources.register('catalog', {
+        request: () => Promise.reject(new Error('gen-tool-catalog: MCP requests are unreachable during schema harvest')),
+      })
+    },
   },
   {
     pkg: '@deepseek-ai/dsh-tool-ask-user',

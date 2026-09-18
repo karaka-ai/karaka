@@ -14,15 +14,16 @@
                 defaultMaxTokens: 256000
                 reasoningEfforts: [off, low, high, max]
                 defaultReasoningEffort: max
+    - id: literal-sdk
+      name: '../../../packages/core/tools/tests/fixtures/literal-sdk.ts'
 
-- insert:
-    - id: mcp-resource-catalog
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        transport: stdio
-        serverName: catalog
-        command: !!js process.execPath
-        args: !!js '[process.env.DSH_MCP_RESOURCES_FIXTURE]'
-        failOnStartupError: true
-        reconnect:
-          enabled: false
+- id: tools
+  config:
+    mode: ptc
+
+- id: system-prompt
+  config:
+    personaPrefix: |
+      You are a coding assistant powered by the {{model}} model. Your working directory is {{cwd}}.
+
+      Verify your work by running the code or tests. Keep answers brief and factual.

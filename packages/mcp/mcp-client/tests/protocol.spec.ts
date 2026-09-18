@@ -52,6 +52,40 @@ describe('modern MCP connections', () => {
     expect(ctx.tools.schemas()).toEqual([])
   })
 
+  it('keeps shared resource tools for a configured server without resource capability', async () => {
+    const server = new McpServer({ name: 'tools-only', version: '1' })
+    server.registerTool('ping', { inputSchema: z.object({}) }, async () => ({
+      content: [{ type: 'text', text: 'pong' }],
+    }))
+    const ctx = await connect(server, { resources: true })
+    const names = ctx.tools.schemas().map(tool => tool.name)
+    expect(names.toSorted()).toEqual([
+      'list_mcp_resource_templates', 'list_mcp_resources', 'mcp__fixture__ping', 'read_mcp_resource',
+    ])
+    for (const [name, expected] of [
+      ['list_mcp_resources', { resources: [] }],
+      ['list_mcp_resource_templates', { resourceTemplates: [] }],
+    ] as const) {
+      const result = await ctx.tools.execute({
+        name, arguments: { server: 'fixture' },
+        callId: ToolCallId(name), signal: new AbortController().signal,
+      })
+      expect(result).toMatchObject({ isError: false, value: expected })
+    }
+    const read = await ctx.tools.execute({
+      name: 'read_mcp_resource', arguments: { server: 'fixture', uri: 'memo://readme' },
+      callId: ToolCallId('unsupported-resource-read'), signal: new AbortController().signal,
+    })
+    expect(read.isError).toBe(true)
+    if (read.isError) expect(read.error.message).toContain('Method not found')
+    expect(ctx.tools.schemas().map(tool => tool.name)).toEqual(names)
+    const ping = await ctx.tools.execute({
+      name: 'mcp__fixture__ping', arguments: {},
+      callId: ToolCallId('ping-after-resource-errors'), signal: new AbortController().signal,
+    })
+    expect(ping).toMatchObject({ isError: false, value: { content: [{ type: 'text', text: 'pong' }] } })
+  })
+
   it('reads resources and preserves explicit list and template cursors through the SDK', async () => {
     const server = new McpServer({ name: 'resources', version: '1' })
     server.registerResource('memo', 'memo://readme', {}, async () => ({

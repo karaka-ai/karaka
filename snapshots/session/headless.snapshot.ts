@@ -609,6 +609,26 @@ function verifyMcpResources(log: string, ptc: boolean): void {
     .toContain('server argument: ["catalog"]')
 }
 
+function verifyNoMcpServers(log: string, ptc: boolean): void {
+  const events = parseSessionLog(log)
+  const headers = events.flatMap(event => event.type === 'request/header' ? [event.data.header] : [])
+  const prompts = events.flatMap(event => event.type === 'system/message'
+    ? event.data.message.content.filter(block => block.type === 'text').map(block => block.text) : [])
+  expect(headers.length).toBeGreaterThan(0)
+  expect(prompts.length).toBeGreaterThan(0)
+  for (const header of headers) {
+    const names = header.tools?.map(tool => tool.name) ?? []
+    expect(names.filter(name => name.includes('mcp'))).toEqual([])
+    if (ptc) expect(names).toEqual(['run_code'])
+    else expect(names).toContain('bash')
+  }
+  for (const prompt of prompts) {
+    expect(prompt).not.toMatch(/\bMCP\b|mcp__/)
+    expect(prompt).not.toMatch(/list_mcp_resources|list_mcp_resource_templates|read_mcp_resource/)
+    if (ptc) expect(prompt).toContain('declare const tools:')
+  }
+}
+
 /** Require an admitted failed job and zero process allocations before updating its recorded oracle. */
 async function verifyBackgroundConfinementFailure(log: string, cwd: string): Promise<void> {
   const results = parseSessionLog(log).flatMap(event => event.type === 'tool/result'
@@ -1080,6 +1100,9 @@ describe('headless recorded-session snapshots', () => {
             }
             if (scenario.name === 'mcp-resources' || scenario.name === 'mcp-resources-ptc') {
               verifyMcpResources(actualLogs[0]!.content, scenario.name === 'mcp-resources-ptc')
+            }
+            if (scenario.name === 'mcp-empty' || scenario.name === 'mcp-empty-ptc') {
+              verifyNoMcpServers(actualLogs[0]!.content, scenario.name === 'mcp-empty-ptc')
             }
             if (scenario.name === 'provider-cwd') {
               await verifyProviderCwdResume(

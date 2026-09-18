@@ -460,6 +460,9 @@
         fetch: true
         searchTimeoutMs: 60000
 
+    - id: mcp-resources
+      name: '@deepseek-ai/dsh-mcp-resources'
+
     # ── rows every mode mounts, whose values each overlay may state ──────────────
 
     # The tool registry. Presentation mode is a deployment choice; omitting it here

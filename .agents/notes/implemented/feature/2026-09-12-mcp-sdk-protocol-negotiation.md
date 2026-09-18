@@ -28,6 +28,6 @@ The [tool bridge note](2026-07-07-mcp-client-plugin.md) retains the independent 
 
 ## Consequences
 
-Stdio negotiation starts a disposable probe process and waits for its exit before starting the serving process. The SDK bounds discovery with its page limit, and malformed results fail before projection. Valid text, canonical JSON, image admission, cancellation, and registration ownership remain bridge contracts. Resources have an optional consumer; elicitation, MCP prompts, and task execution remain unsupported.
+Stdio negotiation starts a disposable probe process and waits for its exit before starting the serving process. The SDK bounds discovery with its page limit, and malformed results fail before projection. Valid text, canonical JSON, image admission, cancellation, and registration ownership remain bridge contracts. Shipped profiles include shared resource access; elicitation, MCP prompts, and task execution remain unsupported.
 
 Real-SDK lifecycle tests verify probe disposal, process ordering, HTTP probe retry budgets, and failed stdio spawns. The connection-supervisor tests retain attached-transport close barriers and bounded failure behavior.

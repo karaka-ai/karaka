@@ -1441,6 +1441,9 @@ importers:
       '@deepseek-ai/dsh-llm-retry':
         specifier: workspace:^
         version: link:../../llm/llm-retry
+      '@deepseek-ai/dsh-mcp-resources':
+        specifier: workspace:^
+        version: link:../../mcp/mcp-resources
       '@deepseek-ai/dsh-permission-presets':
         specifier: workspace:^
         version: link:../../interaction/permission-presets
@@ -1720,6 +1723,9 @@ importers:
       '@deepseek-ai/dsh-llm-retry':
         specifier: workspace:^
         version: link:../../llm/llm-retry
+      '@deepseek-ai/dsh-mcp-resources':
+        specifier: workspace:^
+        version: link:../../mcp/mcp-resources
       '@deepseek-ai/dsh-plugin-package-inventory-deepseek':
         specifier: workspace:^
         version: link:../../llm/plugin-package-inventory-deepseek
@@ -7900,6 +7906,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-ptc-runtime':
+        specifier: workspace:^
+        version: link:../../ptc-runtime/ptc-runtime
       '@deepseek-ai/dsh-scope':
         specifier: workspace:^
         version: link:../../core/scope

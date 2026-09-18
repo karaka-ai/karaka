@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-`mcp/` 组让模型调用外部 Model Context Protocol（MCP）工具并读取服务器资源。通过 `mcp-client` 配置每个服务器；挂载 `mcp-resources` 以添加共享的资源发现与读取能力。连接还会向模型提供服务器指令。这些能力均按需启用，配置与限制由各包的 README 说明。
+`mcp/` 组让模型调用外部 Model Context Protocol（MCP）工具并读取服务器资源。只需配置 `mcp-client` 条目；随附 profile 已统一挂载 `mcp-resources` 一次。只有作用域中存在已配置服务器的调用方才会看到 MCP 工具与提示词文本。连接还会提供服务器指令。配置与限制由各包的 README 说明。
 
 ## 目录
 
@@ -22,7 +22,7 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-为每个服务器选择连接包，并在模型需要访问资源时选择资源包。
+客户端拥有每个已配置连接；共享资源包为这些连接提供资源工具。
 
 | 包 | 提供的能力 |
 |---|---|

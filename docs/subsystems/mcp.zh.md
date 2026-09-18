@@ -4,7 +4,7 @@
 
 ## 摘要
 
-模型上下文协议（Model Context Protocol，MCP）让模型使用外部服务器提供的工具。每个已配置服务器都会提供普通 Harness 工具，支持取消、权限检查、结果记录和受支持的图像输出。可选的共享工具负责发现和读取资源，服务器指令则加入已记录的系统提示词。官方 SDK 协商现代或受支持的旧版协议。本参考页介绍 MCP 包组的职责、作用域和组合选择；服务器配置由[客户端 README](../../packages/mcp/mcp-client/README.zh.md) 维护。
+模型上下文协议（Model Context Protocol，MCP）让模型使用外部服务器提供的工具。每个已配置服务器都会提供普通 Harness 工具，支持取消、权限检查、结果记录和受支持的图像输出。调用方作用域中配置了服务器时，共享工具负责发现和读取资源，服务器指令则加入已记录的系统提示词。官方 SDK 协商现代或受支持的旧版协议。本参考页介绍 MCP 包组的职责、作用域和组合选择；服务器配置由[客户端 README](../../packages/mcp/mcp-client/README.zh.md) 维护。
 
 ## 目录
 
@@ -21,13 +21,13 @@
 <a id="configuration"></a>
 ## 配置
 
-MCP 需要显式启用。在目标 Cordis 作用域中，为每个服务器挂载一个 `@deepseek-ai/dsh-mcp-client` 条目。组合提供[工具注册表](tools.zh.md)；MCP 客户端拥有自己的连接和已发现工具。
+MCP 服务器需要主动配置。在目标 Cordis 作用域中，为每台服务器配置一个 `@deepseek-ai/dsh-mcp-client` 条目。每个随附 profile 都提供[工具注册表](tools.zh.md)，并统一挂载共享资源服务一次；用户只需配置客户端条目。调用方没有可见的已配置服务器时，在 native 或 PTC 模式下都不会获得 MCP 提示词文本或工具。
 
 | 选择 | 配置维护位置 |
 |---|---|
 | 服务器身份、本地进程或 HTTP 端点、凭据和进程环境 | [客户端配置](../../packages/mcp/mcp-client/README.zh.md#use-this-package) |
 | 工具与资源请求超时、启动失败策略和重连 | [客户端配置](../../packages/mcp/mcp-client/README.zh.md#use-this-package) |
-| 资源发现与读取 | 挂载 [MCP 资源服务](../../packages/mcp/mcp-resources/README.zh.md#use-this-package)；该服务没有配置字段 |
+| 资源发现与读取 | 随附 profile 已包含 [MCP 资源服务](../../packages/mcp/mcp-resources/README.zh.md#use-this-package)；该服务没有配置字段 |
 | 服务器指令大小限制 | 客户端 `maxInstructionBytes`；组合提供[系统提示词装配](system-prompt.zh.md) |
 | 权限决策和受支持的图像输出 | [工具执行](tools.zh.md)和[附件](attachment.zh.md) |
 
@@ -40,7 +40,7 @@ MCP 需要显式启用。在目标 Cordis 作用域中，为每个服务器挂�
 
 客户端是每服务器一个的连接插件，也是 Harness 工具注册表的消费者。它不发布共享的 `ctx.mcp` 服务。外部服务器实现 MCP 操作；SDK 拥有协议交换；客户端将发现的工具适配到 Harness 执行过程。
 
-`mcp-resources` 是可选的共享服务和工具消费者。它定义资源提供方接口，在调用方作用域中选择提供方，并注册一组共享资源工具。每个 MCP 客户端通过自己的连接提供资源操作。挂载资源服务不会创建连接，也不会改变配置的服务器。
+`mcp-resources` 拥有共享资源工具，并在调用方作用域中选择提供方。每个 MCP 客户端通过自己的连接提供资源操作。作用域中的首个提供方启用本地共享工具，移除最后一个提供方时移除这些工具；继承的提供方仍然可见。服务独立于任何单一客户端拥有这些工具注册。只要可见的客户端条目保持激活，连接失败就不会移除共享资源工具。
 
 配置的 `serverName` 在注册作用域内标识服务器。同一作用域中的两个条目不能占用相同名称；不同 Agent 作用域可以复用该名称。公开工具名包含配置的服务器名称，因此不同服务器的同名工具仍可区分。注册副作用拥有名称和已发现工具；插件释放时关闭连接并移除其贡献。
 
@@ -98,7 +98,7 @@ interface McpResourceProvider {
 <a id="limits"></a>
 ## 限制
 
-不支持 MCP 提示词模板、人工输入征询、基于任务的执行和资源订阅。资源访问需要可选的资源服务；二进制资源保留为程序化数据，模型接收其文本描述。没有工具能力的服务器以空工具集连接。连接和发现超时遵循 SDK；客户端没有对应的独立设置。
+不支持 MCP 提示词模板、人工输入征询、基于任务的执行和资源订阅。资源工具需要调用方可见的已配置服务器；二进制资源保留为程序化数据，模型接收其文本描述。没有工具能力的服务器以空工具集连接。连接和发现超时遵循 SDK；客户端没有对应的独立设置。
 
 -----
 
@@ -107,6 +107,7 @@ interface McpResourceProvider {
 
 - [MCP 包组](../../packages/mcp/README.zh.md) — 包入口。
 - [MCP 资源](../../packages/mcp/mcp-resources/README.zh.md) — 共享工具与资源提供方语义。
+- [资源可见性决策](../../.agents/notes/implemented/feature/2026-09-13-mcp-resources-in-profiles.zh.md) — profile 统一挂载及由已配置服务器决定的可见性。
 - [第三方记忆服务器](../user/guide/mcp-memory.zh.md) — 产品配置指南。
 - [协议协商决策](../../.agents/notes/implemented/feature/2026-09-12-mcp-sdk-protocol-negotiation.zh.md) — SDK 职责与兼容性决策。
 
@@ -126,7 +127,7 @@ Scoped resource access plus three tools shared by configured MCP servers.
 
 ```ts cordis-catalog
 /**
- * Register one server in the caller's Cordis scope.
+ * Register one server and expose resource tools while that scope has providers.
  * @param server - configured server name, unique in this scope.
  * @param provider - connection-owned resource operations.
  * @returns the effect disposer for this exact registration.

@@ -1388,7 +1388,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'register(server: string, provider: McpResourceProvider): () => void',
-        description: 'Register one server in the caller\'s Cordis scope.',
+        description: 'Register one server and expose resource tools while that scope has providers.',
         parameters: [{ name: 'server', description: 'configured server name, unique in this scope.' }, { name: 'provider', description: 'connection-owned resource operations.' }],
         returns: 'the effect disposer for this exact registration.',
       },
