@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
 
 const moduleUrl = new URL('../packages/karaka/agent/scripts/source-revision.mjs', import.meta.url).href
-const readSource = `const { readSourceRevision } = await import(process.argv[1]); process.stdout.write(JSON.stringify(readSourceRevision(process.argv[2])))`
+const readSource = 'const { readSourceRevision } = await import(process.argv[1]); process.stdout.write(JSON.stringify(readSourceRevision(process.argv[2])))'
 
 it('records the actual checkout revision and distinguishes uncommitted source', { timeout: 90_000 }, (test) => {
   const root = mkdtempSync(join(tmpdir(), 'karaka-artifact-source-'))

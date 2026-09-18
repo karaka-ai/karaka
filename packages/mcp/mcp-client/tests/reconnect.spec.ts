@@ -511,9 +511,11 @@ describe('reconnect supervisor', () => {
     try {
       await connection.ready
       mockListTools.mockRejectedValueOnce(new Error('catalog unavailable'))
-      const handler = mockSetNotificationHandler.mock.calls[0]?.[1] as () => Promise<void>
-      await handler()
-      expect(errors.some(line => line.includes('tool re-sync failed'))).toBe(true)
+      const handler = mockSetNotificationHandler.mock.calls[0]?.[1] as () => void
+      handler()
+      await vi.waitFor(() => {
+        expect(errors.some(line => line.includes('tool re-sync failed'))).toBe(true)
+      })
       const result = await ctx.tools.execute({
         signal: testToolSignal, callId: nextCallId(), name: 'mcp__srv__remote', arguments: {},
       })

@@ -194,11 +194,11 @@ describe('application MCP catalogs', () => {
     expect(f.root.tools.get('mcp__app__read', scoped.value)).toBe(original)
   })
 
-  it.each(['required', 'optional'] as const)('retains task-support rejection order for %s tools', async (taskSupport) => {
+  it('rejects invalid modern HTTP tool arguments before dispatch', async () => {
     const f = await applicationFixture()
     const scoped = f.agent('owned', f.owner)
     f.setCatalog([{
-      name: 'read', execution: { taskSupport },
+      name: 'read',
       inputSchema: {
         $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object',
         properties: { id: { type: 'integer' } }, required: ['id'],
@@ -208,12 +208,7 @@ describe('application MCP catalogs', () => {
     expect(f.root.tools.get('mcp__app__read', scoped.value)?.parameters).not.toHaveProperty('$schema')
     const result = await f.invoke(scoped.value)
     expect(result.isError).toBe(true)
-    if (taskSupport === 'required') {
-      expect(result.error?.message).toContain('requires task-based execution')
-      expect(result.error?.info?.code).not.toBe('INVALID_ARGS')
-    } else {
-      expect(result.error?.info?.code).toBe('INVALID_ARGS')
-    }
+    expect(result.error?.info?.code).toBe('INVALID_ARGS')
     expect(f.requests).toEqual([])
   })
 
