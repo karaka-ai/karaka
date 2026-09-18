@@ -1,4 +1,4 @@
-name: Temporary headless lane comparison
+name: Temporary heartbeat control
 
 on:
   pull_request:
@@ -16,10 +16,6 @@ jobs:
     if: github.event.pull_request.number == 165 && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        revision: [base, head]
     env:
       PRIMARY_NODE_VERSION: '24'
       DSH_TELEMETRY_DISABLED: '1'
@@ -33,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ matrix.revision == 'base' && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
           fetch-depth: 0
       - name: Record exact source and request references
@@ -125,6 +121,54 @@ jobs:
         run: |
           set -o pipefail
           pnpm run check:ci:consumers 2>&1 | tee "$RUNNER_TEMP/headless-comparison/diagnostic.log"
+      - name: Suppress only the first primary request's comments
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+          path = Path('apps/cli/tests/profiles/headless/tests/headless.expected.e2e.ts')
+          source = path.read_text()
+          marker = '      requests.push(JSON.parse(body) as JsonObject)'
+          replacement = marker + "\n      const omitHeartbeat = requests.at(-1)?.max_tokens === 256_000\n        && requests.filter(request => request.max_tokens === 256_000).length === 1"
+          assert source.count(marker) == 1
+          source = source.replace(marker, replacement)
+          header = "      response.writeHead(200, { 'content-type': 'text/event-stream' })"
+          assert source.count(header) == 1
+          source = source.replace(header, header + "\n      if (omitHeartbeat) response.flushHeaders()")
+          comment = "          response.write(': keep-alive\\n\\n')"
+          assert source.count(comment) == 1
+          source = source.replace(comment, "          if (!omitHeartbeat) response.write(': keep-alive\\n\\n')")
+          path.write_text(source)
+          output = Path(os.environ['RUNNER_TEMP']) / 'headless-comparison'
+          (output / 'negative-control.patch').write_bytes(subprocess.check_output(['git', 'diff', '--', str(path)]))
+          PY
+      - name: Require the original assertion to reject the missing heartbeat
+        env:
+          DSH_EXAMPLE_MODE: lib
+        run: |
+          set +e
+          pnpm exec vitest run --config vitest.expected.config.ts apps/cli/tests/profiles/headless/tests/headless.expected.e2e.ts -t 'keeps provider comments alive and sends DeepSeek defaults through the one-shot app' 2>&1 | tee "$RUNNER_TEMP/headless-comparison/negative-control.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$RUNNER_TEMP/headless-comparison/negative-control-exit.txt"
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          output = Path(os.environ['RUNNER_TEMP']) / 'headless-comparison'
+          assert int((output / 'negative-control-exit.txt').read_text()) != 0, 'missing heartbeat unexpectedly passed'
+          log = re.sub(r'\x1b\[[0-9;]*m', '', (output / 'negative-control.log').read_text())
+          match = re.search(r'AssertionError: (\{.*?\}): expected', log)
+          assert match is not None, 'missing expected request-count diagnostic'
+          diagnostic = json.loads(match.group(1))
+          assert diagnostic['requestCounts'] == {'main': 2, 'title': 1, 'other': 0}, diagnostic
+          assert len(diagnostic['retries']) == 1, diagnostic
+          assert diagnostic['retries'][0].get('retry') == 1, diagnostic
+          assert diagnostic['retries'][0].get('code') == 'TIMEOUT', diagnostic
+          (output / 'negative-control-result.json').write_text(json.dumps(diagnostic, indent=2) + '\n')
+          PY
       - name: Record final tracked-change scope
         if: always()
         run: |
@@ -141,7 +185,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: headless-comparison-${{ matrix.revision }}-${{ github.event.pull_request.head.sha }}
+          name: heartbeat-control-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/headless-comparison
           if-no-files-found: error
           retention-days: 3
