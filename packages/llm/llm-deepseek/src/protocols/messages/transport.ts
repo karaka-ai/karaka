@@ -2,6 +2,17 @@
 
 import { isContextWindowExceededError, isQuotaExceededError, LlmError, ProviderRequestId } from '@deepseek-ai/dsh-llm'
 
+/** Read only provider error fields used by bounded Files recovery.
+ * @param raw - decoded HTTP error response.
+ * @returns code, type, and message text, without unrelated response fields.
+ */
+export function providerErrorDetail(raw: unknown): string {
+  const error = typeof raw === 'object' && raw !== null && 'error' in raw ? raw.error : undefined
+  if (typeof error !== 'object' || error === null) return ''
+  const fields = error as Record<string, unknown>
+  return [fields.code, fields.type, fields.message].filter((value): value is string => typeof value === 'string').join(' ')
+}
+
 /** Classify a provider error without trusting arbitrary response fields.
  * @param raw - decoded response or in-band error event.
  * @param status - HTTP status when the error preceded streaming.

@@ -6,7 +6,7 @@
  * @module dsh-llm-deepseek/serialize
  */
 
-import { contentHasImage, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, requestImageHandleText } from '@deepseek-ai/dsh-llm'
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, Message } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type {
@@ -56,11 +56,8 @@ export interface ImageSerializationOptions {
   countQuantum?: number
 }
 
-/** Durable message and image ordinal used in provider diagnostics. */
-export interface ImageWireLocation {
-  message: number
-  image: number
-}
+export type { ImageWireLocation } from '../../common/request-files.ts'
+import type { ImageWireLocation } from '../../common/request-files.ts'
 
 const TOOL_RESULT_IMAGE_TEXT = 'Attached image(s) from tool result:'
 
@@ -274,7 +271,7 @@ export function serializeMessages(messages: Message[]): WireMessage[] {
  * Serialize image-capable history after resolving durable attachments.
  * Consecutive tool results keep string `tool` messages and share one following
  * user message containing their images.
- * @param messages - transient request history after request-size offloading.
+ * @param messages - request history whose offloaded occurrences are already placeholder text.
  * @param images - prepared request versions, one provider representation, and its budget.
  * @returns ordered DeepSeek wire messages.
  */
@@ -388,9 +385,39 @@ export function serializeRequest(
 }
 
 /**
+ * Reject a request whose retained occurrences, at their exact request-version
+ * byte lengths under this representation, still exceed the route budget. The
+ * failure names how many more oldest retained occurrences need durable
+ * omission before the request can be retried.
+ */
+function assertRetainedImagesFit(messages: readonly Message[], images: ImageSerializationOptions): void {
+  const representation = images.representation.kind === 'file' ? 'raw' : 'base64'
+  const offloadImages = requiredImageOffload(messages, {
+    representation,
+    maxBytes: images.maxRequestImageBytes,
+    ...images.maxImagesPerRequest === undefined ? {} : { maxImages: images.maxImagesPerRequest },
+    ...images.byteQuantum === undefined ? {} : { byteQuantum: images.byteQuantum },
+    ...images.countQuantum === undefined ? {} : { countQuantum: images.countQuantum },
+  }, (block) => {
+    const version = images.requestImages.get(block.attachment.attachmentId)
+    if (version === undefined) {
+      throw new LlmError(`DeepSeek request image ${block.attachment.attachmentId} was not prepared.`, 'INVALID_REQUEST')
+    }
+    return version.bytes
+  })
+  if (offloadImages > 0) {
+    throw new LlmError(
+      `DeepSeek ${representation} request images exceed the route budget; ${offloadImages} more oldest occurrence(s) must be offloaded.`,
+      IMAGE_OFFLOAD_REQUIRED_CODE,
+      { offloadImages },
+    )
+  }
+}
+
+/**
  * Build one image-capable request while keeping durable bytes out of session
- * messages. Oversized oldest images become per-image text after their
- * exact request-version byte lengths are known and before provider serialization.
+ * messages. Offloaded occurrences become per-image text; retained occurrences
+ * must fit the route budget at their exact request-version byte lengths.
  * @param options - harness request containing image-capable user content.
  * @param images - request versions, optional current access resolver, and request bounds.
  * @param defaults - adapter-level thinking defaults.
@@ -402,21 +429,11 @@ export async function serializeRequestWithImages(
   defaults: RequestDefaults = {},
 ): Promise<WireRequest> {
   assertSupportedImageRoles(options.messages)
-  const requestMessages = offloadRequestImagesWithPolicy(options.messages, {
-    representation: images.representation.kind === 'file' ? 'raw' : 'base64',
-    byteLength: (ref) => {
-      const version = images.requestImages.get(ref.attachmentId)
-      if (version === undefined) {
-        throw new LlmError(`DeepSeek request image ${ref.attachmentId} was not prepared.`, 'INVALID_REQUEST')
-      }
-      return version.bytes
-    },
-    maxBytes: images.maxRequestImageBytes,
-    ...images.maxImagesPerRequest === undefined ? {} : { maxImages: images.maxImagesPerRequest },
-    ...images.byteQuantum === undefined ? {} : { byteQuantum: images.byteQuantum },
-    ...images.countQuantum === undefined ? {} : { countQuantum: images.countQuantum },
-    placeholder: ref => offloadedImageText(ref, images.resolveImageAccess?.(ref)),
-  })
+  assertRetainedImagesFit(options.messages, images)
+  const requestMessages = projectOffloadedImages(
+    options.messages,
+    ref => offloadedImageText(ref, images.resolveImageAccess?.(ref)),
+  )
   const messages: WireMessage[] = []
   if (options.system !== undefined) {
     messages.push({ role: 'system', content: options.system })

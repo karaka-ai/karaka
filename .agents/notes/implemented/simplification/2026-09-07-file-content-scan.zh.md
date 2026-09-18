@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-每次模型分发都检查完整消息内容中的文件，包括嵌套工具结果。请求历史 CPU profile 将 23.540 ms 自身时间归于 `contentHasFile`，将 5.584 ms 归于其回调。即使[循环自有冻结证据](2026-09-06-agent-request-freeze-evidence.zh.md)消除了重复请求冻结，这次遍历仍然必需。master `bd5917`、master `112a5` 与实测的 `f834b002826453e7918eeb558d052b2c24c56a76` 的 LLM 热点源码完全相同；这些观察不能证明 PR 因果关系。
+每次模型分发都检查完整消息内容中的文件，包括嵌套工具结果。请求历史 CPU profile 将 23.540 ms 自身时间归于 `contentHasFile`，将 5.584 ms 归于其回调。即使[循环自有冻结证据](2026-09-06-agent-request-freeze-evidence.zh.md)消除了重复请求冻结，这次遍历仍然必需。两次抽样的 master 修订与实测的 V3 集成修订 的 LLM 热点源码完全相同；这些观察不能证明 PR 因果关系。
 
 ## Decision
 

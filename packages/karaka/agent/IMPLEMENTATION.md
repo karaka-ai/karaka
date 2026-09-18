@@ -14,7 +14,7 @@ Karaka artifacts combine the in-tree DSH runtime with Karaka application adapter
 <a id="artifact-assembly"></a>
 ## Artifact assembly
 
-The [local materializer](scripts/materialize-local.mjs) copies built packages and their installed dependency and required-peer graph into a new output directory, including the separately built Karaka CLI. Workspace packages have one canonical runtime copy; external packages retain their installed versions. Dependency links remain inside the artifact. `LOCAL-ARTIFACT.json` records the graph and omitted optional platform packages.
+The [local materializer](scripts/materialize-local.mjs) copies built packages and their installed dependency and required-peer graph into a new output directory, including the separately built Karaka CLI. Workspace packages have one canonical runtime copy; external packages retain their installed versions. Dependency links remain inside the artifact. `LOCAL-ARTIFACT.json` records the graph, omitted optional platform packages, actual checkout revision and whether source has local changes. These source fields carry through npm staging; they do not prove the build origin of prebuilt outputs.
 
 The [npm staging script](scripts/stage-npm.mjs) converts that graph into a server bundle. It keeps workspace packages at a canonical top-level location and nests differing external versions where required. Release manifests replace workspace references with exact installed versions and remove development hooks. The independent Karaka CLI is excluded from the server bundle. Browser exports, public declarations, licenses, and third-party notices remain included.
 

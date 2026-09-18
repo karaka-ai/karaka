@@ -8,7 +8,7 @@ Source: [`packages/ptc-runtime/ptc-runtime/src/types.ts`](../../packages/ptc-run
 
 ## The run: request in, result out
 
-`PtcRunRequest` contains the program, bindings, cancellation and optional execution choices. The provider's `resolve` validates supported choices and applies its deployment defaults; `run` receives a `PtcRunSpec` with an explicit directory and deadline. A provider that cannot enforce a requested policy rejects it before program execution:
+`PtcRunRequest` contains the program, bindings, cancellation and optional execution choices. The provider's `resolve` validates supported choices and applies its deployment defaults; `run` receives a `PtcRunSpec` with an explicit directory and deadline choice. An omitted timeout uses provider defaults, a number requests a capped elapsed budget, and `null` requests no elapsed deadline. Providers reject unsupported choices before execution:
 
 ```ts type-equiv
 /**
@@ -27,8 +27,11 @@ interface PtcRunRequest {
   bindings: PtcBindingNamespace[]
   /** Working directory in the mounted filesystem and subprocess execution world. */
   cwd?: string
-  /** Requested elapsed execution time; the provider's resolver validates and caps it. */
-  timeoutMs?: number
+  /**
+   * Elapsed execution budget in milliseconds. Omission uses provider defaults;
+   * null requests no deadline. Providers validate and cap numeric budgets or reject unsupported choices.
+   */
+  timeoutMs?: number | null
   /** Resolved authority for this execution. Providers without confinement reject an explicit policy. */
   sandboxPolicy?: SandboxExecutionPolicy
   /**
@@ -41,12 +44,12 @@ interface PtcRunRequest {
 ```
 
 ```ts type-equiv
-/** Fully resolved execution inputs; run never supplies a missing directory or timeout. */
+/** Fully resolved execution inputs; run never supplies a missing directory or deadline choice. */
 interface PtcRunSpec extends PtcRunRequest {
   /** Absolute directory in the provider's execution world. */
   cwd: string
-  /** Positive finite execution deadline in milliseconds, after provider capping. */
-  timeoutMs: number
+  /** Positive finite elapsed budget in milliseconds after provider capping, or null for no deadline. */
+  timeoutMs: number | null
 }
 ```
 

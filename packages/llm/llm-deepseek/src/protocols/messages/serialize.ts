@@ -4,6 +4,7 @@ import { LlmError, requestImageHandleText } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, Message } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { DeepSeekConnectionOptions as Connection } from '../../common/types.ts'
+import type { DeepSeekFileId } from '../../common/file-id.ts'
 import { object, readReplay } from './replay.ts'
 import type { WireBlock, WireInput, WireMessage, WireRequest } from './types.ts'
 
@@ -42,12 +43,14 @@ function assistant(message: Message, model: string, onReplayDegrade?: (reason: s
  * @param images - request versions for retained images.
  * @param access - execution-world paths for image descriptions.
  * @param onReplayDegrade - diagnostic for discarded native replay metadata.
+ * @param fileIds - resolved Files references; omission selects inline image bytes.
  * @returns the Messages API JSON body.
  */
 export function serialize(
   options: GenerateOptions, connection: Connection, history: readonly Message[],
   images: ReadonlyMap<ImageAttachmentRef['attachmentId'], RequestImageAttachment>, access: ImageAttachmentAccessResolver,
   onReplayDegrade?: (reason: string) => void,
+  fileIds?: ReadonlyMap<ImageAttachmentRef['attachmentId'], DeepSeekFileId>,
 ): WireRequest {
   const model = connection.models.find(entry => entry.id === options.model)
   const inHistory = model?.systemPromptUpdate === 'in-history'
@@ -56,9 +59,13 @@ export function serialize(
     if (block.type !== 'image') return unsupported(`user/tool-result content ${block.type}`)
     const version = images.get(block.attachment.attachmentId)
     if (version === undefined) throw new LlmError('DeepSeek Messages request image is missing', 'INVALID_REQUEST')
+    const fileId = fileIds?.get(block.attachment.attachmentId)
+    if (fileIds !== undefined && fileId === undefined) throw new LlmError('DeepSeek Messages request file id is missing', 'INVALID_REQUEST')
     return [
       { type: 'text', text: requestImageHandleText(block.attachment, version, access(block.attachment)) },
-      { type: 'image', source: { type: 'base64', media_type: version.mediaType, data: Buffer.from(version.data).toString('base64') } },
+      fileId === undefined
+        ? { type: 'image', source: { type: 'base64', media_type: version.mediaType, data: Buffer.from(version.data).toString('base64') } }
+        : { type: 'image', source: { type: 'file', file_id: fileId } },
     ]
   })
   const messages: WireMessage[] = []
@@ -113,9 +120,6 @@ export function serialize(
   const effort = options.purpose === 'session-title' ? 'off' : options.reasoningEffort ?? (connection.defaults.reasoningEffort ?? (connection.defaults.thinking === 'disabled' ? 'off' : 'high'))
   if (!['off', 'low', 'high', 'max'].includes(effort) || (connection.defaults.thinking === 'disabled' && effort !== 'off')) {
     throw new LlmError(`DeepSeek Messages does not support reasoning effort ${effort}`, 'UNSUPPORTED_REASONING_EFFORT')
-  }
-  if (options.temperature !== undefined && effort !== 'off') {
-    throw new LlmError('DeepSeek Messages temperature requires reasoningEffort off', 'UNSUPPORTED_OPTION')
   }
   const system = [options.system, historySystem].filter(Boolean).join('\n\n')
   return {

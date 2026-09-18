@@ -1,9 +1,10 @@
 /** DeepSeek's supported subset of the Anthropic Messages request protocol. */
 
-/** Text and inline images accepted in user messages and tool results. */
+/** Text and inline or file-referenced images accepted in user messages and tool results. */
 export type WireInput =
   | { type: 'text'; text: string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | { type: 'image'; source: { type: 'file'; file_id: string } }
 
 /** Content serialized into one Messages conversation turn. */
 export type WireBlock = WireInput

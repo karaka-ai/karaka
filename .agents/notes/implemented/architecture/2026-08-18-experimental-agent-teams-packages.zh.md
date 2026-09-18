@@ -8,13 +8,13 @@ Status: implemented
 
 Agent Teams 的服务与工具约定仍在变化，但它需要使用真实 Session 日志、subagent 生命周期、工具、示例、快照和仓库检查。用户还需要直接从 npm 安装完整 Team 组合，而无需构建源码 checkout。
 
-把这些包移入产品职责组会移除实验性名称，并暗示稳定包 owner 已经就位。发布 `packages/experimental/` 下的所有包又会暴露无关的内部原型。发布策略需要为 Agent Teams 设置显式例外，同时保留默认私有原则。
+把这些包移入产品职责组会移除实验性名称，并暗示稳定包 owner 已经就位。发布 `packages/experimental/` 下的所有包又会暴露无关的内部原型。发布策略必须让用户安装 Agent Teams，同时让内部专用原型保持私有。
 
 ## 决策
 
-`packages/experimental/agent-team`、`packages/experimental/tool-agent-team`、`packages/experimental/agent-team-profile`、`packages/experimental/client-ui-agent-team` 与 `packages/experimental/agent-team-web-profile` 是公开 workspace 包。它们保留现有 `@deepseek-ai/dsh-experimental-*` 名称并加入 dsh 发布系列。[实验性包规则](../../../../packages/experimental/AGENTS.md)负责默认私有原则、本例外与后续 promotion。
+`packages/experimental/agent-team`、`packages/experimental/tool-agent-team`、`packages/experimental/agent-team-profile`、`packages/experimental/client-ui-agent-team` 与 `packages/experimental/agent-team-web-profile` 是公开 workspace 包。它们保留现有 `@deepseek-ai/dsh-experimental-*` 名称并加入 dsh 发布系列。[发布拒绝列表决策](../process/2026-09-12-experimental-publication-denylist.zh.md)负责默认公开与私有例外；[实验性包规则](../../../../packages/experimental/AGENTS.md)负责依赖隔离与后续 promotion。
 
-dsh 打包与发布集合以及本地基线发布器包含显式实验包允许列表。这五个 Agent Teams 目录以及 [Cua Driver 提供方例外](2026-09-12-computer-use-provider-registration.zh.md)省略 `private`、将 `publishConfig.access` 设为 `public`，并保留实验性 npm 前缀。未列出的实验包默认保持私有且不参与发布。实验组之外的发布包、应用和 Python 运行时不能在 `dependencies`、`optionalDependencies` 或 `peerDependencies` 中引用实验包；实验包可以依赖发布包和彼此。
+dsh 打包与发布集合以及本地基线发布器包含这五个 Agent Teams 目录和 [Cua Driver 提供方](2026-09-12-computer-use-provider-registration.zh.md)。workspace 约束要求它们省略 `private`、将 `publishConfig.access` 设为 `public`，并保留实验性 npm 前缀。实验组之外的发布包、应用和 Python 运行时不能在 `dependencies`、`optionalDependencies` 或 `peerDependencies` 中引用实验包；实验包可以依赖发布包和彼此。
 
 通用的调用方预留 continuable child 身份和精确 direct-child drain 仍属于稳定 Subagent 服务。它们负责 Subagent 身份与 Activation 生命周期，不 import 或命名 Agent Teams；实验性 Team 服务沿允许的方向消费这些能力。
 
@@ -38,4 +38,4 @@ profile 安装通过自身 package manager 解析每个公开 bundle 及其依�
 
 Agent Teams 会作为 dsh 发布系列中的五个可安装 tarball 发布，同时保持包名不变，也不会在随附 profile 中启用 Team。公开可用不代表这些包稳定或默认受支持，稳定发布包也不能对其建立运行时依赖。
 
-发布系列需要维护显式命名的实验性例外。promotion 仍会按照实验性包规则产生路径和 npm 名改动。
+发布系列保留实验性 npm 名称。promotion 仍会按照实验性包规则产生路径和 npm 名改动。

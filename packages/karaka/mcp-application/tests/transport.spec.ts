@@ -1,7 +1,8 @@
 /** Credential rotation and redirect refusal through real loopback HTTP requests. */
 import { createServer, type RequestListener } from 'node:http'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { JSONRPCRequestSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { Client } from '@modelcontextprotocol/client'
+import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
+import { toNodeHandler, type NodeIncomingMessageLike } from '@modelcontextprotocol/node'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import type { ApplicationBridge, Config } from '../src/index.ts'
 import { createTransport } from '../src/transport.ts'
@@ -42,33 +43,34 @@ function bridge(credential: () => string): ApplicationBridge {
 describe('application MCP HTTP transport', () => {
   it('resolves credentials for each request and overrides stale static authorization', async () => {
     const observed: { authorization: string | undefined; staticHeader: string | string[] | undefined }[] = []
+    const handler = createMcpHandler((context) => {
+      const mcp = new McpServer({ name: 'credential-fixture', version: '1' }, { capabilities: { tools: {} } })
+      mcp.server.setRequestHandler('tools/list', async () => {
+        const headers = context.requestInfo?.headers
+        if (headers === undefined) throw new Error('HTTP fixture requires its request headers')
+        observed.push({ authorization: headers.get('authorization') ?? undefined, staticHeader: headers.get('x-static') ?? undefined })
+        return { tools: [] }
+      })
+      return mcp
+    })
+    onTestFinished(async () => { await handler.close() })
+    const handle = toNodeHandler(handler)
     const handlers = new Set<Promise<void>>()
     onTestFinished(async () => { await Promise.allSettled(handlers) })
     const url = await endpoint((request, response) => {
-      if (request.method !== 'POST') { response.writeHead(405).end(); return }
-      const operation = (async () => {
-        const chunks: Buffer[] = []
-        for await (const chunk of request) chunks.push(Buffer.from(chunk as Uint8Array))
-        const parsed = JSONRPCRequestSchema.safeParse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
-        if (!parsed.success) { response.writeHead(202).end(); return }
-        const message = parsed.data
-        if (message.method === 'tools/list') observed.push({ authorization: request.headers.authorization, staticHeader: request.headers['x-static'] })
-        const result = message.method === 'initialize'
-          ? { protocolVersion: message.params?.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'credential-fixture', version: '1' } }
-          : { tools: [] }
-        response.writeHead(200, { 'content-type': 'application/json' })
-        response.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }))
-      })().catch((error: unknown) => { response.destroy(error instanceof Error ? error : new Error(String(error))) })
+      // Match the SDK's exact optional Node HTTP fields at its public adapter.
+      const operation = handle(request as NodeIncomingMessageLike, response)
+        .catch((error: unknown) => { response.destroy(error instanceof Error ? error : new Error(String(error))) })
       handlers.add(operation)
       void operation.then(() => handlers.delete(operation))
     })
     let credential = 'Bearer first'
-    const client = new Client({ name: 'credential-test', version: '1' }, { capabilities: {} })
+    const client = new Client({ name: 'credential-test', version: '1' }, { capabilities: {}, versionNegotiation: { mode: 'auto' } })
     onTestFinished(async () => { await client.close() })
     await client.connect(createTransport(config(url), bridge(() => credential)))
-    await client.request({ method: 'tools/list' }, ListToolsResultSchema)
+    await client.listTools(undefined, { cacheMode: 'refresh' })
     credential = 'Bearer rotated'
-    await client.request({ method: 'tools/list' }, ListToolsResultSchema)
+    await client.listTools(undefined, { cacheMode: 'refresh' })
     expect(observed).toEqual([
       { authorization: 'Bearer first', staticHeader: 'retained' },
       { authorization: 'Bearer rotated', staticHeader: 'retained' },
@@ -79,7 +81,7 @@ describe('application MCP HTTP transport', () => {
     let received = 0
     const target = await endpoint((_request, response) => { received += 1; response.writeHead(500).end() })
     const url = await endpoint((_request, response) => { response.writeHead(307, { location: target }).end() })
-    const client = new Client({ name: 'redirect-test', version: '1' }, { capabilities: {} })
+    const client = new Client({ name: 'redirect-test', version: '1' }, { capabilities: {}, versionNegotiation: { mode: 'auto' } })
     onTestFinished(async () => { await client.close() })
     await expect(client.connect(createTransport(config(url), bridge(() => 'Bearer private')))).rejects.toThrow()
     expect(received).toBe(0)

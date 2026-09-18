@@ -37,6 +37,8 @@ export interface LogEventEntry {
   doc: string
   /** Source pointer `packages/…/file.ts:line` of the declaration. */
   source: string
+  /** Whether interpretation requires a plugin-owned message projection. */
+  messageProjection?: true
 }
 
 /** A {@link LogEventEntry} plus its surface-eligibility badge. */
@@ -198,7 +200,8 @@ export function collectLogEvents(scanRoot: string = root): LogEventEntry[] {
           violations.push(`${where} has no description prose. Say what the event records and what its payload means — the JSDoc becomes the catalog entry.`)
         }
         const declaration = declarationText(text, sf, member)
-        entries.push({ name, scope: name.split('/')[0] ?? name, payload, declaration, doc, source: src })
+        const messageProjection = ts.getJSDocTags(member).some(tag => tag.tagName.text === 'messageProjection')
+        entries.push({ name, scope: name.split('/')[0] ?? name, payload, declaration, doc, source: src, ...messageProjection ? { messageProjection: true as const } : {} })
       }
     }
   }
@@ -295,5 +298,10 @@ export function annotateSurface(events: LogEventEntry[], surfaceTypes: string[])
     throw new Error(`gen-persistence-catalog: SurfaceEventType member(s) ${stale.map(t => `'${t}'`).join(', ')} name no declared log event (stale union member?).`)
   }
   const surface = new Set(surfaceTypes)
+  for (const event of events) {
+    if (event.messageProjection && surface.has(event.name)) {
+      throw new Error(`gen-persistence-catalog: '${event.name}' cannot declare both a message projection and surface operations.`)
+    }
+  }
   return events.map(e => ({ ...e, surface: surface.has(e.name) }))
 }

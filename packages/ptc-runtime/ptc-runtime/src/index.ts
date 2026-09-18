@@ -127,7 +127,7 @@ export abstract class PtcRuntime extends Service {
   /** Deployment file-policy mode, or undefined for a provider without confinement support. */
   get sandboxMode(): SandboxMode | undefined { return undefined }
 
-  /** Configured elapsed-time defaults and cap, or undefined when per-call overrides are unsupported. */
+  /** Configured numeric elapsed-time defaults and cap, or undefined when per-call overrides are unsupported. */
   get timeout(): { defaultMs: number; maxMs: number } | undefined { return undefined }
 
   constructor(ctx: Context) {

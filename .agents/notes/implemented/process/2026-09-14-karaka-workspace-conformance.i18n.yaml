@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-14-karaka-workspace-conformance.md
-2026-09-14-karaka-workspace-conformance.md: 56520c2f73c06c04d30bd9766fedde31f7a20ec8
-2026-09-14-karaka-workspace-conformance.zh.md: 526190e571f99bc218689fce3f4611235cbc1e63
+2026-09-14-karaka-workspace-conformance.md: ee8d79ece71fbaf4824bc0335a89effb64542902
+2026-09-14-karaka-workspace-conformance.zh.md: e23a670928383aff7b28329aaca1293849206f65

@@ -1,5 +1,5 @@
 ---
-description: "Add experimental per-call Auto review to a source-checkout Web profile, using the current agent's model before tools execute with Full access."
+description: "Add experimental per-call Auto review to a Web profile, using the current agent's model before tools execute with Full access."
 kind: "package-bundle"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Add Auto review to the current-session permission pickers in a source-checkout Web profile. Before each native or PTC inner tool call, the current agent's provider and model assess the pending action; an allowed call executes with Full access. Default Web keeps its three permission modes until this layer is explicitly installed. Auto review is experimental: it can allow unsafe actions, deny useful work, and spend additional tokens. Official releases exclude this private package.
+Add Auto review to the current-session permission pickers in a Web profile. Before each native or PTC inner tool call, the current agent's provider and model assess the pending action; an allowed call executes with Full access. Default Web keeps its three permission modes until this layer is explicitly installed. Auto review is experimental: it can allow unsafe actions, deny useful work, and spend additional tokens.
 
 ## Table of Contents
 
@@ -70,7 +70,7 @@ No runtime invariant companion is published: this single effect owns selection a
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [Experimental packages](../README.md) — release exclusion and dependency isolation.
+- [Experimental packages](../README.md) — publication policy and dependency isolation.
 - [Web bundle](../../bundle/web-app/README.md) — the stable profile this patch extends.
 - [Auto review decision](../../../.agents/notes/implemented/feature/2026-08-28-auto-review.md) — fixed risk policy, authority, and lifecycle.
 - [Tools](../../core/tools/README.md) — execution, cancellation, and PTC result propagation.
@@ -112,7 +112,7 @@ The denial appends an ordinary tool result; it does not rewrite earlier context 
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- Auto is available only through an explicitly installed source Web layer; it is absent from official payloads, Headless, General settings, and new-session defaults.
+- Auto requires an explicitly installed Web layer; it is absent from default Web, Headless, General settings, and new-session defaults.
 - Auto provides no file sandbox. The outer `run_code` transport and direct Node effects inside a PTC program do not pass through inner-tool review.
 - Model classification can be wrong. There are no deterministic tool exemptions, persistent grants, manual fallback, configurable policy, or retry layer.
 - In-process Auto children review their own calls. Out-of-process children retain their native permission systems after the parent delegation call is allowed.

@@ -26,7 +26,7 @@ import type { ProgramBootData } from './protocol.ts'
 export interface Config extends LaunchConfig {
   /** Default elapsed deadline, including nested tool and approval waits. */
   timeoutMs?: number
-  /** Maximum elapsed deadline accepted by resolve. */
+  /** Maximum numeric elapsed budget accepted by resolve. */
   maxTimeoutMs?: number
   /** Combined serialized logs, completion and diagnostic byte cap. */
   maxOutputBytes?: number
@@ -103,7 +103,7 @@ export class NodePtcRuntime extends PtcRuntime {
   /**
    * Resolve an execution under explicit or deployment policy.
    * @param request - Program, bindings, optional cwd/deadline, and resolved authority.
-   * @returns Complete execution inputs with a capped deadline.
+   * @returns Complete execution inputs with a capped numeric budget or an explicit null deadline.
    */
   resolve(request: PtcRunRequest): PtcRunSpec {
     if (this.disposed) throw new Error('ptc-runtime-node: resolve after disposal')
@@ -113,7 +113,7 @@ export class NodePtcRuntime extends PtcRuntime {
     return {
       ...request,
       cwd,
-      timeoutMs: clampTimeout(request.timeoutMs, this.config.timeoutMs, this.config.maxTimeoutMs, 'ptc-runtime-node: timeoutMs'),
+      timeoutMs: request.timeoutMs === null ? null : clampTimeout(request.timeoutMs, this.config.timeoutMs, this.config.maxTimeoutMs, 'ptc-runtime-node: timeoutMs'),
       sandboxPolicy,
     }
   }
@@ -126,7 +126,7 @@ export class NodePtcRuntime extends PtcRuntime {
   async run(spec: PtcRunSpec): Promise<PtcRunResult> {
     if (this.disposed) throw new Error('ptc-runtime-node: run after disposal')
     if (spec.sandboxPolicy === undefined) throw new Error('ptc-runtime-node: run requires a resolved sandbox policy')
-    if (!isAbsolute(spec.cwd) || !Number.isFinite(spec.timeoutMs) || spec.timeoutMs <= 0 || spec.timeoutMs > this.config.maxTimeoutMs) throw new Error('ptc-runtime-node: run requires resolved cwd and timeout')
+    if (!isAbsolute(spec.cwd) || (spec.timeoutMs !== null && (!Number.isFinite(spec.timeoutMs) || spec.timeoutMs <= 0 || spec.timeoutMs > this.config.maxTimeoutMs))) throw new Error('ptc-runtime-node: run requires resolved cwd and timeout')
     const bindings = validateBindings(spec)
     const controller = new AbortController()
     const completion = Promise.withResolvers<void>()
@@ -160,7 +160,8 @@ export class NodePtcRuntime extends PtcRuntime {
     let overflowResult: PtcRunResult | undefined
     let stderr = ''
     let parsing = true
-    const wallTimer = setTimeout(() => { timedOut = true; controller.abort('execution deadline reached') }, spec.timeoutMs)
+    const wallTimer = spec.timeoutMs === null ? undefined
+      : setTimeout(() => { timedOut = true; controller.abort('execution deadline reached') }, spec.timeoutMs)
     const finish = (failure?: PtcRunFailure, value?: PtcJsonValue): void => {
       if (settled) return
       settled = true

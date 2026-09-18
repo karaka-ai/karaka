@@ -23,6 +23,8 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
+公开 npm 包在根入口导出运行时库，通过 `./worker` 提供自包含的浏览器 Worker，通过 `./client` 提供页面连接器。部署方通过 [打包器](../webworker-packer/README.zh.md) 单独提供和托管 VFS 镜像；安装此库不会增加 profile 层。根入口还导出打包器所用的模块代理表与替换表。
+
 一条 tsdown 管线产出三个构建产物；另有一层由源码维护的进程实现：
 
 - **`lib/index.js`（装配库）**——`createWorkerHost`/`startWorkerHost` 挂载基础镜像和按序排列的数据 overlays（`storage/`）、安装模块加载器（`module-system/`）与 `process` shim、经镜像自带的 `dsh-app-boot` 启动插件树，并把服务 seam 交给隧道。Overlay 只能替换 `home/` 与 `workspace/` 下的文件，不能替换基础 manifest、配置或模块。镜像布局契约（`image-layout.ts`：虚拟根、config/manifest 路径、空目录、`lowered` 包装契约门）与 packer 共享。boot patch 强制部署形态行：关前端静态服务、JSONL 会话日志走明文、preset 根指向镜像内 `config/agent-presets`。

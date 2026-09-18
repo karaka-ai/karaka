@@ -19,7 +19,7 @@ export interface ProgramProcess {
  * @param stream - Inherited, already-adopted control endpoint.
  * @param maxMessageBytes - Host-validated maximum frame and queued-write bytes.
  * @param processState - Environment, output streams and exit status of this Node child.
- * @returns After the program has settled and its control output has flushed.
+ * @returns After control output flushes and host shutdown is observed, or transport failure closes the channel.
  */
 export async function runNodeMain(stream: Duplex, maxMessageBytes: number, processState: ProgramProcess): Promise<void> {
   if (!Number.isSafeInteger(maxMessageBytes) || maxMessageBytes <= 0 || maxMessageBytes > 0xffff_ffff) throw new Error('invalid control message limit')
@@ -32,6 +32,10 @@ export async function runNodeMain(stream: Duplex, maxMessageBytes: number, proce
   const listeners: Array<(message: ReplyMessage) => void> = []
   let started = false
   let failed = false
+  let terminalSent = false
+  const hostClosed = Promise.withResolvers<void>()
+  const onClose = (): void => { hostClosed.resolve() }
+  stream.once('close', onClose)
   const channel = new JsonChannel(stream, maxMessageBytes, (raw) => {
     if (!started) {
       started = true
@@ -42,19 +46,26 @@ export async function runNodeMain(stream: Duplex, maxMessageBytes: number, proce
       boot.resolve((raw as { data: ProgramBootData }).data)
       return
     }
+    if (terminalSent) return
     for (const listener of listeners) listener(raw as ReplyMessage)
-  }, (error) => {
-    failed = true
-    boot.reject(error)
-    channel.close()
-    processState.exitCode = 1
+  }, (error, kind) => {
+    if (!terminalSent || kind === 'protocol') {
+      failed = true
+      boot.reject(error)
+      channel.close()
+      processState.exitCode = 1
+    }
+    hostClosed.resolve()
   })
   const pending = new Set<Promise<void>>()
   const send = (message: ProgramToHost): void => {
+    if (terminalSent) return
+    if (message.type === 'done') terminalSent = true
     const task = channel.send(message).catch(() => {
       failed = true
       channel.close()
       processState.exitCode = 1
+      hostClosed.resolve()
     }).finally(() => { pending.delete(task) })
     pending.add(task)
   }
@@ -67,7 +78,10 @@ export async function runNodeMain(stream: Duplex, maxMessageBytes: number, proce
     }, data, { stdout: processState.stdout, stderr: processState.stderr })
     while (pending.size > 0) await Promise.all(pending)
     await channel.drain()
+    // Host binding replies can race the terminal frame; the host owns channel shutdown.
+    await hostClosed.promise
   } finally {
+    stream.off('close', onClose)
     channel.close()
     // Transport callbacks can set failed while the awaited program executes.
     // oxlint-disable-next-line typescript/no-unnecessary-condition

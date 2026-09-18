@@ -18,6 +18,10 @@ The launcher checker classifies the exact `@karaka-ai/agent` binary target and b
 
 Workspace constraints require packages in `packages/karaka/<name>` to use `@karaka-ai/<name>` and `private: true`. These packages are outside the DSH publication family; release discovery already excludes private packages. DSH public-release metadata rules remain unchanged, and shared dependency and structural checks still apply to Karaka.
 
+The repository-reference check permits only the literal full source revision in the `commit` field of [MCP's source record](../../../../packages/karaka/mcp-application/UPSTREAM.json), after validating its repository and source-package identity. Other fields, files and organization links retain the shared check. Active notes name upstream PRs; inventing a release tag or removing the exact adoption pin would weaken the source record.
+
+The local materializer records its actual Karaka checkout revision and whether tracked or untracked source differs. The npm staging script preserves those fields in its package inventory and describes assembly from that checkout. This identifies source inputs; it does not attest that prebuilt outputs were freshly compiled from them. Missing Git identity refuses assembly instead of substituting an upstream pin.
+
 ## Alternatives considered
 
 **Exclude Karaka from shared checks:** this leaves integration errors undetected and does not satisfy workspace membership.

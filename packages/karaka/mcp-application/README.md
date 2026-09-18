@@ -41,7 +41,7 @@ Input schemas must use the supported object-rooted DSH JSON Schema subset. The r
 
 Each endpoint owns a private catalog. Authorized Agent scopes receive admitted definitions, and invocation metadata comes from trusted Session ownership. Policy changes refresh scoped registrations. Discovery builds the complete next catalog before replacing the previous generation; connection disposal waits for in-flight discovery and removes its contributions.
 
-The package uses the shared [DSH MCP client extensions](../../mcp/mcp-client/README.md#programmatic-extensions) for connection supervision, discovery and rich result conversion. Karaka supplies authenticated HTTP transports, verified invocation metadata, strict schema admission and scoped catalog registration. The [upstream source record](UPSTREAM.json) identifies the shared implementation and application-owned adapters.
+The package uses the shared [DSH MCP client extensions](../../mcp/mcp-client/README.md#programmatic-extensions) for connection supervision, discovery and rich result conversion. Karaka uses the same MCP SDK client as DSH and supplies authenticated HTTP transports, verified invocation metadata, strict schema admission and scoped catalog registration. The public factory passes the exact tool execution to the metadata hook before dispatch; its result conversion and finalization remain upstream-owned. The [upstream source record](UPSTREAM.json) identifies the shared implementation and application-owned adapters.
 
 No runtime invariant companion is published: asynchronous catalog refresh has no independent server-to-tool snapshot. The executor rechecks ownership and policy before each dispatch.
 
@@ -86,7 +86,7 @@ Tool results append after the existing request prefix; local validation adds no 
 
 The bridge retains these MCP and application limits.
 
-- MCP tools are supported; resources, prompts and task-based execution are not. Unsupported input schemas reject admission, while unsupported output schemas fall back to JSON values.
+- Application MCP tools are supported; application resources, server instructions, prompts and task-based execution are not published by this bridge. Unsupported input schemas reject admission, while unsupported output schemas fall back to JSON values.
 - Startup and discovery use MCP SDK timeouts. HTTP request failures use the SDK transport recovery; the supervisor reconnects on transport close.
 - Application domain constraints, side-effect accounting and transaction guarantees remain the callback owner's responsibility. Only local argument rejection establishes that no callback was dispatched.
 

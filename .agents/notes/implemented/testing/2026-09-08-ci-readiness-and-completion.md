@@ -6,15 +6,15 @@ English | [中文](2026-09-08-ci-readiness-and-completion.zh.md)
 
 ## Problem
 
-The [empty master PR run](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34206953049) fails while waiting one second for webhook Session creation and five seconds for PowerShell output. Neither test measures a startup latency guarantee. A [separate run](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34207864157) shows the same short-budget problem in a desktop worker readiness test and captures a feedback acknowledgement while the composer still holds the submitted command.
+The empty master PR run (run 34206953049) fails while waiting one second for webhook Session creation and five seconds for PowerShell output. Neither test measures a startup latency guarantee. A separate run (run 34207864157) shows the same short-budget problem in a desktop worker readiness test and captures a feedback acknowledgement while the composer still holds the submitted command.
 
-Another [Windows coverage run](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34224004885/job/102053583437) reports a null publint child status and an LSP initialization-marker timeout. Their helpers impose five- and three-second limits inside the lane's 90-second test budget. These cases verify publication contents and cancellation behavior rather than cold-start latency.
+Another Windows coverage run (run 34224004885, job 102053583437) reports a null publint child status and an LSP initialization-marker timeout. Their helpers impose five- and three-second limits inside the lane's 90-second test budget. These cases verify publication contents and cancellation behavior rather than cold-start latency.
 
-The [ACP coverage run](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34242280527/job/102115221228) exhausts a one-second registry poll after transport failure. Disconnect cleanup includes cancellation, output draining, persistence, and owner disposal; registry removal alone does not establish complete teardown.
+The ACP coverage run (run 34242280527, job 102115221228) exhausts a one-second registry poll after transport failure. Disconnect cleanup includes cancellation, output draining, persistence, and owner disposal; registry removal alone does not establish complete teardown.
 
-A [worker-runtime coverage failure](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34248221544/job/102135631932) exhausts the slow-binding fixture's one-second compute allowance. Concurrent native Windows reproductions exceed that allowance before calling the binding. Worker initialization contributes measured active time; the delayed binding contributes idle time.
+A worker-runtime coverage failure (run 34248221544, job 102135631932) exhausts the slow-binding fixture's one-second compute allowance. Concurrent native Windows reproductions exceed that allowance before calling the binding. Worker initialization contributes measured active time; the delayed binding contributes idle time.
 
-The [Windows coverage run](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34324325375/job/102377982193) reports an SDK subprocess exit beyond a fixture's 200 ms confirmation window and an Inspector Worker startup beyond its ten-second default. Neither the protocol-error routing case nor the Cordis tree projection case measures those latency guarantees.
+The Windows coverage run (run 34324325375, job 102377982193) reports an SDK subprocess exit beyond a fixture's 200 ms confirmation window and an Inspector Worker startup beyond its ten-second default. Neither the protocol-error routing case nor the Cordis tree projection case measures those latency guarantees.
 
 ## Decision
 

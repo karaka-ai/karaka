@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-撤销 [#932](https://github.com/deepseek-harness/deepseek-harness/pull/932) 中的五个提交，解决包移动冲突并保留后续独立行为。记录的合并提交属于更大的 #936 依赖链；撤销其第一父提交差异还会删除无关的仓库插件支持。[Vendor 修改记录](../../../../vendor/README.md#local-modifications) 按不变的固定来源记录每项保留的源码更改。
+撤销 #932 中的五个提交，解决包移动冲突并保留后续独立行为。记录的合并提交属于更大的 #936 依赖链；撤销其第一父提交差异还会删除无关的仓库插件支持。[Vendor 修改记录](../../../../vendor/README.md#local-modifications) 按不变的固定来源记录每项保留的源码更改。
 
 Loader 立即更改条目选项。EntryGroup 并发启动同级条目并记录应用失败；EntryTree 等待未完成的工作，但不因失败的 fiber 而拒绝。两者均不恢复旧插件或配置。Include 保留解析校验和 patch 重应用，但插件失败可能留下部分应用的配置树。
 

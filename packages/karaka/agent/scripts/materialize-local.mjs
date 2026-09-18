@@ -5,10 +5,12 @@ import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import { dirname, isAbsolute, matchesGlob, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readSourceRevision } from './source-revision.mjs'
 
 const root = fileURLToPath(new URL('../../../../', import.meta.url))
 const [destination, cliDirectory] = process.argv.slice(2)
 if (!destination || !cliDirectory) throw new Error('Usage: node materialize-local.mjs <new artifact directory> <built CLI repository>')
+const sourceRevision = readSourceRevision(root)
 const output = resolve(destination)
 const workspaces = new Map()
 for (const file of globSync(['vendor/*/package.json', 'packages/*/*/package.json', 'apps/*/package.json', 'native/system/package.json', 'native/system/packages/*/package.json'], { cwd: root })) {
@@ -116,7 +118,7 @@ const self = resolve(output, 'node_modules/@karaka-ai/agent')
 await symlink(relative(dirname(self), output), self, process.platform === 'win32' ? 'junction' : 'dir')
 await writeFile(resolve(output, 'LOCAL-ARTIFACT.json'), JSON.stringify({
   runtime: '@karaka-ai/agent', cli: 'node_modules/@karaka-ai/cli/lib/bin.js',
-  upstreamCommit: 'c291e7961a515f6d7af9304e7fd1d257929aef26',
+  ...sourceRevision,
   platform: process.platform, architecture: process.arch, published: false,
   packages: [...nodes.values()].map(node => ({ name: node.manifest.name, version: node.manifest.version, workspace: node.workspace, path: relative(output, node.target) || '.', dependencies: [...node.links.keys()] })),
   omitted,

@@ -106,8 +106,8 @@ export async function apply(ctx: Context): Promise<void> {
         description: tool.description ?? '',
         inputSchema: tool.inputSchema,
         outputSchema: tool.outputSchema,
-        async call(args, signal) {
-          const combined = AbortSignal.any([signal, lifetime.signal])
+        async call(args, execution) {
+          const combined = AbortSignal.any([execution.signal, lifetime.signal])
           combined.throwIfAborted()
           const result = await activeDriver.callTool(tool.name, JSON.stringify(args), { signal: combined })
           combined.throwIfAborted()

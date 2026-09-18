@@ -10,7 +10,7 @@ Transactional config reload preserves an old plugin generation after a failed ed
 
 ## Decision
 
-Revert the five commits in [#932](https://github.com/deepseek-harness/deepseek-harness/pull/932), resolving package moves and retaining independent later behavior. The reported merge commit belongs to the larger #936 dependency chain; reverting its first-parent diff would remove unrelated repository-plugin support. The [vendor ledger](../../../../vendor/README.md#local-modifications) records every retained source change against the unchanged pins.
+Revert the five commits in #932, resolving package moves and retaining independent later behavior. The reported merge commit belongs to the larger #936 dependency chain; reverting its first-parent diff would remove unrelated repository-plugin support. The [vendor ledger](../../../../vendor/README.md#local-modifications) records every retained source change against the unchanged pins.
 
 Loader changes entry options eagerly. EntryGroup starts siblings concurrently and logs application failures; EntryTree waits for outstanding work without rejecting failed fibers. Neither restores a previous plugin or configuration. Include retains parse validation and patch reapplication, but plugin failures can leave a partially applied tree.
 

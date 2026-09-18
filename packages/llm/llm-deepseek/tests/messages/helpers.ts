@@ -8,6 +8,9 @@ import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { resolveAdapterOptions } from '../../src/index.ts'
 import { DeepSeekMessagesAdapter } from '../../src/protocols/messages/adapter.ts'
 import type { Config } from '../../src/config.ts'
+import { DeepSeekFileStore } from '../../src/common/file-store.ts'
+
+export const prepareExtensions = async () => ({ fields: {}, accept: async () => {} })
 
 export const MODEL = 'deepseek-v4-flash'
 export const user = (text = 'hello') => createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] })
@@ -36,7 +39,8 @@ export async function assemble(stream: AsyncIterable<StreamChunk>, model = MODEL
   return { output, message, assembler }
 }
 export function adapter(config: Config = {}) {
-  return new DeepSeekMessagesAdapter({ connection: () => resolveAdapterOptions(Object.assign({}, config, { protocol: 'messages' as const })), apiKey: () => Promise.resolve('test-key'), userId: () => 'test-user', attachments: () => undefined, imageAccess: () => undefined })
+  const files = new DeepSeekFileStore()
+  return new DeepSeekMessagesAdapter({ connection: () => resolveAdapterOptions(config), apiKey: () => Promise.resolve('test-key'), userId: () => 'test-user', attachments: () => undefined, imageAccess: () => undefined, files: () => files, prepareExtensions })
 }
 export async function server(reply: (response: ServerResponse, count: number) => void = response => response.end(sse(textEvents))) {
   const requests: { path: string; headers: IncomingHttpHeaders; body: Record<string, unknown> }[] = []

@@ -6,7 +6,7 @@ English | [中文](2026-09-08-ci-completion-observations.zh.md)
 
 ## Problem
 
-The [reference CI run](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34206953049) reports a webhook-created Session absent after a one-second poll and empty PowerShell output before a five-second read deadline. HTTP acceptance, projected UI state, process startup, and durable completion are separate observations. Tests need an explicit completion condition and controls that prevent an intermediate state from satisfying it. The [completion-wait decision](2026-09-08-ci-readiness-and-completion.md) owns those conditions and lane budgets; these fixtures make their ordering and cleanup observable under controlled delays.
+The reference CI run (run 34206953049) reports a webhook-created Session absent after a one-second poll and empty PowerShell output before a five-second read deadline. HTTP acceptance, projected UI state, process startup, and durable completion are separate observations. Tests need an explicit completion condition and controls that prevent an intermediate state from satisfying it. The [completion-wait decision](2026-09-08-ci-readiness-and-completion.md) owns those conditions and lane budgets; these fixtures make their ordering and cleanup observable under controlled delays.
 
 ## Decision
 
