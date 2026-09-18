@@ -852,8 +852,10 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
 
     it('cancellation emits exactly one agent-end per observed start before workflow/end', async () => {
       const { ctx, parent, provider } = await setup({ manual: true })
+      const starts: number[] = []
       const ends: { seq: number; outcome: string }[] = []
       const order: string[] = []
+      ctx.on('workflow/agent-start', (_info, agent) => { starts.push(agent.seq) })
       ctx.on('workflow/agent-end', (_info, agent) => {
         ends.push({ seq: agent.seq, outcome: agent.outcome })
         order.push(`end:${agent.seq}`)
@@ -863,12 +865,14 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
         ...scripted("await parallel([() => agent('a'), () => agent('b')])\nreturn 'unreachable'"),
         parent,
       })
-      await waitFor(() => { expect(provider.runs.length).toBe(2) })
+      await waitFor(() => { expect(starts).toHaveLength(2) })
+      expect(provider.runs).toHaveLength(2)
       handle.cancel('user stop')
       const result = await handle.result
       expect(result.stopReason).toBe('cancelled')
       expect(ends.map(end => end.outcome)).toEqual(['cancelled', 'cancelled'])
       expect(new Set(ends.map(end => end.seq)).size).toBe(2)
+      expect(new Set(ends.map(end => end.seq))).toEqual(new Set(starts))
       expect(order.indexOf('run-end')).toBe(order.length - 1)
       await handle.dispose()
     })
