@@ -387,7 +387,7 @@ This change does not add a general tool-side-effect registry. The ability for a 
 
 ## Fixtures and Test Data
 
-The Client fixture deletes its handwritten `presentCall()`, `presentResult()`, `viewFor()`, and fixture tool-view types. It continues producing the same raw calls, result content, and result metadata as a real log.
+The assembled RemoteMock scenario contains no handwritten `presentCall()`, `presentResult()`, `viewFor()`, or tool-view types. It supplies the same raw calls, result content, and result metadata as a real log.
 
 | Fixture | Raw facts that must remain |
 |---|---|
@@ -398,7 +398,7 @@ The Client fixture deletes its handwritten `presentCall()`, `presentResult()`, `
 | web | result metadata sources/answer or url/statusCode/truncated |
 | generic/custom | name, argsRaw, content, and error |
 
-The fixture does not import Host tool packages to compute page presentation and retains no presenter mirror. The same raw fixture continues to drive jsdom, built Web snapshots, and the `?fixture` browser path.
+The scenario does not import Host tool packages to compute page presentation and retains no presenter mirror. The same raw scenario drives built Web snapshots under jsdom; real-Host browser cases independently cover the network path.
 
 ## Presentation-Equivalence Matrix
 
@@ -566,7 +566,7 @@ Changes to this decision use `dsh-pre-push-checks` to select commands for the fi
 - ui-chat and ui-trajectory Tool Definition tests;
 - ui-tool terminal, diff, read, search, web, row, tree, and details tests;
 - ui-deliverables produced-file tests;
-- connection fixture and Client runtime tests;
+- assembled RemoteMock and Client runtime tests;
 - affected Host and Client TypeScript faces;
 - lint and duplication;
 - per-file 100% coverage for affected source files;

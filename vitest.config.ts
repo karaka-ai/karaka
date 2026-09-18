@@ -305,7 +305,6 @@ export default defineConfig({
         'packages/experimental/client-ui-agent-team/src/client/index.ts',
         // Slash/command/input round: per-file gaps deferred with the same
         // client-lane debt. TODO(gui): cover and remove with the lane above.
-        'packages/client/connection/src/client/fixture.ts',
         'packages/client/ui-commands/src/index.ts',
         'packages/client/ui-skill/src/index.ts',
         'packages/client/ui-input-trigger/src/index.ts',
