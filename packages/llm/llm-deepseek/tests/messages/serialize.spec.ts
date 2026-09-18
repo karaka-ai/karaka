@@ -7,19 +7,19 @@ import type { AttachmentStore, ImageAttachmentRef, RequestImageAttachment } from
 import { resolveAdapterOptions } from '../../src/config.ts'
 import { modelInfo } from '../../src/common/model-info.ts'
 import type { Config } from '../../src/config.ts'
-import { imagePricing, prepareImages } from '../../src/protocols/messages/images.ts'
+import { imagePricing, inlineImages, prepareImages } from '../../src/protocols/messages/images.ts'
 import { readReplay, replayState } from '../../src/protocols/messages/replay.ts'
 import { serialize } from '../../src/protocols/messages/serialize.ts'
 import { MODEL, options, user } from './helpers.ts'
 
-const connection = resolveAdapterOptions({ protocol: 'messages' })
+const connection = resolveAdapterOptions({})
 const call = (id = 'a'): ContentBlock => ({ type: 'tool-call', id: ToolCallId(id), name: 'read', arguments: '{"path":"a"}' })
 const assistant = (content: ContentBlock[]) => createAssistantMessage({ content, source: { provider: 'deepseek-official', model: MODEL } })
 const result = (id = 'a', content: ContentBlock[] = [{ type: 'text', text: 'result' }]) => createToolResultMessage({ callId: ToolCallId(id), content, isError: false })
 const body = (messages: Message[] = [user()], overrides: Partial<GenerateOptions> = {}) => serialize(
   options({ messages, ...overrides }), connection, messages, new Map(), () => undefined,
 )
-const capable = resolveAdapterOptions({ protocol: 'messages', models: [{ id: MODEL, systemPromptUpdate: 'in-history' }] })
+const capable = resolveAdapterOptions({ models: [{ id: MODEL, systemPromptUpdate: 'in-history' }] })
 const nativeBody = (messages: Message[]) => serialize(options({ messages }), capable, messages, new Map(), () => undefined)
 
 describe('Messages request conversion', () => {
@@ -130,14 +130,14 @@ describe('Messages request conversion', () => {
     expect(request.output_config).toEqual(effort === 'off' ? undefined : { effort })
   })
 
-  it('disables thinking for titles and refuses ignored temperature or unsupported effort', () => {
+  it('disables thinking for titles, passes temperature with thinking and refuses unsupported effort', () => {
     expect(body([user()], { purpose: 'session-title', temperature: 0 })).toMatchObject({ thinking: { type: 'disabled' }, temperature: 0 })
-    expect(() => body([user()], { temperature: 0 })).toThrow(/temperature/)
+    expect(body([user()], { temperature: 0 })).toMatchObject({ thinking: { type: 'enabled' }, temperature: 0 })
     expect(() => body([user()], { reasoningEffort: ReasoningEffortId('medium') })).toThrow(/effort/)
-    const disabled = resolveAdapterOptions({ protocol: 'messages', thinking: 'disabled' })
+    const disabled = resolveAdapterOptions({ thinking: 'disabled' })
     expect(serialize(options(), disabled, [user()], new Map(), () => undefined).thinking).toEqual({ type: 'disabled' })
     expect(() => serialize(options({ reasoningEffort: ReasoningEffortId('high') }), disabled, [user()], new Map(), () => undefined)).toThrow(/effort/)
-    const capped = resolveAdapterOptions({ protocol: 'messages', models: [{ id: MODEL, maxTokens: 321 }] })
+    const capped = resolveAdapterOptions({ models: [{ id: MODEL, maxTokens: 321 }] })
     expect(serialize(options(), capped, [user()], new Map(), () => undefined).max_tokens).toBe(321)
   })
 
@@ -230,8 +230,8 @@ describe('validated configuration', () => {
     expect(modelInfo(connection, 'deepseek-official', 'custom').systemPromptUpdate).toBeUndefined()
     expect(modelInfo(capable, 'deepseek-official', MODEL).systemPromptUpdate).toBe('in-history')
     expect(modelInfo(capable, 'deepseek-official', 'custom').systemPromptUpdate).toBeUndefined()
-    expect(modelInfo(resolveAdapterOptions({ protocol: 'messages', thinking: 'disabled' }), 'deepseek-official', MODEL).reasoning?.efforts).toMatchObject([{ id: 'off', name: 'Off' }])
-    expect(resolveAdapterOptions({ protocol: 'messages', baseURL: 'https://example.com/anthropic///' }).baseURL).toBe('https://example.com/anthropic///')
+    expect(modelInfo(resolveAdapterOptions({ thinking: 'disabled' }), 'deepseek-official', MODEL).reasoning?.efforts).toMatchObject([{ id: 'off', name: 'Off' }])
+    expect(resolveAdapterOptions({ baseURL: 'https://example.com/anthropic///' }).baseURL).toBe('https://example.com/anthropic///')
   })
   it.each([
     { thinking: 'disabled', reasoningEffort: 'high' }, { models: [{ id: '' }] },
@@ -242,11 +242,11 @@ describe('validated configuration', () => {
     { maxTokens: 0 }, { streamIdleTimeoutMs: 0 },
     { models: [{ id: MODEL, systemPromptUpdate: 'unsupported' }] },
   ])('rejects invalid composition input %#', (value) => {
-    expect(() => resolveAdapterOptions({ ...value, protocol: 'messages' } as Config)).toThrow()
+    expect(() => resolveAdapterOptions(value as Config)).toThrow()
   })
 })
 
-describe('inline images', () => {
+describe('Messages images', () => {
   const ref: ImageAttachmentRef = { attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`), mediaType: 'image/png', width: 1, height: 1, bytes: 3 }
   const image: ContentBlock = { type: 'image', attachment: ref }
   const version: RequestImageAttachment = { attachment: ref, variantId: ImageVariantId(`sha256:${'b'.repeat(64)}`), mediaType: 'image/png', bytes: 3, data: Uint8Array.of(1, 2, 3), width: 1, height: 1, depth: 'uchar', space: 'srgb', hasAlpha: false }
@@ -268,17 +268,19 @@ describe('inline images', () => {
     expect(imagePricing(connection, MODEL, access).priceImages([ref])[0]?.visualTokens).toBe(0)
   })
   it('offloads an oldest prefix using exact encoded bytes and preserves durable references', async () => {
-    const config = resolveAdapterOptions({ protocol: 'messages',
+    const config = resolveAdapterOptions({
       maxInlineRequestImageBytes: 4, inlineImageOffloadByteQuantum: 1, maxImagesPerRequest: 2, imageOffloadCountQuantum: 1,
     })
     const history = [result('a', [image, image])]
     const prepared = await prepareImages(history, config, model, attachments, access, signal)
-    expect(prepared.messages[0]?.content[0]).toMatchObject({ content: [{ type: 'text' }, { type: 'image' }] })
+    expect(prepared.messages[0]?.content[0]).toMatchObject({ content: [image, image] })
+    expect(inlineImages(prepared.messages, prepared.versions, config, access)[0]?.content[0]).toMatchObject({ content: [{ type: 'text' }, { type: 'image' }] })
     expect(history[0]?.content[0]).toMatchObject({ content: [image, image] })
-    expect(imagePricing(config, model, access).priceImages([ref, ref]).map(entry => entry.visualTokens)).toEqual([0, expect.any(Number)])
+    expect(imagePricing(config, model, access).priceImages([ref, ref]).map(entry => entry.visualTokens))
+      .toEqual([expect.any(Number), expect.any(Number)])
     const large = { readImageRequest: async () => ({ ...version, bytes: 30, data: new Uint8Array(30) }) } as unknown as AttachmentStore
     const exact = await prepareImages([result('a', [image])], config, model, large, access, signal)
-    expect(exact.messages[0]?.content[0]).toMatchObject({ content: [{ type: 'text' }] })
+    expect(inlineImages(exact.messages, exact.versions, config, access)[0]?.content[0]).toMatchObject({ content: [{ type: 'text' }] })
   })
   it('rejects unsupported roles and unavailable image capabilities before HTTP', async () => {
     const history = [result('a', [image])]
@@ -288,5 +290,7 @@ describe('inline images', () => {
     expect(() => body([result('a', [image])])).toThrow(/image/)
     expect(() => body([assistant([image])])).toThrow(/assistant/)
     expect(() => body([result('a', [{ type: 'reasoning', text: 'bad' }])])).toThrow(/user/)
+    expect(() => serialize(options({ model }), connection, [result('a', [image])], new Map([[ref.attachmentId, version]]), access, undefined, new Map()))
+      .toThrow(/request file id is missing/)
   })
 })

@@ -27,31 +27,22 @@ import type {
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
-import { deadline, idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
+import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type {
   DeepSeekLlmApiJson,
-  PreparedDeepSeekLlmApiExtensions,
 } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import { serializeRequest, serializeRequestWithImages } from './serialize.ts'
-import type { ImageWireLocation } from './serialize.ts'
 import { deepSeekImageRequestPricing, resolveRequestImageMaxBytes, resolveRequestImageTarget } from '../../common/request-pricing.ts'
 import { catalogModelInfo, modelInfo } from '../../common/model-info.ts'
 import type { DeepSeekAdapterOptions, DeepSeekCatalogModel, DeepSeekConnectionOptions } from '../../common/types.ts'
-import type { DeepSeekFileStore } from './file-store.ts'
-import type { DeepSeekFileId } from './file-id.ts'
+import type { DeepSeekFileStore } from '../../common/file-store.ts'
+import { FileResolutionFailure, RequestFiles } from '../../common/request-files.ts'
+import { prepareRequestExtensions } from '../../common/request-extensions.ts'
 import { parseSse } from './sse.ts'
 import { translate } from './translate.ts'
 import type { WireError, WireRequest } from './types.ts'
 
 const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
-const FILES_API_TIMEOUT_CODE = 'DEEPSEEK_FILES_API_TIMEOUT'
-/** Marks a failed file-id resolution that may be retried as an inline request. */
-class FileResolutionFailure extends Error {
-  constructor(cause: unknown) {
-    super('DeepSeek Files API could not resolve a request image.', { cause })
-    this.name = 'FileResolutionFailure'
-  }
-}
 
 function collectImageRefs(
   content: readonly ContentBlock[],
@@ -80,75 +71,6 @@ async function prepareRequestImages(
   )))
 }
 
-function providerRejectedNormalizedImage(detail: string): boolean {
-  const reasonBeforeImage = /(?:unsupported|invalid|cannot read|failed to (?:decode|process)).{0,40}image/iu
-  const imageBeforeReason = /image.{0,40}(?:unsupported|invalid|cannot be decoded)/iu
-  return reasonBeforeImage.test(detail) || imageBeforeReason.test(detail)
-}
-
-interface UsedRequestFile {
-  version: RequestImageAttachment
-  fileId: DeepSeekFileId
-  location: ImageWireLocation
-}
-
-function providerRejectedFileId(detail: string): boolean {
-  const file = /\bfile(?:[_ -]?(?:id|api|not[_ -]?found|deleted|expired))?/iu.test(detail)
-  const missing = /(?:expired|not[_ -]?found|deleted|do(?:es)? not exist|not created under (?:this|your) account)/iu.test(detail)
-  const invalidId = /(?:invalid.{0,20}file[_ -]?(?:id|api)|file[_ -]?(?:id|api).{0,20}invalid)/iu.test(detail)
-  return file && (missing || invalidId)
-}
-
-function detailNamesFileId(detail: string, fileId: DeepSeekFileId): boolean {
-  let index = detail.indexOf(fileId)
-  while (index >= 0) {
-    const before = detail[index - 1]
-    const after = detail[index + fileId.length]
-    if ((before === undefined || !/[\p{L}\p{N}_-]/u.test(before))
-      && (after === undefined || !/[\p{L}\p{N}_-]/u.test(after))) return true
-    index = detail.indexOf(fileId, index + 1)
-  }
-  return false
-}
-
-function staleMappings(
-  files: readonly UsedRequestFile[],
-  detail: string,
-): UsedRequestFile[] {
-  const unique = [...new Map(files.map(file => [`${file.version.variantId}\0${file.fileId}`, file])).values()]
-  const exact = unique.filter(file => detailNamesFileId(detail, file.fileId))
-  return exact.length > 0 ? exact : unique
-}
-
-function normalizedImageFacts(
-  file: { version: RequestImageAttachment; location: ImageWireLocation },
-): string {
-  const version = file.version
-  const name = version.attachment.name ?? version.attachment.attachmentId
-  const colour = version.hasAlpha ? 'sRGBA' : 'sRGB'
-  return `"${name}" at message ${file.location.message}, image ${file.location.image} `
-    + `(${version.mediaType}, 8-bit ${colour}, ${version.width}x${version.height})`
-}
-
-function normalizedImageDiagnostic(
-  files: readonly UsedRequestFile[],
-  providerMessage: string,
-  providerDetail: string,
-): string {
-  const exact = files.find(file => detailNamesFileId(providerDetail, file.fileId))
-  const target = exact ?? (files.length === 1 ? files[0] : undefined)
-  if (target !== undefined) {
-    return `DeepSeek rejected normalized image ${normalizedImageFacts(target)}: ${providerMessage}. `
-      + 'The provider rejected bytes already normalized by the harness; PNG, JPEG, WebP, and GIF remain supported input formats.'
-  }
-  const candidates = [...new Map(files.map(file => [
-    `${file.version.variantId}\0${file.location.message}\0${file.location.image}`,
-    file,
-  ])).values()]
-  return `DeepSeek rejected a normalized request image: ${providerMessage}. Candidate images: `
-    + `${candidates.map(normalizedImageFacts).join('; ')}. `
-    + 'The provider rejected bytes already normalized by the harness; PNG, JPEG, WebP, and GIF remain supported input formats.'
-}
 
 
 function providerRetryAfterMs(value: string | null): number | undefined {
@@ -346,7 +268,7 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         : {},
     }
 
-    const fileConnection = { baseURL: connection.baseURL, apiKey }
+    const fileConnection = { baseURL: connection.baseURL, apiKey, protocol: connection.protocol }
     const model = connection.models.find(entry => entry.id === options.model)
     const maxBytes = model === undefined ? undefined : resolveRequestImageMaxBytes(model)
     const resolveImageAccess = attachments === undefined
@@ -367,9 +289,11 @@ export class ChatCompletionsAdapter extends LlmAdapter {
       ? new Map<AttachmentId, RequestImageAttachment>()
       : await prepareRequestImages(requestOptions, attachments, model, signal)
     let representation: 'file' | 'base64' = 'file'
-    let fileAttempt = 0
+    const requestFiles = new RequestFiles(
+      this.files, fileConnection, connection.filePolicy, connection.filesApiTimeoutMs, signal, onActivity,
+    )
     while (true) {
-      const usedFiles: UsedRequestFile[] = []
+      requestFiles.beginAttempt()
       let body: WireRequest
       if (attachments === undefined) {
         body = serializeRequest(requestOptions, connection.defaults)
@@ -388,24 +312,7 @@ export class ChatCompletionsAdapter extends LlmAdapter {
           body = await serializeRequestWithImages(requestOptions, {
             representation: {
               kind: 'file',
-              resolveFileId: async (version, _block, location) => {
-                using filesDeadline = deadline(signal, connection.filesApiTimeoutMs, FILES_API_TIMEOUT_CODE)
-                let resolved: Awaited<ReturnType<DeepSeekFileStore['ensureUploaded']>>
-                try {
-                  resolved = await this.files.ensureUploaded(
-                    version,
-                    fileConnection,
-                    connection.filePolicy,
-                    filesDeadline.signal,
-                  )
-                } catch (error: unknown) {
-                  if (signal.aborted) throw error
-                  throw new FileResolutionFailure(error)
-                }
-                onActivity()
-                usedFiles.push({ version, fileId: resolved.record.fileId, location })
-                return resolved.record.fileId
-              },
+              resolveFileId: (version, _block, location) => requestFiles.resolve(version, location),
             },
             requestImages,
             ...imageAccessOptions,
@@ -420,25 +327,11 @@ export class ChatCompletionsAdapter extends LlmAdapter {
           continue
         }
       }
-      let extensions: PreparedDeepSeekLlmApiExtensions
-      try {
-        extensions = await this.config.prepareExtensions({
-          body: body as unknown as Readonly<Record<string, DeepSeekLlmApiJson>>,
-          signal,
-          ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
-          ...options.purpose === undefined ? {} : { purpose: options.purpose },
-        })
-      } catch (error) {
-        throw new LlmError('DeepSeek request extension preparation failed', 'REQUEST_EXTENSION', { cause: error })
-      }
-      for (const field of Object.keys(extensions.fields)) {
-        if (Object.hasOwn(body, field)) {
-          throw new LlmError(`DeepSeek request extension field ${JSON.stringify(field)} collides with the base request`, 'REQUEST_EXTENSION')
-        }
-      }
-      // Prepared outside the try so the TRANSPORT label below covers exactly the
-      // transport boundary, never a serialization failure.
-      const payload = JSON.stringify({ ...body, ...extensions.fields })
+      const extensions = await prepareRequestExtensions(body as unknown as Readonly<Record<string, DeepSeekLlmApiJson>>, {
+        signal,
+        ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
+        ...options.purpose === undefined ? {} : { purpose: options.purpose },
+      }, this.config.prepareExtensions)
 
       // TODO(http): adopt the Cordis HTTP service when shared transport configuration
       // outweighs its additional runtime dependencies.
@@ -447,7 +340,7 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         response = await fetch(`${connection.baseURL}/chat/completions`, {
           method: 'POST',
           headers,
-          body: payload,
+          body: extensions.payload,
           signal,
         })
       } catch (error: unknown) {
@@ -473,19 +366,8 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         const detail = [providerError?.code, providerError?.type, providerError?.message]
           .filter((field): field is string => typeof field === 'string')
           .join(' ')
-        const staleFile = usedFiles.length > 0 && providerRejectedFileId(detail)
-        if (staleFile) {
-          await Promise.all(staleMappings(usedFiles, detail).map(file => (
-            this.files.invalidate(file.version, file.fileId, fileConnection)
-          )))
-          if (fileAttempt === 0) {
-            fileAttempt += 1
-            continue
-          }
-        }
-        if (response.status === 400 && usedFiles.length > 0 && providerRejectedNormalizedImage(detail)) {
-          message = normalizedImageDiagnostic(usedFiles, message, detail)
-        }
+        if (await requestFiles.retry(detail)) continue
+        message = requestFiles.errorMessage(response.status, message, detail)
         const delay = providerRetryAfterMs(response.headers.get('retry-after'))
         const id = requestId(response.headers)
         throw new LlmError(message, httpErrorCode(response.status, providerError), {
@@ -495,11 +377,7 @@ export class ChatCompletionsAdapter extends LlmAdapter {
           ...id === undefined ? {} : { requestId: id },
         })
       }
-      try {
-        await extensions.accept()
-      } catch (error) {
-        throw new LlmError('DeepSeek request extension acceptance failed', 'REQUEST_EXTENSION', { cause: error })
-      }
+      await extensions.accept()
       if (!response.body) {
         throw new LlmError('DeepSeek API returned no response body', 'EMPTY_RESPONSE')
       }

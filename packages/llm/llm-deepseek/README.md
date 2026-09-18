@@ -1,5 +1,5 @@
 ---
-description: "Configure DeepSeek models, thinking, and image input through Chat Completions or Messages under one provider."
+description: "Configure DeepSeek Messages, Chat Completions overrides, reasoning, and image input through one first-party provider."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to stream DeepSeek models through `deepseek-official`, choosing Chat Completions or Messages in Cordis YAML. Both protocols share credentials, endpoint configuration, and the model catalog. Valid settings changes apply to subsequent requests; in-flight requests retain their original configuration. Web displays DeepSeek and lets users edit the API address and key. It can run beside the [pi-ai adapter](../llm-pi-ai/README.md).
+Stream DeepSeek models through `deepseek-official` with Messages by default, or select Chat Completions in Cordis YAML. Both protocols share credentials, endpoint settings, image handling, and the model catalog. Valid settings changes affect subsequent calls while in-flight calls retain their configuration. Web shows one DeepSeek provider with an editable API base and key. This package can run beside the [pi-ai adapter](../llm-pi-ai/README.md).
 
 ## Table of Contents
 
@@ -29,16 +29,14 @@ Mount this plugin when a composition streams DeepSeek models through the harness
 
 ### When to choose it
 
-Choose this adapter when the deployment targets DeepSeek's official API, optionally behind an OpenAI-compatible gateway named by `baseURL`. Choose `dsh-llm-pi-ai` when the same composition also routes other providers or hand-declared gateways through pi-ai's catalogs; the two adapters can be mounted together because their route names do not collide. Registering any other adapter for `deepseek-official` fails with `DUPLICATE_ADAPTER`.
+Choose this adapter for DeepSeek's official API or a gateway that supports the selected protocol through `baseURL`. Choose `dsh-llm-pi-ai` when the same composition also routes other providers or hand-declared gateways through pi-ai's catalogs; the two adapters can be mounted together because their route names do not collide. Registering any other adapter for `deepseek-official` fails with `DUPLICATE_ADAPTER`.
 
 ### Minimal configuration
 
 ```yaml
 - name: '@deepseek-ai/dsh-llm-deepseek'
   config:
-    protocol: chat-completions   # chat-completions | messages
     apiKeyEnv: DEEPSEEK_API_KEY  # credential reference, resolved per request
-    baseURL: https://api.deepseek.com # optional; $DEEPSEEK_BASE_URL then this default
     reasoningEffort: high        # optional; off | low | high | max
     maxTokens: 256000            # optional per-request output cap
     maxRequestFilesBytes: 134217728
@@ -51,7 +49,7 @@ A request selects the route with `provider: deepseek-official`; the model id pas
 
 | Field | Default | Meaning |
 |---|---|---|
-| `protocol` | `chat-completions` | Choose `chat-completions` or `messages` in Cordis YAML; Web has no protocol selector |
+| `protocol` | `messages` | Choose `messages` or `chat-completions` in Cordis YAML; Web has no protocol selector |
 | `apiKeyEnv` | `DEEPSEEK_API_KEY` | Credential reference resolved per request through the credentials seam, then the environment |
 | `baseURL` | Selected protocol’s official root | Explicit value, then `$DEEPSEEK_BASE_URL`, then the selected protocol default |
 | `thinking` | `enabled` | Deployment policy; `disabled` locks every request to `off` |
@@ -67,8 +65,8 @@ A request selects the route with `provider: deepseek-official`; the model id pas
 | `inlineImageOffloadByteQuantum` | `10 MiB` | Inline-mode oldest-prefix removal quantum |
 | `imageOffloadCountQuantum` | `20` | Count-overflow removal quantum |
 | `filesApiTimeoutMs` | `60,000` | Per-image Files resolution deadline |
-| `fileExpiresAfterSeconds` | `604,800` | Requested uploaded-image lifetime |
-| `fileRefreshMarginSeconds` | `3,600` | Remaining lifetime below which an id is replaced |
+| `fileExpiresAfterSeconds` | `604,800` | Requested uploaded-image lifetime and local reuse bound |
+| `fileRefreshMarginSeconds` | `3,600` | Remaining reuse lifetime below which an id is replaced |
 | `fileQuotaCleanupBatch` | `100` | Oldest harness-owned files removed before one quota retry |
 | `retryPolicy` | normal, 5 retries | Provider-owned retry policy executed by `dsh-llm-retry` |
 
@@ -77,28 +75,29 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <a id="choose-a-protocol"></a>
 ### Choose a protocol
 
-Switch the existing plugin to Messages with a Cordis patch:
+To select Chat Completions explicitly, patch the existing plugin:
 
 ```yaml
 - id: llm-deepseek
   config:
-    protocol: messages
-    baseURL: https://api.deepseek.com/anthropic
+    protocol: chat-completions
 ```
 
-`protocol` defaults to `chat-completions`, whose official root is `https://api.deepseek.com`; `messages` uses `https://api.deepseek.com/anthropic`. An official default applies only without an explicit `baseURL` or environment override. Switching protocols retains endpoint overrides, so users must supply an address compatible with the selected protocol. Chat appends `/chat/completions`; Messages appends `/v1/messages`. Apart from trailing slashes, neither infers or removes custom path suffixes such as `/v1`. Both share the `llm-deepseek` settings section, `apiKeyEnv`, and `deepseek-official`, so saved model selections remain valid.
+`protocol` defaults to `messages`, with official root `https://api.deepseek.com/anthropic`; `chat-completions` uses `https://api.deepseek.com`. Shipped first-party compositions inherit this default. Neither protocol requires `baseURL`: its official default applies when both `baseURL` and `$DEEPSEEK_BASE_URL` are absent. Switching protocols retains endpoint overrides, so users must supply an address compatible with the selected protocol. An explicit `https://api.deepseek.com` override selects the Chat root: remove that override to use the official Messages default, or set it to `https://api.deepseek.com/anthropic`. Chat appends `/chat/completions`; Messages appends `/v1/messages`. Apart from trailing slashes, neither infers or removes custom path suffixes such as `/v1`. Both share the `llm-deepseek` settings section, `apiKeyEnv`, and `deepseek-official`, so saved model selections remain valid.
 
-Messages sends text, thinking, tool calls, and tool results as content blocks, reasoning effort as `output_config.effort`, and images as inline base64. Models declaring `systemPromptUpdate: in-history` retain the initial top-level system and send new system snapshots after their corresponding user/tool-result turn; undeclared models use the latest snapshot as the top-level system. Replay metadata identifies the Messages format, model, and signatures. Chat requests serialize durable content without those signatures. Invalid Messages replay metadata emits a warning and omits signatures while retaining text and tool history.
+Messages sends text, thinking, tool calls, and tool results as content blocks, reasoning effort as `output_config.effort`, and images as Files references or inline base64. Models declaring `systemPromptUpdate: in-history` retain the initial top-level system and send new system snapshots after their corresponding user/tool-result turn; undeclared models use the latest snapshot as the top-level system. Replay metadata identifies the Messages format, model, and signatures. Chat requests serialize durable content without those signatures. Invalid Messages replay metadata emits a warning and omits signatures while retaining text and tool history.
 
 ### Streaming with thinking and images
 
 An image-capable route chooses each durable reference's request target and resolves it into a deterministic request version. Omitting `imagePixelBudget` sizes the target on the published vision token grid of 14px patches, 3:1 downsampling, and at most 1024 tokens per image, so a square image keeps up to 1302×1302 pixels and a 16:9 image is sent as 1708×961 for the provider's 1708×966 grid; a positive integer replaces the grid with a total-pixel budget, and `low` uses 512×512 total pixels. Every request image is capped at 4096 pixels per side, the provider limit for requests carrying 15 or more images, and `imageMaxBytes` defaults to 2 MiB. Alpha images use WebP effort 0 and opaque images use JPEG on the 85/75/60 quality ladder, keeping the smallest output when every candidate exceeds the target. Every retained image is preceded by text naming its complete attachment id and actual request dimensions. When the current filesystem maps the attachment provider's host object, that text also carries a read-only execution-world path and the extension for a writable copy. Text-only and unlisted routes receive stable attachment placeholders while durable history keeps the image references.
 
-Chat Completions normally uploads those exact request bytes through the DeepSeek Files API and sends file-id blocks. A failed or timed-out file resolution rebuilds the whole chat request with the same request versions as base64 data URLs; one request never mixes file ids and inline images. Cached ids are scoped by endpoint and API key, refreshed before expiry, invalidated from provider stale-file errors, and resolved through singleflight with waiter-local cancellation. Quota failure deletes one configured batch of the oldest harness-owned files before one upload retry.
+Both protocols normally upload those exact request bytes through their DeepSeek Files endpoint and send file-id references. Messages uses `/v1/files` under its configured base and includes `anthropic-beta: files-api-2025-04-14` on Files requests and Messages requests containing file ids; Chat uses `/files`. Messages model requests and all Files requests reject redirects so credentials remain on the configured origin. A failed or timed-out file resolution rebuilds the whole model request with inline base64 under the inline budget; one request never mixes file ids and inline images. Caller cancellation stops the request.
+
+Cached ids are scoped by endpoint and API key, refreshed before expiry, invalidated from provider stale-file errors, and resolved through singleflight with waiter-local cancellation. Both uploads request expiry through `expires_after[anchor]=created_at` and `expires_after[seconds]`. Messages file metadata omits remote expiry, so its local reuse deadline uses the original upload time plus `fileExpiresAfterSeconds`; this does not guarantee remote deletion. Quota failure deletes one configured batch of the oldest harness-owned files before one upload retry.
 
 Files mode bounds retained request versions by `maxRequestFilesBytes` and `maxImagesPerRequest`; inline fallback has its own base64 budget. Both remove an oldest prefix in configured byte or count quanta. Each omitted image gets its own model-visible placeholder with its display name or attachment id and, when available, normalized dimensions, media type, and current read-only path. The stepped high-watermark policy avoids rewriting an old request prefix after every new image.
 
-`reasoningEffort` selects the advertised default. Exact-model metadata exposes ordered `off`, `low`, `high`, and `max` efforts with selection guidance when deployment policy permits thinking. `low`, `high`, and `max` enable thinking and serialize as `reasoning_effort` for Chat Completions or `output_config.effort` for Messages, while adapter-owned `off` sends `thinking.type: disabled` instead. An unsupported value fails with `UNSUPPORTED_REASONING_EFFORT` before network I/O, and `thinking: disabled` rejects any non-`off` effort at plugin load. Requests with `purpose: 'session-title'` force thinking off to reserve output for visible title text.
+`reasoningEffort` selects the advertised default. Exact-model metadata exposes ordered `off`, `low`, `high`, and `max` efforts with selection guidance when deployment policy permits thinking. `low`, `high`, and `max` enable thinking and serialize as `reasoning_effort` for Chat Completions or `output_config.effort` for Messages, while adapter-owned `off` sends `thinking.type: disabled` instead. An unsupported value fails with `UNSUPPORTED_REASONING_EFFORT` before network I/O, and `thinking: disabled` rejects any non-`off` effort at plugin load. Requests with `purpose: 'session-title'` force thinking off to reserve output for visible title text. Both protocols forward an explicit `temperature`; DeepSeek accepts it with thinking enabled but ignores its value in that mode.
 
 ### Dynamic configuration
 
@@ -106,11 +105,11 @@ Connection facts are re-read once per operation through the optional settings an
 
 ### Provider-specific request fields
 
-In Chat Completions, when `ctx.deepseekLlmApiExtensions` is present, the adapter prepares its registered top-level fields from the exact serialized base request before `fetch`. Preparation or field collisions fail before HTTP; after a 2xx response, the adapter accepts every captured contribution before consuming SSE. Transport and non-2xx failures do not accept them. Shipped compositions use this for the optional incremental `dsh_session_log` field and the default-on active `dsh_plugin_packages` inventory; both stay outside model input.
+For either protocol, when `ctx.deepseekLlmApiExtensions` is present, the adapter prepares its registered top-level fields from the exact serialized base request before `fetch`. Preparation or field collisions fail before HTTP; after a 2xx response, the adapter accepts every captured contribution before consuming SSE. Transport and non-2xx failures do not accept them. Shipped compositions use this for the optional incremental `dsh_session_log` field and the default-on active `dsh_plugin_packages` inventory; both stay outside model input.
 
 ### Failures and recovery
 
-Non-2xx responses fail with stable codes: `AUTH` (401/403), `QUOTA`, `RATE_LIMIT`, `CONTEXT_WINDOW_EXCEEDED`, `INVALID_REQUEST`, `SERVER`, and `HTTP_<status>` otherwise; pre-response transport failures throw `TRANSPORT`, caller aborts throw `ABORTED`, and stream-idle expiry throws `TIMEOUT`. Request-extension preparation, field collision, or post-2xx acceptance fails with `REQUEST_EXTENSION`. A normalized-image rejection names every plausible attachment and its durable position when the provider does not identify a file id. Stale-file rejection invalidates the named mappings (or every mapping used by the attempt) and permits one replacement chat attempt. Protocol violations throw `STREAM_CLOSED` or `MALFORMED_RESPONSE`, and a terminal `stop` with no content blocks becomes `EMPTY_RESPONSE`, which the default retry policy retries. A request with no key anywhere fails with `MISSING_CREDENTIAL`, and a malformed credential fails with `INVALID_CREDENTIAL` naming the reference to fix — never any part of the key.
+Non-2xx responses fail with stable codes: `AUTH` (401/403), `QUOTA`, `RATE_LIMIT`, `CONTEXT_WINDOW_EXCEEDED`, `INVALID_REQUEST`, `SERVER`, and `HTTP_<status>` otherwise; pre-response transport failures throw `TRANSPORT`, caller aborts throw `ABORTED`, and stream-idle expiry throws `TIMEOUT`. Request-extension preparation, field collision, or post-2xx acceptance fails with `REQUEST_EXTENSION`. A normalized-image rejection names every plausible attachment and its durable position when the provider does not identify a file id. Stale-file rejection invalidates the named mappings (or every mapping used by the attempt) and permits one replacement model request. Protocol violations throw `STREAM_CLOSED` or `MALFORMED_RESPONSE`, and a terminal `stop` with no content blocks becomes `EMPTY_RESPONSE`, which the default retry policy retries. A request with no key anywhere fails with `MISSING_CREDENTIAL`, and a malformed credential fails with `INVALID_CREDENTIAL` naming the reference to fix — never any part of the key.
 
 -----
 
@@ -135,12 +134,14 @@ The plugin is built on one explicit resolve step and one registration fact. `res
 | [`src/adapter.ts`](src/adapter.ts) | Protocol dispatch with frozen prepared-call configuration |
 | [`src/common/models.ts`](src/common/models.ts) | Shared model catalog |
 | [`src/common/model-info.ts`](src/common/model-info.ts) | Shared model capabilities and reasoning choices |
-| [`src/protocols/chat-completions/adapter.ts`](src/protocols/chat-completions/adapter.ts) | Chat transport, Files cache, image projection, and request extensions |
-| [`src/protocols/messages/adapter.ts`](src/protocols/messages/adapter.ts) | Messages transport, serialization, inline images, and native replay |
+| [`src/common/file-store.ts`](src/common/file-store.ts) | Shared Files cache, refresh, quota cleanup, and cancellation |
+| [`src/common/files-api.ts`](src/common/files-api.ts) | Protocol-specific Files endpoints and response mapping |
+| [`src/protocols/chat-completions/adapter.ts`](src/protocols/chat-completions/adapter.ts) | Chat transport, image projection, and request extensions |
+| [`src/protocols/messages/adapter.ts`](src/protocols/messages/adapter.ts) | Messages transport, image projection, request extensions, and native replay |
 
 ### Wire flow
 
-One `stream()` call normally makes one chat request: resolve deterministic request images, prefer Files ids, prepare any registered top-level request extensions, fetch from the resolved `baseURL`, accept extension transactions after HTTP 2xx, and translate the SSE stream into the harness protocol. File-resolution failure makes the first chat inline; a provider stale-file response permits one replacement attempt, also inline if replacement resolution fails. Every chat and Files call carries shared attribution plus the stable anonymous user id outside model input, and a session call also carries its session id. Reasoning history is serialized back when required, and cache accounting maps DeepSeek's cache-hit metrics into harness usage.
+One `stream()` call normally makes one model request: resolve deterministic request images, prefer Files ids, prepare any registered top-level request extensions, fetch from the resolved `baseURL`, accept extension transactions after HTTP 2xx, and translate the SSE stream into the harness protocol. File-resolution failure makes the first request inline; a provider stale-file response permits one replacement attempt, also inline if replacement resolution fails. Every model and Files call carries shared attribution. Model requests also carry the stable anonymous user id outside model input, plus a session id when present. Reasoning history is serialized back when required, and cache accounting maps DeepSeek's cache-hit metrics into harness usage.
 
 </details>
 
@@ -170,11 +171,11 @@ Read these pages when the package-level contract is not enough. They move from t
 
 #### What the model sees
 
-The selected DeepSeek model receives the harness system prompt, message history, tool schemas, stop sequences, and call config (`maxTokens`, `reasoningEffort`, `temperature`) without adapter-authored prompt prose. Provider-specific request-extension fields remain outside model input. The vision model normally receives retained user and tool-result images as Files API references beside attachment handles and request-preview dimensions. It also receives a normalized-object path when the current execution filesystem maps the attachment provider's host object; the descriptor marks this copy read-only and warns that normalization may have resized or re-encoded the upload. A Files resolution failure sends all retained images as inline data URLs instead, and an over-budget older image keeps the access resolved for that request in its placeholder. Reasoning content from a prior assistant turn is passed back verbatim, whether or not that turn called a tool.
+The selected DeepSeek model receives the harness system prompt, message history, tool schemas, stop sequences, and call config (`maxTokens`, `reasoningEffort`, `temperature`) without adapter-authored prompt prose. Provider-specific request-extension fields remain outside model input. The vision model normally receives retained user and tool-result images as Files API references beside attachment handles and request-preview dimensions. It also receives a normalized-object path when the current execution filesystem maps the attachment provider's host object; the descriptor marks this copy read-only and warns that normalization may have resized or re-encoded the upload. A Files resolution failure sends all retained images as inline base64 instead, and an over-budget older image keeps the access resolved for that request in its placeholder. Reasoning content from a prior assistant turn is passed back verbatim, whether or not that turn called a tool.
 
 #### Token effect
 
-Provider tokenization governs exact text and image-token input. The adapter declares per-route `imageRequestPricing`: it reproduces oldest-first image offload from durable byte lengths and prices each retained image at its projected dimensions with the published vision accounting (14px patch grid, 3:1 downsampling, 544×544 scale-up floor, 1024-token cap). This lets the token meter price image pressure before a request; reported usage remains authoritative. Reasoning passback carries every reasoned turn's chain of thought into later requests, while dropping over-budget images avoids paying those tokens again. Cache-read usage is reported when available. `totalTokens` is the exact `prompt_tokens + completion_tokens` aggregate and is omitted if a supplied `total_tokens` disagrees.
+Provider tokenization governs exact text and image-token input. The adapter declares per-route `imageRequestPricing`: it reproduces oldest-first image offload from durable byte lengths and prices each retained image at its projected dimensions with the published vision accounting (14px patch grid, 3:1 downsampling, 544×544 scale-up floor, 1024-token cap). This lets the token meter price image pressure before a request; reported usage remains authoritative. Reasoning passback carries every reasoned turn's chain of thought into later requests, while dropping over-budget images avoids paying those tokens again. Cache-read usage is reported when available. Messages totals include uncached input, output, cache-read, and cache-write tokens. Chat Completions uses `prompt_tokens + completion_tokens` and omits `totalTokens` if a supplied `total_tokens` disagrees.
 
 #### KV Cache effect
 
@@ -196,7 +197,7 @@ Loop-retained response blocks append to the next request and preserve its earlie
 
 ## Known Limitations and Deferred Work
 
-- Messages does not use the DeepSeek Files API or Chat-specific request extensions. Responses is not implemented; configuration rejects `responses`.
+- Responses is not implemented; configuration rejects `responses`.
 
 <a id="known-limitations-and-deferred-work"></a>
 

@@ -4,7 +4,7 @@ import { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { DeepSeekAdapterOptions } from './common/types.ts'
 import { ChatCompletionsAdapter } from './protocols/chat-completions/adapter.ts'
-import { DeepSeekFileStore } from './protocols/chat-completions/file-store.ts'
+import { DeepSeekFileStore } from './common/file-store.ts'
 import { DeepSeekMessagesAdapter } from './protocols/messages/adapter.ts'
 
 /** One provider route with protocol-local transport and shared credentials and model configuration. */
@@ -29,6 +29,8 @@ export class DeepSeekAdapter extends LlmAdapter {
             const attachments = this.dependencies.resolveAttachments?.()
             return attachments === undefined ? undefined : this.dependencies.resolveImageAccess?.(attachments, ref)
           },
+          files: () => this.files,
+          prepareExtensions: this.dependencies.prepareExtensions,
           ...this.dependencies.onReplayDegrade === undefined ? {} : { onReplayDegrade: this.dependencies.onReplayDegrade },
         })
       case 'chat-completions':

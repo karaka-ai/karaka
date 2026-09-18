@@ -1,9 +1,13 @@
-/** OpenAI-compatible DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
+/** DeepSeek Files API transport for Chat Completions and Messages endpoints. @module dsh-llm-deepseek/files-api */
 
 import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { DeepSeekFileId } from './file-id.ts'
 import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
+import type { DeepSeekProtocol } from './types.ts'
+
+/** Required opt-in for Messages file operations and file-referenced image requests. */
+export const MESSAGES_FILES_BETA = 'files-api-2025-04-14'
 
 /** Minimum provider-supported file lifetime. */
 export const MIN_FILE_EXPIRY_SECONDS = 3_600
@@ -16,13 +20,15 @@ export const MAX_STORED_FILE_COUNT = 10_000
 /** Current per-key storage quota. */
 export const MAX_STORED_FILE_BYTES = 25 * 1024 * 1024 * 1024
 
-/** Validated file object returned by the OpenAI-compatible endpoint. */
+/** Validated file metadata normalized from either DeepSeek Files protocol. */
 export interface DeepSeekFileObject {
   id: DeepSeekFileIdType
   bytes: number
   createdAt: number
   filename: string
+  /** Chat Completions purpose; synthesized as `user_data` for Messages. */
   purpose: 'user_data'
+  /** Remote Chat Completions expiry or the upload-time Messages reuse deadline; Messages list/retrieve omit this field. */
   expiresAt?: number
 }
 
@@ -70,6 +76,7 @@ export function isFilesQuotaError(error: unknown): error is DeepSeekFilesError {
 interface FilesApiOptions {
   baseURL: string
   apiKey: string
+  protocol: DeepSeekProtocol
   fetch?: typeof fetch
 }
 
@@ -110,6 +117,18 @@ function parseFileObject(value: unknown, operation: string): DeepSeekFileObject 
   }
 }
 
+/** Normalize the Messages wire object without interpreting omitted expiration as permanence. */
+function parseMessagesFile(value: unknown, operation: string): DeepSeekFileObject {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw invalidResponse(operation)
+  const wire = value as Record<string, unknown>
+  const createdAt = typeof wire.created_at === 'string' ? Math.floor(Date.parse(wire.created_at) / 1_000) : NaN
+  if (wire.type !== 'file' || typeof wire.mime_type !== 'string' || !Number.isSafeInteger(createdAt)) throw invalidResponse(operation)
+  return parseFileObject({
+    id: wire.id, object: 'file', bytes: wire.size_bytes, created_at: createdAt,
+    filename: wire.filename, purpose: 'user_data',
+  }, operation)
+}
+
 function providerErrorDetail(value: unknown): { message?: string; detail: string } {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return { detail: '' }
   const error = (value as { error?: unknown }).error
@@ -124,11 +143,13 @@ function providerErrorDetail(value: unknown): { message?: string; detail: string
   }
 }
 
-/** Direct client for the OpenAI-compatible `/files` endpoints. */
+/** Direct Files client retaining the configured URL root and refusing redirects before credentials can leave its origin. */
 export class DeepSeekFilesClient {
   private readonly baseURL: string
   private readonly apiKey: string
   private readonly fetchImpl: typeof fetch
+  private readonly protocol: DeepSeekProtocol
+  private readonly path: string
 
   /**
    * @param options - endpoint, API-key snapshot, and optional test transport.
@@ -137,15 +158,26 @@ export class DeepSeekFilesClient {
     this.baseURL = options.baseURL.replace(/\/+$/u, '')
     this.apiKey = options.apiKey
     this.fetchImpl = options.fetch ?? globalThis.fetch
+    this.protocol = options.protocol
+    this.path = this.protocol === 'messages' ? '/v1/files' : '/files'
+  }
+
+  private parseFile(value: unknown, operation: string): DeepSeekFileObject {
+    return this.protocol === 'messages' ? parseMessagesFile(value, operation) : parseFileObject(value, operation)
   }
 
   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     let response: Response
     try {
       const headers = new Headers(attributionHeaders())
-      headers.set('authorization', `Bearer ${this.apiKey}`)
+      if (this.protocol === 'messages') {
+        headers.set('x-api-key', this.apiKey)
+        headers.set('anthropic-version', '2023-06-01')
+        headers.set('anthropic-beta', MESSAGES_FILES_BETA)
+      } else headers.set('authorization', `Bearer ${this.apiKey}`)
       response = await this.fetchImpl(`${this.baseURL}${path}`, {
         ...init,
+        redirect: 'error',
         headers,
         ...signal === undefined ? {} : { signal },
       })
@@ -171,7 +203,8 @@ export class DeepSeekFilesClient {
   /**
    * Upload one image with an explicit expiry.
    * @param input - deterministic request-version bytes, media type, filename, lifetime, and cancellation.
-   * @returns the validated provider file object, including `expires_at`.
+   * @returns the validated file and reuse deadline. Messages omits expiry metadata;
+   *   its deadline uses upload creation plus the requested lifetime.
    */
   async upload(input: {
     data: Uint8Array
@@ -189,20 +222,21 @@ export class DeepSeekFilesClient {
       throw new LlmError('DeepSeek file expiry must be between 3600 and 2592000 seconds.', 'INVALID_REQUEST')
     }
     const form = new FormData()
-    form.set('purpose', 'user_data')
+    if (this.protocol === 'chat-completions') form.set('purpose', 'user_data')
     form.set('expires_after[anchor]', 'created_at')
     form.set('expires_after[seconds]', String(input.expiresAfterSeconds))
     form.set('file', new Blob([Uint8Array.from(input.data).buffer], { type: input.mediaType }), input.filename)
-    const response = await this.request('/files', { method: 'POST', body: form }, input.signal)
-    const file = parseFileObject(await response.json(), 'upload')
+    const response = await this.request(this.path, { method: 'POST', body: form }, input.signal)
+    const file = this.parseFile(await response.json(), 'upload')
+    if (this.protocol === 'messages') return { ...file, expiresAt: file.createdAt + input.expiresAfterSeconds }
     if (file.expiresAt === undefined) throw invalidResponse('upload')
     return { ...file, expiresAt: file.expiresAt }
   }
 
   /**
-   * List one ascending or descending page of user-data files.
+   * List one page of files. Ordering applies only to Chat Completions; Messages owns its page order.
    * @param options - pagination, ordering, and cancellation.
-   * @returns the validated page.
+   * @returns the validated page with null Messages cursors omitted.
    */
   async list(options: {
     after?: DeepSeekFileIdType
@@ -210,23 +244,25 @@ export class DeepSeekFilesClient {
     order?: 'asc' | 'desc'
     signal?: AbortSignal
   } = {}): Promise<DeepSeekFilePage> {
-    const query = new URLSearchParams({ purpose: 'user_data' })
-    if (options.after !== undefined) query.set('after', options.after)
+    const query = new URLSearchParams(this.protocol === 'messages' ? {} : { purpose: 'user_data' })
+    if (options.after !== undefined) query.set(this.protocol === 'messages' ? 'after_id' : 'after', options.after)
     if (options.limit !== undefined) query.set('limit', String(options.limit))
-    if (options.order !== undefined) query.set('order', options.order)
-    const response = await this.request(`/files?${query.toString()}`, { method: 'GET' }, options.signal)
+    if (options.order !== undefined && this.protocol === 'chat-completions') query.set('order', options.order)
+    const response = await this.request(`${this.path}?${query.toString()}`, { method: 'GET' }, options.signal)
     const value = await response.json() as unknown
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw invalidResponse('list')
     const wire = value as { object?: unknown; data?: unknown; first_id?: unknown; last_id?: unknown; has_more?: unknown }
-    if (wire.object !== 'list' || !Array.isArray(wire.data) || typeof wire.has_more !== 'boolean'
-      || (wire.first_id !== undefined && typeof wire.first_id !== 'string')
-      || (wire.last_id !== undefined && typeof wire.last_id !== 'string')) {
+    const firstId = this.protocol === 'messages' ? wire.first_id ?? undefined : wire.first_id
+    const lastId = this.protocol === 'messages' ? wire.last_id ?? undefined : wire.last_id
+    if ((this.protocol === 'chat-completions' && wire.object !== 'list') || !Array.isArray(wire.data) || typeof wire.has_more !== 'boolean'
+      || (firstId !== undefined && typeof firstId !== 'string')
+      || (lastId !== undefined && typeof lastId !== 'string')) {
       throw invalidResponse('list')
     }
     return {
-      data: wire.data.map(item => parseFileObject(item, 'list')),
-      ...typeof wire.first_id === 'string' ? { firstId: DeepSeekFileId(wire.first_id) } : {},
-      ...typeof wire.last_id === 'string' ? { lastId: DeepSeekFileId(wire.last_id) } : {},
+      data: wire.data.map(item => this.parseFile(item, 'list')),
+      ...typeof firstId === 'string' ? { firstId: DeepSeekFileId(firstId) } : {},
+      ...typeof lastId === 'string' ? { lastId: DeepSeekFileId(lastId) } : {},
       hasMore: wire.has_more,
     }
   }
@@ -238,8 +274,8 @@ export class DeepSeekFilesClient {
    * @returns the validated file object.
    */
   async retrieve(fileId: DeepSeekFileIdType, signal?: AbortSignal): Promise<DeepSeekFileObject> {
-    const response = await this.request(`/files/${encodeURIComponent(fileId)}`, { method: 'GET' }, signal)
-    return parseFileObject(await response.json(), 'retrieve')
+    const response = await this.request(`${this.path}/${encodeURIComponent(fileId)}`, { method: 'GET' }, signal)
+    return this.parseFile(await response.json(), 'retrieve')
   }
 
   /**
@@ -248,10 +284,12 @@ export class DeepSeekFilesClient {
    * @param signal - request cancellation.
    */
   async delete(fileId: DeepSeekFileIdType, signal?: AbortSignal): Promise<void> {
-    const response = await this.request(`/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' }, signal)
+    const response = await this.request(`${this.path}/${encodeURIComponent(fileId)}`, { method: 'DELETE' }, signal)
     const value = await response.json() as unknown
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw invalidResponse('delete')
-    const wire = value as { id?: unknown; object?: unknown; deleted?: unknown }
-    if (wire.id !== fileId || wire.object !== 'file' || wire.deleted !== true) throw invalidResponse('delete')
+    const wire = value as { id?: unknown; object?: unknown; deleted?: unknown; type?: unknown }
+    if (wire.id !== fileId || (this.protocol === 'messages'
+      ? wire.type !== 'file_deleted'
+      : wire.object !== 'file' || wire.deleted !== true)) throw invalidResponse('delete')
   }
 }

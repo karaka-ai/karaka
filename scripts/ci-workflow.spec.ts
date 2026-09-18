@@ -856,12 +856,14 @@ describe('Python release workflows', () => {
     expect(String(realApiPreflightPosix.if)).toContain('head.repo.fork')
     expect(String(realApiPreflightPosix.if)).toContain('dependabot[bot]')
     expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
-    expect(installedRealApiPosix).toMatchObject({
-      env: {
-        DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
-        DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
-      },
-    })
+    for (const step of [installedRealApiPosix, installedRealApiWindows]) {
+      expect(step).toMatchObject({
+        env: {
+          DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
+          DEEPSEEK_BASE_URL: 'https://api.deepseek.com/anthropic',
+        },
+      })
+    }
     expect(JSON.stringify(installedRealApiPosix)).toContain('--scenario sdk-live')
     expect(JSON.stringify(installedRealApiPosix)).toContain('-u DSH_RUNTIME_MODE')
     expect(installedRealApiWindows).toMatchObject({ shell: 'pwsh' })

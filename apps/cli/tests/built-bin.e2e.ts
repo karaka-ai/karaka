@@ -503,6 +503,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       successText: 'ACP BUILT PROFILE OK',
     })
     const home = mkdtempSync(join(tmpdir(), 'dsh-built-acp-'))
+    writeFileSync(join(home, 'settings.yaml'), 'llm-deepseek:\n  protocol: chat-completions\n')
     const child = execa(process.execPath, [dshBin, '--profile', 'acp'], {
       cwd: home,
       reject: false,
@@ -588,6 +589,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       successText: 'published headless profile reached the mock',
     })
     const home = mkdtempSync(join(tmpdir(), 'dsh-built-headless-'))
+    writeFileSync(join(home, 'settings.yaml'), 'llm-deepseek:\n  protocol: chat-completions\n')
     try {
       const result = await runBuiltBin(['--profile', 'headless', 'answer', 'from', 'the', 'published', 'entry'], {
         DSH_HOME: home,
@@ -725,6 +727,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       successText: 'launching endpoint reached the mock',
     })
     const home = mkdtempSync(join(tmpdir(), 'dsh-home-environment-'))
+    writeFileSync(join(home, 'settings.yaml'), 'llm-deepseek:\n  protocol: chat-completions\n')
     const project = mkdtempSync(join(tmpdir(), 'dsh-home-project-'))
     writeFileSync(join(home, '.credentials.yaml'), `version: 1\nrefs:\n  DEEPSEEK_API_KEY: ${apiKey}\n`, { mode: 0o600 })
     createEnvironmentProbeProfile(home, project)

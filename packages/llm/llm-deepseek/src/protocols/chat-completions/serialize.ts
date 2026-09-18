@@ -56,11 +56,8 @@ export interface ImageSerializationOptions {
   countQuantum?: number
 }
 
-/** Durable message and image ordinal used in provider diagnostics. */
-export interface ImageWireLocation {
-  message: number
-  image: number
-}
+export type { ImageWireLocation } from '../../common/request-files.ts'
+import type { ImageWireLocation } from '../../common/request-files.ts'
 
 const TOOL_RESULT_IMAGE_TEXT = 'Attached image(s) from tool result:'
 

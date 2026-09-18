@@ -997,7 +997,7 @@ Requires: `llm`
  * reasoning effort resolves to `high`.
  */
 export interface Config {
-  /** Wire protocol; defaults to chat-completions. Configure through Cordis YAML. */
+  /** Wire protocol; defaults to messages. Configure through Cordis YAML. */
   protocol?: DeepSeekProtocol
   /** Credential reference (environment-variable name) resolved per request; defaults to `DEEPSEEK_API_KEY`. */
   apiKeyEnv?: string

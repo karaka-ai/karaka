@@ -33,7 +33,7 @@
       - group:
         - text: 自定义设置 API 地址
         - textbox "API 地址":
-          - /placeholder: https://api.deepseek.com
+          - /placeholder: https://api.deepseek.com/anthropic
         - text: 请填写与当前连接配置兼容的 API 地址。
         - region "模型目录":
           - text: 模型目录 正在使用适配器默认模型
