@@ -134,6 +134,14 @@ Types: [Session](session.md) · [SessionHeader](persistence.md) · [SessionId](c
 
 Source: [`packages/karaka/identity/src/index.ts`](../../packages/karaka/identity/src/index.ts)
 
+<a id="ctxkarakastartup--karakastartup"></a>
+
+### `ctx.karakaStartup` — `KarakaStartup`
+
+Application admission verdict; false before startup validation and during disposal.
+
+Source: [`packages/karaka/transport-http/src/startup.ts`](../../packages/karaka/transport-http/src/startup.ts)
+
 <a id="ctxserverauth--serverauth-abstract-seam"></a>
 
 ### `ctx.serverAuth` — `ServerAuth` (abstract seam)

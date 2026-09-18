@@ -1766,31 +1766,17 @@ SHA-256: `0ddab4577db37a3e0d9e3a91761735c8ef6f5629d526ab8ecaeeea19c097c8f8`
 | `kind` | 必需 | `"plugin"` |
 | `plugin` | 必需 | `string` |
 
-<a id="persistence-type-eventagentinboxspliceddatainserted0source10"></a>
+<a id="persistence-type-eventagentinboxspliceddatainserted0source10references"></a>
 
-### `event:agent/inbox/spliced.data.inserted[0].source[10]`
-
-SHA-256: `6a4f72e2e179e17b922f2a9392c0e1c8f8c707f32494372454850a3eb184a6e7`
-
-来源：[`packages/api/session-controller/src/types.ts:380`](../packages/api/session-controller/src/types.ts)
-
-| 属性 | 存在性 | 类型 |
-|---|---|---|
-| `clientTimeZone` | 可选 | `string` |
-| `kind` | 必需 | `"user"` |
-| `rpcId` | 必需 | `string` |
-
-<a id="persistence-type-eventagentinboxspliceddatainserted0source15references"></a>
-
-### `event:agent/inbox/spliced.data.inserted[0].source[15].references`
+### `event:agent/inbox/spliced.data.inserted[0].source[10].references`
 
 SHA-256: `df843efd87c78cf8de98f8e0d0216956cd568d0d0e56a22c853663e274aa1a18`
 
-[`event:agent/inbox/spliced.data.inserted[0].source[15].references[0]`](#persistence-type-eventagentinboxspliceddatainserted0source15references0) 的数组。
+[`event:agent/inbox/spliced.data.inserted[0].source[10].references[0]`](#persistence-type-eventagentinboxspliceddatainserted0source10references0) 的数组。
 
-<a id="persistence-type-eventagentinboxspliceddatainserted0source15references0"></a>
+<a id="persistence-type-eventagentinboxspliceddatainserted0source10references0"></a>
 
-### `event:agent/inbox/spliced.data.inserted[0].source[15].references[0]`
+### `event:agent/inbox/spliced.data.inserted[0].source[10].references[0]`
 
 SHA-256: `4f91f187baeabef5c7950c4780d31bbe39f3345dff591a6cf26ac7e135ac1cf4`
 
@@ -1809,6 +1795,20 @@ SHA-256: `4f91f187baeabef5c7950c4780d31bbe39f3345dff591a6cf26ac7e135ac1cf4`
 | `retainedMessages` | 必需 | `number` |
 | `sessionId` | 必需 | `string` |
 | `truncated` | 必需 | `boolean` |
+
+<a id="persistence-type-eventagentinboxspliceddatainserted0source11"></a>
+
+### `event:agent/inbox/spliced.data.inserted[0].source[11]`
+
+SHA-256: `6a4f72e2e179e17b922f2a9392c0e1c8f8c707f32494372454850a3eb184a6e7`
+
+来源：[`packages/api/session-controller/src/types.ts:380`](../packages/api/session-controller/src/types.ts)
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `clientTimeZone` | 可选 | `string` |
+| `kind` | 必需 | `"user"` |
+| `rpcId` | 必需 | `string` |
 
 <a id="persistence-type-eventagentinboxspliceddatainserted0source16changes"></a>
 
@@ -4423,7 +4423,7 @@ SHA-256: `f56c5b59ca0161310c338d31dd16cf14287ccd602ff4181058df178c1c286d7f`
 |---|---|---|
 | `form` | 必需 | `"recall"` |
 | `kind` | 必需 | `"session-reference"` |
-| `references` | 必需 | [`event:agent/inbox/spliced.data.inserted[0].source[15].references`](#persistence-type-eventagentinboxspliceddatainserted0source15references) |
+| `references` | 必需 | [`event:agent/inbox/spliced.data.inserted[0].source[10].references`](#persistence-type-eventagentinboxspliceddatainserted0source10references) |
 | `version` | 必需 | `1` |
 
 <a id="persistence-type-packagescoreagentsrctypestsinboxtarget"></a>
@@ -5067,7 +5067,7 @@ SHA-256: `4c965666d5b42116945bc356087cd5e1fd549e6dece560785ed60511059a8283`
 
 - [`packages/context/agent-instructions/src/state.ts#AgentInstructionSource`](#persistence-type-packagescontextagent-instructionssrcstatetsagentinstructionsource)
 - [`packages/llm/llm/src/message.ts#ToolMessageSource`](#persistence-type-packagesllmllmsrcmessagetstoolmessagesource)
-- [`event:agent/inbox/spliced.data.inserted[0].source[10]`](#persistence-type-eventagentinboxspliceddatainserted0source10)
+- [`event:agent/inbox/spliced.data.inserted[0].source[11]`](#persistence-type-eventagentinboxspliceddatainserted0source11)
 - [`event:agent/inbox/spliced.data.inserted[0].source[19]`](#persistence-type-eventagentinboxspliceddatainserted0source19)
 - [`packages/skill/tool-skill/src/index.ts#SkillCatalogSource`](#persistence-type-packagesskilltool-skillsrcindextsskillcatalogsource)
 - [`packages/skill/skill/src/index.ts#SkillInvocationSource`](#persistence-type-packagesskillskillsrcindextsskillinvocationsource)

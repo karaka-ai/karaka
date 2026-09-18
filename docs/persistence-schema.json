@@ -29835,7 +29835,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[15].references[0]"
+        "event:agent/inbox/spliced.data.inserted[0].source[10].references[0]"
       ],
       "sources": [
         "packages/context/session-reference/src/types.ts:18"
@@ -34425,7 +34425,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[10]"
+        "event:agent/inbox/spliced.data.inserted[0].source[11]"
       ],
       "sources": [
         "packages/api/session-controller/src/types.ts:380"
@@ -53368,7 +53368,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[15].references"
+        "event:agent/inbox/spliced.data.inserted[0].source[10].references"
       ],
       "sources": []
     },

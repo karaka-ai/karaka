@@ -1764,31 +1764,17 @@ SHA-256: `0ddab4577db37a3e0d9e3a91761735c8ef6f5629d526ab8ecaeeea19c097c8f8`
 | `kind` | required | `"plugin"` |
 | `plugin` | required | `string` |
 
-<a id="persistence-type-eventagentinboxspliceddatainserted0source10"></a>
+<a id="persistence-type-eventagentinboxspliceddatainserted0source10references"></a>
 
-### `event:agent/inbox/spliced.data.inserted[0].source[10]`
-
-SHA-256: `6a4f72e2e179e17b922f2a9392c0e1c8f8c707f32494372454850a3eb184a6e7`
-
-Sources: [`packages/api/session-controller/src/types.ts:380`](../packages/api/session-controller/src/types.ts)
-
-| Property | Presence | Type |
-|---|---|---|
-| `clientTimeZone` | optional | `string` |
-| `kind` | required | `"user"` |
-| `rpcId` | required | `string` |
-
-<a id="persistence-type-eventagentinboxspliceddatainserted0source15references"></a>
-
-### `event:agent/inbox/spliced.data.inserted[0].source[15].references`
+### `event:agent/inbox/spliced.data.inserted[0].source[10].references`
 
 SHA-256: `df843efd87c78cf8de98f8e0d0216956cd568d0d0e56a22c853663e274aa1a18`
 
-Array of [`event:agent/inbox/spliced.data.inserted[0].source[15].references[0]`](#persistence-type-eventagentinboxspliceddatainserted0source15references0).
+Array of [`event:agent/inbox/spliced.data.inserted[0].source[10].references[0]`](#persistence-type-eventagentinboxspliceddatainserted0source10references0).
 
-<a id="persistence-type-eventagentinboxspliceddatainserted0source15references0"></a>
+<a id="persistence-type-eventagentinboxspliceddatainserted0source10references0"></a>
 
-### `event:agent/inbox/spliced.data.inserted[0].source[15].references[0]`
+### `event:agent/inbox/spliced.data.inserted[0].source[10].references[0]`
 
 SHA-256: `4f91f187baeabef5c7950c4780d31bbe39f3345dff591a6cf26ac7e135ac1cf4`
 
@@ -1807,6 +1793,20 @@ Sources: [`packages/context/session-reference/src/types.ts:18`](../packages/cont
 | `retainedMessages` | required | `number` |
 | `sessionId` | required | `string` |
 | `truncated` | required | `boolean` |
+
+<a id="persistence-type-eventagentinboxspliceddatainserted0source11"></a>
+
+### `event:agent/inbox/spliced.data.inserted[0].source[11]`
+
+SHA-256: `6a4f72e2e179e17b922f2a9392c0e1c8f8c707f32494372454850a3eb184a6e7`
+
+Sources: [`packages/api/session-controller/src/types.ts:380`](../packages/api/session-controller/src/types.ts)
+
+| Property | Presence | Type |
+|---|---|---|
+| `clientTimeZone` | optional | `string` |
+| `kind` | required | `"user"` |
+| `rpcId` | required | `string` |
 
 <a id="persistence-type-eventagentinboxspliceddatainserted0source16changes"></a>
 
@@ -4421,7 +4421,7 @@ Sources: [`packages/context/session-reference/src/types.ts:13`](../packages/cont
 |---|---|---|
 | `form` | required | `"recall"` |
 | `kind` | required | `"session-reference"` |
-| `references` | required | [`event:agent/inbox/spliced.data.inserted[0].source[15].references`](#persistence-type-eventagentinboxspliceddatainserted0source15references) |
+| `references` | required | [`event:agent/inbox/spliced.data.inserted[0].source[10].references`](#persistence-type-eventagentinboxspliceddatainserted0source10references) |
 | `version` | required | `1` |
 
 <a id="persistence-type-packagescoreagentsrctypestsinboxtarget"></a>
@@ -5065,7 +5065,7 @@ One of:
 
 - [`packages/context/agent-instructions/src/state.ts#AgentInstructionSource`](#persistence-type-packagescontextagent-instructionssrcstatetsagentinstructionsource)
 - [`packages/llm/llm/src/message.ts#ToolMessageSource`](#persistence-type-packagesllmllmsrcmessagetstoolmessagesource)
-- [`event:agent/inbox/spliced.data.inserted[0].source[10]`](#persistence-type-eventagentinboxspliceddatainserted0source10)
+- [`event:agent/inbox/spliced.data.inserted[0].source[11]`](#persistence-type-eventagentinboxspliceddatainserted0source11)
 - [`event:agent/inbox/spliced.data.inserted[0].source[19]`](#persistence-type-eventagentinboxspliceddatainserted0source19)
 - [`packages/skill/tool-skill/src/index.ts#SkillCatalogSource`](#persistence-type-packagesskilltool-skillsrcindextsskillcatalogsource)
 - [`packages/skill/skill/src/index.ts#SkillInvocationSource`](#persistence-type-packagesskillskillsrcindextsskillinvocationsource)

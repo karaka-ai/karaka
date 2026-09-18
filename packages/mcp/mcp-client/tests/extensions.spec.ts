@@ -63,6 +63,19 @@ it('omits metadata for ordinary MCP calls and sends current metadata when suppli
   expect(f.called).toHaveBeenLastCalledWith({ name: 'read', arguments: {}, _meta: { ticket: 'rotated' } })
 })
 
+it('preserves the metadata hook receiver while reading invocation state', async () => {
+  const f = await fixture()
+  const client = await f.connect()
+  const extensions = {
+    ticket: 'first',
+    async metadata() { return { ticket: this.ticket } },
+  }
+  await f.sync(client, extensions)
+  extensions.ticket = 'rotated'
+  expect((await f.invoke()).isError).toBe(false)
+  expect(f.called).toHaveBeenLastCalledWith({ name: 'read', arguments: {}, _meta: { ticket: 'rotated' } })
+})
+
 it('rejects failed invocation authorization before the MCP server receives a call', async () => {
   const f = await fixture()
   const client = await f.connect()

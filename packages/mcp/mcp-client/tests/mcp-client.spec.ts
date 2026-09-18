@@ -10,7 +10,7 @@ import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepse
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { PostToolDecision } from '@deepseek-ai/dsh-tools'
+import type { PostToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { publicToolName, syncTools, type ToolBridgeOptions } from '@deepseek-ai/dsh-mcp-client/src/tools.ts'
 import { createTransport } from '@deepseek-ai/dsh-mcp-client/src/transport.ts'
 import type { Config } from '@deepseek-ai/dsh-mcp-client'
@@ -527,6 +527,49 @@ describe('tool execution', () => {
     expect(JSON.stringify(result.content)).not.toContain('Ag==')
     if (result.isError) throw new Error('expected MCP success')
     expect(result.value).toEqual({ content: blocks })
+  })
+
+  it('retains the newer rich result when an overlapping authorized attempt fails late', async () => {
+    const rich = await mountRichRegistry()
+    try {
+      const blocks = [{ type: 'image', mimeType: 'image/png', data: 'AQ==' }] satisfies JsonValue[]
+      const client = createMockClient([{ name: 'img', inputSchema: { type: 'object' } }], { content: blocks })
+      const firstStarted = Promise.withResolvers<void>()
+      const firstAuthorization = Promise.withResolvers<Record<string, unknown>>()
+      const metadata = vi.fn(async (_execution: ToolExecution): Promise<Record<string, unknown>> => ({ ticket: 'current' }))
+      metadata.mockImplementationOnce(() => {
+        firstStarted.resolve()
+        return firstAuthorization.promise
+      })
+      await syncTools(client as never, rich.ctx, { ...defaultOpts, extensions: { metadata } }, new Map())
+      rich.ctx.on('tools/execute', async (_execution, next) => {
+        const first = next()
+        try {
+          await firstStarted.promise
+          // Both attempts share the registry's execution; the newer one owns finalization.
+          return await next()
+        } finally {
+          firstAuthorization.reject(new Error('older ticket revoked'))
+          const rejected = await first
+          expect(rejected.isError).toBe(true)
+          expect(rejected.error?.message).toContain('older ticket revoked')
+        }
+      })
+      const result = await rich.ctx.tools.execute({
+        signal: testToolSignal, callId: ToolCallId('overlapping'),
+        name: 'mcp__srv__img', arguments: {}, agent: agentOn() as never,
+      })
+      expect(result.isError).toBe(false)
+      expect(result.content.map(block => block.type)).toEqual(['image'])
+      if (result.isError) throw new Error('expected the newer MCP attempt to succeed')
+      expect(result.value).toEqual({ content: blocks })
+      expect(rich.attachments.saved.map(input => [...input.data])).toEqual([[1]])
+      expect(metadata).toHaveBeenCalledTimes(2)
+      expect(metadata.mock.calls[0]?.[0]).toBe(metadata.mock.calls[1]?.[0])
+      expect(client.callTool).toHaveBeenCalledOnce()
+    } finally {
+      await rich.ctx.fiber.dispose()
+    }
   })
 
   it('keeps a valid raw image result while explicitly refusing it without a durable route', async () => {

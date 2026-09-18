@@ -9,9 +9,10 @@
 
 ```mermaid
 flowchart LR
+  pkg__karaka_ai_transport_http["@karaka-ai/transport-http"]
+  svc_karakaStartup["ctx.karakaStartup<br/>Application startup readiness"]
   pkg__karaka_ai_identity["@karaka-ai/identity"]
   svc_karakaIdentity["ctx.karakaIdentity<br/>Application-owned durable conversations"]
-  pkg__karaka_ai_transport_http["@karaka-ai/transport-http"]
   pkg__karaka_ai_mcp_application["@karaka-ai/mcp-application"]
   pkg__karaka_ai_server_auth["@karaka-ai/server-auth"]
   svc_serverAuth["ctx.serverAuth<br/>Application server authentication"]
@@ -242,6 +243,7 @@ flowchart LR
   pkg__karaka_ai_browser_auth --> svc_karakaBrowserAuth
   pkg__karaka_ai_identity --> svc_karakaIdentity
   pkg__karaka_ai_server_auth --> svc_serverAuth
+  pkg__karaka_ai_transport_http --> svc_karakaStartup
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
   pkg_agent_loop --> svc_agentLoop
@@ -407,6 +409,7 @@ flowchart LR
   svc_karakaBrowserAuth --> pkg__karaka_ai_transport_http
   svc_karakaIdentity --> pkg__karaka_ai_mcp_application
   svc_karakaIdentity --> pkg__karaka_ai_transport_http
+  svc_karakaStartup --> pkg__karaka_ai_transport_http
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
@@ -504,6 +507,7 @@ flowchart LR
 
 | ctx 键 | 角色 | 所属包 | 实现 | 直接消费方 | 配套插件 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.karakaStartup` | `core` | `@karaka-ai/transport-http` | - | `@karaka-ai/transport-http` | - | [HTTP 传输](../packages/karaka/transport-http/README.zh.md) 在所有启用的启动项激活前保持应用入口关闭。 |
 | `ctx.karakaIdentity` | `core` | `@karaka-ai/identity` | - | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | [identity 包](../packages/karaka/identity/README.zh.md) 在解析持久会话与 Session 引用前验证应用所有者的访问权限。 |
 | `ctx.serverAuth` | `seam` | `@karaka-ai/server-auth` | `@karaka-ai/server-auth` | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | [server-auth 包](../packages/karaka/server-auth/README.zh.md) 声明可替换的入站和出站认证，并提供共享 bearer 凭证实现。 |
 | `ctx.karakaBrowserAuth` | `core` | `@karaka-ai/browser-auth` | - | `@karaka-ai/transport-http` | - | [browser-auth 包](../packages/karaka/browser-auth/README.zh.md) 在创建调用者身份前验证绑定应用的 JWT 和允许的浏览器源。 |

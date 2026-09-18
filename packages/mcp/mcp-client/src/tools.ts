@@ -204,7 +204,7 @@ export async function syncTools(
         taskRequired: tool.execution?.taskSupport === 'required',
         call: (args, signal) => callToolUncached(client, tool.name, args, signal, opts),
       }
-      const metadata = opts.extensions?.metadata
+      const metadata = opts.extensions?.metadata?.bind(opts.extensions)
       const definition = metadata === undefined
         ? createMcpToolDefinition(ctx, options)
         : createAuthorizedDefinition(ctx, options, async (args, execution) =>

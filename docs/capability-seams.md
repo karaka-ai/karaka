@@ -7,9 +7,10 @@ A service can be a core spine service, a swappable capability seam, or a bundle/
 
 ```mermaid
 flowchart LR
+  pkg__karaka_ai_transport_http["@karaka-ai/transport-http"]
+  svc_karakaStartup["ctx.karakaStartup<br/>Application startup readiness"]
   pkg__karaka_ai_identity["@karaka-ai/identity"]
   svc_karakaIdentity["ctx.karakaIdentity<br/>Application-owned durable conversations"]
-  pkg__karaka_ai_transport_http["@karaka-ai/transport-http"]
   pkg__karaka_ai_mcp_application["@karaka-ai/mcp-application"]
   pkg__karaka_ai_server_auth["@karaka-ai/server-auth"]
   svc_serverAuth["ctx.serverAuth<br/>Application server authentication"]
@@ -240,6 +241,7 @@ flowchart LR
   pkg__karaka_ai_browser_auth --> svc_karakaBrowserAuth
   pkg__karaka_ai_identity --> svc_karakaIdentity
   pkg__karaka_ai_server_auth --> svc_serverAuth
+  pkg__karaka_ai_transport_http --> svc_karakaStartup
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
   pkg_agent_loop --> svc_agentLoop
@@ -405,6 +407,7 @@ flowchart LR
   svc_karakaBrowserAuth --> pkg__karaka_ai_transport_http
   svc_karakaIdentity --> pkg__karaka_ai_mcp_application
   svc_karakaIdentity --> pkg__karaka_ai_transport_http
+  svc_karakaStartup --> pkg__karaka_ai_transport_http
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
@@ -502,6 +505,7 @@ flowchart LR
 
 | ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.karakaStartup` | `core` | `@karaka-ai/transport-http` | - | `@karaka-ai/transport-http` | - | The [HTTP transport](../packages/karaka/transport-http/README.md) keeps application ingress closed until every enabled startup entry activates. |
 | `ctx.karakaIdentity` | `core` | `@karaka-ai/identity` | - | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | The [identity package](../packages/karaka/identity/README.md) authorizes application owners before resolving durable conversation and session references. |
 | `ctx.serverAuth` | `seam` | `@karaka-ai/server-auth` | `@karaka-ai/server-auth` | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | The [server-auth package](../packages/karaka/server-auth/README.md) declares replaceable inbound and outbound authentication and supplies the shared-bearer provider. |
 | `ctx.karakaBrowserAuth` | `core` | `@karaka-ai/browser-auth` | - | `@karaka-ai/transport-http` | - | The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity. |

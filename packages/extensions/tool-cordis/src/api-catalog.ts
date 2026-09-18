@@ -1253,6 +1253,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'karakaStartup',
+    summary: 'Application admission verdict; false before startup validation and during disposal.',
+    description: 'Application admission verdict; false before startup validation and during disposal.',
+    methods: [
+      {
+        signature: 'readonly ready: boolean',
+        description: 'Whether every enabled startup entry activated successfully.',
+        parameters: [],
+      },
+    ],
+  },
+  {
     key: 'llm',
     summary: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',

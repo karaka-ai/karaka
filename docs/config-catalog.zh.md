@@ -1559,7 +1559,7 @@ export interface ReconnectConfig {
 }
 ```
 
-来源：[`packages/mcp/mcp-client/src/index.ts:99`](../packages/mcp/mcp-client/src/index.ts)
+来源：[`packages/mcp/mcp-client/src/index.ts:100`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -3585,7 +3585,7 @@ export interface ApplicationCredentialConfig {
 
 ## `@karaka-ai/transport-http`
 
-需要：`serverAuth` · `karakaIdentity` · `agents` · `sessions` · `sessionQuery` · `sessionPersistence` · `sessionProjections` · `agentDefaultModel` · `llm` · `webServer`
+需要：`serverAuth` · `karakaIdentity` · `agents` · `sessions` · `sessionQuery` · `sessionPersistence` · `sessionProjections` · `agentDefaultModel` · `llm` · `webServer` · `karakaStartup`
 
 ```ts config-catalog
 /** HTTP transport configuration. */
