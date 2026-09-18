@@ -151,6 +151,7 @@ root
 │     │  └─ conversation.approval.detail
 │     ├─ conversation.composer.bar
 │     │  ├─ conversation.input.attachments
+│     │  ├─ conversation.input.permission
 │     │  ├─ conversation.input.plan
 │     │  └─ conversation.input.model
 │     ├─ conversation.input.overlay

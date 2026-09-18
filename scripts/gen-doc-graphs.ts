@@ -99,6 +99,14 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'karakaStartup',
+    pkg: '@karaka-ai/transport-http',
+    title: 'Application startup readiness',
+    mode: 'core',
+    consumers: ['@karaka-ai/transport-http'],
+    note: 'The [HTTP transport](../packages/karaka/transport-http/README.md) keeps application ingress closed until every enabled startup entry activates.',
+  },
+  {
     key: 'karakaIdentity',
     pkg: '@karaka-ai/identity',
     title: 'Application-owned durable conversations',
@@ -122,6 +130,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'core',
     consumers: ['@karaka-ai/transport-http'],
     note: 'The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity.',
+  },
+  {
+    key: 'computerUse',
+    pkg: 'computer-use',
+    title: 'Computer-use provider registration',
+    mode: 'seam',
+    implementations: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
+    consumers: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
+    note: 'One provider-owned name per service instance. Each provider also owns its model tools; the service has no common action API, runtime selection, or Session workflow lock.',
   },
   {
     key: 'attachments',

@@ -50,6 +50,32 @@
   white-space: nowrap;
 }
 
+.optionLabel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.optionLabelText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  align-self: flex-start;
+  margin-top: -1px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
 .chevron {
   /* inline-flex, not inline: an inline seat reserves baseline descent under
      the svg and floats the glyph off-center in the 28px trigger. */

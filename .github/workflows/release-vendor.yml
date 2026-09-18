@@ -2,7 +2,7 @@
 # vendor/, each on its own version line. This sequence releases independently of
 # dsh and of the native packages.
 #
-# Pack runs without credentials on every pull request and master push.
+# Pack runs without credentials on every pull request and main push.
 # Publication is a manual workflow_dispatch of release-vendor-publish.yml from a
 # vendor-* tag; a vendor release can carry several versions, so each package has
 # its own tag.
@@ -11,7 +11,7 @@ name: Release (vendor)
 on:
   pull_request:
   push:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
         && github.repository == 'deepseek-harness/deepseek-harness'
         && github.actor != 'dependabot[bot]'
-        && ((github.event_name == 'push' && github.ref == 'refs/heads/master')
+        && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
           || (github.event_name == 'pull_request'
             && github.event.pull_request.head.repo.full_name == github.repository
             && github.event.pull_request.head.repo.fork == false

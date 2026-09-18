@@ -1029,7 +1029,7 @@ test('reads policy snapshots in reference order and only resolving Project prior
     references: { all: [2, 4], resolving: [2], related: [4] },
     issues: new Map([[2, { priority: 'P1' }], [4, { priority: null }]]),
   })
-  const repo = '/repos/deepseek-harness/deepseek-harness'
+  const repo = repositoryPath
   assert.deepEqual(fixture.requests, [
     repo + '/pulls/10',
     repo + '/pulls/10/requested_reviewers',
@@ -1053,7 +1053,7 @@ test('reads lifecycle references for draft Bot PRs without review or Project req
     issues: new Map([[2, { priority: null }], [4, { priority: null }]]),
     createdAt: '2026-08-27T16:00:00Z',
   })
-  const repo = '/repos/deepseek-harness/deepseek-harness'
+  const repo = repositoryPath
   assert.deepEqual(fixture.requests, [repo + '/pulls/10', repo + '/issues/2', repo + '/issues/4'])
   assert.deepEqual(fixture.output, [])
 })

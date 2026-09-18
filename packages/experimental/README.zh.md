@@ -1,5 +1,5 @@
 ---
-description: "实验组地图：默认私有的预稳定原型，以及显式公开发布的 Agent Teams 包。"
+description: "实验组地图：默认私有的预稳定原型，以及显式公开发布的 Agent Teams 和计算机操作包。"
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-实验组包含约定可能变更且不提供支持承诺的原型能力。包默认私有；五个 Agent Teams 包是显式公开发布的例外，并保留现有 `@deepseek-ai/dsh-experimental-*` 名称。本组还包含私有的跨 realm Inspector、CPython 子进程后端与浏览器 worker 预览包。组外已发布产品不得依赖实验性包。
+实验组包含约定可能变更且不提供支持承诺的原型能力。包默认私有；允许列表中的 Agent Teams 和 Cua Driver 包是显式公开发布的例外，并保留现有 `@deepseek-ai/dsh-experimental-*` 名称。本组还包含私有的跨 realm Inspector、CPython 子进程后端与浏览器 worker 预览包。组外已发布产品不得依赖实验性包。
 
 ## 目录
 
@@ -28,7 +28,10 @@ kind: "package-group"
 | [`agent-team`](agent-team/README.zh.md) | 具名 teammate，成员之间持久消息与共享任务板 | `ctx.agentTeams` |
 | [`agent-team-web-profile`](agent-team-web-profile/README.zh.md) | Agent Teams 的公开 opt-in Web 层 | — |
 | [`client-ui-agent-team`](client-ui-agent-team/README.zh.md) | Web Team roster、任务板与 teammate 导航 | — |
+| [`auto-review`](auto-review/README.zh.md) | 显式 Web 层，在每个原生或 PTC inner 工具调用前使用同一模型审查 | — |
 | [`ptc-runtime-python`](ptc-runtime-python/README.zh.md) | PTC 执行 seam 的 CPython 子进程后端 | `ctx.ptcRuntime` |
+| [`computer-use-cua-driver-mcp`](computer-use-cua-driver-mcp/README.zh.md) | 通过 MCP 使用已安装的 Cua Driver | `ctx.computerUse` |
+| [`computer-use-cua-driver-native`](computer-use-cua-driver-native/README.zh.md) | 嵌入 Cua Driver 原生 npm 运行时 | `ctx.computerUse` |
 | [`inspector`](inspector/README.zh.md) | 用于 Host 调试、Client Runtime 检查、网络采集与 Cordis 树的跨 realm CDP hub | `ctx.inspector` |
 | [`tool-agent-team`](tool-agent-team/README.zh.md) | 让模型创建、发消息与协调 teammate 的九个工具 | 按作用域注册工具到 `ctx.tools` |
 | [`webworker-packer`](webworker-packer/README.zh.md) | 构建浏览器 worker 预览所消费的 gzip 压缩虚拟文件系统（VFS）镜像 | 库与 CLI（命令行界面），不使用 ctx key |
@@ -40,6 +43,7 @@ kind: "package-group"
 ## 相关文档
 
 - [实验包决策](../../.agents/notes/implemented/architecture/2026-08-18-experimental-agent-teams-packages.zh.md)——默认私有、Agent Teams 公开例外与依赖隔离。
+- [计算机操作](../../docs/subsystems/computer-use.zh.md)——桌面提供方选择。
 - [Agent Teams 子系统](../../docs/subsystems/agent-team.zh.md)——持久 Team 类型与 `ctx.agentTeams` 服务 API。
 - [实验子树规则](AGENTS.md)——实验状态放宽了什么、不放宽什么。
 

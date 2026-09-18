@@ -42,7 +42,7 @@ afterEach(() => {
 })
 
 describe('release families', () => {
-  it('publishes Agent Teams while excluding private experimental packages', () => {
+  it('publishes allowlisted experimental packages while excluding private prototypes', () => {
     const members = releaseFamily('dsh').members(resolve(import.meta.dirname, '../..'))
 
     expect(members
@@ -52,6 +52,8 @@ describe('release families', () => {
       '@deepseek-ai/dsh-experimental-agent-team-web-profile',
       '@deepseek-ai/dsh-experimental-agent-team',
       '@deepseek-ai/dsh-experimental-client-ui-agent-team',
+      '@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp',
+      '@deepseek-ai/dsh-experimental-computer-use-cua-driver-native',
       '@deepseek-ai/dsh-experimental-tool-agent-team',
     ])
     expect(members.map(member => member.name)).not.toContain('@deepseek-ai/dsh-experimental-inspector')

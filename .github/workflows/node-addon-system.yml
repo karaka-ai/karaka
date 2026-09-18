@@ -15,7 +15,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - '.github/workflows/node-addon-system.yml'
       - '.github/workflows/node-addon-system-release.yml'

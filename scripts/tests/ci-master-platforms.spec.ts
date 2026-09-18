@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { gatesForMode } from '../run-gates.ts'
 
 const root = resolve(import.meta.dirname, '../..')
-const masterPush = "github.event_name == 'push' && github.ref == 'refs/heads/master'"
+const masterPush = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
 const runtimeBuilder = './.github/workflows/build-exe-for-python-sdk.yml'
 
 interface Job {
@@ -49,7 +49,7 @@ function evaluateCondition(expression: string, cancelled: boolean, results: stri
   }, { timeout: 1000 }) as boolean
 }
 
-describe('master-only platform scheduling', () => {
+describe('main-only platform scheduling', () => {
   it.each(['success', 'failure', 'skipped', 'cancelled'])(
     'reports %s dependencies in active runs but never starts a cancelled-run verdict', (result) => {
       const aggregate = workflow('ci.yml').jobs['all-checks-passed']!
@@ -92,9 +92,9 @@ describe('master-only platform scheduling', () => {
     }))
   })
 
-  it('runs all three deferred carriers on master pushes with trusted API preflight', () => {
+  it('runs all three deferred carriers on main pushes with trusted API preflight', () => {
     const master = workflow('ci-master.yml')
-    expect(master.on.push).toEqual({ branches: ['master'] })
+    expect(master.on.push).toEqual({ branches: ['main'] })
     expect(Object.keys(master.on).sort()).toEqual(['push', 'workflow_dispatch'])
     const runtime = master.jobs['python-runtime']!
     expect(runtime).toMatchObject({
@@ -117,7 +117,7 @@ describe('master-only platform scheduling', () => {
     expect(preflight.if).toContain("github.event.pull_request.user.login == 'dependabot[bot]'")
   })
 
-  it('runs Wine once on hosted master CI and seeds its own apt cache', () => {
+  it('runs Wine once on hosted main CI and seeds its own apt cache', () => {
     const master = workflow('ci-master.yml')
     const wine = master.jobs.windows!
     expect(wine).toMatchObject({ if: masterPush, 'runs-on': 'ubuntu-latest' })

@@ -3,7 +3,6 @@ import { KARAKA_APPLICATION_API_PATH } from '@karaka-ai/sdk'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createMessage, createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { applicationFixture, owner } from './application-fixture.ts'
-import { apply } from '../src/index.ts'
 import { mountBrowserRoutes } from '../src/browser-routes.ts'
 import { fixture, identity, browser, browserHeaders } from './routes-fixture.ts'
 
@@ -106,16 +105,18 @@ it('derives browser operation owners from signed claims and refuses caller-suppl
 })
 
 
-it('requires launcher readiness and rejects invalid or overlapping route prefixes', async () => {
+it('rejects invalid or overlapping route prefixes', async () => {
   const { ctx } = await applicationFixture(false)
-  expect(() => { apply(ctx, {}) }).toThrow('requires launcher readiness')
   expect(() => { mountBrowserRoutes(ctx, {}, () => true) }).not.toThrow()
   expect(() => { mountBrowserRoutes(ctx, { browserPath: '/browser' }, () => true) }).toThrow('requires explicit origins')
+  expect(() => { mountBrowserRoutes(ctx, { browserPath: '/browser', browserOrigins: [] }, () => true) }).toThrow('requires explicit origins')
   for (const path of ['relative', '/', '/trailing/']) await expect(fixture({ path })).rejects.toThrow('path must start')
   await expect(fixture({ path: '/api', browserPath: '/browser' })).rejects.toThrow('requires explicit origins')
+  await expect(fixture({ path: '/api', browserPath: '/browser', browserOrigins: [] })).rejects.toThrow('requires explicit origins')
   for (const browserPath of ['/api', '/api/browser', '/']) {
     await expect(fixture({ ...browser, browserPath })).rejects.toThrow()
   }
+  await expect(fixture({ ...browser, path: '/browser/api' })).rejects.toThrow('must be disjoint')
 })
 
 it('holds browser methods until ready and encodes sanitized failures before and after streaming', async () => {

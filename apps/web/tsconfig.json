@@ -23,6 +23,7 @@
   // cannot see both sides of the cordis Context merges).
   "exclude": [
     "tests/scaffold.ts",
+    "tests/auto-review-fixture.ts",
     "tests/scaffold-generation.spec.ts",
     "tests/scaffold-hermetic.e2e.ts",
     "tests/startup-rpc-budget.e2e.ts",
@@ -108,6 +109,7 @@
     "tests/subagent-interrupt-ui.e2e.ts",
     "tests/sidebar-subagent-activity.e2e.ts",
     "tests/background-job-list.e2e.ts",
+    "tests/auto-review-denial.e2e.ts",
     "tests/bash-abort-row.e2e.ts",
     "tests/skill-tool-row.e2e.ts",
     "tests/turn-tail-actions.e2e.ts",
@@ -122,6 +124,7 @@
     "tests/workflow-run.e2e.ts"
   ],
   "references": [
+    { "path": "../../packages/experimental/auto-review" },
     {
       "path": "../../packages/client/store"
     },

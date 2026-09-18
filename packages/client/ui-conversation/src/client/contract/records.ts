@@ -166,7 +166,7 @@ export interface ToolResultNode {
   callTime: number | null
   content: readonly ContentBlock[]
   isError: boolean
-  error?: { name: string; code: string }
+  error?: { name: string; code: string; reason?: string }
   meta?: unknown
   /** Child calls owned by this call, in dispatch order. */
   subCalls: readonly ToolCallBlock[]

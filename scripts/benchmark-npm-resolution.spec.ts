@@ -13,6 +13,11 @@ import {
 } from './benchmark-npm-resolution.ts'
 
 const roots: string[] = []
+// Real npm resolution exceeded its 10-second child deadline in Windows CI.
+// These are resolution assertions, not latency gates; retain time for child reap
+// and registry cleanup within the coverage lane's existing 90-second budget.
+const npmResolutionTimeoutMs = process.platform === 'win32' ? 60_000 : 10_000
+const npmFixtureBudget = process.platform === 'win32' ? { timeout: 90_000 } : {}
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -89,12 +94,12 @@ describe('npm resolution benchmark', () => {
     })
   })
 
-  it('runs npm against the local registry without requesting an archive', async () => {
+  it('runs npm against the local registry without requesting an archive', npmFixtureBudget, async () => {
     const index: RegistryIndex = new Map([[
       '@deepseek-ai/dsh',
       new Map([['0.1.0', { name: '@deepseek-ai/dsh', version: '0.1.0' }]]),
     ]])
-    const result = await benchmarkNpmResolution(index, '0.1.0', 10_000)
+    const result = await benchmarkNpmResolution(index, '0.1.0', npmResolutionTimeoutMs)
 
     expect(result.durationMs).toBeGreaterThan(0)
     expect(result.registryRequests).toBeGreaterThan(0)
@@ -102,7 +107,7 @@ describe('npm resolution benchmark', () => {
     expect(result.unknownPackages).toEqual([])
   })
 
-  it('returns npm placement for two aliased package versions without requesting archives', async () => {
+  it('returns npm placement for two aliased package versions without requesting archives', npmFixtureBudget, async () => {
     const index: RegistryIndex = new Map([[
       '@deepseek-ai/dsh',
       new Map([
@@ -114,7 +119,7 @@ describe('npm resolution benchmark', () => {
     const result = await resolveNpmPackageLock(index, {
       '@deepseek-ai/dsh': '0.2.0',
       'dsh-previous': 'npm:@deepseek-ai/dsh@0.1.0',
-    }, 10_000)
+    }, npmResolutionTimeoutMs)
 
     expect(result.archiveRequests).toBe(0)
     expect(result.packageLock.packages['node_modules/@deepseek-ai/dsh']?.version).toBe('0.2.0')
@@ -124,7 +129,7 @@ describe('npm resolution benchmark', () => {
     })
   })
 
-  it('isolates peer resolution from inherited npm configuration', async () => {
+  it('isolates peer resolution from inherited npm configuration', npmFixtureBudget, async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-hostile-npm-config-'))
     roots.push(root)
     const userConfig = join(root, 'user.npmrc')
@@ -150,7 +155,7 @@ describe('npm resolution benchmark', () => {
         }]])],
       ])
 
-      const result = await resolveNpmPackageLock(index, { '@deepseek-ai/dsh': '0.1.0' }, 10_000)
+      const result = await resolveNpmPackageLock(index, { '@deepseek-ai/dsh': '0.1.0' }, npmResolutionTimeoutMs)
 
       expect(result.archiveRequests).toBe(0)
       expect(result.packageLock.packages['node_modules/@deepseek-ai/dsh-peer']?.version).toBe('1.0.0')

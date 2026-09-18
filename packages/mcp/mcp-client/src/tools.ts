@@ -105,12 +105,13 @@ function listToolsUncached(client: Client, cursor?: string) {
 }
 
 /** Call without the SDK pre-validating an output schema the bridge may not support. */
-async function callToolUncached(
+function callToolUncached(
   client: Client,
   rawName: string,
   args: Record<string, unknown>,
-  exec: ToolExecution,
+  signal: AbortSignal,
   opts: ToolBridgeOptions,
+  metadata?: Record<string, unknown>,
 ) {
   return client.request(
     {
@@ -118,12 +119,12 @@ async function callToolUncached(
       params: {
         name: rawName,
         arguments: args,
-        ...opts.extensions?.metadata === undefined ? {} : { _meta: await opts.extensions.metadata(exec) },
+        ...metadata === undefined ? {} : { _meta: metadata },
       },
     },
     RawCallToolResultSchema,
     {
-      signal: exec.signal,
+      signal,
       timeout: opts.toolCallTimeoutMs,
     },
   )
@@ -194,17 +195,20 @@ export async function syncTools(
           `mcp-client(${opts.serverName}): server listed tool "${tool.name}" more than once — invalid tool list`,
         )
       }
-      const definition = createDefinition(
-        client,
-        ctx,
-        publicName,
-        tool.name,
-        tool.description ?? '',
-        tool.inputSchema,
-        supportedOutputSchema(tool.outputSchema),
-        tool.execution?.taskSupport === 'required',
-        opts,
-      )
+      const options: McpToolDefinitionOptions = {
+        name: publicName,
+        rawName: tool.name,
+        description: tool.description ?? '',
+        inputSchema: tool.inputSchema,
+        outputSchema: tool.outputSchema,
+        taskRequired: tool.execution?.taskSupport === 'required',
+        call: (args, signal) => callToolUncached(client, tool.name, args, signal, opts),
+      }
+      const metadata = opts.extensions?.metadata?.bind(opts.extensions)
+      const definition = metadata === undefined
+        ? createMcpToolDefinition(ctx, options)
+        : createAuthorizedDefinition(ctx, options, async (args, execution) =>
+          callToolUncached(client, tool.name, args, execution.signal, opts, await metadata(execution)))
       definitions.set(publicName, opts.extensions?.prepare === undefined ? definition : opts.extensions.prepare(definition, tool))
     }
     cursor = response.nextCursor
@@ -238,6 +242,36 @@ export async function syncTools(
     return new Map()
   }
   return disposers
+}
+
+/** Keep caller metadata and the factory's rich-content projection local to each execution. */
+function createAuthorizedDefinition(
+  ctx: Context,
+  options: McpToolDefinitionOptions,
+  call: (args: Record<string, unknown>, execution: ToolExecution) => Promise<unknown>,
+): ToolDefinition {
+  const delegates = new WeakMap<Readonly<ToolExecution>, ToolDefinition>()
+  return {
+    ...createMcpToolDefinition(ctx, options),
+    async execute(args, execution) {
+      const delegate = createMcpToolDefinition(ctx, {
+        ...options,
+        call: (value, _signal) => call(value, execution),
+      })
+      delegates.set(execution, delegate)
+      try {
+        return await delegate.execute(args, execution)
+      } catch (error) {
+        if (delegates.get(execution) === delegate) delegates.delete(execution)
+        throw error
+      }
+    },
+    finalizeContent(execution, result) {
+      const delegate = delegates.get(execution)
+      delegates.delete(execution)
+      return delegate?.finalizeContent?.(execution, result)
+    },
+  }
 }
 
 /**
@@ -276,37 +310,49 @@ function supportedOutputSchema(candidate: unknown): JsonSchemaNode | undefined {
   }
 }
 
+/** One upstream MCP tool and the callback that obtains its raw protocol result. */
+export interface McpToolDefinitionOptions {
+  /** ToolRuntime name presented to the model. */
+  name: string
+  /** Upstream name used in result diagnostics. */
+  rawName: string
+  /** Upstream model-facing description. */
+  description: string
+  /** Upstream JSON input schema. */
+  inputSchema: Record<string, unknown>
+  /** Advertised structured output schema, when present. */
+  outputSchema?: unknown
+  /** Whether the upstream tool requires the unsupported task execution extension. */
+  taskRequired?: boolean
+  /**
+   * Obtain one raw MCP result from the provider.
+   * @param args - model arguments admitted by the ToolRuntime.
+   * @param signal - cancellation for this invocation.
+   * @returns the external result object, validated before content projection.
+   */
+  call(args: Record<string, unknown>, signal: AbortSignal): Promise<unknown>
+}
+
 /**
- * Build one generation-local tool definition and its execution-local rich projections.
- * @param client - connected MCP client used for calls.
+ * Adapt an upstream MCP tool to canonical values and durable image content.
+ * Registration, provider lifetime, deadlines, and transport belong to the caller.
  * @param ctx - plugin context carrying optional attachment and model services.
- * @param publicName - registry-qualified public tool name.
- * @param rawName - MCP wire tool name.
- * @param description - model-facing tool description.
- * @param parameters - MCP input schema.
- * @param structuredSchema - supported structured-output schema, when advertised.
- * @param taskRequired - whether this MCP tool requires unsupported task execution.
- * @param opts - bridge timeout and namespace options.
- * @returns a complete ToolRuntime definition.
+ * @param options - upstream tool fields and its raw-result callback.
+ * @returns the unregistered ToolRuntime definition.
  */
-function createDefinition(
-  client: Client,
+export function createMcpToolDefinition(
   ctx: Context,
-  publicName: string,
-  rawName: string,
-  description: string,
-  parameters: Record<string, unknown>,
-  structuredSchema: JsonSchemaNode | undefined,
-  taskRequired: boolean,
-  opts: ToolBridgeOptions,
+  options: McpToolDefinitionOptions,
 ): ToolDefinition {
+  const { name, rawName, description, inputSchema } = options
+  const structuredSchema = supportedOutputSchema(options.outputSchema)
   const projections = new WeakMap<ToolExecution, PreparedProjection>()
   return {
-    name: publicName,
+    name,
     description,
-    parameters,
+    parameters: inputSchema,
     output: createOutput(rawName, structuredSchema),
-    execute: createExecutor(client, ctx, rawName, taskRequired, opts, projections),
+    execute: createExecutor(ctx, options, projections),
     finalizeContent(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>) {
       const projection = projections.get(exec)
       if (projection === undefined) return undefined
@@ -339,23 +385,15 @@ function createOutput(rawName: string, structuredSchema: JsonSchemaNode | undefi
 }
 
 /**
- * Create an execute function for one MCP tool. The executor closes over the
- * raw MCP tool name and sends an uncached `tools/call` request with it (never
- * the public name), with abort signal and timeout, then maps the result to
- * harness ContentBlocks. Owning the raw request prevents the SDK's internal
- * per-page schema cache from pre-validating a different contract.
- *
- * When the MCP server returns `isError: true`, the executor throws so that
- * the ToolRuntime's catch path produces an `isError` result for the model.
+ * Invoke the caller-owned raw-result callback and prepare canonical content.
+ * MCP isError results reject before image storage so ToolRuntime records failure.
  */
 function createExecutor(
-  client: Client,
   ctx: Context,
-  rawName: string,
-  taskRequired: boolean,
-  opts: ToolBridgeOptions,
+  options: McpToolDefinitionOptions,
   projections: WeakMap<ToolExecution, PreparedProjection>,
 ): ToolDefinition['execute'] {
+  const { rawName, taskRequired } = options
   return async (args: unknown, exec: ToolExecution) => {
     if (taskRequired) {
       throw new Error(`Tool "${rawName}" requires task-based execution, which this bridge does not support`)
@@ -365,7 +403,7 @@ function createExecutor(
     // string/number/null). Fallback to {} lets the MCP server produce a
     // specific "missing required param" error the model can learn from.
     const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
-    const result = await callToolUncached(client, rawName, argsObj, exec, opts)
+    const result = RawCallToolResultSchema.parse(await options.call(argsObj, exec.signal))
 
     // The SDK may return a legacy `toolResult` shape; normalize to content array.
     if (!Array.isArray(result.content)) {

@@ -55,6 +55,7 @@ export { REGION_BEGIN, REGION_END }
  */
 export const SERVICE_PAGE: Record<string, string> = {
   karakaIdentity: 'karaka.md',
+  karakaStartup: 'karaka.md',
   serverAuth: 'karaka.md',
   karakaBrowserAuth: 'karaka.md',
   agentLoop: 'core.md',
@@ -67,6 +68,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   shellEnv: 'shell.md',
   clientModules: 'client-modules.md',
   ptcRuntime: 'ptc-runtime.md',
+  computerUse: 'computer-use.md',
   commands: 'commands.md',
   compaction: 'compaction.md',
   cordisInspect: 'extensions.md',
@@ -150,7 +152,6 @@ export const SERVICE_PAGE: Record<string, string> = {
  * to a model as `cordis_runtime_inspect what:"client"`).
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
-  karakaStartup: 'internal application admission verdict, not a service class; packages/karaka/transport-http/README.md owns startup and shutdown behavior',
   karakaApplication: 'internal HTTP controller; packages/karaka/transport-http/README.md owns the public transport API',
   appReady: 'not a service: launcher-provided successful-startup signal — packages/boot/cmdline/README.md owns the launcher contract',
   appExit: 'not a service: launcher-provided bounded process-exit callback — packages/boot/cmdline/README.md owns the launcher contract',
@@ -208,6 +209,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'fs': 'filesystem.md',
   'goal': 'goal.md',
   'llm': 'llm-streaming.md',
+  'permission-presets': 'permission-presets.md',
   'session': 'session.md',
   'settings': 'settings.md',
   'skills': 'skills.md',
@@ -254,6 +256,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ApplicationId: 'karaka.md',
   AuthenticatedApplication: 'karaka.md',
   BrowserCaller: 'karaka.md',
+  ComputerUseProviderName: 'computer-use.md',
   Agent: 'core.md',
   AgentCancelCause: 'core.md',
   AgentFactory: 'core.md',
@@ -628,6 +631,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   WorkflowRun: 'workflow.md',
   VerifiedWebhookDelivery: 'webhook.md',
   WebhookRule: 'webhook.md',
+  PermissionCatalog: 'permission-presets.md',
   PresetOption: 'permission-presets.md',
   PresetSpec: 'permission-presets.md',
   InvariantInstaller: 'invariants.md',
@@ -768,7 +772,6 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   InvariantRegistration: 'service-local lifecycle handle is owned by packages/runtime-diagnostics/invariants/README.md',
   JsonValue: 'JSON value union is owned by packages/core/session/src/json.ts',
   KnobState: 'projection unit state fields are owned by packages/interaction/permission-presets/README.md',
-  PermissionSelect: 'permissions projection payload is owned by packages/interaction/permission-presets/src/types.ts',
   PromptAssembly: 'assembly result is owned by packages/core/system-prompt/README.md',
   RequestRunId: 'dynamic-package payload contract is owned by packages/extensions/cordis-host-runner/src/types.ts',
   RpcReceipt: 'carrier-layer receipt is owned by packages/client/connection/src/rpc.ts',
