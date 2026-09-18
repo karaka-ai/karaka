@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { existsSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { PassThrough } from 'node:stream'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import {
   launchLinuxScope,
@@ -62,6 +62,9 @@ class FakeChild extends EventEmitter {
 
 const directories: string[] = []
 
+// Every test must isolate fake PIDs from host signals, including cases without custom mocks.
+beforeEach(() => { denyProcessGroups() })
+
 afterEach(() => {
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
@@ -92,9 +95,12 @@ function activeUnitWithTasks(tasks: string) {
   return { status: 0, stdout: `LoadState=loaded\nActiveState=active\nTasksCurrent=${tasks}\n`, stderr: '' }
 }
 
-/** Deny every real process-group signal so a fake child never reaches a live host group. */
+/** Reject group delivery and accept direct-PID signals without reaching the host. */
 function denyProcessGroups(): void {
-  vi.spyOn(process, 'kill').mockImplementation(() => { throw new Error('missing process group') })
+  vi.spyOn(process, 'kill').mockImplementation((pid) => {
+    if (pid < 0) throw new Error('missing process group')
+    return true
+  })
 }
 
 /** Record the systemctl invocations a scope owner makes, succeeding unless a case overrides it. */
@@ -239,11 +245,12 @@ describe('Linux native capability selection', () => {
 describe('Linux scope establishment and quiescence', () => {
   it.each(['abort', 'terminate'] as const)('settles and cleans a managed handle after early %s', async (action) => {
     const { child, result, requestPath } = launch(async () => missingUnit())
+    const processKill = vi.spyOn(process, 'kill')
     const controller = new AbortController()
     const handle = bindManagedProcess({ ...spec(), signal: controller.signal }, result)
     if (action === 'abort') controller.abort(new Error('cancelled'))
     else handle.terminate()
-    expect(child.kills).toEqual(['SIGTERM'])
+    expect(processKill).toHaveBeenCalledWith(321, 'SIGTERM')
     child.exit(null, 'SIGTERM')
     child.stdout.end()
     child.stderr.end()
@@ -266,9 +273,10 @@ describe('Linux scope establishment and quiescence', () => {
 
   it('does not mistake pre-establishment unit absence for quiescence and settles an empty range after cancellation', async () => {
     const { child, result, requestPath, spawnSync } = launch(async () => missingUnit())
+    const processKill = vi.spyOn(process, 'kill')
     const waiting = result.owner.waitForExit()
     result.owner.signal('SIGTERM')
-    expect(child.kills).toEqual(['SIGTERM'])
+    expect(processKill).toHaveBeenCalledWith(321, 'SIGTERM')
     expect(spawnSync).toHaveBeenCalledWith('/bin/systemctl', expect.arrayContaining([
       'kill', '--kill-whom=all', '--signal=SIGTERM',
     ]), expect.anything())
@@ -307,8 +315,10 @@ describe('Linux scope establishment and quiescence', () => {
     expect(processKill).not.toHaveBeenCalled()
 
     result.owner.signal(signal)
-    expect(processKill).toHaveBeenCalledExactlyOnceWith(-321, signal)
-    expect(child.kills).toEqual(signal === 'SIGKILL' ? ['SIGKILL'] : [])
+    expect(processKill.mock.calls).toEqual(signal === 'SIGKILL'
+      ? [[-321, signal], [321, signal]]
+      : [[-321, signal]])
+    expect(child.kills).toEqual([])
     expect(spawnSync).toHaveBeenCalledTimes(2)
 
     child.exit(null, signal)
@@ -451,8 +461,7 @@ describe('Linux scope establishment and quiescence', () => {
     const killFailed = launch(async () => activeUnit(), {
       spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'permission denied' })) as never,
     })
-    denyProcessGroups()
-    vi.spyOn(killFailed.child, 'kill').mockReturnValue(false)
+    vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EPERM' }) })
     killFailed.result.owner.signal('SIGKILL')
     await expect(killFailed.result.owner.waitForExit()).rejects.toThrow('could not signal')
     killFailed.result.owner.cleanup?.()
@@ -523,8 +532,8 @@ describe('Linux scope establishment and quiescence', () => {
   ].flatMap(value => ['delivered', 'already absent'].map(delivery => ({ ...value, delivery })))
     .flatMap(value => [false, true].map(groupAccepted => ({ ...value, groupAccepted }))))(
     'joins a $delivery direct kill with groupAccepted=$groupAccepted before deciding a $state scope', async ({ fresh, settles, delivery, groupAccepted }) => {
-      vi.spyOn(process, 'kill').mockImplementation((pid) => {
-        if (pid < 0 && groupAccepted) return true
+      const processKill = vi.spyOn(process, 'kill').mockImplementation((pid) => {
+        if ((pid < 0 && groupAccepted) || (pid > 0 && delivery === 'delivered')) return true
         throw Object.assign(new Error('absent'), { code: 'ESRCH' })
       })
       const firstRead = Promise.withResolvers<ReturnType<typeof activeUnit>>()
@@ -538,8 +547,6 @@ describe('Linux scope establishment and quiescence', () => {
       const launched = launch(query, { sleep, spawnSync: spawnSync as never }, {
         ...spec(), stdio: { ...spec().stdio, control: 'pipe' },
       })
-      const directKill = vi.spyOn(launched.child, 'kill')
-      if (delivery === 'already absent') directKill.mockReturnValue(false)
       consumeLinuxLaunchRequest(launched.requestPath)
       launched.result.owner.signal('SIGKILL')
       let completed = false
@@ -550,7 +557,7 @@ describe('Linux scope establishment and quiescence', () => {
         firstRead.resolve(activeUnitWithTasks('1'))
         await new Promise<void>(resolve => setImmediate(resolve))
         expect(completed).toBe(false)
-        expect(directKill).toHaveBeenCalledExactlyOnceWith('SIGKILL')
+        expect(processKill).toHaveBeenCalledWith(321, 'SIGKILL')
         expect(query).toHaveBeenCalledOnce()
         expect(sleep).not.toHaveBeenCalled()
         launched.child.exit(null, 'SIGKILL')
@@ -573,13 +580,12 @@ describe('Linux scope establishment and quiescence', () => {
   )
 
   it('reports failed scope and direct kill submission without awaiting direct exit', async () => {
-    denyProcessGroups()
+    vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EPERM' }) })
     const query = vi.fn(async () => activeUnitWithTasks('1'))
     const launched = launch(query, {
       spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'permission denied' })) as never,
     })
     consumeLinuxLaunchRequest(launched.requestPath)
-    vi.spyOn(launched.child, 'kill').mockReturnValue(false)
     launched.result.owner.signal('SIGKILL')
     try {
       await expect(launched.result.owner.waitForExit()).rejects.toThrow('permission denied')
@@ -592,30 +598,47 @@ describe('Linux scope establishment and quiescence', () => {
     }
   })
 
-  it.each(['live', 'permission denied'])('reports scope failure when another group member accepts the kill and the direct PID probe is %s', async (probe) => {
-    const processKill = vi.spyOn(process, 'kill').mockImplementation((pid) => {
-      if (pid < 0 || probe === 'live') return true
-      throw Object.assign(new Error('direct process permission denied'), { code: 'EPERM' })
+  it.each(['live', 'EPERM', 'ESRCH'].flatMap(probe => [
+    { probe, exitCode: 23, signal: null },
+    { probe, exitCode: null, signal: 'SIGKILL' as const },
+  ]))('preserves the eventual direct exit $exitCode / $signal after a denied kill and a $probe PID probe', async ({ probe, exitCode, signal }) => {
+    const signalFailure = Object.assign(new Error('kill EPERM'), { code: 'EPERM' })
+    const processKill = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      if (pid < 0 || (signal === 0 && probe === 'live')) return true
+      if (signal === 0) throw Object.assign(new Error(probe), { code: probe })
+      throw signalFailure
     })
     const query = vi.fn(async () => activeUnitWithTasks('1'))
     const launched = launch(query, {
       spawnSync: vi.fn(() => ({ status: 1, stdout: '', stderr: 'scope permission denied' })) as never,
     })
-    const directKill = vi.spyOn(launched.child, 'kill').mockReturnValue(false)
+    vi.spyOn(launched.child, 'kill').mockImplementation(() => {
+      launched.child.emit('error', signalFailure)
+      return false
+    })
+    let directSettled = false
+    const direct = launched.result.direct.finally(() => { directSettled = true })
+    void direct.catch(() => {})
     consumeLinuxLaunchRequest(launched.requestPath)
     launched.result.owner.signal('SIGKILL')
     let failure: unknown
     const waiting = launched.result.owner.waitForExit().catch((error: unknown) => { failure = error })
     try {
       await new Promise<void>(resolve => setImmediate(resolve))
-      expect(failure).toHaveProperty('message', expect.stringContaining('scope permission denied'))
+      expect(directSettled).toBe(false)
+      if (probe === 'ESRCH') expect(failure).toBeUndefined()
+      else expect(failure).toHaveProperty('message', expect.stringContaining('scope permission denied'))
       expect(launched.child.signalCode).toBeNull()
       expect(query).toHaveBeenCalledOnce()
-      expect(directKill).toHaveBeenCalledExactlyOnceWith('SIGKILL')
-      expect(processKill.mock.calls).toEqual([[-321, 'SIGKILL'], [321, 0]])
+      expect(processKill.mock.calls).toEqual([[-321, 'SIGKILL'], [321, 'SIGKILL'], [321, 0]])
+      launched.child.exit(exitCode, signal)
+      await expect(direct).resolves.toEqual({ exitCode, signal })
+      await waiting
+      expect(failure).toHaveProperty('message', expect.stringContaining('scope permission denied'))
+      expect(query).toHaveBeenCalledTimes(probe === 'ESRCH' ? 2 : 1)
     } finally {
-      launched.child.exit(null, 'SIGKILL')
-      await launched.result.direct
+      launched.child.exit(exitCode, signal)
+      await direct.catch(() => {})
       await waiting
       launched.result.owner.cleanup?.()
     }
@@ -702,7 +725,9 @@ describe('Linux scope establishment and quiescence', () => {
     const spawnSync = recordingSystemctl()
       .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'Invalid argument' })
     const launched = launch(async () => activeUnitWithTasks(tasks), { spawnSync: spawnSync as never })
-    if (clientRunning) vi.spyOn(launched.child, 'kill').mockReturnValue(false)
+    if (clientRunning) {
+      vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EPERM' }) })
+    }
     if (!clientRunning) consumeLinuxLaunchRequest(launched.requestPath)
     launched.result.owner.signal('SIGKILL')
     if (!clientRunning) launched.child.exit(null, 'SIGKILL')
@@ -911,11 +936,10 @@ describe('Linux scope establishment and quiescence', () => {
 
   it('signals the group and direct process before the exact synchronous scope kill on host exit', () => {
     const events: string[] = []
-    const { child, result } = launch(async () => missingUnit(), {
+    const { result } = launch(async () => missingUnit(), {
       spawnSync: vi.fn(() => { events.push('scope'); return { status: 0 } }) as never,
     })
-    child.kill = vi.fn(() => { events.push('direct'); return true })
-    vi.spyOn(process, 'kill').mockImplementation(() => { events.push('group'); return true })
+    vi.spyOn(process, 'kill').mockImplementation((pid) => { events.push(pid < 0 ? 'group' : 'direct'); return true })
     result.owner.terminateForHostExit()
     expect(events).toEqual(['group', 'direct', 'scope'])
     result.owner.cleanup?.()
