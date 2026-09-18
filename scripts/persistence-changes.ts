@@ -243,10 +243,22 @@ function parseSchema(value: unknown, label: string): CanonicalSchema {
 }
 
 /** Parse a persisted schema inventory, rejecting malformed graphs and digest drift.
- * @param value - JSON read from a current or historical schema file.
+ * @param value - JSON read from the current inventory or an enforced acknowledgement snapshot.
  * @returns the validated inventory.
  */
 export function parsePersistenceSnapshot(value: unknown): PersistenceSchemaInventory {
+  return parseSnapshot(value, false)
+}
+
+/** Parse an archived release inventory, including its optional surface operation fields.
+ * @param value - JSON reconstructed from a historical release tag.
+ * @returns the validated inventory; current acknowledgements use the strict parser.
+ */
+export function parseHistoricalPersistenceSnapshot(value: unknown): PersistenceSchemaInventory {
+  return parseSnapshot(value, true)
+}
+
+function parseSnapshot(value: unknown, historical: boolean): PersistenceSchemaInventory {
   const input = record(value, 'schema inventory')
   keys(input, ['formatVersion', 'roots', 'types'], 'schema inventory')
   if (input.formatVersion !== 1) throw new Error('unsupported persistence schema normalization version')
@@ -264,7 +276,7 @@ export function parsePersistenceSnapshot(value: unknown): PersistenceSchemaInven
       && (root.kind !== 'envelope' || key !== 'SessionEventEnvelope')) throw new Error(`invalid schema root ${key}`)
     if (root.kind !== 'event' && (root.event !== undefined || root.surface !== undefined)) throw new Error(`${key}: non-event metadata`)
     const schema = parseSchema(root.schema, key)
-    if (root.kind === 'event') validateEventMetadata(schema, String(root.event), root.surface === true)
+    if (root.kind === 'event') validateEventMetadata(schema, String(root.event), root.surface === true, historical)
     if (digest(root.digest, `${key} digest`) !== schemaDigest(schema)) throw new Error(`${key}: schema digest mismatch`)
   }
   for (const rawType of array(input.types, 'schema types')) {
@@ -278,7 +290,7 @@ export function parsePersistenceSnapshot(value: unknown): PersistenceSchemaInven
   return input as unknown as PersistenceSchemaInventory
 }
 
-function validateEventMetadata(schema: CanonicalSchema, event: string, surface: boolean): void {
+function validateEventMetadata(schema: CanonicalSchema, event: string, surface: boolean, historical: boolean): void {
   const pending = [0]
   const visited = new Set<number>()
   while (pending.length > 0) {
@@ -292,7 +304,7 @@ function validateEventMetadata(schema: CanonicalSchema, event: string, surface: 
     const value = tag === undefined ? undefined : schema.nodes[tag.type]
     if (tag?.optional !== false || value?.kind !== 'literal' || value.value !== event) throw new Error(`${event}: event schema type does not match its root`)
     const operation = node.properties.find(property => property.name === 'surfaceOp')
-    if (surface ? operation?.optional !== false : operation !== undefined) throw new Error(`${event}: surface metadata does not match its schema`)
+    if (surface ? operation === undefined || !historical && operation.optional : operation !== undefined) throw new Error(`${event}: surface metadata does not match its schema`)
   }
 }
 

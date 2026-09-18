@@ -6,7 +6,7 @@ English | [中文](2026-09-09-user-patch-hmr-test-delivery.zh.md)
 
 ## Problem
 
-The [macOS Sandbox run](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34238200206/job/102101292119) times out while waiting for the first user-patch addition. Concurrent local reproductions show no filesystem notification reaching HMR. A polling variant also misses a subsequent edit while HMR has no pending refresh. These failures prevent the refresh assertions from exercising the parser, activation, and recovery behavior they own.
+The macOS Sandbox run (run 34238200206, job 102101292119) times out while waiting for the first user-patch addition. Concurrent local reproductions show no filesystem notification reaching HMR. A polling variant also misses a subsequent edit while HMR has no pending refresh. These failures prevent the refresh assertions from exercising the parser, activation, and recovery behavior they own.
 
 ## Decision
 

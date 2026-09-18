@@ -19,6 +19,8 @@ export interface ConcreteTermViolation {
 
 function isExcluded(file: string): boolean {
   return excludedPrefixes.some(prefix => file.startsWith(prefix))
+    // Release snapshots retain the identifiers present in their pinned source.
+    || /^docs\/persistence-changes\/releases\/dsh-v\d+\.\d+\.\d+-(?:alpha|rc)\.\d+\.schema\.json$/u.test(file)
 }
 
 function containsBlockedTerm(value: string): boolean {
@@ -29,7 +31,7 @@ function containsBlockedTerm(value: string): boolean {
  * Find the blocked term in one maintained tracked file.
  * @param file - repository-relative tracked path.
  * @param source - text contents or symlink target.
- * @returns path and line violations; vendored sources and frozen Agent Notes are excluded.
+ * @returns violations outside vendored sources, frozen Agent Notes and release schema snapshots.
  */
 export function findConcreteTermViolations(file: string, source: string): ConcreteTermViolation[] {
   if (isExcluded(file)) return []

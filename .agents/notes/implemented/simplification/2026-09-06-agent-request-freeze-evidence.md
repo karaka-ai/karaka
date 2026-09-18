@@ -18,7 +18,7 @@ This specializes request construction, not Session ownership or general `deepFre
 
 ## Measurement evidence
 
-Apple M4 Pro, macOS arm64, Node 24.19.0; independent worktree dependencies and built artifacts. The exact parent Agent source at 1dc3296eba is rebuilt for the negative control, then the optimized source is restored and rebuilt. Each row retains all five fresh-process totals in sampling order; all timings are milliseconds. Exclusive slots do not overlap repository builds or sibling benchmarks.
+Apple M4 Pro, macOS arm64, Node 24.19.0; independent worktree dependencies and built artifacts. The exact parent Agent source from run 34017868081 is rebuilt for the negative control, then the optimized source is restored and rebuilt. Each row retains all five fresh-process totals in sampling order; all timings are milliseconds. Exclusive slots do not overlap repository builds or sibling benchmarks.
 
 | Implementation and UTC interval (2026-09-06) | Request-history raw totals | Median | 175 ms verdict |
 |---|---|---:|---|
@@ -36,9 +36,9 @@ An earlier original-code run at 06:58:28 UTC overlaps a sibling build because of
 
 ### Standard hosted CI calibration
 
-The standard two-CPU `ubuntu-24.04` lane runs Node 24.20.0. [Run 34033336380, job 101487280801](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34033336380/job/101487280801) measures the optimized request path at merge commit `8fba64d9ae06d1a9a778a95487bb915d24cb0644` in Azure eastus: 183.355397, 184.468253, 185.042397, 182.160790, 182.924728 ms; median 183.355397 ms. Every sample completes the same 40 requests and 13,923 events. All five exceed the historical 175 ms budget without changing the WeakSet implementation or workload.
+The standard two-CPU `ubuntu-24.04` lane runs Node 24.20.0. Run 34033336380, job 101487280801 measures the optimized request path in Azure eastus: 183.355397, 184.468253, 185.042397, 182.160790, 182.924728 ms; median 183.355397 ms. Every sample completes the same 40 requests and 13,923 events. All five exceed the historical 175 ms budget without changing the WeakSet implementation or workload.
 
-A second hosted run of the same request implementation, [run 34033336246, job 101487216170](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34033336246/job/101487216170), records 145.644577, 144.204300, 143.072572, 145.985903, 146.834474 ms; median 145.644577 ms. It uses the same Ubuntu image and Node version but a different worker in Azure westus3 at merge commit `c366e49`. This faster run does not replace the eastus evidence or establish why the workers differ. The older self-hosted `VM-7-113-ubuntu-ci-9` run with Node 24.18.1 ([run 34021903421, job 101456015028](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34021903421/job/101456015028)) records 110.025154, 119.958978, 108.266860, 107.557950, 108.538902 ms; median 108.538902 ms. Its runner and Node version do not calibrate the standard hosted lane.
+A second hosted run of the same request implementation, run 34033336246, job 101487216170, records 145.644577, 144.204300, 143.072572, 145.985903, 146.834474 ms; median 145.644577 ms. It uses the same Ubuntu image and Node version but a different worker in Azure westus3. This faster run does not replace the eastus evidence or establish why the workers differ. The older self-hosted `VM-7-113-ubuntu-ci-9` run with Node 24.18.1 (run 34021903421, job 101456015028) records 110.025154, 119.958978, 108.266860, 107.557950, 108.538902 ms; median 108.538902 ms. Its runner and Node version do not calibrate the standard hosted lane.
 
 The current request-history median limit is 297 ms. It is the largest integer within a 25% increase from the initial 238 ms limit: `floor(238 × 1.25) = 297`, an increase of 24.79%. This allowance belongs only to `agent-continuation/request-history`; the shared time scale, variance headroom, other time limits, memory limits, sample count, and workload remain unchanged.
 
@@ -46,13 +46,13 @@ The standard GitHub Actions `ubuntu-24.04` runner group reports the same image `
 
 | Hosted measurement | Request-history raw totals (ms) | Median (ms) |
 |---|---|---:|
-| [Release `f778396b2e`](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34233932940/job/102086694864) | 152.649609, 154.616595, 144.588531, 144.261013, 154.017377 | 152.649609 |
-| [Release `a0a61a8237`](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34235890227/job/102095345914) | 246.876615, 246.881047, 272.370218, 265.796833, 272.507507 | 265.796833 |
-| [Reference `35fcb95275`](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34232504298/job/102084171717) | 279.689489, 297.792849, 263.178391, 252.660292, 251.267361 | 263.178391 |
+| PR #3797 merge (run 34233932940, job 102086694864) | 152.649609, 154.616595, 144.588531, 144.261013, 154.017377 | 152.649609 |
+| PR #3799 merge (run 34235890227, job 102095345914) | 246.876615, 246.881047, 272.370218, 265.796833, 272.507507 | 265.796833 |
+| Integration reference (run 34232504298, job 102084171717) | 279.689489, 297.792849, 263.178391, 252.660292, 251.267361 | 263.178391 |
 
 The first two jobs also differ across tool continuation (483.877/698.657 ms), catalog (612.127/1009.367 ms), and profile continuation (2438.362/3854.950 ms). These observations establish broad hosted execution-time variation; they do not identify a hardware fault or a runtime regression. Among these four continuation scenarios, only request history crosses its limit in the slower release run.
 
-A bounded profile of `a0a61a8237` on Apple M4 Pro / Node 24.19.0 retains five fresh-process totals: 70.198916, 67.432250, 65.151208, 66.473292, 71.049667 ms; median 67.432250 ms. Every sample completes the same 40 requests and 13,925 events. Sampling attributes 38.082 ms inclusive time to adapter dispatch, including 10.878 ms of required file-content traversal; system-node scanning takes 4.127 ms, while the one-time restored-event reversal takes 0.291 ms outside the timed turns. Removing the latter cannot explain the observed turn cost. Caching projected content or system nodes adds immutability or invalidation obligations beyond this bounded allowance. Runtime code is unchanged.
+A bounded profile of the PR #3799 merge on Apple M4 Pro / Node 24.19.0 retains five fresh-process totals: 70.198916, 67.432250, 65.151208, 66.473292, 71.049667 ms; median 67.432250 ms. Every sample completes the same 40 requests and 13,925 events. Sampling attributes 38.082 ms inclusive time to adapter dispatch, including 10.878 ms of required file-content traversal; system-node scanning takes 4.127 ms, while the one-time restored-event reversal takes 0.291 ms outside the timed turns. Removing the latter cannot explain the observed turn cost. Caching projected content or system nodes adds immutability or invalidation obligations beyond this bounded allowance. Runtime code is unchanged.
 
 Deterministic controls call the timed case's `assertRequestHistoryBudget`. They accept the recorded 185.042397 ms maximum and the two slower hosted medians, while rejecting a synthetic 310 ms median from 308, 310, 312, 311, 309 ms inputs. The slower-host acceptance control reproduces `265.796833 > 238` before the allowance; the complete owner file passes 11 tests at 297 ms. Replaying recorded values validates the assertion, not a new hosted run. The historical 250 ms synthetic case and the 246.130875 ms original M4 measurement fit this allowance and are no longer rejection controls; original/optimized M4 measurements remain evidence of the freeze implementation's gain.
 

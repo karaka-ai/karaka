@@ -6,15 +6,15 @@ Status: implemented
 
 ## 问题
 
-[master 空 PR 的运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34206953049)在等待 Webhook Session 创建一秒、等待 PowerShell 输出五秒时失败。两个测试都不衡量启动延迟保证。[另一次运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34207864157)在 Desktop worker 就绪测试中暴露了相同的局部短时限问题，并在输入框仍保留已提交命令时截取了反馈确认。
+master 空 PR 的运行 (run 34206953049)在等待 Webhook Session 创建一秒、等待 PowerShell 输出五秒时失败。两个测试都不衡量启动延迟保证。另一次运行 (run 34207864157)在 Desktop worker 就绪测试中暴露了相同的局部短时限问题，并在输入框仍保留已提交命令时截取了反馈确认。
 
-另一次 [Windows coverage 运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34224004885/job/102053583437)报告了 publint 子进程退出状态为 null，以及 LSP 初始化标记等待超时。对应 helper 在通道的 90 秒测试预算内另设五秒和三秒限制。这些用例验证发布内容与取消行为，不衡量冷启动延迟。
+另一次 Windows coverage 运行 (run 34224004885, job 102053583437)报告了 publint 子进程退出状态为 null，以及 LSP 初始化标记等待超时。对应 helper 在通道的 90 秒测试预算内另设五秒和三秒限制。这些用例验证发布内容与取消行为，不衡量冷启动延迟。
 
-[ACP coverage 运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34242280527/job/102115221228)在传输失败后耗尽一秒的注册表轮询期限。断连清理包含取消、输出排空、持久化和 owner 处置；仅从注册表移除不能证明完整拆卸已经结束。
+ACP coverage 运行 (run 34242280527, job 102115221228)在传输失败后耗尽一秒的注册表轮询期限。断连清理包含取消、输出排空、持久化和 owner 处置；仅从注册表移除不能证明完整拆卸已经结束。
 
-一次 [worker runtime coverage 失败](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34248221544/job/102135631932)耗尽了慢 binding 夹具的一秒计算额度。原生 Windows 并发复现在调用 binding 前已超过该额度。Worker 初始化会累计所测的活跃时间；延迟的 binding 累计空闲时间。
+一次 worker runtime coverage 失败 (run 34248221544, job 102135631932)耗尽了慢 binding 夹具的一秒计算额度。原生 Windows 并发复现在调用 binding 前已超过该额度。Worker 初始化会累计所测的活跃时间；延迟的 binding 累计空闲时间。
 
-[Windows 覆盖率运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34324325375/job/102377982193)报告了 SDK 子进程退出超过测试设置的 200 毫秒确认期限，以及 Inspector Worker 启动超过十秒默认期限。协议错误转发用例和 Cordis 树投影用例都不衡量这些延迟保证。
+Windows 覆盖率运行 (run 34324325375, job 102377982193)报告了 SDK 子进程退出超过测试设置的 200 毫秒确认期限，以及 Inspector Worker 启动超过十秒默认期限。协议错误转发用例和 Cordis 树投影用例都不衡量这些延迟保证。
 
 ## 决策
 

@@ -10,6 +10,8 @@ description: "审阅和维护已记录的会话持久化类型变更、对应 sc
 
 本参考文档用于检查已确认的会话持久化类型变更及其前驱。每条记录把兼容性决策绑定到精确的生成 schema。本地检查仅使用当前检出目录中的文件，将当前源码与记录历史比较。修改持久化类型时，从[审阅实操手册](../cookbook/reviewing-persistence-type-changes.zh.md)开始。
 
+较早的 tag 参见[预发行版本归档](releases/README.zh.md)。它重建 alpha/RC 类型差异，供历史阅读和格式校验使用；这些观察记录不作为当前兼容性确认。
+
 ## 目录
 
 - [文件与职责](#files-and-ownership)

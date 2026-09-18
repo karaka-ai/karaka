@@ -24,7 +24,7 @@ Each fact has one home: the tier whose job it is; elsewhere, link there.
 | [subsystems/](subsystems/README.md) | One reference page per subsystem: type definitions, semantics, and the generated Cordis API | Behavior narration (→ architecture.md) |
 | [Agent Notes](../.agents/notes/README.md) | Active decision records: the why, what-was-given-up, and required verification; `implemented/` notes describe shipped reality in present tense | Migration plans, acceptance-task checklists, fixture walkthroughs, and spec-speak ("should…") once the decision has shipped; archived notes are frozen history, never current authority |
 | [postmortem/](postmortem/README.md) | Incident stories — the only tier where war-story narrative belongs | — |
-| [persistence-changes/](persistence-changes/README.md) | Historical acknowledgements of mechanically detected persistence-type changes, with generated schema companions | Behavior-only changes; current runtime contracts |
+| [persistence-changes/](persistence-changes/README.md) | Type-change acknowledgements and retrospective release comparisons, with schema companions | Behavior-only changes; current runtime contracts |
 | [cookbook/](cookbook/adding-a-package.md) | Step-by-step how-tos with numbered verify steps | Design rationale (→ the Agent Note each guide links) |
 | [user/](user/index.md) | Product-facing guides published by the documentation website | Generated reference tables, contributor procedures, decision history |
 | Package README | The per-package contract: config, semantics, limitations, extension points, and [Model Experience](cookbook/adding-a-package.md#4-write-the-package-readme) | JSDoc restatement, generated-catalog restatement (event/tool tables), other packages' concerns |
@@ -36,7 +36,7 @@ Placement: bugs → postmortems; rationale → Agent Notes; procedures → cookb
 
 ## Writing rules
 
-- **Document current state.** Keep history in commits, PRs, Agent Notes, postmortems, or scoped `persistence-change` records. Other prose names live mechanisms, not changes or stack positions. General Session-format prose links [version/status authority](session-format-status.md); retain numbers for version-specific contracts, examples, or evidence.
+- **Document current state.** Keep history in commits, PRs, Agent Notes, postmortems, or scoped persistence records. Other prose names live mechanisms, not changes or stack positions. General Session-format prose links [version/status authority](session-format-status.md); retain numbers for version-specific contracts, examples, or evidence.
 - **Every non-trivial change includes at least one Agent Note in the same PR.** Update the owning note or add one; only mechanical/local edits are exempt ([scope](../.agents/notes/README.md#when-to-write-one)).
 - **One physical line per paragraph** (`verify-md-wrap`): use editor soft-wrap. Code blocks, tables, and list structure keep their formatting; code comments stay under the linter's column limit.
 - **Fenced `ts` blocks must compile** (`doc-typecheck`); a pasted type declaration and its original JSDoc use ` ```ts type-equiv `, while a body-stripped public class declaration uses ` ```ts public-api `; register either in the manifest so neither can drift ([mechanics](development.md#documenting-types-verbatim-ts-type-equiv)).
@@ -71,6 +71,6 @@ Hunt these in any doc; [dsh-doc](../.agents/skills/dsh-doc/SKILL.md) runs this l
 - Emphasis inflation: bold, CAPS, or "critically" everywhere means nothing stands out. Reserve emphasis for the clause that changes behavior.
 - Spec-speak in `implemented/` Agent Notes: "should", migration plans, acceptance checklists. An implemented Agent Note describes what is, per the [implemented-note instructions](../.agents/notes/implemented/AGENTS.md).
 
-## Cross-reference with machine-checkable links, never free prose
+## Repository references
 
-Link repository references with relative Markdown paths, never bare filenames or Agent Note numbers. `verify-md-links` rejects missing targets and dead `#fragment` anchors.
+Use relative Markdown links for current files and tags or PR numbers for historical references. `verify-md-links` checks local targets. [Reference validation](../scripts/verify-repository-references.ts) rejects actual commit identifiers and disallowed organization URLs in maintained files, except the validated `commit` field in [Karaka’s MCP source record](../packages/karaka/mcp-application/UPSTREAM.json).

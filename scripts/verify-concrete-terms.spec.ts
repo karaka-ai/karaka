@@ -63,4 +63,25 @@ describe('concrete terminology policy', () => {
       blockedTerm,
     )).toEqual([{ file: '.agents/notes/implemented/process/current.md', line: 1 }])
   })
+
+  it('preserves historical identifiers only in alpha and RC release schema snapshots', () => {
+    for (const channel of ['alpha', 'rc']) {
+      expect(findConcreteTermViolations(
+        `docs/persistence-changes/releases/dsh-v0.1.2-${channel}.1.schema.json`,
+        `{"names":["Historical${blockedTerm}"]}`,
+      )).toEqual([])
+    }
+    for (const file of [
+      'docs/persistence-changes/releases/dsh-v0.1.2-alpha.1.md',
+      'docs/persistence-changes/releases/dsh-v0.1.2-alpha.1.zh.md',
+      'docs/persistence-changes/releases/README.md',
+      'docs/persistence-changes/releases/manifest.json',
+      'docs/persistence-changes/releases/other.schema.json',
+      'docs/persistence-changes/2026-09-11-initial.schema.json',
+      'docs/persistence-schema.json',
+      'packages/example/src/types.ts',
+    ]) {
+      expect(findConcreteTermViolations(file, blockedTerm)).toEqual([{ file, line: 1 }])
+    }
+  })
 })
