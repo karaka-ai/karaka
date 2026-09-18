@@ -745,7 +745,7 @@
         "event:assistant/chunk[0].data.chunk[5]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:318"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -783,7 +783,7 @@
         "packages/llm/llm/src/types.ts#ReplayEnvelope"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:290"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1073,7 +1073,7 @@
         "packages/llm/llm/src/types.ts#TokenUsage"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:135"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1102,7 +1102,7 @@
         "event:assistant/chunk[0].data.chunk[6].reason[3]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:117"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1174,7 +1174,7 @@
         "packages/llm/llm/src/types.ts#ContentBlockType"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:108"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1227,7 +1227,7 @@
         "packages/llm/llm/src/types.ts#LlmFailure"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:40"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1256,7 +1256,7 @@
         "event:assistant/chunk[0].data.chunk[6].reason[4]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:118"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1303,7 +1303,7 @@
         "event:assistant/chunk[0].data.chunk[2]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:315"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1356,7 +1356,7 @@
         "packages/attachment/attachment/src/types.ts#ImageMediaType"
       ],
       "sources": [
-        "packages/attachment/attachment/src/types.ts:8"
+        "packages/attachment/attachment/src/types.ts"
       ]
     },
     {
@@ -1416,21 +1416,18 @@
         "packages/workflow/workflow/src/types.ts#WorkflowRunId"
       ],
       "sources": [
-        "packages/attachment/attachment/src/brand.ts:6",
-        "packages/compaction/compaction/src/brand.ts:4",
-        "packages/core/session/src/types.ts:22",
-        "packages/goal/goal/src/types.ts:16",
-        "packages/host/apiproxy/src/api/rpc.ts:18",
-        "packages/interaction/commands/src/brand.ts:20",
-        "packages/interaction/user-approval/src/types.ts:14",
-        "packages/llm/llm-retry/src/brand.ts:4",
-        "packages/llm/llm/src/brand.ts:16",
-        "packages/llm/llm/src/brand.ts:31",
-        "packages/llm/llm/src/brand.ts:43",
-        "packages/llm/llm/src/brand.ts:55",
-        "packages/schedule/schedule/src/types.ts:10",
-        "packages/session/session-title/src/index.ts:28",
-        "packages/workflow/workflow/src/types.ts:13"
+        "packages/attachment/attachment/src/brand.ts",
+        "packages/compaction/compaction/src/brand.ts",
+        "packages/core/session/src/types.ts",
+        "packages/goal/goal/src/types.ts",
+        "packages/host/apiproxy/src/api/rpc.ts",
+        "packages/interaction/commands/src/brand.ts",
+        "packages/interaction/user-approval/src/types.ts",
+        "packages/llm/llm-retry/src/brand.ts",
+        "packages/llm/llm/src/brand.ts",
+        "packages/schedule/schedule/src/types.ts",
+        "packages/session/session-title/src/index.ts",
+        "packages/workflow/workflow/src/types.ts"
       ]
     },
     {
@@ -1483,8 +1480,8 @@
         "packages/llm/llm/src/types.ts#TextBlock"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:54",
-        "packages/web/web-search-deepseek/src/provider.ts:67"
+        "packages/llm/llm/src/types.ts",
+        "packages/web/web-search-deepseek/src/provider.ts"
       ]
     },
     {
@@ -1674,7 +1671,7 @@
         "packages/llm/llm/src/types.ts#FinishReason"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:125"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -1747,7 +1744,7 @@
         "event:assistant/chunk[0].data.chunk[6].reason[0]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:120"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2007,7 +2004,7 @@
         "event:assistant/chunk[0].data.chunk[4]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:317"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2073,7 +2070,7 @@
         "packages/llm/llm/src/types.ts#ReasoningBlock"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:60"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2294,7 +2291,7 @@
         "packages/llm/llm/src/types.ts#ContentBlock"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:110"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2351,7 +2348,7 @@
         "event:assistant/chunk[0].data.chunk[3]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:316"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2398,7 +2395,7 @@
         "event:assistant/chunk[0].data.chunk[1]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:314"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2623,7 +2620,7 @@
         "event:assistant/chunk[0].data.chunk[6]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:319"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2696,7 +2693,7 @@
         "event:assistant/chunk[0].data.chunk[0]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:313"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2799,7 +2796,7 @@
         "packages/llm/llm/src/types.ts#ImageBlock"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:71"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2843,8 +2840,8 @@
         "event:turn/end[0].data.reason[4]"
       ],
       "sources": [
-        "packages/core/session/src/types.ts:168",
-        "packages/llm/llm/src/types.ts:119"
+        "packages/core/session/src/types.ts",
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -2927,7 +2924,7 @@
         "packages/attachment/attachment/src/types.ts#ImageAttachmentRef"
       ],
       "sources": [
-        "packages/attachment/attachment/src/types.ts:11"
+        "packages/attachment/attachment/src/types.ts"
       ]
     },
     {
@@ -3572,7 +3569,7 @@
         "event:assistant/chunk[0].data"
       ],
       "sources": [
-        "packages/core/session/src/types.ts:266"
+        "packages/core/session/src/types.ts"
       ]
     },
     {
@@ -3655,7 +3652,7 @@
         "packages/llm/llm/src/types.ts#ToolCallBlock"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:78"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -4259,7 +4256,7 @@
         "packages/llm/llm/src/types.ts#StreamChunk"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:312"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -4332,7 +4329,7 @@
         "event:assistant/chunk[0].data.chunk[6].reason[1]"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:121"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {
@@ -5025,7 +5022,7 @@
         "event:assistant/chunk[0]"
       ],
       "sources": [
-        "packages/core/session/src/types.ts:405"
+        "packages/core/session/src/types.ts"
       ]
     },
     {
@@ -5302,7 +5299,7 @@
         "packages/llm/llm/src/types.ts#ToolResultBlock"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:88"
+        "packages/llm/llm/src/types.ts"
       ]
     },
     {

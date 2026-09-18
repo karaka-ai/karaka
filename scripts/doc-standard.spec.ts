@@ -44,6 +44,7 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
   'package-bundle': '.agents/skills/dsh-doc/templates/package-bundle.md',
   'persistence-change': '.agents/skills/dsh-doc/templates/persistence-change.md',
   'persistence-release': '.agents/skills/dsh-doc/templates/persistence-release.md',
+  'persistence-format': '.agents/skills/dsh-doc/templates/persistence-format.md',
 }
 
 /**
@@ -364,6 +365,16 @@ describe('dsh-doc skill consolidation', () => {
     for (const file of files) {
       const metadata = readFrontmatter(file)
       expect(metadata.kind, file).toBe('persistence-release')
+      expect(typeof metadata.description === 'string' && metadata.description.trim().length > 0, file).toBe(true)
+    }
+  })
+
+  it('maps historical Session format references to their dedicated document kind', () => {
+    const files = globSync('docs/persistence-changes/historical-formats/v*.md', { cwd: root })
+    expect(files.length).toBe(readCurrentSessionFormatVersion(root) * 2)
+    for (const file of files) {
+      const metadata = readFrontmatter(file)
+      expect(metadata.kind, file).toBe('persistence-format')
       expect(typeof metadata.description === 'string' && metadata.description.trim().length > 0, file).toBe(true)
     }
   })

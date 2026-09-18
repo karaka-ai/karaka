@@ -15,7 +15,7 @@
 
 [机器可读目录](persistence-schema.json)包含所有可达的规范化类型及其 SHA-256 摘要。根类型的摘要涵盖引用类型。注释、源码位置、别名、擦除的品牌标记、readonly 标记以及无语义变化的字段、联合类型或交叉类型重排不影响摘要；元组顺序、属性名称、值类型和可选性会影响摘要。摘要不变时，目录文本和源码位置仍可能产生 diff。
 
-[变更记录](persistence-changes/README.zh.md)通过保存在本源码树中的快照确认精确的类型转换。按照[评审流程](cookbook/reviewing-persistence-type-changes.zh.md)分类并记录变更。这些检查覆盖已声明的类型结构；不透明载荷的内部内容和未改变类型的行为变更不在检查范围内。
+[格式参考](persistence-changes/historical-formats/README.zh.md)覆盖每个历史 Session 格式。[变更记录](persistence-changes/README.zh.md)通过保存在本源码树中的快照确认精确的类型转换。按照[评审流程](cookbook/reviewing-persistence-type-changes.zh.md)分类并记录变更。这些检查覆盖已声明的类型结构；不透明载荷的内部内容和未改变类型的行为变更不在检查范围内。
 
 | 根类型 | 类别 | SHA-256 | 已解析类型 |
 |---|---|---|---|

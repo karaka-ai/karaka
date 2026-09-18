@@ -22,6 +22,8 @@
 
 产品的 alpha、beta 或 release-candidate 发布都会确立已发布 Session 格式的义务。GitHub 的 prerelease 标记不会让持久化用户数据成为可丢弃数据。缺少发布记录不代表尚未发布。[版本与真源决策](../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.zh.md)拥有兼容性决策；[已发布格式迁移](../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md)拥有不可变代际与相邻转换规则。
 
+[格式参考](persistence-changes/historical-formats/README.zh.md)记录从零到工作区写入器的每个整数版本，提供历史 schema 并引用现有的当前目录。
+
 <a id="release-record"></a>
 ## 发布记录
 

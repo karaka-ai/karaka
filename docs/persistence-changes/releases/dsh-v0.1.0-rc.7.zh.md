@@ -38,7 +38,7 @@ assistant/chunk 的 replayState 从 unknown 改为包含必需字段 response �
 
 写入版本常量在该 tag 中的源码证据：
 
-- `packages/core/session/src/types.ts:56`: `export const SESSION_FORMAT_VERSION = 0`
+- `packages/core/session/src/types.ts`: `export const SESSION_FORMAT_VERSION = 0`
 
 <a id="declaration"></a>
 ## 声明

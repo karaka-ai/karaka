@@ -38,7 +38,7 @@ This approximate backfill supports reading and format validation; it is not a co
 
 Source evidence for the writer version constant at this tag:
 
-- `packages/core/session/src/types.ts:88`: `export const SESSION_FORMAT_VERSION = 3`
+- `packages/core/session/src/types.ts`: `export const SESSION_FORMAT_VERSION = 3`
 
 <a id="declaration"></a>
 ## Declaration

@@ -219,7 +219,7 @@
         "packages/core/session/src/types.ts#SessionSeq"
       ],
       "sources": [
-        "packages/core/session/src/types.ts:29"
+        "packages/core/session/src/types.ts"
       ]
     },
     {
@@ -248,7 +248,7 @@
         "packages/feedback/message-feedback/src/types.ts#MessageFeedbackRating"
       ],
       "sources": [
-        "packages/feedback/message-feedback/src/types.ts:16"
+        "packages/feedback/message-feedback/src/types.ts"
       ]
     },
     {
@@ -377,7 +377,7 @@
         "event:feedback/message-put[0]"
       ],
       "sources": [
-        "packages/core/session/src/types.ts:454"
+        "packages/core/session/src/types.ts"
       ]
     },
     {
@@ -455,7 +455,7 @@
         "event:feedback/message-delete[0]"
       ],
       "sources": [
-        "packages/core/session/src/types.ts:454"
+        "packages/core/session/src/types.ts"
       ]
     },
     {
@@ -509,29 +509,22 @@
         "packages/workflow/workflow/src/types.ts#WorkflowRunId"
       ],
       "sources": [
-        "packages/api/session-controller/src/types.ts:366",
-        "packages/attachment/attachment/src/brand.ts:6",
-        "packages/compaction/compaction/src/brand.ts:4",
-        "packages/core/session/src/types.ts:17",
-        "packages/experimental/agent-team/src/types.ts:20",
-        "packages/experimental/agent-team/src/types.ts:32",
-        "packages/experimental/agent-team/src/types.ts:8",
-        "packages/feedback/message-feedback/src/types.ts:13",
-        "packages/goal/goal/src/types.ts:16",
-        "packages/interaction/commands/src/brand.ts:20",
-        "packages/interaction/user-approval/src/types.ts:17",
-        "packages/llm/llm-retry/src/brand.ts:4",
-        "packages/llm/llm/src/brand.ts:16",
-        "packages/llm/llm/src/brand.ts:31",
-        "packages/llm/llm/src/brand.ts:43",
-        "packages/llm/llm/src/brand.ts:67",
-        "packages/schedule/schedule/src/types.ts:10",
-        "packages/session/session-title/src/index.ts:42",
-        "packages/session/session-title/src/types.ts:17",
-        "packages/webhook/webhook/src/brand.ts:12",
-        "packages/webhook/webhook/src/brand.ts:6",
-        "packages/webhook/webhook/src/brand.ts:9",
-        "packages/workflow/workflow/src/types.ts:13"
+        "packages/api/session-controller/src/types.ts",
+        "packages/attachment/attachment/src/brand.ts",
+        "packages/compaction/compaction/src/brand.ts",
+        "packages/core/session/src/types.ts",
+        "packages/experimental/agent-team/src/types.ts",
+        "packages/feedback/message-feedback/src/types.ts",
+        "packages/goal/goal/src/types.ts",
+        "packages/interaction/commands/src/brand.ts",
+        "packages/interaction/user-approval/src/types.ts",
+        "packages/llm/llm-retry/src/brand.ts",
+        "packages/llm/llm/src/brand.ts",
+        "packages/schedule/schedule/src/types.ts",
+        "packages/session/session-title/src/index.ts",
+        "packages/session/session-title/src/types.ts",
+        "packages/webhook/webhook/src/brand.ts",
+        "packages/workflow/workflow/src/types.ts"
       ]
     },
     {
@@ -579,7 +572,7 @@
         "packages/feedback/message-feedback/src/types.ts#MessageFeedbackDelete"
       ],
       "sources": [
-        "packages/feedback/message-feedback/src/types.ts:43"
+        "packages/feedback/message-feedback/src/types.ts"
       ]
     },
     {
@@ -682,7 +675,7 @@
         "packages/feedback/message-feedback/src/types.ts#MessageFeedbackPut"
       ],
       "sources": [
-        "packages/feedback/message-feedback/src/types.ts:35"
+        "packages/feedback/message-feedback/src/types.ts"
       ]
     },
     {
@@ -783,7 +776,7 @@
         "packages/feedback/message-feedback/src/types.ts#MessageFeedbackItem"
       ],
       "sources": [
-        "packages/feedback/message-feedback/src/types.ts:19"
+        "packages/feedback/message-feedback/src/types.ts"
       ]
     }
   ]

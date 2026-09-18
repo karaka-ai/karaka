@@ -119,6 +119,26 @@ function replaceSnapshot(fixture: Fixture, index: number, snapshot: PersistenceS
 }
 
 describe('pinned persistence releases', () => {
+  it.each(['.md', '.zh.md'])('rejects historical source coordinates in %s records', (suffix) => {
+    const data = fixture()
+    const path = join(data.directory, TAGS[0] + suffix)
+    const original = readFileSync(path, 'utf8')
+    for (const position of [':36', ':36:2', '#L36', '#L36-L38']) {
+      writeFileSync(path, original + `\nSource: \`packages/core/session/src/types.ts${position}\`.\n`)
+      expect(() => loadPersistenceReleases(data.root)).toThrow('historical source references must omit line numbers')
+    }
+    writeFileSync(path, original + '\nSource: `packages/core/session/src/types.ts`.\n')
+    expect(loadPersistenceReleases(data.root).entries).toHaveLength(3)
+  })
+
+  it('rejects historical source coordinates in release schema metadata', () => {
+    const data = fixture()
+    const snapshot = data.snapshots[0]!
+    replaceSnapshot(data, 0, { ...snapshot, types: snapshot.types.map((type, index) => index === 0
+      ? { ...type, sources: ['packages/core/session/src/types.ts:36'] } : type) })
+    expect(() => loadPersistenceReleases(data.root)).toThrow('historical schema sources must omit line numbers')
+  })
+
   it('reconstructs breaking version-zero changes and unchanged releases from a tree without Git or package sources', () => {
     const data = fixture()
     const archive = loadPersistenceReleases(data.root)

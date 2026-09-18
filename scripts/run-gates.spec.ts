@@ -215,6 +215,19 @@ describe('gate graph validation', () => {
     }
   })
 
+  it('requires complete Session format references locally and in CI', () => {
+    const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    for (const mode of ['doc-sync', 'doc-quick', 'ci-static'] as const) {
+      expect(withPnpmEntrypoint(() => gatesForMode(mode))).toContainEqual(expect.objectContaining({
+        id: 'persistence-formats',
+        displayCommand: 'pnpm run verify-persistence-formats',
+      }))
+    }
+    expect(scripts['verify-persistence-formats']).toBe('tsx scripts/persistence-formats.ts')
+  })
+
   it('keeps package-group subsystem ownership in the documentation gate', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 

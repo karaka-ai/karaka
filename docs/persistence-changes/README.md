@@ -12,6 +12,8 @@ Use this reference to inspect an acknowledged Session persistence-type change an
 
 For older tagged versions, use the [prerelease archive](releases/README.md). It reconstructs alpha/RC type differences for historical reading and format validation; its observations do not serve as current compatibility acknowledgements.
 
+For complete schemas grouped by Session format, use the [format references](historical-formats/README.md). Their coverage follows the writer constant, including intermediate formats without a release tag.
+
 ## Table of Contents
 
 - [Files and ownership](#files-and-ownership)

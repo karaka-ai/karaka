@@ -63,7 +63,7 @@ The [manifest](manifest.json) records every DSH alpha/RC tag captured on 2026-09
 
 Each tag has an English/Chinese record with `kind: persistence-release`, a pairing sidecar, and `.schema.json`. Its machine declaration contains the tag, immediate predecessor, observed writer version, and each changed root’s before/after digest. The first snapshot contains every root; later snapshots retain only changed roots that remain present and all their reachable types. Deletions use a null after value; unchanged releases retain empty changes and snapshots.
 
-Snapshots cover the logical Session header, physical JSONL header, event envelope, and every first-party event and transitive reference at that tag. Type counts include only definitions reachable after normalization.
+Snapshots cover the logical Session header, physical JSONL header, event envelope, and every first-party event and transitive reference at that tag. Type counts include only definitions reachable after normalization. Historical source references retain file paths without line numbers.
 
 These retrospective records are validated separately from the current acknowledgement chain in the parent directory. Current-rule classifications of old changes are reading aids: historical version 0 did contain structural changes without version increases. A backfilled record cannot authorize a current PR to omit acknowledgement or a required version increase.
 

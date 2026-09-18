@@ -121,6 +121,9 @@ function parseManifest(value: unknown): PersistenceReleaseManifest {
 }
 
 function machineBlock(source: string, label: string): string {
+  if (/\.[cm]?[jt]sx?(?::\d+(?::\d+)?|#L\d+(?:-L\d+)?)/u.test(source)) {
+    throw new Error(`${label}: historical source references must omit line numbers`)
+  }
   const metadata = /^---\n([\s\S]*?)\n---(?:\n|$)/u.exec(source)?.[1]
   const frontmatter: unknown = metadata === undefined ? undefined : load(metadata, { schema: JSON_SCHEMA })
   if (frontmatter === null || typeof frontmatter !== 'object' || !('kind' in frontmatter) || frontmatter.kind !== 'persistence-release') {

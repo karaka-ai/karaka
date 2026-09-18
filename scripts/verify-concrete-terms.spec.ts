@@ -84,4 +84,91 @@ describe('concrete terminology policy', () => {
       expect(findConcreteTermViolations(file, blockedTerm)).toEqual([{ file, line: 1 }])
     }
   })
+
+  it.each(['0', '1', '2', '10'])('preserves historical identifiers in the canonical v%s machine schema', (version) => {
+    expect(findConcreteTermViolations(`docs/persistence-changes/historical-formats/v${version}.schema.json`, blockedTerm)).toEqual([])
+  })
+
+  it.each([
+    'docs/persistence-changes/historical-formats/v00.schema.json',
+    'docs/persistence-changes/historical-formats/v01.schema.json',
+    'docs/persistence-changes/historical-formats/v-1.schema.json',
+    'docs/persistence-changes/historical-formats/v1.zh.schema.json',
+    'docs/persistence-changes/historical-formats/v1.schema.json.backup',
+    'docs/persistence-changes/historical-formats/V1.schema.json',
+    'docs/persistence-changes/historical-formats/versions/v1.schema.json',
+    'docs/persistence-changes/historical-formats-extra/v1.schema.json',
+    'docs/other/persistence-changes/historical-formats/v1.schema.json',
+    'docs/persistence-schema.json',
+  ])('keeps machine content strict outside canonical historical schema path %s', (file) => {
+    expect(findConcreteTermViolations(file, blockedTerm)).toEqual([{ file, line: 1 }])
+  })
+
+  it.each(['md', 'zh.md'])('exempts only generated historical schema lines in %s references', (suffix) => {
+    const file = `docs/persistence-changes/historical-formats/v2.${suffix}`
+    for (const newline of ['\n', '\r\n']) {
+      expect(findConcreteTermViolations(file, [
+        `Authored ${blockedTerm}.`,
+        '<!-- persistence-format-schema:start -->',
+        `Historical${blockedTerm}`,
+        `Nested historical ${blockedTerm}.`,
+        '<!-- persistence-format-schema:end -->',
+        `Authored ${blockedTerm}.`,
+      ].join(newline))).toEqual([{ file, line: 1 }, { file, line: 6 }])
+    }
+  })
+
+  it.each([
+    'docs/persistence-changes/historical-formats/v00.md',
+    'docs/persistence-changes/historical-formats/v01.zh.md',
+    'docs/persistence-changes/historical-formats/v-1.md',
+    'docs/persistence-changes/historical-formats/v1.zh.zh.md',
+    'docs/persistence-changes/historical-formats/v1.md.backup',
+    'docs/persistence-changes/historical-formats/V1.md',
+    'docs/persistence-changes/historical-formats/README.md',
+    'docs/persistence-changes/historical-formats-extra/v1.md',
+    'docs/other/persistence-changes/historical-formats/v1.zh.md',
+    'docs/persistence-catalog.md',
+    'docs/persistence-catalog.zh.md',
+    'docs/persistence-schema.json',
+  ])('keeps generated-looking content strict outside canonical historical reference path %s', (file) => {
+    expect(findConcreteTermViolations(file, [
+      '<!-- persistence-format-schema:start -->', blockedTerm, '<!-- persistence-format-schema:end -->',
+    ].join('\n'))).toEqual([{ file, line: 2 }])
+  })
+
+  it.each([
+    ['no markers', []],
+    ['missing end', ['<!-- persistence-format-schema:start -->']],
+    ['missing start', ['<!-- persistence-format-schema:end -->']],
+    ['reversed', ['<!-- persistence-format-schema:end -->', '<!-- persistence-format-schema:start -->']],
+    ['duplicate start', ['<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:end -->']],
+    ['duplicate end', ['<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:end -->', '<!-- persistence-format-schema:end -->']],
+    ['nested pair', ['<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:end -->', '<!-- persistence-format-schema:end -->']],
+    ['second pair', ['<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:end -->', '<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:end -->']],
+    ['inline pair', ['<!-- persistence-format-schema:start --><!-- persistence-format-schema:end -->']],
+    ['indented start', [' <!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:end -->']],
+    ['malformed start', ['<!-- persistence-format-schema:start', '<!-- persistence-format-schema:end -->']],
+    ['malformed end', ['<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:end']],
+    ['malformed nested marker', ['<!-- persistence-format-schema:start -->', '<!--persistence-format-schema:start', '<!-- persistence-format-schema:end -->']],
+    ['uppercase nested marker', ['<!-- persistence-format-schema:start -->', '<!-- PERSISTENCE-FORMAT-SCHEMA:start -->', '<!-- persistence-format-schema:end -->']],
+    ['unknown nested marker', ['<!-- persistence-format-schema:start -->', '<!-- persistence-format-schema:other -->', '<!-- persistence-format-schema:end -->']],
+    ['split nested marker', ['<!-- persistence-format-schema:start -->', '<!--\npersistence-format-schema:start -->', '<!-- persistence-format-schema:end -->']],
+    ['other marker prefix', ['<!-- persistence-release-schema:start -->', '<!-- persistence-release-schema:end -->']],
+    ['index marker', ['<!-- persistence-format-index:start -->', '<!-- persistence-format-index:end -->']],
+  ])('exempts no lines with %s', (_label, markers) => {
+    const file = 'docs/persistence-changes/historical-formats/v1.md'
+    const lines = [blockedTerm, ...markers.flatMap(marker => [marker, blockedTerm])].join('\n').split('\n')
+    const expected = lines.flatMap((line, index) => line === blockedTerm ? [{ file, line: index + 1 }] : [])
+    expect(findConcreteTermViolations(file, lines.join('\n'))).toEqual(expected)
+  })
+
+  it('keeps marker lines strict when they contain authored text', () => {
+    const file = 'docs/persistence-changes/historical-formats/v1.md'
+    expect(findConcreteTermViolations(file, [
+      `<!-- persistence-format-schema:start --> ${blockedTerm}`,
+      blockedTerm,
+      `<!-- persistence-format-schema:end --> ${blockedTerm}`,
+    ].join('\n'))).toEqual([{ file, line: 1 }, { file, line: 2 }, { file, line: 3 }])
+  })
 })

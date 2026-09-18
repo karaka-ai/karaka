@@ -22,6 +22,8 @@ Use this reference to distinguish the checkout’s Session writer version from t
 
 An alpha, beta, or release-candidate product publication establishes released Session-format obligations. GitHub’s prerelease flag does not make persisted user data disposable. A missing release record is not evidence of non-publication. The [versioning and authority decision](../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md) owns compatibility decisions; [released-format migration](../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md) owns immutable generations and adjacent conversion.
 
+The [format references](persistence-changes/historical-formats/README.md) document every integer from zero through the checkout writer, with historical schemas and the existing current catalog.
+
 <a id="release-record"></a>
 ## Release record
 

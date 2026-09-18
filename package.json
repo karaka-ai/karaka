@@ -165,6 +165,7 @@
     "persistence-changes": "tsx scripts/persistence-changes.ts",
     "verify-persistence-changes": "tsx scripts/persistence-changes.ts --check",
     "verify-persistence-releases": "tsx scripts/persistence-releases.ts",
+    "verify-persistence-formats": "tsx scripts/persistence-formats.ts",
     "gen-session-format-catalog": "tsx scripts/gen-session-format-catalog.ts",
     "verify-session-format-catalog": "tsx scripts/gen-session-format-catalog.ts --check",
     "gen-third-party-notices": "tsx scripts/gen-third-party-notices.ts",

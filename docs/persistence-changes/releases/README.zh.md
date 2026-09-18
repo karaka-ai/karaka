@@ -63,7 +63,7 @@ description: "浏览全部已捕获 DSH alpha/RC tag 之间的 Session 持久化
 
 每个 tag 对应 `kind: persistence-release` 的中英记录、配对 sidecar 和 `.schema.json`。机器声明包含 tag、直接前驱、实际写入版本以及每个变化根的 before/after 摘要。首条快照包含全部根；后续快照只保存仍然存在的变化根及其所有可达类型。删除使用空 after，未变的版本保留空变化和空快照。
 
-快照覆盖逻辑 Session header、物理 JSONL header、事件信封以及该 tag 的所有第一方事件及传递引用。类型数仅统计规范化后仍可达的定义。
+快照覆盖逻辑 Session header、物理 JSONL header、事件信封以及该 tag 的所有第一方事件及传递引用。类型数仅统计规范化后仍可达的定义。历史源码引用仅保留文件路径，不包含行号。
 
 这些回溯记录与上层目录的当前确认链分开校验。当前规则对旧变化的分类只是阅读提示：历史上的 version 0 确实出现过不升版本的结构变化。不得把回填记录作为当前 PR 省略确认或版本提升的依据。
 

@@ -250,8 +250,8 @@ export function parsePersistenceSnapshot(value: unknown): PersistenceSchemaInven
   return parseSnapshot(value, false)
 }
 
-/** Parse an archived release inventory, including its optional surface operation fields.
- * @param value - JSON reconstructed from a historical release tag.
+/** Parse a historical inventory with path-only source references and optional surface operations.
+ * @param value - JSON captured from a historical source tree.
  * @returns the validated inventory; current acknowledgements use the strict parser.
  */
 export function parseHistoricalPersistenceSnapshot(value: unknown): PersistenceSchemaInventory {
@@ -285,7 +285,12 @@ function parseSnapshot(value: unknown, historical: boolean): PersistenceSchemaIn
     const schema = parseSchema(type.schema, 'shared schema')
     if (digest(type.digest, 'shared digest') !== schemaDigest(schema)) throw new Error('shared schema digest mismatch')
     for (const name of array(type.names, 'type names')) textValue(name, 'type name')
-    for (const source of array(type.sources, 'type sources')) textValue(source, 'type source')
+    for (const source of array(type.sources, 'type sources')) {
+      const location = textValue(source, 'type source')
+      if (historical && /:\d+(?::\d+)?$|#L\d+(?:-L\d+)?$/u.test(location)) {
+        throw new Error('historical schema sources must omit line numbers')
+      }
+    }
   }
   return input as unknown as PersistenceSchemaInventory
 }

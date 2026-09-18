@@ -12,6 +12,8 @@ description: "审阅和维护已记录的会话持久化类型变更、对应 sc
 
 较早的 tag 参见[预发行版本归档](releases/README.zh.md)。它重建 alpha/RC 类型差异，供历史阅读和格式校验使用；这些观察记录不作为当前兼容性确认。
 
+按 Session 格式查看完整 schema 时，使用[格式参考](historical-formats/README.zh.md)。其覆盖范围由写入器常量决定，包括没有发布 tag 的中间格式。
+
 ## 目录
 
 - [文件与职责](#files-and-ownership)
