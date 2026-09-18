@@ -534,11 +534,11 @@ describe('tool execution', () => {
     try {
       const blocks = [{ type: 'image', mimeType: 'image/png', data: 'AQ==' }] satisfies JsonValue[]
       const client = createMockClient([{ name: 'img', inputSchema: { type: 'object' } }], { content: blocks })
-      const firstStarted = Promise.withResolvers<void>()
+      const firstStarted = Promise.withResolvers<undefined>()
       const firstAuthorization = Promise.withResolvers<Record<string, unknown>>()
       const metadata = vi.fn(async (_execution: ToolExecution): Promise<Record<string, unknown>> => ({ ticket: 'current' }))
       metadata.mockImplementationOnce(() => {
-        firstStarted.resolve()
+        firstStarted.resolve(undefined)
         return firstAuthorization.promise
       })
       await syncTools(client as never, rich.ctx, { ...defaultOpts, extensions: { metadata } }, new Map())

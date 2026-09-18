@@ -112,7 +112,7 @@ it('keeps admission closed and requests failure exit when identity or authorizat
   ready.commit()
   expect(ctx.karakaStartup.ready).toBe(false)
   expect(exit).toHaveBeenCalledExactlyOnceWith(1)
-  const diagnostic = ctx.logger.buffer.flatMap(message => message.args).find(
+  const diagnostic = ctx.logger.buffer.flatMap(message => message.args as unknown[]).find(
     (value: unknown): value is string => typeof value === 'string' && value.startsWith('Karaka startup failed:'),
   )
   expect(diagnostic).toContain('identity (cordis:failedIdentity): inactive fiber (state 3)')
@@ -134,7 +134,7 @@ it.each([
   ready.commit()
   expect(ctx.karakaStartup.ready).toBe(false)
   expect(exit).toHaveBeenCalledExactlyOnceWith(1)
-  expect(ctx.logger.buffer.flatMap(record => record.args)).toContain(
+  expect(ctx.logger.buffer.flatMap(record => record.args as unknown[])).toContain(
     `Karaka startup failed:\nconditional (cordis:missing): disabled expression failed: ${message}`,
   )
 })
