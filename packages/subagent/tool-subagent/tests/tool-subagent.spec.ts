@@ -17,7 +17,7 @@ import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { loadStoredSession } from '../../subagent/tests/persistence-helpers.ts'
 import * as mock from './scripted-provider.ts'
@@ -819,7 +819,7 @@ describe('dsh-tool-subagent background mode', () => {
     const ctx = await setup(toolConfig, mockConfig)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(LocalJobRegistry)
-    await ctx.plugin(ToolTasks, {})
+    await ctx.plugin(ToolJobs, {})
     return ctx
   }
 
@@ -1191,7 +1191,7 @@ describe('dsh-tool-subagent continuable background mode', () => {
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
     await ctx.plugin(LocalJobRegistry)
-    await ctx.plugin(ToolTasks, {})
+    await ctx.plugin(ToolJobs, {})
     await ctx.plugin(tool, { provider: 'spawn', backgroundMode: 'continuable' })
     ctx.llm.registerAdapter(['mock'], new MockAdapter([
       textResponse('continuable answer'),

@@ -19,7 +19,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { TOOL_ABORTED, TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
@@ -148,13 +148,13 @@ async function setup(toolConfig: Partial<ToolPwsh.Config> = {}, dshHome?: string
 }
 
 /** Full harness: the generic job runtime + its controller, then the pwsh tool. */
-async function setupWithTasks(toolConfig: Partial<ToolPwsh.Config> = {}, dshHome?: string) {
+async function setupWithJobs(toolConfig: Partial<ToolPwsh.Config> = {}, dshHome?: string) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(LocalJobRegistry)
-  await ctx.plugin(ToolTasks)
+  await ctx.plugin(ToolJobs)
   await ctx.plugin(BashEnvPlugin, dshHome === undefined ? {} : { dshHome })
   await ctx.plugin(FakeBash)
   await ctx.plugin(ToolPwsh, toolConfig)
@@ -216,7 +216,7 @@ async function setupSandboxed(withApproval = false) {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(LocalJobRegistry)
-  await ctx.plugin(ToolTasks)
+  await ctx.plugin(ToolJobs)
   await ctx.plugin(BashEnvPlugin)
   await ctx.plugin(SessionProjectionRegistry)
   // The loop's turnBoundary unit (the open-turn fold) is not mounted in this
@@ -740,7 +740,7 @@ describe('sandbox escalation through ctx.approval', () => {
 
 describe('background execution through the job runtime', () => {
   it('run_in_background acks with the job id, readable through the REAL job_output tool', async () => {
-    const { ctx } = await setupWithTasks()
+    const { ctx } = await setupWithJobs()
     const started = await call(ctx, 'pwsh', { command: 'Write-Output bg-ok', description: 'test command', run_in_background: true })
     expect(started.isError).toBe(false)
     if (started.isError) throw new Error('expected background pwsh success')
@@ -755,7 +755,7 @@ describe('background execution through the job runtime', () => {
   })
 
   it('a running background job is killable through the REAL job_kill tool', async () => {
-    const { ctx, bash } = await setupWithTasks()
+    const { ctx, bash } = await setupWithJobs()
     bash.backgroundHandler = () => killableProcess()
     await call(ctx, 'pwsh', { command: 'Start-Sleep -Seconds 60', description: 'test command', run_in_background: true })
 
@@ -768,7 +768,7 @@ describe('background execution through the job runtime', () => {
   })
 
   it('a background job started by an agent is registered with that agent as owner', async () => {
-    const { ctx } = await setupWithTasks()
+    const { ctx } = await setupWithJobs()
     const agent = registerFakeAgent(ctx, 'sess-owner')
     const started = await call(ctx, 'pwsh', { command: 'Start-Sleep -Seconds 60', description: 'test command', run_in_background: true }, agent)
     expect(text(started)).toBe('started background job pwsh-1')
@@ -783,14 +783,14 @@ describe('background execution through the job runtime', () => {
   })
 
   it('fails loud when the job runtime is not loaded', async () => {
-    const { ctx } = await setup() // no LocalJobRegistry / ToolTasks
+    const { ctx } = await setup() // no LocalJobRegistry / ToolJobs
     const result = await call(ctx, 'pwsh', { command: 'Start-Sleep -Seconds 60', description: 'test command', run_in_background: true })
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('background jobs unavailable: load @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs')
   })
 
   it('a pre-aborted call is skipped before the process starts', async () => {
-    const { ctx, bash } = await setupWithTasks()
+    const { ctx, bash } = await setupWithJobs()
     const controller = new AbortController()
     controller.abort()
     const result = await ctx.tools.execute({

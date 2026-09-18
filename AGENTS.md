@@ -13,50 +13,66 @@ Acknowledge [declared persistence-type changes](docs/cookbook/reviewing-persiste
 ## Repository layout
 
 ```
-vendor/      Vendored Cordis source — manifest + sync procedure in vendor/README.md
+vendor/      Vendored Cordis (vendor/README.md)
 packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
-  core/        product API spine: session, system-prompt, tools, agent, agent-loop
-  api/         Remote BFF assembly and Typert RPC gateway
-  typert/      type graph generator, loader, and runtime registry
-  llm/         LLM capability: Service Definition/Consumer + DeepSeek providers
-  shell/        bash capability: Service Definition + local/pwsh providers + shell Consumers
-  subprocess/  subprocess capability + local process-tree provider + shared Win32 library
-  ssh/         SSH connection + remote filesystem/subprocess/sandbox providers
-  terminal/         persistent sessions
-  fs/          filesystem capability + policy
-  lsp/         language-server capability
-  skill/       skill provider registry + local impl + catalog/loader tool
-  web/         web capability: Service Definition + search/fetch providers + tool Consumer
-  compaction/     compaction capability + basic provider
-  context/     request-context plugins
-  subagent/    subagent capability: Service Definition + providers + delegation Consumers
-  bundle/      installable dsh --profile patch-layer bundles
-  workflow/    workflow capability + worker-thread provider + tool Consumer
-  webhook/     webhook ingress
-  todo/        todo_write tool
-  plan/        plan mode as logged state
-  preset/      per-session agent composition from preset cordis.yml files
-  guard/       loop-hygiene + tool-timeout plugins
-  self-modification/  the agent inspects/mounts its own plugins
-  hooks/       Claude Code/Codex hook bridges + wire-protocol library
-  session/     durable session data: persistence, projection, titles, telemetry
-  identity/    anonymous identity
-  settings/    user-settings capability + file provider
-  credentials/ credential/authorization capabilities + env/.env provider
-  acp/         automation-only Agent Client Protocol server
-  interaction/ approval/interaction capabilities, permission, commands, ask-user
-  boot/        shared profile/application boot glue
-  sdk/         JSON-RPC protocol + TypeScript client/server
-  experimental/ pre-stable prototypes; private by default with explicit public exceptions
-  support/     dev/test infrastructure
-  util/        zero-dependency utilities
-python/      Python SDK/runtime (see python/README.md)
-native/      @deepseek-ai/node-addon-system source of record (see native/README.md)
+  core/                 agent/session API
+  api/                  remote BFF
+  typert/               type graphs
+  llm/                  model providers
+  shell/                command execution
+  subprocess/           child-process management
+  ssh/                  SSH execution providers
+  terminal/             persistent terminals
+  ptc-runtime/          PTC execution
+  sandbox/              process confinement
+  fs/                   filesystem access
+  lsp/                  language servers
+  skill/                skill loading
+  web/                  search/fetch tools
+  computer-use/         computer interaction
+  compaction/           context compaction
+  context/              request context
+  subagent/             delegated agents
+  jobs/                 background jobs
+  bundle/               profile bundles
+  workflow/             workflow execution
+  webhook/              webhook ingress
+  todo/                 todo_write tool
+  plan/                 logged planning
+  goal/                 session goals
+  schedule/             scheduled follow-ups
+  preset/               agent composition
+  guard/                loop/tool guards
+  extensions/           runtime self-modification
+  hooks/                Claude Code/Codex bridges
+  session/              durable sessions
+  session-query/        browsing/search/export
+  attachment/           binary attachments
+  spill/                output spill
+  storage/              non-session storage
+  workspace/            workspace entities
+  feedback/             human feedback
+  identity/             anonymous identity
+  settings/             user settings
+  credentials/          credentials/authorization
+  acp/                  automation-only ACP
+  interaction/          human interaction
+  boot/                 application boot
+  sdk/                  JSON-RPC SDK
+  host/                 GUI host
+  client/               GUI client
+  mcp/                  external tools
+  experimental/         pre-stable prototypes; private by default with explicit public exceptions
+  test-support/         test infrastructure
+  runtime-diagnostics/  runtime invariants
+  util/                 zero-dependency utilities
+python/      Python SDK/runtime (python/README.md)
+native/      @deepseek-ai/node-addon-system source (native/README.md)
 benchmarks/  performance gates
-.agents/     Agent workflows and Agent Notes (`notes/`)
-docs/        architecture, generated catalogs, postmortems, cookbook (see docs/AGENTS.md)
+.agents/     Agent workflows/notes
+docs/        Documentation (docs/AGENTS.md)
 scripts/     gates and generators
-website/     VitePress projection of selected bilingual docs/ sources
+website/     VitePress documentation projection
 ```
 
 Package groups: [packages/README.md](packages/README.md).

@@ -11,7 +11,7 @@ import { bindScopeParent, createScope, scopeOf } from '@deepseek-ai/dsh-scope'
 import { JobId } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import type { JobHooks, JobOutcome, JobSnapshot, JobStart } from '@deepseek-ai/dsh-jobs'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import { statusLine } from '@deepseek-ai/dsh-tool-jobs'
 
 const testToolSignal = new AbortController().signal
@@ -19,13 +19,13 @@ const testToolSignal = new AbortController().signal
 const agentRegistryDisposers = new WeakMap<Agent, () => void>()
 const agentScopeFibers = new WeakMap<Agent, { dispose: () => Promise<void> }>()
 
-async function setup(config: ToolTasks.Config = {}) {
+async function setup(config: ToolJobs.Config = {}) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   const agentsFiber = await ctx.plugin(AgentRegistry)
   await ctx.plugin(LocalJobRegistry)
-  const toolsFiber = await ctx.plugin(ToolTasks, config)
+  const toolsFiber = await ctx.plugin(ToolJobs, config)
   return { ctx, agentsFiber, toolsFiber }
 }
 
@@ -124,15 +124,15 @@ describe('tool-jobs setup', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalJobRegistry)
-    await expect(ctx.plugin(ToolTasks, { waitTimeoutMs: 100, maxWaitTimeoutMs: 50 }))
+    await expect(ctx.plugin(ToolJobs, { waitTimeoutMs: 100, maxWaitTimeoutMs: 50 }))
       .rejects.toThrow('waitTimeoutMs (100) exceeds maxWaitTimeoutMs (50)')
   })
 
   it('defaults delivery to wakeup and rejects an unknown lane', () => {
-    expect(ToolTasks.Config({}).completionDelivery).toBe('wakeup')
-    expect(ToolTasks.Config({}).maxConsecutiveWakes).toBe(3)
-    expect(() => ToolTasks.Config({ completionDelivery: 'loud' as never })).toThrow()
-    expect(() => ToolTasks.Config({ maxConsecutiveWakes: 0 })).toThrow()
+    expect(ToolJobs.Config({}).completionDelivery).toBe('wakeup')
+    expect(ToolJobs.Config({}).maxConsecutiveWakes).toBe(3)
+    expect(() => ToolJobs.Config({ completionDelivery: 'loud' as never })).toThrow()
+    expect(() => ToolJobs.Config({ maxConsecutiveWakes: 0 })).toThrow()
   })
 
   it('rejects a wake budget that cannot bound anything', async () => {
@@ -143,7 +143,7 @@ describe('tool-jobs setup', () => {
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(LocalJobRegistry)
       try {
-        await ctx.plugin(ToolTasks, { maxConsecutiveWakes })
+        await ctx.plugin(ToolJobs, { maxConsecutiveWakes })
         return 'loaded'
       } catch (error: unknown) {
         return String(error)
@@ -170,7 +170,7 @@ describe('tool-jobs setup', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalJobRegistry)
-    ToolTasks.apply(ctx, {})
+    ToolJobs.apply(ctx, {})
     expect(ctx.tools.get('job_output')).toBeDefined()
     expect(() => ctx.jobs.start(producer().spec)).not.toThrow()
   })
@@ -521,8 +521,8 @@ describe('completion notices across scoped mounts', () => {
 
     const standingA = createScope(ctx, {})
     const standingB = createScope(ctx, {})
-    await standingA.ctx.plugin(ToolTasks)
-    await standingB.ctx.plugin(ToolTasks)
+    await standingA.ctx.plugin(ToolJobs)
+    await standingB.ctx.plugin(ToolJobs)
 
     // The agent joins preset A exactly as `agentPresets.compose` binds it.
     const agentKey = {}

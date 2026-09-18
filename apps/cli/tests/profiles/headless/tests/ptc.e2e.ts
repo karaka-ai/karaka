@@ -23,9 +23,9 @@ import Sandbox from '@deepseek-ai/dsh-sandbox-local'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
-import * as WorkspaceContext from '@deepseek-ai/dsh-agent-instructions'
+import * as AgentInstructions from '@deepseek-ai/dsh-agent-instructions'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 
@@ -80,7 +80,7 @@ async function workspacePtcModeHarness(): Promise<Context> {
   await harness.plugin(AgentRegistry)
   await harness.plugin(LocalFileSystem, { cwd: '/' })
   await harness.plugin(ToolFs)
-  await harness.plugin(WorkspaceContext, { maxBytes: 65536 })
+  await harness.plugin(AgentInstructions, { maxBytes: 65536 })
   await harness.plugin(AgentLoop, { agents: [] })
   await harness.plugin(LlmDeepSeek, { models: [{ id: 'deepseek-v4-flash' }] })
   await mountRuntime(harness)
@@ -140,7 +140,7 @@ async function typedPtcModeHarness(): Promise<Context> {
 async function backgroundPtcModeHarness(cwd: string): Promise<Context> {
   const harness = await typedPtcModeHarness()
   await harness.plugin(LocalJobRegistry)
-  await harness.plugin(ToolTasks, {})
+  await harness.plugin(ToolJobs, {})
   if (harness.get('subprocess') === undefined) await harness.plugin(LocalSubprocessRuntime)
   await harness.plugin(BashEnvPlugin)
   await harness.plugin(LocalBashExecutor, { cwd, timeoutMs: 30_000 })
