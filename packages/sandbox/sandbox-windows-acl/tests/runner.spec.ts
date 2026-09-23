@@ -547,9 +547,28 @@ $ErrorActionPreference='SilentlyContinue'
 Add-Type -Namespace P -Name F -MemberDefinition @'
 [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode, EntryPoint="CreateFileW")]
 public static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);
+[DllImport("kernel32.dll")]
+public static extern IntPtr GetCurrentProcess();
 [DllImport("kernel32.dll", SetLastError=true)]
 public static extern bool CloseHandle(IntPtr h);
+[DllImport("advapi32.dll", SetLastError=true)]
+public static extern bool OpenProcessToken(IntPtr p, uint a, out IntPtr t);
+[DllImport("advapi32.dll", SetLastError=true)]
+public static extern bool AdjustTokenPrivileges(IntPtr t, bool disableAll, IntPtr state, uint length, IntPtr previous, IntPtr returned);
+public static int DisableAllPrivileges() {
+  IntPtr token;
+  if (!OpenProcessToken(GetCurrentProcess(), 0x20, out token)) return Marshal.GetLastWin32Error();
+  try {
+    return AdjustTokenPrivileges(token, true, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero) ? 0 : Marshal.GetLastWin32Error();
+  } finally {
+    CloseHandle(token);
+  }
+}
 '@ | Out-Null
+# FILE_FLAG_BACKUP_SEMANTICS lets enabled backup/restore privileges bypass
+# the DACL. Disable this disposable probe's privileges so it measures the ACE.
+$disableError = [P.F]::DisableAllPrivileges()
+if ($disableError -ne 0) { throw "AdjustTokenPrivileges failed: $disableError" }
 function TryOpen([string]$label, [string]$path) {
   $h = [P.F]::CreateFileW($path, 0x10000000, 7, [IntPtr]::Zero, 3, 0x02000000, [IntPtr]::Zero)
   if ($h -eq [IntPtr]::new(-1)) { "$($label): DENIED" } else { [void][P.F]::CloseHandle($h); "$($label): OK" }
