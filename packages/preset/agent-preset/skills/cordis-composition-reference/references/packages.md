@@ -270,6 +270,17 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-jobs-local` | yes | Process-local implementation of the DeepSeek Harness background job registry seam |
 | `@deepseek-ai/dsh-tool-jobs` | yes | Model-facing background job control tools (job_output, job_list, job_kill) over the ctx.jobs registry |
 
+## karaka
+
+| Package | Config | Description |
+|---|---|---|
+| `@karaka-ai/agent` | no | Karaka application profile using the upstream DSH engine |
+| `@karaka-ai/browser-auth` | yes | Signed application-user credentials for the DSH browser connection |
+| `@karaka-ai/identity` | yes | Durable application authority over unchanged DSH sessions |
+| `@karaka-ai/mcp-application` | yes | Application-owned MCP catalog with authenticated execution |
+| `@karaka-ai/server-auth` | yes | Replaceable server authentication for Karaka application and tool traffic |
+| `@karaka-ai/transport-http` | yes | Authenticated HTTP and SSE transport for Karaka application chat |
+
 ## llm
 
 | Package | Config | Description |
