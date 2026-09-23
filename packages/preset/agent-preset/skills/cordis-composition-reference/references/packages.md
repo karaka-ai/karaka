@@ -274,7 +274,6 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 
 | Package | Config | Description |
 |---|---|---|
-| `@karaka-ai/agent` | no | Karaka application profile using the upstream DSH engine |
 | `@karaka-ai/browser-auth` | yes | Signed application-user credentials for the DSH browser connection |
 | `@karaka-ai/identity` | yes | Durable application authority over unchanged DSH sessions |
 | `@karaka-ai/mcp-application` | yes | Application-owned MCP catalog with authenticated execution |
