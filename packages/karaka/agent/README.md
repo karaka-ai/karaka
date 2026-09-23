@@ -29,7 +29,7 @@ The Karaka CLI starts this package's `karaka-agent` executable. The executable p
 
 ### Configure the application
 
-The [bundle patch](cordis.patch.yml) composes a complete application rather than extending `dsh-base`. Application records come from `KARAKA_APPLICATIONS`; their credential references resolve through [server-auth](../server-auth/README.md). The DeepSeek provider resolves `DEEPSEEK_API_KEY` and its endpoint through the shared [credentials provider](../../credentials/credentials-local/README.md). `KARAKA_MODEL` selects the default model. The application [preset](presets/application/agent.cordis.yml) controls which application tools can be used.
+The [bundle patch](cordis.patch.yml) composes a complete application rather than extending `dsh-base`. Application records come from `KARAKA_APPLICATIONS`; their credential references resolve through [server-auth](../server-auth/README.md). The DeepSeek provider resolves `DEEPSEEK_API_KEY` and its endpoint through the shared [credentials provider](../../credentials/credentials-local/README.md). `KARAKA_MODEL` selects the default model. The declarative `application` preset in the bundle patch controls which application tools can be used through `KARAKA_PRESET_TOOL_ALLOW`. Deployments add or replace presets with `@deepseek-ai/dsh-agent-preset` rows in their profile patch.
 
 `KARAKA_MCP_URL` enables the [application MCP bridge](../mcp-application/README.md). Endpoint allow/deny settings and preset permissions both constrain tools. `KARAKA_BROWSER_AUTH` enables [browser authentication](../browser-auth/README.md); browser origins must also be configured through `KARAKA_BROWSER_ORIGINS`. The [HTTP transport](../transport-http/README.md) owns the public route and ownership rules.
 

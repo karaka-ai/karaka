@@ -2,7 +2,7 @@
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -144,13 +144,13 @@ try {
   await new Promise(resolve => portReservation.close(resolve))
   const env = {
     ...process.env, DSH_HOME: resolve(home, '.karaka'),
-    KARAKA_AGENTS_DIR: resolve(home, 'agents'),
     KARAKA_PORT: String(port), DEEPSEEK_BASE_URL: modelUrl,
     DEEPSEEK_API_KEY: 'fixture-only-no-provider-credential',
     KARAKA_CHAT_TOKEN: token, KARAKA_TOOL_TOKEN: toolToken,
     KARAKA_APPLICATIONS: JSON.stringify([{ id: 'flow-app', chatCredential: 'KARAKA_CHAT_TOKEN', toolCredential: 'KARAKA_TOOL_TOKEN' }]),
     KARAKA_MCP_APPLICATION_ID: 'flow-app', KARAKA_MCP_URL: `${toolsUrl}/mcp`,
     KARAKA_MCP_ALLOW: JSON.stringify(['mcp__application__delivery_status']),
+    KARAKA_PRESET_TOOL_ALLOW: JSON.stringify(['mcp__application__delivery_status']),
     KARAKA_BROWSER_AUTH: JSON.stringify({ applicationId: 'flow-app', issuer: 'karaka-flow', audience: 'karaka-browser', maxTokenAgeSeconds: 600, keys: [{ id: 'flow-key', algorithm: 'ES256', publicKey: await exportSPKI(keyPair.publicKey) }] }),
     KARAKA_BROWSER_ORIGINS: JSON.stringify([browserOrigin]),
   }
@@ -159,8 +159,6 @@ try {
   await runNode([cliBin, 'init', '--dir', home], env)
   const patchPath = resolve(home, 'karaka.cordis.yml')
   await writeFile(patchPath, '- id: server-auth\n  config:\n    applications:\n      - id: flow-app\n        chatCredential: KARAKA_CHAT_TOKEN\n        toolCredential: KARAKA_TOOL_TOKEN\n')
-  const presetPath = resolve(home, 'agents/support/agent.cordis.yml')
-  await writeFile(presetPath, (await readFile(presetPath, 'utf8')).replace('allow: []', 'allow: [mcp__application__delivery_status]'))
   globalThis.fetch = (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     if (url.startsWith(`${endpoint}/karaka/browser/`)) {
@@ -188,7 +186,7 @@ try {
   evidence.stages.push('running-profile')
   const client = sdk.createKarakaClient({ endpoint, path: '/v1', chatToken: token })
   const user = client.forUser({ tenantId: 'tenant-a', userId: 'alice' })
-  const chat = await user.chats.create({ agentId: 'support' })
+  const chat = await user.chats.create({ agentId: 'application' })
   evidence.chatId = chat.chatId
   evidence.stages.push('sdk-authenticated-chat-created')
   await user.chats.send({ chatId: chat.chatId, content: 'Look up delivery status for ORDER-1 using the application tool.' })
