@@ -36,7 +36,7 @@
       "path": "../../goal/goal"
     },
     {
-      "path": "../../preset/agent-presets"
+      "path": "../../preset/agent-preset-registry"
     },
     {
       "path": "../../extensions/cordis-host-runner"
@@ -70,6 +70,18 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../terminal-controller/tsconfig.host.json"
+    },
+    {
+      "path": "../../boot/plugin-manager"
+    },
+    {
+      "path": "../../host/plugin-inventory"
+    },
+    {
+      "path": "../account-controller"
     }
   ]
 }

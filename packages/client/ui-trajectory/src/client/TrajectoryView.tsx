@@ -7,6 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsLocale, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { JsonTreeProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   TrajectoryTable,
   type TrajectoryRequestNumber,
@@ -74,6 +75,8 @@ function partialStructureSignature(partial: TrajectorySnapshot['partial']): stri
 
 /** Session-bound controls not already supplied by the conversation view slot. */
 export interface TrajectoryViewInjected {
+  /** Shared wrapping preference read by expansion handlers. */
+  jsonStringWrapping?: Omit<NonNullable<JsonTreeProps['stringWrapping']>, 'label'>
   hooks: {
     duration: SnapshotStore<boolean>
   }
@@ -128,7 +131,7 @@ function addUsage(
 
 export function TrajectoryView({
   useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration,
-  viewRequest, completeViewRequest, renderSlot, t,
+  viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping,
 }: ConvViewProps
   & PropsRenderSlots<'conversation.trajectory.images'>
   & InjectFace<TrajectoryViewInjected>
@@ -541,6 +544,10 @@ export function TrajectoryView({
       <div className={css.ledger}>
         <TrajectoryTable
           t={t}
+          stringWrapping={jsonStringWrapping === undefined ? undefined : {
+            ...jsonStringWrapping,
+            label: t('record.wrapLines'),
+          }}
           renderImages={renderImages}
           requestNumbers={requestNumbers}
           turns={timelineTurns}

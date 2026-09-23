@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SshSubprocessRuntime } from '../src/index.ts'
 
 const id = 'a7b17d9c-5ebf-40d8-9e82-3d1ddae8517b'
-const spec = { argv: ['bash'], cwd: '/workspace', rows: 24, cols: 80, graceMs: 100 }
+const spec = { terminalType: 'dumb', argv: ['bash'], cwd: '/workspace', rows: 24, cols: 80, graceMs: 100 }
 
 describe('SSH terminal allocation lifecycle', () => {
   it.each(['prepare', 'connect', 'start'])('joins a pending %s before completing provider disposal', async (stage) => {

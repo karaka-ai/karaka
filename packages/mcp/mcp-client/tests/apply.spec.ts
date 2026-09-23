@@ -218,6 +218,29 @@ describe('apply (plugin lifecycle)', () => {
     expect(ctx.tools.get('mcp__srv__remote')).toBeDefined()
   })
 
+  it('closes the transport when its owner unloads during initial connection', async () => {
+    const connecting: PromiseWithResolvers<void> = Promise.withResolvers()
+    mockConnect.mockImplementation(() => connecting.promise)
+    mockClose.mockImplementation(function (this: { onclose?: () => void }) {
+      this.onclose?.()
+      connecting.resolve()
+      return Promise.resolve()
+    })
+    const fiber = ctx.plugin({ name: 'mcp-pending-startup', inject, apply }, { ...stdioConfig, reconnect: { enabled: false } })
+    const activation = Promise.resolve(fiber).catch((error: unknown) => error)
+    try {
+      await vi.waitFor(() => { expect(mockConnect).toHaveBeenCalledTimes(1) })
+      await fiber.dispose()
+      await activation
+      expect(mockClose).toHaveBeenCalledTimes(1)
+      expect(mockListTools).not.toHaveBeenCalled()
+      expect(ctx.tools.schemas()).toEqual([])
+    } finally {
+      connecting.resolve()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('allows one serverName in each independent registration scope', async () => {
     const first = createScope(ctx, {})
     const second = createScope(ctx, {})

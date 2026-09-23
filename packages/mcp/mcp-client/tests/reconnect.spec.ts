@@ -313,6 +313,37 @@ describe('reconnect supervisor', () => {
     expect(instances).toHaveLength(1)
   })
 
+  it('stops reconnecting when disposal overlaps failed-generation cleanup', async () => {
+    vi.useFakeTimers()
+    const entered: PromiseWithResolvers<void> = Promise.withResolvers()
+    const closed: PromiseWithResolvers<void> = Promise.withResolvers()
+    const { warns } = captureLogs(ctx)
+    mockConnect.mockRejectedValue(new Error('initialize failed'))
+    mockClose.mockImplementation(async function (this: { onclose?: () => void }) {
+      entered.resolve()
+      await closed.promise
+      this.onclose?.()
+    })
+    const handle = startConnection(ctx, stdioConfig(), resolveReconnectPolicy(undefined, 'reconnect'))
+    try {
+      await entered.promise
+      expect(warns.some(line => line.includes('connection attempt failed'))).toBe(true)
+      const disposing = handle.dispose()
+      closed.resolve()
+      await disposing
+      await handle.ready
+      await vi.runAllTimersAsync()
+      expect(instances).toHaveLength(1)
+      expect(mockListTools).not.toHaveBeenCalled()
+      expect(warns.some(line => line.includes('retrying'))).toBe(false)
+    } finally {
+      closed.resolve()
+      await handle.dispose()
+      await ctx.fiber.dispose()
+      vi.useRealTimers()
+    }
+  })
+
   it.each(['connect', 'discovery'] as const)('bounds disposal during %s when the transport never reports closure', async (phase) => {
     vi.useFakeTimers()
     try {

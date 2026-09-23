@@ -119,30 +119,28 @@ Setup 接收完整的子上下文和确切的未发布 Agent，可以等待插�
 1. 将会话写入注册表。
 2. 将 agent 写入注册表。
 3. 宣告 `session/created`。
-4. 宣告 `agent/created`。
-5. 启用公开驱动。
-6. 发射 `agent/session-start`。
-7. 启动 driver。
+4. 等待串行 `agent/created` 监听器。
+5. 向驱动器释放已排队输入。
 
-Agent 在两个注册表和创建通知都达成一致之前绝不驱动。同步监听器可以否决或 dispose 一个所有者；事务记录发布进行中，并等待该回调栈展开后再继续拆除。每个已开始的创建宣告在回滚期间都有匹配的销毁宣告。
+Agent 在两个注册表与创建监听器都完成前绝不驱动。监听器可以拒绝或 dispose 一个所有者；事务保留作用域与会话，等待分发结算后再继续拆除。每个已开始的创建宣告在回滚期间都有匹配的销毁宣告。[可等待创建决策](2026-09-09-awaited-agent-creation.zh.md)拥有异步初始化器时序。
 
-以下序列图隔离了非显而易见的竞态：同步创建监听器可以在发布调用栈仍拥有两个注册表条目时请求 dispose。拆除必须立即停用，但要等待该栈展开后才停止和分离任何东西。
+创建监听器可以在发布仍拥有两个注册表条目时请求 dispose。Teardown 会立即停用，并等待所调用的异步分发完成后才停止和分离资源。
 
 ```mermaid
 sequenceDiagram
   participant Tx as AgentCreationTransaction
   participant Registries
-  participant Listener as Synchronous listener
+  participant Listener as Creation listener
   participant Driver
 
   Tx->>Tx: mark publication in progress
   Tx->>Registries: announce agent/created
-  Registries->>Listener: invoke inside the same call stack
+  Registries->>Listener: await listener
   Listener->>Tx: dispose reentrantly
   Tx->>Tx: deactivate, teardown waits for publication
   Tx-->>Listener: disposal request accepted
-  Listener-->>Registries: return
-  Registries-->>Tx: announcement unwound
+  Listener-->>Registries: settle
+  Registries-->>Tx: dispatch settled
   Tx->>Tx: resolve publication settlement
   Tx->>Driver: stop and drain
   Tx->>Registries: detach agent, then session
@@ -153,7 +151,7 @@ sequenceDiagram
 
 每个拆除请求加入一条记忆化路径。顺序为：
 
-1. 停用创建或驱动，让同步发布完成。
+1. 停用创建或驱动，并等待创建分发。
 2. 停止并排空 driver，丢弃仍处于待处理状态的注入。
 3. 分离 agent。
 4. 分离会话。

@@ -202,6 +202,18 @@ export function startConnection(
     scheduleReconnect()
   }
 
+  /** Decide retry ownership after a failed connection's close barrier settles. */
+  function settleFailedGeneration(generation: Client, quiesced: boolean): void {
+    if (!isCurrent(generation)) return
+    if (!quiesced) {
+      client = undefined
+      closeClient = undefined
+      ctx.logger.error(`${label}: failed generation could not confirm transport closure — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
+      return
+    }
+    generationDown(generation)
+  }
+
   /** Wait for the transport-owned close signal without letting a broken transport wedge teardown forever. */
   function waitForClose(closed: Promise<void>): Promise<boolean> {
     return new Promise((resolve) => {
@@ -334,14 +346,7 @@ export function startConnection(
       if (isCurrent(generation)) ctx.logger.warn(`${label}: connection attempt failed: ${String(error)}`)
       const quiesced = await closeGeneration()
       attemptSettled = true
-      if (!isCurrent(generation)) return
-      if (!quiesced) {
-        client = undefined
-        closeClient = undefined
-        ctx.logger.error(`${label}: failed generation could not confirm transport closure — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
-        return
-      }
-      generationDown(generation)
+      settleFailedGeneration(generation, quiesced)
       return
     }
     attemptSettled = true

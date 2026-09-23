@@ -2,13 +2,13 @@
 import { Duplex, PassThrough, type Readable, type Writable } from 'node:stream'
 import type { Socket } from 'node:net'
 import { Context } from '@deepseek-ai/cordis'
-import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import type { SubprocessCollectedOutputs, SubprocessHandle, SubprocessOutcome, SubprocessOutputMode, SubprocessSpawnSpec, SubprocessTerminalHandle, SubprocessTerminalSignal, SubprocessTerminalSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import { SubprocessRuntime, SubprocessExecutableNotFoundError } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessCollectedOutputs, SubprocessHandle, SubprocessOutcome, SubprocessOutputMode, SubprocessSpawnSpec, SubprocessTerminalHandle, SubprocessTerminalEnvironment, SubprocessTerminalSignal, SubprocessTerminalSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
 import type { SshConnection } from '@deepseek-ai/dsh-ssh'
-import { doneSchema, foregroundSchema, outputSnapshotFrameLimit, outputSnapshotSchema, preparedSchema, remotePath, streamEndpointSchema } from '@deepseek-ai/dsh-ssh/schemas'
+import { doneSchema, foregroundSchema, terminalActivitySchema, outputSnapshotFrameLimit, outputSnapshotSchema, preparedSchema, remotePath, streamEndpointSchema } from '@deepseek-ai/dsh-ssh/schemas'
 import type { SshProcessId } from '@deepseek-ai/dsh-ssh/schemas'
-import { SshRpcPeer } from '@deepseek-ai/dsh-ssh/protocol'
+import { SshRpcPeer, RemoteOperationError } from '@deepseek-ai/dsh-ssh/protocol'
 import { z } from 'zod'
 
 function environment(env?: NodeJS.ProcessEnv): Record<string, string | null> | undefined {
@@ -52,7 +52,7 @@ class RemoteProcess implements SubprocessHandle {
     const collect = (name: 'stdout' | 'stderr', stream: PassThrough, mode: SubprocessOutputMode) => {
       if (mode === 'pipe') return undefined
       if (mode === 'inherit') { stream.pipe(name === 'stdout' ? process.stdout : process.stderr, { end: false }); return undefined }
-      let collector = new OutputCollector(mode.maxBytes, undefined, name, '')
+      let collector = new OutputCollector(mode.maxBytes, name, undefined)
       let base = 0
       let total = 0
       let finalized = false
@@ -62,7 +62,7 @@ class RemoteProcess implements SubprocessHandle {
         if (finalized) return
         if (snapshot.totalBytes < total) throw new Error('SSH helper rewound collected output')
         finalized = final
-        collector = new OutputCollector(mode.maxBytes, undefined, name, '')
+        collector = new OutputCollector(mode.maxBytes, name, undefined)
         collector.push(bytes)
         base = snapshot.totalBytes - bytes.length
         total = snapshot.totalBytes
@@ -252,8 +252,23 @@ export class SshSubprocessRuntime extends SubprocessRuntime {
     })
   }
 
-  override resolveExecutable(command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
-    return this.ctx.ssh.request('executable', { command, env }, remotePath, signal)
+  override async resolveExecutable(command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
+    try {
+      return await this.ctx.ssh.request('executable', { command, env }, remotePath, signal)
+    } catch (error) {
+      if (error instanceof RemoteOperationError && error.code === 'SUBPROCESS_EXECUTABLE_NOT_FOUND') {
+        throw new SubprocessExecutableNotFoundError(error.message, { cause: error })
+      }
+      throw error
+    }
+  }
+
+  override terminalEnvironment(signal?: AbortSignal): Promise<SubprocessTerminalEnvironment> {
+    return this.ctx.ssh.request('terminal.environment', {}, z.object({
+      platform: z.enum(['posix', 'windows']), defaultShell: z.string().optional(),
+    }).strict().transform(value => ({ platform: value.platform,
+      ...(value.defaultShell === undefined ? {} : { defaultShell: value.defaultShell }),
+    })), signal)
   }
 
   override spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
@@ -279,7 +294,7 @@ export class SshSubprocessRuntime extends SubprocessRuntime {
     const ssh = this.ctx.ssh
     const prepared = await ssh.request('process.prepare', {
       argv: spec.argv, cwd: spec.cwd, env: environment(spec.env), graceMs: spec.graceMs,
-      terminal: { rows: spec.rows, cols: spec.cols },
+      terminal: { rows: spec.rows, cols: spec.cols, terminalType: spec.terminalType, shellActivity: spec.shellActivity },
     }, preparedSchema, signal)
     const id = prepared.id
     let socket: Socket | undefined
@@ -298,8 +313,10 @@ export class SshSubprocessRuntime extends SubprocessRuntime {
       const abort = (): void => { void handle.terminate().catch(() => { void ssh.dispose().catch(() => {}) }) }
       const handle: SubprocessTerminalHandle = {
         pid: started.pid, output, done,
+        resize: async (cols, rows) => { await ssh.request('terminal.resize', { id, cols, rows }, z.null()) },
         write: async (data) => { await ssh.request('terminal.write', { id, value: data }, z.null()) },
         inspectForeground: async () => await ssh.request('terminal.inspect', { id }, foregroundSchema) ?? undefined,
+        inspectActivity: () => ssh.request('terminal.activity', { id }, terminalActivitySchema),
         signalForeground: (signal: SubprocessTerminalSignal) => ssh.request('terminal.signal', { id, value: signal }, z.number().int().positive()),
         terminate: () => {
           closing ??= ssh.request('process.terminate', { id }, z.null(), undefined, true).then(() => {

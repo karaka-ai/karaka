@@ -78,9 +78,9 @@ Two registry behaviours shape how a publish is attempted. Writes are spaced by a
 
 ### Workspace-internal references use the `workspace:` protocol
 
-Every reference to a workspace member uses `workspace:^`, so `pnpm pack` substitutes a range matching the target version: sibling `peerDependencies` follow the family version, and a reference to a vendored package follows that package's own line. The Landlock platform packages keep `workspace:*`, which publishes the exact version, because a platform package and its entry must agree exactly.
+Every reference to a workspace member uses the `workspace:` protocol. The [release-range policy](2026-09-22-workspace-release-ranges.md) requires exact `workspace:*` DSH references and `workspace:~` vendor/native references in every dependency section and consumer, including the native entry's optional platform packages. Local workspace linking is unchanged.
 
-`scripts/check-workspace-constraints.ts` requires the protocol, so a new package cannot reintroduce a hand-written range; the invariant-companion rule requires `workspace:^` for `@deepseek-ai/dsh-invariants` for the same reason.
+`scripts/check-workspace-constraints.ts` reads every member declared in `pnpm-workspace.yaml` plus the root manifest and enforces ranges by dependency target, not consumer directory. The invariant-companion rule requires `workspace:*` for `@deepseek-ai/dsh-invariants`; the dependency repairer preserves vendor/native tilde ranges. Published DSH peers therefore require the matching release instead of admitting later compatible versions.
 
 ### Published dependency faces use an explicit policy
 
@@ -95,6 +95,8 @@ A dependency in `optionalDependencies`, or a peer carrying `peerDependenciesMeta
 [`verify-optional-dependency-imports`](../../../../scripts/verify-optional-dependency-imports.ts) closes that hole. It reads each package's own manifest for what that package allows to be absent, then scans the files that ship — `packages/*/*/src/` and `apps/*/src/` — across both compiler faces. `vendor/` is out of scope, as pinned upstream source under the [vendoring policy](../../../../vendor/README.md). Value-versus-type is decided against a bound Program rather than the import syntax, because `verbatimModuleSyntax` is off: the compiler already erases an import whose bindings resolve to types, so `import type {}`, `import {}`, an inline `type` specifier, and a named binding that resolves to a type all emit nothing and are allowed, while a bare import, a value binding, and a star re-export are kept and rejected. Only the type phase erases an import: `import defer` still resolves and links its module, deferring evaluation alone, so the gate counts it as a load.
 
 A violation names the package, the declaration that made it optional, and the way out in order — import it as a type, which is all that declaration merging needs, or restructure so module scope does not need the package. A dynamic `import()` only moves the failure to first use, so it belongs to a caller that genuinely requires the package and handles its absence; reaching for it is a sign the dependency is not optional, and the gate does not offer it as the remedy.
+
+A required CommonJS-compatible Host dependency whose initialization is unrelated to startup may use `createLazyRequire(specifier, import.meta.url)`. The caller keeps a type-only import, supplies a literal dependency specifier, and invokes the returned loader at the owning operation. `verify-package-dependencies` recognizes that literal as a Host runtime edge, so Client/Host packages retain it in `dependencies` even though no static value import remains. The utility caches only a successful load and preserves caller-relative resolution; it does not make an optional dependency required or hide first-use failure.
 
 ### Release family objects
 
@@ -131,7 +133,7 @@ The installed-consumer probe captures npm's HTTP diagnostics and includes them w
 |---|---|
 | release-set manifests | `private: true` removed; `publishConfig.access` per sequence and `repository` with each package's `directory` added |
 | release-set boundary | every member of `packages/*/*`, `apps/*`, and `vendor/*` |
-| dependency protocol | workspace-internal references are `workspace:^`, with `check-workspace-constraints.ts` and the invariant-companion rule requiring it |
+| dependency protocol | every workspace consumer uses `workspace:*` for DSH targets and `workspace:~` for vendor/native targets |
 | root `AGENTS.md` | the convention that vendored packages are `private: true` no longer holds |
 | `vendor/README.md` | records `src` joining `cordis`'s `files` as a local modification |
 | the three native packages | `publishConfig.access: public`, and their workflow passes no `--access` |

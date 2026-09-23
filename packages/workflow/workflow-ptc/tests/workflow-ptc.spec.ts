@@ -582,12 +582,15 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
 
     it('cancel() aborts in-flight children and settles after their cleanup', async () => {
       const { ctx, parent, provider } = await setup({ manual: true })
+      const starts: number[] = []
+      ctx.on('workflow/agent-start', (_info, agent) => { starts.push(agent.seq) })
       const ends: unknown[] = []
       ctx.on('workflow/agent-end', (_info, agent) => { ends.push(agent) })
       const runEnds: WorkflowResultInfo[] = []
       ctx.on('workflow/end', (_info, result) => { runEnds.push(result) })
       const handle = ctx.workflowEngine.start({ ...scripted("return await agent('long job')"), parent })
-      await waitFor(() => { expect(provider.runs.length).toBe(1) })
+      // Cancellation emits child ends only for starts already observed by the host.
+      await waitFor(() => { expect(starts).toHaveLength(1) })
       handle.cancel('user stopped it')
       const result = await handle.result
       expect(result.stopReason).toBe('cancelled')
@@ -853,9 +856,9 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
     it('cancellation emits exactly one agent-end per observed start before workflow/end', async () => {
       const { ctx, parent, provider } = await setup({ manual: true })
       const starts: number[] = []
+      ctx.on('workflow/agent-start', (_info, agent) => { starts.push(agent.seq) })
       const ends: { seq: number; outcome: string }[] = []
       const order: string[] = []
-      ctx.on('workflow/agent-start', (_info, agent) => { starts.push(agent.seq) })
       ctx.on('workflow/agent-end', (_info, agent) => {
         ends.push({ seq: agent.seq, outcome: agent.outcome })
         order.push(`end:${agent.seq}`)

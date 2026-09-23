@@ -12,7 +12,7 @@ describe('SSH TLS cancellation ownership', () => {
     const root = await mkdtemp('/tmp/dsh-ssh-tls-life-')
     const owner = new RemoteProcesses(new Context(), root, 1, 5000)
     try {
-      const prepared = await owner.prepare({ argv: ['true'], cwd: root, graceMs: 100, terminal: { rows: 24, cols: 80 } })
+      const prepared = await owner.prepare({ argv: ['true'], cwd: root, graceMs: 100, terminal: { terminalType: 'dumb', rows: 24, cols: 80 } })
       const endpoint = prepared.streams.terminal!
       const raw = createConnection({ path: endpoint.path, allowHalfOpen: true })
       raw.on('error', () => {})
