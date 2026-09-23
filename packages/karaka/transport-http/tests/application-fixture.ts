@@ -124,7 +124,7 @@ export async function applicationFixture(mountController = true): Promise<Applic
     cancellations.set(id, cancel)
     await setup?.(agent.ctx, agent)
     const unregister = ctx.agents.register(agent)
-    const handle = { agent, dispose: vi.fn(async () => { unregister() }) }
+    const handle = { agent, dispose: vi.fn(async () => { await unregister() }) }
     handles.set(id, handle)
     disposals.set(id, handle.dispose)
     return handle
