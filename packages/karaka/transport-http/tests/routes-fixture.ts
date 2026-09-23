@@ -2,9 +2,10 @@ import { once } from 'node:events'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import WebServer from '@deepseek-ai/dsh-host-webserver'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import type { AuthenticatedApplication } from '@karaka-ai/server-auth'
-import type { BrowserCaller } from '@karaka-ai/browser-auth'
+import { ServerAuth, type AuthenticatedApplication } from '@karaka-ai/server-auth'
+import BrowserAuthentication, { type BrowserCaller } from '@karaka-ai/browser-auth'
 import { ApplicationId } from '@karaka-ai/identity'
 import { onTestFinished, vi, type Mock, type MockInstance } from 'vitest'
 import { apply, type Config } from '../src/index.ts'
@@ -32,17 +33,20 @@ export async function fixture(config: Config = { path: '/api', handleQuestions: 
   const state = await applicationFixture(false)
   const { ctx } = state
   const routes: WebRoute[] = []
-  ctx.provide('webServer', {
+  const webServer = {
     register: (route: WebRoute) => {
       routes.push(route)
       return () => { const index = routes.indexOf(route); if (index >= 0) routes.splice(index, 1) }
     },
-  } as unknown as typeof ctx.webServer)
+  }
+  ctx.provide('webServer', Object.setPrototypeOf(webServer, WebServer.prototype) as WebServer)
   ctx.provide('karakaStartup', { get ready() { return ready } })
   const authenticate = vi.fn(async (): Promise<AuthenticatedApplication | undefined> => ({ applicationId: ApplicationId('app') }))
-  ctx.provide('serverAuth', { authenticate } as unknown as typeof ctx.serverAuth)
+  const serverAuth = { authenticate }
+  ctx.provide('serverAuth', Object.setPrototypeOf(serverAuth, ServerAuth.prototype) as ServerAuth)
   const browserAuthenticate = vi.fn(async (): Promise<BrowserCaller | undefined> => ({ kind: 'application' as const, owner, expiresAt: Date.now() + 60_000 }))
-  const removeBrowserAuth = ctx.provide('karakaBrowserAuth', { authenticate: browserAuthenticate } as unknown as typeof ctx.karakaBrowserAuth)
+  const browserAuth = { authenticate: browserAuthenticate }
+  const removeBrowserAuth = ctx.provide('karakaBrowserAuth', Object.setPrototypeOf(browserAuth, BrowserAuthentication.prototype) as BrowserAuthentication)
   apply(ctx, config)
   const app = ctx.karakaApplication
   const listAgents = vi.spyOn(app, 'listAgents').mockResolvedValue([{ id: 'main', name: 'Main' }])

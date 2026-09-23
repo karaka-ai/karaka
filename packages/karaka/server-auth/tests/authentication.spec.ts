@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import type { CredentialProvider, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
+import { CredentialProvider, type ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import { ApplicationId } from '@karaka-ai/identity'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import BearerServerAuth, { type Config } from '../src/index.ts'
@@ -22,7 +22,8 @@ function fixture(values: Record<string, string> = { CHAT: 'inbound', TOOLS: 'out
     return value === undefined ? undefined : { value, source: 'fixture' }
   })
   // This consumer only resolves references; credential editing is not part of its dependency use.
-  ctx.provide('credentials', { resolve } as unknown as CredentialProvider)
+  const credentials = { resolve }
+  ctx.provide('credentials', Object.setPrototypeOf(credentials, CredentialProvider.prototype) as CredentialProvider)
   return { ctx, values, resolve, auth: new BearerServerAuth(ctx, { applications }) }
 }
 

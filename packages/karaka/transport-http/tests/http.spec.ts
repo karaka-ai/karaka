@@ -18,8 +18,8 @@ function responseBody(accept = true) {
     write: vi.fn((_text: string) => accept),
     writeHead: vi.fn(),
     end: vi.fn(),
-  })
-  return { response, http: response as unknown as ServerResponse }
+  }) satisfies EventEmitter & Pick<ServerResponse, 'write' | 'writeHead' | 'end'>
+  return { response, http: response as ServerResponse }
 }
 
 function expectRequestCleanup(request: IncomingMessage, signal: AbortSignal) {

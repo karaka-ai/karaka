@@ -3,8 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
-import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
-import { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
+import SessionPersistence, { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
@@ -36,13 +35,14 @@ export async function fixture(provideIdentity = true) {
   const stored = new Map<SessionId, SessionHeader>()
   const snapshot = (header: SessionHeader) => ({ header, revision: SessionPersistenceRevision('fixture') })
   // Authority observes metadata only; persistence writes belong to the flush listener below.
-  ctx.provide('sessionPersistence', {
+  const persistence = {
     list: async () => [...stored.values()].map(snapshot),
     stat: async (id: SessionId) => {
       const header = stored.get(id)
       return header === undefined ? undefined : snapshot(header)
     },
-  } as unknown as SessionPersistence)
+  }
+  ctx.provide('sessionPersistence', Object.setPrototypeOf(persistence, SessionPersistence.prototype) as SessionPersistence)
   ctx.on('session/flush', async (session) => { stored.set(session.id, session.header) })
   const facility = new DomainFacility(ctx, { backend: 'authority-test' })
   resources.facility = facility

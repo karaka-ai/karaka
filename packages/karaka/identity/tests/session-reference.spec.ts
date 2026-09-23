@@ -19,10 +19,11 @@ async function references(candidateLimit?: number) {
     return { session: header, inheritedEventCount: SessionLogOffset(0), capturedThroughSeq: null, events: [] }
   })
   // The inherited resolver uses metadata listing and exact surface reads, not search indexing.
-  ctx.provide('sessionQuery', {
+  const sessionQuery = {
     listSessions: async () => [...stored.values()].map(header => ({ header, live: true, persisted: true })),
     readSurface,
-  } as unknown as typeof ctx.sessionQuery)
+  } satisfies Pick<typeof ctx.sessionQuery, 'listSessions' | 'readSurface'>
+  ctx.provide('sessionQuery', sessionQuery as typeof ctx.sessionQuery)
   const resolver = candidateLimit === undefined
     ? new KarakaSessionReferenceResolver(ctx)
     : new KarakaSessionReferenceResolver(ctx, { candidateLimit })
