@@ -2,9 +2,16 @@ import { expect, it } from 'vitest'
 import { KARAKA_APPLICATION_API_PATH } from '@karaka-ai/sdk'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createMessage, createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { applicationFixture, owner } from './application-fixture.ts'
 import { mountBrowserRoutes } from '../src/browser-routes.ts'
 import { fixture, identity, browser, browserHeaders } from './routes-fixture.ts'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    fixture: { kind: 'fixture' } & ContextFormed
+  }
+}
 
 it('holds routes until launcher readiness and rejects invalid server credentials', async () => {
   const state = await fixture(undefined, false)
@@ -171,7 +178,7 @@ it('projects current Session history and preserves cursor filtering for snapshot
   const session = state.ctx.sessions.create(id)
   session.append('turn/start', { turn: 1 })
   session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'question' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
-  session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'private prompt' }], source: { kind: 'plugin', plugin: 'fixture' } }), { surfaceOp: 'append' })
+  session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'private prompt' }], source: { kind: 'fixture' } }), { surfaceOp: 'append' })
   session.append('assistant/message', { turn: 1, step: 1, stream: [], message: createMessage({
     role: 'assistant', content: [{ type: 'text', text: 'answer' }], source: { kind: 'model', provider: 'mock', model: 'chat' },
   }) }, { surfaceOp: 'append' })

@@ -9029,82 +9029,82 @@ importers:
   packages/karaka/agent:
     dependencies:
       '@deepseek-ai/cordis-plugin-timer':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../vendor/timer
       '@deepseek-ai/dsh':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../../apps/cli
       '@deepseek-ai/dsh-agent':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent
       '@deepseek-ai/dsh-agent-default-model':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent-default-model
       '@deepseek-ai/dsh-agent-loop':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent-loop
       '@deepseek-ai/dsh-agent-preset':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../preset/agent-preset
       '@deepseek-ai/dsh-agent-preset-registry':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../preset/agent-preset-registry
       '@deepseek-ai/dsh-credentials-local':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../credentials/credentials-local
       '@deepseek-ai/dsh-deepseek-llm-api-extensions':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/deepseek-llm-api-extensions
       '@deepseek-ai/dsh-host-webserver':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../host/webserver
       '@deepseek-ai/dsh-llm':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/llm
       '@deepseek-ai/dsh-llm-deepseek':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/llm-deepseek
       '@deepseek-ai/dsh-llm-retry':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/llm-retry
       '@deepseek-ai/dsh-persona':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../preset/persona
       '@deepseek-ai/dsh-plugin-package-inventory-deepseek':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/plugin-package-inventory-deepseek
       '@deepseek-ai/dsh-session':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/session
       '@deepseek-ai/dsh-session-log-deepseek':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session/session-log-deepseek
       '@deepseek-ai/dsh-session-persistence-jsonl':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session/session-persistence-jsonl
       '@deepseek-ai/dsh-session-projection':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session/session-projection
       '@deepseek-ai/dsh-session-query-sqlite':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session-query/session-query-sqlite
       '@deepseek-ai/dsh-storage':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../storage/storage
       '@deepseek-ai/dsh-storage-domain':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../storage/storage-domain
       '@deepseek-ai/dsh-storage-json':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../storage/storage-json
       '@deepseek-ai/dsh-system-prompt':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/system-prompt
       '@deepseek-ai/dsh-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/tools
       '@deepseek-ai/dsh-typert-registry':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../typert/registry
       '@karaka-ai/browser-auth':
         specifier: workspace:^
@@ -9125,14 +9125,14 @@ importers:
   packages/karaka/browser-auth:
     dependencies:
       '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
+        specifier: workspace:~
         version: link:../../../vendor/schemastery
       jose:
         specifier: ^6.2.3
         version: 6.2.3
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../vendor/cordis
       '@karaka-ai/identity':
         specifier: workspace:^
@@ -9141,84 +9141,84 @@ importers:
   packages/karaka/identity:
     dependencies:
       '@deepseek-ai/cosmokit':
-        specifier: link:../../../vendor/cosmokit
+        specifier: workspace:~
         version: link:../../../vendor/cosmokit
       '@deepseek-ai/dsh-brand':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../util/brand
       '@deepseek-ai/dsh-storage-domain':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../storage/storage-domain
       '@deepseek-ai/dsh-storage-json':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../storage/storage-json
       '@deepseek-ai/node-addon-system':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../native/system/packages/entry
       '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
+        specifier: workspace:~
         version: link:../../../vendor/schemastery
       zod:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-agent':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent
       '@deepseek-ai/dsh-llm':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/llm
       '@deepseek-ai/dsh-session':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/session
       '@deepseek-ai/dsh-session-persistence':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session/session-persistence
       '@deepseek-ai/dsh-session-reference':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../context/session-reference
       '@deepseek-ai/dsh-storage':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../storage/storage
 
   packages/karaka/mcp-application:
     dependencies:
       '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
+        specifier: workspace:~
         version: link:../../../vendor/schemastery
       '@modelcontextprotocol/client':
         specifier: 2.0.0
         version: 2.0.0
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-agent':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent
       '@deepseek-ai/dsh-agent-tool-presentation':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent-tool-presentation
       '@deepseek-ai/dsh-llm':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/llm
       '@deepseek-ai/dsh-mcp-client':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../mcp/mcp-client
       '@deepseek-ai/dsh-scope':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/scope
       '@deepseek-ai/dsh-session':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/session
       '@deepseek-ai/dsh-system-prompt':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/system-prompt
       '@deepseek-ai/dsh-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/tools
       '@karaka-ai/identity':
         specifier: workspace:^
@@ -9236,14 +9236,14 @@ importers:
   packages/karaka/server-auth:
     dependencies:
       '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
+        specifier: workspace:~
         version: link:../../../vendor/schemastery
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-credentials':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../credentials/credentials
       '@karaka-ai/identity':
         specifier: workspace:^
@@ -9252,59 +9252,59 @@ importers:
   packages/karaka/transport-http:
     dependencies:
       '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
+        specifier: workspace:~
         version: link:../../../vendor/schemastery
       zod:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../vendor/cordis
       '@deepseek-ai/cordis-plugin-loader':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../../../vendor/loader
       '@deepseek-ai/dsh-agent':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent
       '@deepseek-ai/dsh-agent-default-model':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/agent-default-model
       '@deepseek-ai/dsh-agent-preset-registry':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../preset/agent-preset-registry
       '@deepseek-ai/dsh-api-session-controller':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../api/session-controller
       '@deepseek-ai/dsh-attachment':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../attachment/attachment
       '@deepseek-ai/dsh-cmdline':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../boot/cmdline
       '@deepseek-ai/dsh-host-webserver':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../host/webserver
       '@deepseek-ai/dsh-llm':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../llm/llm
       '@deepseek-ai/dsh-session':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../core/session
       '@deepseek-ai/dsh-session-persistence':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session/session-persistence
       '@deepseek-ai/dsh-session-projection':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session/session-projection
       '@deepseek-ai/dsh-session-query':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../session-query/session-query
       '@deepseek-ai/dsh-user-approval':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../interaction/user-approval
       '@deepseek-ai/dsh-user-questions':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../interaction/user-questions
       '@karaka-ai/browser-auth':
         specifier: workspace:^
