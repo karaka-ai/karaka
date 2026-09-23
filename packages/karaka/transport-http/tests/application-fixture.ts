@@ -116,8 +116,9 @@ export async function applicationFixture(mountController = true): Promise<Applic
     const session = ctx.sessions.get(id) ?? ctx.sessions.create(id, { meta: header ?? { agentPreset: 'main' } })
     const followup = vi.fn((message: UserMessage) => { session.append('user/message', message, { surfaceOp: 'append' }) })
     const cancel = vi.fn()
-    const agent = ({ id, session, ctx: ctx.extend(), options, followup, cancel }
-      satisfies Pick<Agent, 'id' | 'session' | 'ctx' | 'options' | 'followup' | 'cancel'>) as Agent
+    const partialAgent = { id, session, ctx: ctx.extend(), options, followup, cancel }
+      satisfies Pick<Agent, 'id' | 'session' | 'ctx' | 'options' | 'followup' | 'cancel'>
+    const agent = partialAgent as Agent
     followups.set(id, followup)
     cancellations.set(id, cancel)
     await setup?.(agent.ctx, agent)
