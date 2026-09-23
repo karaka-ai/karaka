@@ -182,6 +182,20 @@ describe('gate graph validation', () => {
     expect(scripts['test:bench:built']).toBe('vitest run --config vitest.bench.config.ts')
   })
 
+  it('checks all maintained repository references locally and in CI', () => {
+    const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    for (const mode of ['doc-sync', 'doc-quick', 'ci-static'] as const) {
+      const gates = withPnpmEntrypoint(() => gatesForMode(mode))
+      expect(gates).toContainEqual(expect.objectContaining({
+        id: 'repository-references',
+        displayCommand: 'pnpm run verify-repository-references',
+      }))
+    }
+    expect(scripts['verify-repository-references']).toBe('tsx scripts/verify-repository-references.ts')
+  })
+
   it('keeps the public repository link policy in the documentation gate', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
@@ -192,6 +206,26 @@ describe('gate graph validation', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
     expect(ids).toContain('concrete-terms')
+  })
+
+  it('checks retrospective releases alongside the current persistence history', () => {
+    for (const mode of ['doc-sync', 'ci-static'] as const) {
+      const ids = withPnpmEntrypoint(() => gatesForMode(mode).map(subject => subject.id))
+      expect(ids).toEqual(expect.arrayContaining(['persistence-changes', 'persistence-releases']))
+    }
+  })
+
+  it('requires complete Session format references locally and in CI', () => {
+    const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    for (const mode of ['doc-sync', 'doc-quick', 'ci-static'] as const) {
+      expect(withPnpmEntrypoint(() => gatesForMode(mode))).toContainEqual(expect.objectContaining({
+        id: 'persistence-formats',
+        displayCommand: 'pnpm run verify-persistence-formats',
+      }))
+    }
+    expect(scripts['verify-persistence-formats']).toBe('tsx scripts/persistence-formats.ts')
   })
 
   it('keeps package-group subsystem ownership in the documentation gate', () => {
@@ -224,7 +258,7 @@ describe('gate graph validation', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('hygiene').map(subject => subject.id))
 
     expect(ids).toEqual([
-      'rescope-vendor', 'publint', 'constraints', 'package-dependencies', 'application-entrypoints',
+      'rescope-vendor', 'publint', 'constraints', 'default-product-isolation', 'package-dependencies', 'application-entrypoints',
       'dsh-package-licenses', 'package-invariants', 'built-package-invariants', 'node-next-types',
       'optional-dependency-imports', 'client-packages', 'client-ui-i18n', 'no-bare-dispatcher', 'cordis-config',
       'runtime-closure',
@@ -238,9 +272,9 @@ describe('gate graph validation', () => {
   it('schedules the longest documentation leaves before short checks', () => {
     const ids = withPnpmEntrypoint(() => gatesForMode('doc-sync').map(subject => subject.id))
 
-    expect(ids.slice(0, 10)).toEqual([
+    expect(ids.slice(0, 11)).toEqual([
       'doc-typecheck', 'docs-site-build', 'doc-graphs', 'markdown-links', 'type-equivalence',
-      'cordis-catalog', 'cordis-inspect-catalog', 'mermaid', 'scoped-events', 'translation-pairing',
+      'cordis-catalog', 'cordis-inspect-catalog', 'workflow-guest', 'mermaid', 'scoped-events', 'translation-pairing',
     ])
   })
 
@@ -269,6 +303,17 @@ describe('gate graph validation', () => {
       const ids = withPnpmEntrypoint(() => gatesForMode(mode).map(subject => subject.id))
 
       expect(ids).toContain('package-dependencies')
+    },
+  )
+
+  it.each(['ci-primary', 'ci-static', 'check-all', 'hygiene'] as const)(
+    'executes default-product experimental isolation in %s',
+    (mode) => {
+      const gate = withPnpmEntrypoint(() => gatesForMode(mode)
+        .find(subject => subject.id === 'default-product-isolation'))
+
+      expect(gate?.args).toContain('verify-default-product-isolation')
+      expect(gate?.allowFailure).not.toBe(true)
     },
   )
 

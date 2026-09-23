@@ -1,5 +1,5 @@
 ---
-description: "实验组地图：默认私有的预稳定原型，以及显式公开发布的 Agent Teams 和计算机操作包。"
+description: "实验组地图：可公开安装的预稳定原型。"
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-实验组包含约定可能变更且不提供支持承诺的原型能力。包默认私有；允许列表中的 Agent Teams 和 Cua Driver 包是显式公开发布的例外，并保留现有 `@deepseek-ai/dsh-experimental-*` 名称。本组还包含私有的跨 realm Inspector、CPython 子进程后端与浏览器 worker 预览包。组外已发布产品不得依赖实验性包。
+实验组包含约定可能变更且不提供支持承诺的原型能力。所有当前包都以 `@deepseek-ai/dsh-experimental-*` 名称发布，包括显式启用的 Agent Teams 组合、Auto review、Cua Driver 提供方、跨 realm Inspector、CPython PTC 后端与浏览器 worker 预览库。组外已发布产品不得依赖实验性包。
 
 ## 目录
 
@@ -42,7 +42,7 @@ kind: "package-group"
 <a id="related-documentation"></a>
 ## 相关文档
 
-- [实验包决策](../../.agents/notes/implemented/architecture/2026-08-18-experimental-agent-teams-packages.zh.md)——默认私有、Agent Teams 公开例外与依赖隔离。
+- [实验包发布决策](../../.agents/notes/implemented/process/2026-09-12-experimental-publication-denylist.zh.md)——默认公开与私有例外。
 - [计算机操作](../../docs/subsystems/computer-use.zh.md)——桌面提供方选择。
 - [Agent Teams 子系统](../../docs/subsystems/agent-team.zh.md)——持久 Team 类型与 `ctx.agentTeams` 服务 API。
 - [实验子树规则](AGENTS.md)——实验状态放宽了什么、不放宽什么。

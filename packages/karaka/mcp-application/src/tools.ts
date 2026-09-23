@@ -1,5 +1,5 @@
 /** Application MCP input validation before authorization or remote dispatch. */
-import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+import type { Tool } from '@modelcontextprotocol/client'
 import { assertObjectJsonSchema, ToolArgsError, validateJsonSchemaValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 /**

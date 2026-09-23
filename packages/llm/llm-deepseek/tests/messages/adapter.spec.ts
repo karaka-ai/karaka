@@ -22,8 +22,9 @@ import LocalCredentials from '@deepseek-ai/dsh-credentials-local'
 import FileSettings from '@deepseek-ai/dsh-settings-file'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { DeepSeekMessagesAdapter } from '../../src/protocols/messages/adapter.ts'
+import { DeepSeekFileStore } from '../../src/common/file-store.ts'
 import * as Messages from '../../src/index.ts'
-import { adapter, assemble, chunks, MODEL, options, server, sse, textEvents, user } from './helpers.ts'
+import { adapter, assemble, chunks, MODEL, options, prepareExtensions, server, sse, textEvents, user } from './helpers.ts'
 
 const cleanup: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -95,12 +96,37 @@ describe('direct Messages HTTP', () => {
     await expect(chunks(adapter({ baseURL: http.url }).stream(options()))).rejects.toMatchObject({ code: 'RATE_LIMIT', failure: { status: 429, providerRetryAfterMs: 3000 } })
   })
 
+  it('refuses redirects before credentials reach another origin or request extensions are accepted', async () => {
+    const destination = await endpoint()
+    const source = await endpoint((response) => {
+      response.writeHead(307, { location: `${destination.url}/v1/messages` })
+      response.end()
+    })
+    const accept = vi.fn(async () => {})
+    const prepare = vi.fn(async () => ({ fields: {}, accept }))
+    const files = new DeepSeekFileStore()
+    const llm = new DeepSeekMessagesAdapter({
+      connection: () => Messages.resolveAdapterOptions({ baseURL: source.url }),
+      apiKey: () => Promise.resolve('test-key'), userId: () => 'test-user',
+      attachments: () => undefined, imageAccess: () => undefined, files: () => files,
+      prepareExtensions: prepare,
+    })
+    const error = await chunks(llm.stream(options())).catch((cause: unknown) => cause)
+    expect(source.requests).toHaveLength(1)
+    expect(source.requests[0]?.headers['x-api-key']).toBe('test-key')
+    expect(destination.requests).toEqual([])
+    expect(error).toMatchObject({ code: 'TRANSPORT' })
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(accept).not.toHaveBeenCalled()
+  })
+
   it('freezes endpoint and defaults for a prepared call while the next call sees new settings', async () => {
     const first = await endpoint(), second = await endpoint()
-    let config = Messages.resolveAdapterOptions({ protocol: 'messages', baseURL: first.url, maxTokens: 10, models: [{ id: MODEL, systemPromptUpdate: 'in-history' }] })
-    const llm = new DeepSeekMessagesAdapter({ connection: () => config, apiKey: snapshot => Promise.resolve(snapshot.maxTokens === 10 ? 'first' : 'second'), userId: () => 'user', attachments: () => undefined, imageAccess: () => undefined })
+    let config = Messages.resolveAdapterOptions({ baseURL: first.url, maxTokens: 10, models: [{ id: MODEL, systemPromptUpdate: 'in-history' }] })
+    const files = new DeepSeekFileStore()
+    const llm = new DeepSeekMessagesAdapter({ connection: () => config, apiKey: snapshot => Promise.resolve(snapshot.maxTokens === 10 ? 'first' : 'second'), userId: () => 'user', attachments: () => undefined, imageAccess: () => undefined, files: () => files, prepareExtensions })
     const prepared = await llm.prepareCall('deepseek-official', MODEL)
-    config = Messages.resolveAdapterOptions({ protocol: 'messages', baseURL: second.url, maxTokens: 20 })
+    config = Messages.resolveAdapterOptions({ baseURL: second.url, maxTokens: 20 })
     expect(prepared.model.systemPromptUpdate).toBe('in-history')
     expect((await llm.resolveModel('deepseek-official', MODEL)).systemPromptUpdate).toBeUndefined()
     await chunks(prepared.stream(options()))
@@ -143,14 +169,14 @@ describe('Cordis provider composition', () => {
     const { ctx, home } = await context()
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
     await ctx.plugin(LlmRuntime)
-    await ctx.plugin(Messages, { protocol: 'messages', baseURL: http.url })
+    await ctx.plugin(Messages, { baseURL: http.url })
     const model = 'deepseek-v4-flash-vision-exp'
     const price = () => ctx.llm.imageRequestPricing('deepseek-official', model)!
     const dummy = { attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`), width: 1, height: 1, bytes: 3, mediaType: 'image/png' as const }
-    expect(price().priceImages([dummy])[0]?.text).toBeDefined()
+    expect(price().priceImages([{ type: 'image', attachment: dummy }])[0]?.text).toBeDefined()
     await ctx.plugin(LocalAttachments, { dshHome: home })
     const attachment = await ctx.attachments.saveImage({ data: await readFile(new URL('fixtures/red.png', import.meta.url)), mediaType: 'image/png' })
-    expect(price().priceImages([attachment])[0]?.text).not.toContain('/mounted/image.png')
+    expect(price().priceImages([{ type: 'image', attachment }])[0]?.text).not.toContain('/mounted/image.png')
     class MappedFiles extends Service {
       constructor(context: Context) { super(context, 'fs') }
       processPathFromHostPath(_path: string) { return '/mounted/image.png' }
@@ -159,7 +185,7 @@ describe('Cordis provider composition', () => {
     const message = user()
     await chunks(ctx.llm.stream(options({ model, messages: [{ ...message, content: [...message.content, { type: 'image', attachment }] }] })))
     expect(JSON.stringify(http.requests[0]?.body)).toContain('/mounted/image.png')
-    expect(price().priceImages([attachment])[0]?.text).toContain('/mounted/image.png')
+    expect(price().priceImages([{ type: 'image', attachment }])[0]?.text).toContain('/mounted/image.png')
   })
 
   async function boot(...args: Parameters<typeof server>) {
@@ -343,7 +369,7 @@ describe('Cordis provider composition', () => {
     vi.stubEnv('DEEPSEEK_BASE_URL', http.url)
     vi.stubEnv('DEEPSEEK_API_KEY', 'env-key')
     await ctx.plugin(LlmRuntime)
-    const fiber = ctx.plugin(Messages, { protocol: 'messages' })
+    const fiber = ctx.plugin(Messages)
     await fiber
     await chunks(ctx.llm.stream(options()))
     expect(http.requests[0]?.headers['x-api-key']).toBe('env-key')

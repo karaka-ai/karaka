@@ -2228,7 +2228,7 @@ describe('per-program execution controls', () => {
     } finally { await python.ctx.fiber.dispose() }
   })
 
-  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, '1000'])('rejects invalid timeout %s before runtime execution', async (timeoutMs) => {
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, '1000', null])('rejects invalid timeout %s before runtime execution', async (timeoutMs) => {
     const { ctx, runtime, execute } = await controlledSetup()
     try {
       expect((await execute({ timeoutMs })).isError).toBe(true)

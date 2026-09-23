@@ -27,7 +27,7 @@ Status: implemented
 
 挂载默认按会话进行。实测一份十二行组装每会话约 3ms、约 600KB，因此隔离比任何共享方案都更划算；而由用户或 agent 写出的 preset 也因此拥有尽可能小的影响面。确实自带昂贵单例的 preset，可以用 Cordis 自身的 `isolate` 词汇显式选择共享：命名 realm 的 label 是进程级全局的，因此两棵子树只要写同一个 label 就解析到同一个实例。
 
-`agent-presets` 用户设置命名空间同时携带 `modeSelectionEnabled` 与 `default`。`modeSelectionEnabled` 默认为 `true`：既有的新建会话选择器保持显示；未指名会话会解析到已保存的用户 `default`，尚未保存时则使用组装中 `default` 指定的部署默认值。Web 设置开关只改变该策略：关闭选择时临时使用部署默认值，再次开启时恢复已保存的用户 `default`。这是对 [#1539](https://github.com/deepseek-harness/deepseek-harness/pull/1539) 所确立“用户值覆盖组装值”这一普通 settings 优先级的有意例外：隐藏选择器会停用用户的模式选择策略，但不会删除其保存值。该 Host 策略适用于此后所有未显式指定 preset 的会话；显式指定及既有会话不受影响。组装值还使本包在没有 settings 提供方时照常工作；选择器开启后，用户可覆盖默认值来改变后续会话，而无需编辑部署所拥有的 `cordis.yml`。
+`agent-presets` 用户设置命名空间同时携带 `modeSelectionEnabled` 与 `default`。`modeSelectionEnabled` 默认为 `true`：既有的新建会话选择器保持显示；未指名会话会解析到已保存的用户 `default`，尚未保存时则使用组装中 `default` 指定的部署默认值。Web 设置开关只改变该策略：关闭选择时临时使用部署默认值，再次开启时恢复已保存的用户 `default`。这是对 #1539 所确立“用户值覆盖组装值”这一普通 settings 优先级的有意例外：隐藏选择器会停用用户的模式选择策略，但不会删除其保存值。该 Host 策略适用于此后所有未显式指定 preset 的会话；显式指定及既有会话不受影响。组装值还使本包在没有 settings 提供方时照常工作；选择器开启后，用户可覆盖默认值来改变后续会话，而无需编辑部署所拥有的 `cordis.yml`。
 
 ## 后果
 

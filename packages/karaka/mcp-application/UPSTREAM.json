@@ -15,7 +15,7 @@
   "upstreamImplementationChanges": {
     "packages/mcp/mcp-client/src/index.ts": "Export the programmatic connection API and generic extension types.",
     "packages/mcp/mcp-client/src/connection.ts": "Accept optional transport creation and tool extensions while preserving default supervision.",
-    "packages/mcp/mcp-client/src/tools.ts": "Accept catalog preparation, per-invocation metadata and registration extensions; execution-local delegates preserve the public MCP factory signature, result conversion and finalization."
+    "packages/mcp/mcp-client/src/tools.ts": "Accept catalog preparation, per-invocation metadata and registration extensions; the public execution-aware MCP factory retains result conversion and finalization."
   },
   "derivedTests": {},
   "sharedTests": {

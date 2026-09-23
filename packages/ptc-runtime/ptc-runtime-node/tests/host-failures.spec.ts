@@ -200,6 +200,32 @@ describe('Node runtime host failures', () => {
     expect(h.resolveExecutable).not.toHaveBeenCalled()
   })
 
+  it('keeps a null-deadline run active past the numeric ceiling until cancellation', async () => {
+    const h = await setup({ timeoutMs: 20, maxTimeoutMs: 40 })
+    const booted = Promise.withResolvers<undefined>()
+    h.onBoot(() => { booted.resolve(undefined) })
+    const controller = new AbortController()
+    let active: ReturnType<typeof h.start> | undefined
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      active = h.start({ ...request, timeoutMs: null, signal: controller.signal })
+      const settled = vi.fn()
+      void active.then(settled)
+      await booted.promise
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(settled).not.toHaveBeenCalled()
+      expect(h.terminate).not.toHaveBeenCalled()
+      controller.abort('stop unlimited run')
+      expect((await active).error).toEqual({ kind: 'abort', message: 'stop unlimited run' })
+      expect(h.terminate).toHaveBeenCalledOnce()
+      expect(h.waitForExit).toHaveBeenCalledOnce()
+    } finally {
+      controller.abort('test cleanup')
+      vi.useRealTimers()
+      await active
+    }
+  })
+
   it('does not launch after cancellation races executable lookup completion', async () => {
     const h = await setup()
     const controller = new AbortController()

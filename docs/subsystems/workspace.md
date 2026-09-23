@@ -233,6 +233,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('archiveSession') archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>
 
 /**
+ * Restore one archived Session to Workspace grouping surfaces.
+ * @param request - Session identity to unarchive.
+ * @returns the complete resulting archive set.
+ */
+@Remote('unarchiveSession') unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue>
+
+/**
  * Stream a complete Workspace baseline followed by ordered increments.
  * @param signal - generation cancellation.
  * @returns baseline followed by ordered Workspace increments.
@@ -383,6 +390,18 @@ insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly Workspac
  * @returns resolution after durability.
  */
 archiveSession(sessionId: SessionId): Promise<void>
+
+/**
+ * Unarchive one session durably by dropping it from the registry-global
+ * archive set; the accounting slot was never touched, so the session
+ * returns to its recorded position. Unarchiving runs no session-existence
+ * check because removing an id cannot introduce an unknown one, so an
+ * entry whose session is gone still resolves. An id that is not archived
+ * resolves without writing.
+ * @param sessionId - The session to unarchive.
+ * @returns resolution after durability.
+ */
+unarchiveSession(sessionId: SessionId): Promise<void>
 
 /**
  * Resolve by canonical directory path without creating or mutating a

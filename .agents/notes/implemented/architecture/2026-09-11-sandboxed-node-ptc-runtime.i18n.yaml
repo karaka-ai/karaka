@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-11-sandboxed-node-ptc-runtime.md
-2026-09-11-sandboxed-node-ptc-runtime.md: 02d76bd607ab8352e208d78f3cf0442fc0794917
-2026-09-11-sandboxed-node-ptc-runtime.zh.md: 40390243b6a15404a2bd9fd2f9d5f9700ad883e6
+2026-09-11-sandboxed-node-ptc-runtime.md: 242b3cfedb49b7ab60c47c6ee03005ddb821bb33
+2026-09-11-sandboxed-node-ptc-runtime.zh.md: d1ab47550e49129ee3e1fefbdfa54cda397374a3

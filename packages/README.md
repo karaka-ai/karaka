@@ -50,8 +50,8 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`context/`](context/README.md) | Model-visible request context: workspace instructions, time context, references |
 | [`subagent/`](subagent/README.md) | Subagent capability family: provider-registry contract and model-facing delegation tools |
 | [`jobs/`](jobs/README.md) | Generic background-job runtime and model-facing job control tools |
-| [`experimental/`](experimental/README.md) | Experimental prototypes with explicit public npm exceptions |
-| [`workflow/`](workflow/README.md) | Workflow seam, worker-thread engine, and model-facing `workflow`/`ralph` tools |
+| [`experimental/`](experimental/README.md) | Pre-stable prototypes with explicit private exceptions |
+| [`workflow/`](workflow/README.md) | Workflow seam, PTC process engine, and model-facing `workflow`/`ralph` tools |
 | [`webhook/`](webhook/README.md) | Verified external events, trusted rules, and fire-and-forget Workspace Sessions |
 | [`web/`](web/README.md) | Web capability family: seam, search/fetch providers, model-facing web tools |
 | [`attachment/`](attachment/README.md) | Durable attachment identity, validation, local content-addressed storage |
@@ -62,6 +62,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`guard/`](guard/README.md) | Loop-hygiene guards: advisory repeat-call reminders + the `tools/execute` deadline enforcer |
 | [`bundle/`](bundle/README.md) | Installable `dsh --profile` patch layers |
 | [`extensions/`](extensions/README.md) | Agent runtime self-modification: live plugin/service inspection and model-written mount/unmount |
+| [`mcp/`](mcp/README.md) | External Model Context Protocol servers exposed as native tools |
 | [`hooks/`](hooks/README.md) | Hook bridges + the shared Claude Code / Codex wire-protocol library |
 | [`session/`](session/README.md) | Durable session data plane: persistence seam + backends, projection seam, log-backed titles, session reporting |
 | [`session-query/`](session-query/README.md) | Session retrieval family: logical corpus, bounded reads, lineage, semantic filtering, SQLite full-text search |
@@ -75,7 +76,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`boot/`](boot/README.md) | Shared app-bin boot glue |
 | [`host/`](host/README.md) | Web-GUI host half: API gateway + HTTP route server |
 | [`client/`](client/README.md) | Web-GUI browser half: shell, wire, object services, slots, `ui-*` plugins |
-| [`test-support/`](test-support/README.md) | Support infrastructure (testkits, invariants, replay, Loader smokes) |
+| [`test-support/`](test-support/README.md) | Test infrastructure (testkits, replay, Loader smokes) |
 | [`runtime-diagnostics/`](runtime-diagnostics/README.md) | Runtime diagnostics: package-owned invariant checks and reports |
 | [`util/`](util/README.md) | Low-level zero-dependency utilities shared across groups (`Branded<B>`, home/path helpers, timeout, retention) |
 
@@ -84,7 +85,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 <a id="release-expectations"></a>
 ## Release expectations
 
-Most groups are product — stable API. The exceptions: `experimental/` publishes only explicitly allowlisted packages, and `test-support/`, `runtime-diagnostics/`, and `util/` are support with lower compatibility expectations.
+Most groups are product — stable API. The exceptions: `experimental/` publishes without stability or support promises, and `test-support/`, `runtime-diagnostics/`, and `util/` are support with lower compatibility expectations.
 
 -----
 

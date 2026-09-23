@@ -73,7 +73,7 @@ Node 半侧会在发布前快照每个客户端 bundle 及其现有 source map�
 
 bundle 路由随注入的 `webServer` 生命周期注册：服务就绪时注册，服务被替换时移除并重新注册。模块组合与 `fetchBundle()` 在没有 Web server 时仍可用。
 
-宿主贡献结构化 index 行，并向 `<head>` 注入：`window.__ModuleLoader__` queue facade、每个 application combo 的提示性 preload、阻塞 parser 的 bootstrap combo 脚本，然后才是外壳读取前的启动图。Web 载体把这些行渲染进 index 响应；由 shell 持有的载体则可以在没有 Web server 时渲染同一批行。facade 的 `create()` 物化 modules bundle、把构造委托给其 `createClientModuleSystem` 导出，并让同一 facade 进入 live registration 模式。
+宿主贡献结构化 index 行，并向 `<head>` 注入：`window.__ModuleLoader__` queue facade、每个 application combo 的提示性 preload、阻塞 parser 的 bootstrap combo 脚本，然后才是外壳读取前的启动图。Web 载体把这些行渲染进 index 响应；由 shell 持有的载体则可以在没有 Web server 时渲染同一批行。facade 的 `create()` 物化 modules bundle、把构造委托给其 `createClientModuleSystem` 导出，并让同一 facade 进入 live registration 模式。外壳把返回的系统装成自身 Loader 的 `internal`；modules 插件将该实例发布为 `ctx.modules`，因此不同 Cordis 树不会通过模块级全局状态选择实例。
 
 ### 源码索引
 

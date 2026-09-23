@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Rolldown, type UserConfigExport } from 'tsdown'
 import ts from 'typescript'
+import { browserDependencyAnalysis } from '../apps/web/product-isolation.ts'
 
 interface Manifest {
   name: string
@@ -117,7 +118,9 @@ interface ShellConfig {
 }
 
 interface ViteApi {
-  resolveConfig(config: Record<string, unknown>, command: 'build'): Promise<ShellConfig>
+  resolveConfig(
+    config: Record<string, unknown>, command: 'build', defaultMode: string, defaultNodeEnv: string,
+  ): Promise<ShellConfig>
   build(config: Record<string, unknown>): Promise<unknown>
 }
 
@@ -132,7 +135,7 @@ async function collectShell(
     if (manifest.private === true || manifest.exports?.['./dist/*'] === undefined) continue
     const vitePath = createRequire(resolve(dir, 'package.json')).resolve('vite')
     const vite = await import(pathToFileURL(vitePath).href) as ViteApi
-    const config = await vite.resolveConfig({ root: dir, logLevel: 'error' }, 'build')
+    const config = await vite.resolveConfig({ root: dir, logLevel: 'error' }, 'build', 'production', 'production')
     const input = config.build.rollupOptions?.input
     const entries = typeof input === 'string' ? [input] : Object.values(input ?? {})
     const pages = entries.filter(entry => entry.endsWith('.html'))
@@ -140,7 +143,7 @@ async function collectShell(
     await vite.build({
       root: dir,
       logLevel: 'error',
-      plugins: [recorder(seen, workspaceNames, true)],
+      plugins: [browserDependencyAnalysis(), recorder(seen, workspaceNames, true)],
       resolve: { alias: browserSourceAliases(root) },
       build: {
         write: false,
@@ -163,8 +166,8 @@ async function collectShell(
  * @returns Names of distributed browser inputs, excluding workspace packages and erased types.
  */
 export async function browserBundledExternals(root: string): Promise<Set<string>> {
-  // Vite resolves HTML inputs to real paths, so its root must use the same spelling.
-  root = realpathSync(root)
+  // Vite resolves HTML through native realpath, including Windows 8.3 alias expansion.
+  root = realpathSync.native(root)
   const manifests = new Map<string, Manifest>()
   for (const glob of ['packages/*/*/package.json', 'vendor/*/package.json']) {
     for (const path of globSync(glob, { cwd: root }).sort()) {

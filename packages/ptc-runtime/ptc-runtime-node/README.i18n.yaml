@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/ptc-runtime/ptc-runtime-node/README.md
-README.md: 3f8cdee44d863a8f7539b0975a95695692da4e58
-README.zh.md: 76f975bc752ee89e1b2b56ad30b118787e45e0b4
+README.md: f8f7b5535ba8ed1594b898d410df04e24f5dc8ef
+README.zh.md: dd4e33e70f05ae3917f128e33bf26af5d1a915c4

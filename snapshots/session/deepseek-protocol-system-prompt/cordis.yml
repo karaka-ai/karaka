@@ -1,6 +1,5 @@
 - id: llm-deepseek
   config:
-    protocol: messages
     models:
       - id: deepseek-v4-flash
         systemPromptUpdate: in-history

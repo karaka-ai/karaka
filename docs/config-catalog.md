@@ -997,7 +997,7 @@ Requires: `llm`
  * reasoning effort resolves to `high`.
  */
 export interface Config {
-  /** Wire protocol; defaults to chat-completions. Configure through Cordis YAML. */
+  /** Wire protocol; defaults to messages. Configure through Cordis YAML. */
   protocol?: DeepSeekProtocol
   /** Credential reference (environment-variable name) resolved per request; defaults to `DEEPSEEK_API_KEY`. */
   apiKeyEnv?: string
@@ -1429,7 +1429,7 @@ export interface ReplayModelConfig {
 
 Depends on: [`ModelModality`](../packages/llm/llm/src/index.ts) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · [`SystemPromptUpdate`](../packages/llm/llm/src/index.ts)
 
-Source: [`packages/test-support/llm-replay/src/index.ts:1123`](../packages/test-support/llm-replay/src/index.ts)
+Source: [`packages/test-support/llm-replay/src/index.ts:1122`](../packages/test-support/llm-replay/src/index.ts)
 
 <a id="deepseek-aidsh-llm-retry"></a>
 
@@ -1514,10 +1514,12 @@ export interface StdioConfig {
   env: Record<string, string>
   /** Working directory for the child process. */
   cwd: string
-  /** Per-tool-call timeout in milliseconds. */
+  /** Timeout per tool call or resource request in milliseconds. */
   toolCallTimeoutMs: number
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
+  /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
+  maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
 }
@@ -1536,10 +1538,12 @@ export interface StreamableHttpConfig {
   url: string
   /** Additional headers attached to MCP requests. */
   headers: Record<string, string>
-  /** Per-tool-call timeout in milliseconds. */
+  /** Timeout per tool call or resource request in milliseconds. */
   toolCallTimeoutMs: number
   /** Fail plugin activation when the initial connection or tool synchronization fails. */
   failOnStartupError: boolean
+  /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
+  maxInstructionBytes?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
 }
@@ -1557,7 +1561,7 @@ export interface ReconnectConfig {
 }
 ```
 
-Source: [`packages/mcp/mcp-client/src/index.ts:100`](../packages/mcp/mcp-client/src/index.ts)
+Source: [`packages/mcp/mcp-client/src/index.ts:105`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -1687,7 +1691,7 @@ Requires: `fs` · `subprocess` · `sandbox` · `sandboxPolicy`
 export interface Config extends LaunchConfig {
   /** Default elapsed deadline, including nested tool and approval waits. */
   timeoutMs?: number
-  /** Maximum elapsed deadline accepted by resolve. */
+  /** Maximum numeric elapsed budget accepted by resolve. */
   maxTimeoutMs?: number
   /** Combined serialized logs, completion and diagnostic byte cap. */
   maxOutputBytes?: number
@@ -2643,7 +2647,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/core/system-prompt/src/index.ts:247`](../packages/core/system-prompt/src/index.ts)
+Source: [`packages/core/system-prompt/src/index.ts:248`](../packages/core/system-prompt/src/index.ts)
 
 <a id="deepseek-aidsh-terminal-bash"></a>
 
@@ -3444,11 +3448,11 @@ export interface Config {
 
 Source: [`packages/webhook/webhook-github/src/index.ts:17`](../packages/webhook/webhook-github/src/index.ts)
 
-<a id="deepseek-aidsh-workflow-worker-thread"></a>
+<a id="deepseek-aidsh-workflow-ptc"></a>
 
-## `@deepseek-ai/dsh-workflow-worker-thread`
+## `@deepseek-ai/dsh-workflow-ptc`
 
-Requires: `subagents`
+Requires: `subagents` · `ptcRuntime` · `sandboxPolicy`
 
 ```ts config-catalog
 /** Plugin config (all optional — `static Config` supplies the defaults). */
@@ -3461,18 +3465,12 @@ export interface Config {
   maxTotalAgents?: number
   /** Items accepted by a single `parallel()`/`pipeline()` call (default 4096). */
   maxItemsPerCall?: number
-  /** vm timeout for the script's initial synchronous slice, inside the worker (default 5000 ms). */
+  /** VM timeout for the script's initial synchronous slice (default 5000 ms). */
   syncTimeoutMs?: number
-  /**
-   * How long after a cancellation an unsettled script may keep running before
-   * the run force-settles `cancelled` and its worker is TERMINATED (default
-   * 5000 ms); also bounds `dispose()`.
-   */
-  disposeGraceMs?: number
 }
 ```
 
-Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages/workflow/workflow-worker-thread/src/index.ts)
+Source: [`packages/workflow/workflow-ptc/src/index.ts:32`](../packages/workflow/workflow-ptc/src/index.ts)
 
 <a id="karaka-aibrowser-auth"></a>
 
@@ -3649,6 +3647,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-settings-models` ([`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory` ([`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugins` ([`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-settings-unarchive-sessions` ([`packages/client/ui-settings-unarchive-sessions/src/index.ts`](../packages/client/ui-settings-unarchive-sessions/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar` ([`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar-documentpreview` ([`packages/client/ui-sidebar-documentpreview/src/index.ts`](../packages/client/ui-sidebar-documentpreview/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar-files` ([`packages/client/ui-sidebar-files/src/index.ts`](../packages/client/ui-sidebar-files/src/index.ts))
@@ -3665,6 +3664,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-command-feedback` — requires `commands` ([`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts))
 - `@deepseek-ai/dsh-command-goal` — requires `commands` · `goals` ([`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts))
 - `@deepseek-ai/dsh-commands` ([`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts))
+- `@deepseek-ai/dsh-compaction-image-offload` — requires `agents` · `sessions` ([`packages/compaction/compaction-image-offload/src/index.ts`](../packages/compaction/compaction-image-offload/src/index.ts))
 - `@deepseek-ai/dsh-computer-use` ([`packages/computer-use/computer-use/src/index.ts`](../packages/computer-use/computer-use/src/index.ts))
 - `@deepseek-ai/dsh-cordis-client-runner` ([`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts))
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions` ([`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts))
@@ -3679,6 +3679,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
 - `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
+- `@deepseek-ai/dsh-mcp-resources` — requires `tools` ([`packages/mcp/mcp-resources/src/index.ts`](../packages/mcp/mcp-resources/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-ssh` — requires `ssh` ([`packages/ssh/sandbox-ssh/src/index.ts`](../packages/ssh/sandbox-ssh/src/index.ts))
 - `@deepseek-ai/dsh-schedule` — requires `agents` · `sessions` · `tools` · `sessionPersistence` ([`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts))
 - `@deepseek-ai/dsh-session` ([`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts))

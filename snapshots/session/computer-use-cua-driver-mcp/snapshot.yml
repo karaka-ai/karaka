@@ -6,6 +6,5 @@ recording: authored
 header:
   class: computer-use-cua-driver-mcp
   pin: true
-  systemPromptSource: read-image
 replay:
   override: true

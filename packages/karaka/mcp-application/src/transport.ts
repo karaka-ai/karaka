@@ -1,6 +1,5 @@
 /** Fetch-time credentials rotate without reconnecting or modifying DSH transport. */
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { StreamableHTTPClientTransport, type Transport } from '@modelcontextprotocol/client'
 import type { ApplicationBridge, Config } from './index.ts'
 
 /**
@@ -20,5 +19,5 @@ export function createTransport(config: Config, bridge: ApplicationBridge): Tran
       // A credential-bearing request must never follow a redirect to another origin.
       return fetch(input, { ...init, headers, redirect: 'error' })
     },
-  }) as Transport
+  })
 }

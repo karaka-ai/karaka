@@ -110,8 +110,8 @@ describe('resolveLocalTarget', () => {
     await mkdir(join(dir, 'nested'))
     await writeFile(join(dir, 'created.txt'), 'native')
     const drive = parse(dir).root.slice(0, 2)
-    // Checkout and temporary directories can live on different Windows drives.
-    const driveCwd = `${drive}${relative(resolve(`${drive}.`), dir)}`
+    // Resolve the temp drive independently when the checkout lives on another volume.
+    const driveCwd = `${drive}${relative(resolve(drive), dir)}`
     for (const cwd of [dir, driveCwd]) {
       for (const requested of ['created.txt', `${drive}nested/../created.txt`]) {
         const target = await resolveLocalTarget(cwd, requested)

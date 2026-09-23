@@ -4,7 +4,7 @@ import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attac
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import type { DeepSeekLlmApiExtensionRequest, PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
-import type { DeepSeekFileStore, DeepSeekFilePolicy } from '../protocols/chat-completions/file-store.ts'
+import type { DeepSeekFileStore, DeepSeekFilePolicy } from './file-store.ts'
 
 /** Supported wire implementations; Responses is not yet implemented. */
 export type DeepSeekProtocol = 'chat-completions' | 'messages'

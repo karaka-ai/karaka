@@ -38,5 +38,7 @@
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^"
   },
-  "private": true
+  "publishConfig": {
+    "access": "public"
+  }
 }

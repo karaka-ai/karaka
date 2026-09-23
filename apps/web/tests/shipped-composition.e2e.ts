@@ -457,7 +457,8 @@ function assertLeanChildRecord(agent: Agent, mode: 'one-shot' | 'continuable'): 
  * The catalog the shipped Web composition puts in front of the model, minus the
  * ripgrep-dependent pair below. The absences are deliberate, not incidental
  * gaps: the `cordis_*` toolset executes model-written JavaScript that no
- * sandbox row confines, and `mcp_*` servers spawn outside `ctx.shell`.
+ * sandbox row confines, `mcp_*` servers spawn outside `ctx.shell`, and `ralph`
+ * runs unsupervised rounds whose completion is a worker self-report.
  * `web_fetch` is present because public-address enforcement and one-shot
  * approval now confine its model-selected request target. The composition
  * Agent Note owns the rationale and its sources.
@@ -475,7 +476,6 @@ const EXPECTED_TOOLS = [
   'job_output',
   'list_agents',
   'present',
-  'ralph',
   'read',
   'read_image',
   'send_message',
@@ -651,7 +651,7 @@ it('ships PTC with run_code but without the general workflow SDK binding', async
     const assembly = await ctx.systemPrompt.assemble({ scope: handle.agent })
     expect(assembly.tools.map(tool => tool.name)).toEqual([RUN_CODE_NAME])
     const sdk = assembly.sections.find(section => section.name === 'tools:sdk')?.text ?? ''
-    expect(sdk).toContain('  ralph: {')
+    expect(sdk).not.toContain('  ralph: {')
     expect(sdk).not.toContain('  workflow: {')
   } finally {
     await handle.dispose()

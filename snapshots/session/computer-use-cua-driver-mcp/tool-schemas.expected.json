@@ -261,6 +261,46 @@
       }
     },
     {
+      "name": "list_mcp_resource_templates",
+      "description": "List parameterized resource URI templates from an MCP server.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Configured MCP server name."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Continuation cursor returned by this server."
+          }
+        },
+        "required": [
+          "server"
+        ]
+      }
+    },
+    {
+      "name": "list_mcp_resources",
+      "description": "List resources available from an MCP server.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Configured MCP server name."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Continuation cursor returned by this server."
+          }
+        },
+        "required": [
+          "server"
+        ]
+      }
+    },
+    {
       "name": "mcp__cua-driver-mcp__disconnect",
       "description": "Disconnect the fixture.",
       "parameters": {
@@ -283,26 +323,6 @@
           "display"
         ],
         "additionalProperties": false
-      }
-    },
-    {
-      "name": "ralph",
-      "description": "Run a foreground fresh-agent Ralph loop toward one immutable objective. Use only when the direct human explicitly asks for Ralph or fresh-agent iteration. Each round opens a new child with no parent conversation or prior child session; the shared workspace is long-term memory, and only a bounded structured report crosses rounds. The call returns when a worker reports completion or a concrete blocker, or at the round limit. Ordinary long-running same-session work belongs to goal tools.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "objective": {
-            "type": "string",
-            "description": "The immutable completion objective for every fresh Ralph round."
-          },
-          "maxRounds": {
-            "type": "number",
-            "description": "Optional positive safe-integer round cap, bounded by the deployment ceiling."
-          }
-        },
-        "required": [
-          "objective"
-        ]
       }
     },
     {
@@ -342,6 +362,27 @@
         },
         "required": [
           "file_path"
+        ]
+      }
+    },
+    {
+      "name": "read_mcp_resource",
+      "description": "Read an MCP resource by URI from the named server. Use a listed URI or an expanded resource template.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Configured MCP server name."
+          },
+          "uri": {
+            "type": "string",
+            "description": "Resource URI to read."
+          }
+        },
+        "required": [
+          "server",
+          "uri"
         ]
       }
     },

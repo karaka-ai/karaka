@@ -6,7 +6,7 @@ English | [中文](2026-09-07-file-content-scan.zh.md)
 
 ## Problem
 
-Every model dispatch checks complete message content for files, including nested tool results. A request-history CPU profile attributes 23.540 ms of self time to `contentHasFile` and 5.584 ms to its callback. This traversal remains necessary even after [loop-owned freeze evidence](2026-09-06-agent-request-freeze-evidence.md) removes repeated request freezing. The hot LLM source is identical at master `bd5917`, master `112a5`, and the measured `f834b002826453e7918eeb558d052b2c24c56a76`; these observations do not establish PR causality.
+Every model dispatch checks complete message content for files, including nested tool results. A request-history CPU profile attributes 23.540 ms of self time to `contentHasFile` and 5.584 ms to its callback. This traversal remains necessary even after [loop-owned freeze evidence](2026-09-06-agent-request-freeze-evidence.md) removes repeated request freezing. The hot LLM source is identical at both sampled master revisions and the measured V3 integration revision; these observations do not establish PR causality.
 
 ## Decision
 

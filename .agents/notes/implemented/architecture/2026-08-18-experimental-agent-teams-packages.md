@@ -8,13 +8,13 @@ English | [中文](2026-08-18-experimental-agent-teams-packages.zh.md)
 
 Agent Teams needs the real Session log, subagent lifecycle, tools, examples, snapshots, and repository checks while its service and tool contracts continue to change. Users also need to install the complete Team composition from npm without building a source checkout.
 
-Moving the packages into product-role groups would remove their experimental names and imply stable-package ownership. Publishing every package under `packages/experimental/` would instead expose unrelated internal prototypes. The release policy needs an explicit Agent Teams exception while preserving the private default.
+Moving the packages into product-role groups would remove their experimental names and imply stable-package ownership. Publishing every package under `packages/experimental/` would instead expose unrelated internal prototypes. The release policy must let users install Agent Teams while keeping internal-only prototypes private.
 
 ## Decision
 
-`packages/experimental/agent-team`, `packages/experimental/tool-agent-team`, `packages/experimental/agent-team-profile`, `packages/experimental/client-ui-agent-team`, and `packages/experimental/agent-team-web-profile` are public workspace packages. They retain their existing `@deepseek-ai/dsh-experimental-*` names and join the dsh release family. The [experimental package rules](../../../../packages/experimental/AGENTS.md) own the private default, this exception, and later promotion.
+`packages/experimental/agent-team`, `packages/experimental/tool-agent-team`, `packages/experimental/agent-team-profile`, `packages/experimental/client-ui-agent-team`, and `packages/experimental/agent-team-web-profile` are public workspace packages. They retain their existing `@deepseek-ai/dsh-experimental-*` names and join the dsh release family. The [publication denylist decision](../process/2026-09-12-experimental-publication-denylist.md) owns the public default and private exceptions; the [experimental package rules](../../../../packages/experimental/AGENTS.md) own dependency isolation and later promotion.
 
-The dsh pack and publish set and the local baseline publisher include the explicit experimental allowlist. These five Agent Teams directories and the [Cua Driver provider exceptions](2026-09-12-computer-use-provider-registration.md) omit `private`, set `publishConfig.access` to `public`, and keep the experimental npm prefix. Unlisted experimental packages remain private and excluded from publication by default. Release packages and apps outside the experimental group, plus the Python runtime, cannot name experimental packages in `dependencies`, `optionalDependencies`, or `peerDependencies`; experimental packages may depend on release packages and each other.
+The dsh pack and publish set and the local baseline publisher include these five Agent Teams directories and the [Cua Driver providers](2026-09-12-computer-use-provider-registration.md). Workspace constraints require them to omit `private`, set `publishConfig.access` to `public`, and keep the experimental npm prefix. Release packages and apps outside the experimental group, plus the Python runtime, cannot name experimental packages in `dependencies`, `optionalDependencies`, or `peerDependencies`; experimental packages may depend on release packages and each other.
 
 The generic caller-reserved continuable child identity and selective direct-child drain remain in the stable Subagent service. They own Subagent identity and Activation lifecycle without importing or naming Agent Teams; the experimental Team service consumes them in the permitted direction.
 
@@ -38,4 +38,4 @@ Experimental status changes compatibility and support expectations, not publicat
 
 Agent Teams publishes as five installable tarballs in the dsh release family without changing package names or enabling Team in a shipped profile. Public availability does not make the packages stable or supported by default, and stable release packages cannot take runtime dependencies on them.
 
-The release family carries explicitly named experimental exceptions. Promotion still creates path and npm-name churn as specified by the experimental package rules.
+The release family carries the experimental npm names. Promotion still creates path and npm-name churn as specified by the experimental package rules.

@@ -13,17 +13,17 @@ The complete npm transitive closure, including the Landlock launcher workspace, 
 
 The Cordis framework and its foundation libraries are source-vendored into this repository rather than consumed from npm, and republished under the `@deepseek-ai` scope. All are MIT-licensed; each directory preserves its upstream `LICENSE` file. Exact upstream commits and local modifications are recorded in [`vendor/README.md`](vendor/README.md).
 
-| Package | Upstream name | Upstream | License |
+| Package | Upstream name | Source | License |
 | --- | --- | --- | --- |
-| `@deepseek-ai/cosmokit` | `cosmokit` | [github.com/deepseek-harness/cosmokit](https://github.com/deepseek-harness/cosmokit) | MIT |
-| `@deepseek-ai/schemastery` | `schemastery` | [github.com/deepseek-harness/schemastery](https://github.com/deepseek-harness/schemastery) | MIT |
-| `@deepseek-ai/cordis` | `cordis` | [github.com/cordiverse/cordis](https://github.com/cordiverse/cordis) | MIT |
-| `@deepseek-ai/cordis-plugin-loader` | `@cordisjs/plugin-loader` | [github.com/cordiverse/cordis](https://github.com/cordiverse/cordis) | MIT |
-| `@deepseek-ai/cordis-plugin-include` | `@cordisjs/plugin-include` | [github.com/deepseek-harness/cordis](https://github.com/deepseek-harness/cordis) | MIT |
-| `@deepseek-ai/cordis-plugin-group` | `@cordisjs/plugin-group` | [github.com/deepseek-harness/cordis](https://github.com/deepseek-harness/cordis) | MIT |
-| `@deepseek-ai/cordis-plugin-timer` | `@cordisjs/plugin-timer` | [github.com/deepseek-harness/cordis](https://github.com/deepseek-harness/cordis) | MIT |
-| `@deepseek-ai/cordis-plugin-hmr` | `@cordisjs/plugin-hmr` | [github.com/deepseek-harness/cordis](https://github.com/deepseek-harness/cordis) | MIT |
-| `@deepseek-ai/cordis-plugin-logger-console` | `@cordisjs/plugin-logger-console` | [github.com/deepseek-harness/cordis](https://github.com/deepseek-harness/cordis) | MIT |
+| `@deepseek-ai/cosmokit` | `cosmokit` | [vendor/cosmokit](vendor/cosmokit/) | MIT |
+| `@deepseek-ai/schemastery` | `schemastery` | [vendor/schemastery](vendor/schemastery/) | MIT |
+| `@deepseek-ai/cordis` | `cordis` | [vendor/cordis](vendor/cordis/) | MIT |
+| `@deepseek-ai/cordis-plugin-loader` | `@cordisjs/plugin-loader` | [vendor/loader](vendor/loader/) | MIT |
+| `@deepseek-ai/cordis-plugin-include` | `@cordisjs/plugin-include` | [vendor/include](vendor/include/) | MIT |
+| `@deepseek-ai/cordis-plugin-group` | `@cordisjs/plugin-group` | [vendor/group](vendor/group/) | MIT |
+| `@deepseek-ai/cordis-plugin-timer` | `@cordisjs/plugin-timer` | [vendor/timer](vendor/timer/) | MIT |
+| `@deepseek-ai/cordis-plugin-hmr` | `@cordisjs/plugin-hmr` | [vendor/hmr](vendor/hmr/) | MIT |
+| `@deepseek-ai/cordis-plugin-logger-console` | `@cordisjs/plugin-logger-console` | [vendor/logger-console](vendor/logger-console/) | MIT |
 
 ## Runtime npm dependencies
 
@@ -42,6 +42,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`@lexical/plain-text`](https://github.com/facebook/lexical) | MIT |
 | [`@lexical/text`](https://github.com/facebook/lexical) | MIT |
 | [`@lexical/utils`](https://github.com/facebook/lexical) | MIT |
+| [`@modelcontextprotocol/client`](https://github.com/modelcontextprotocol/typescript-sdk) | MIT |
 | [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk) | MIT |
 | [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) | MIT |
 | [`@octokit/webhooks`](https://github.com/octokit/webhooks.js) | MIT |
@@ -148,6 +149,8 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`@electron/notarize`](https://github.com/electron/notarize) | MIT |
 | [`@karaka-ai/sdk`](https://github.com/karaka-ai/karaka-sdk) | MIT |
 | [`@lexical/headless`](https://github.com/facebook/lexical) | MIT |
+| [`@modelcontextprotocol/node`](https://github.com/modelcontextprotocol/typescript-sdk) | MIT |
+| [`@modelcontextprotocol/server`](https://github.com/modelcontextprotocol/typescript-sdk) | MIT |
 | [`@modelcontextprotocol/server-everything`](https://github.com/modelcontextprotocol/servers) | MIT / Apache-2.0 |
 | [`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers) | MIT / Apache-2.0 |
 | [`@stylistic/eslint-plugin`](https://github.com/eslint-stylistic/eslint-stylistic) | MIT |

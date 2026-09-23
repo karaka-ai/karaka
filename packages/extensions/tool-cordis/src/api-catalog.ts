@@ -1382,6 +1382,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'mcpResources',
+    summary: 'Scoped resource access plus three tools shared by configured MCP servers.',
+    description: 'Scoped resource access plus three tools shared by configured MCP servers.',
+    methods: [
+      {
+        signature: 'register(server: string, provider: McpResourceProvider): () => void',
+        description: 'Register one server and expose resource tools while that scope has providers.',
+        parameters: [{ name: 'server', description: 'configured server name, unique in this scope.' }, { name: 'provider', description: 'connection-owned resource operations.' }],
+        returns: 'the effect disposer for this exact registration.',
+      },
+    ],
+  },
+  {
     key: 'messageFeedback',
     summary: 'Session-log service; cold operations never construct a Session or Agent.',
     description: 'Session-log service; cold operations never construct a Session or Agent.',
@@ -1989,6 +2002,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'In-memory session store (`ctx.sessions`).',
     description: 'In-memory session store (`ctx.sessions`).\n\nPersistence is intentionally not implemented here — the agent lifecycle attaches a session-log writer to each published session\'s write handle; a session published outside that lifecycle persists nothing.',
     methods: [
+      {
+        signature: 'registerMessageProjection(projection: SessionMessageProjection): () => Promise<void>',
+        description: 'Register one event interpreter for live creation, restore, and fork. Disposing the contribution makes sessions that used it refuse further derivation.',
+        parameters: [{ name: 'projection', description: 'pure definition owned by the event\'s plugin.' }],
+        returns: 'the fiber-owned disposer.',
+        throws: ['when another definition already owns this event type.'],
+      },
       {
         signature: 'create(id?: SessionId, options?: CreateSessionOptions): Session',
         description: 'Create a session owned by the calling fiber: disposing that fiber stops event notification and removes the session from the store. `options.seed` populates the session with a copy of those events (replay/fork); `options.meta` attaches creation metadata (validated absolute `cwd`, seed and parent lineage, and delegation depth) as the immutable SessionHeader (the store fills `version`/`id`/`createdAt`).\n\nFor an agent whose session must be torn down IN ORDER with its loop (so the loop\'s final events are published before the store attachment ends), do NOT use this — fold the session lifecycle into the agent\'s own effect via prepare + enter + announce (see `dsh-agent-loop`\'s creation transaction).',
@@ -3007,7 +3027,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'workflowEngine',
     summary: 'Workflow Service Definition contract.',
-    description: 'Workflow Service Definition contract. Invalid requests throw before publication; a live run is holder-owned, its result never rejects, cancellation and disposal are bounded, and disposal waits for child cleanup within that bound. Lifecycle listener failures are contained, and `workflow/end` fires exactly once as the result settles.',
+    description: 'Workflow Service Definition contract. Invalid requests throw before publication; a live run is holder-owned, its result never rejects, and disposal waits for script and child cleanup. Lifecycle listener failures are contained, and `workflow/end` fires exactly once as the result settles.',
     methods: [
       {
         signature: 'abstract start(request: WorkflowStartRequest): WorkflowRun',
@@ -3056,6 +3076,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote(\'archiveSession\') archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>',
         description: 'Hide one known Session from Workspace grouping surfaces.',
         parameters: [{ name: 'request', description: 'Session identity to archive.' }],
+        returns: 'the complete resulting archive set.',
+      },
+      {
+        signature: '@Remote(\'unarchiveSession\') unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue>',
+        description: 'Restore one archived Session to Workspace grouping surfaces.',
+        parameters: [{ name: 'request', description: 'Session identity to unarchive.' }],
         returns: 'the complete resulting archive set.',
       },
       {
@@ -3154,6 +3180,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'archiveSession(sessionId: SessionId): Promise<void>',
         description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. An already archived id resolves without writing.',
         parameters: [{ name: 'sessionId', description: 'The session to archive.' }],
+        returns: 'resolution after durability.',
+      },
+      {
+        signature: 'unarchiveSession(sessionId: SessionId): Promise<void>',
+        description: 'Unarchive one session durably by dropping it from the registry-global archive set; the accounting slot was never touched, so the session returns to its recorded position. Unarchiving runs no session-existence check because removing an id cannot introduce an unknown one, so an entry whose session is gone still resolves. An id that is not archived resolves without writing.',
+        parameters: [{ name: 'sessionId', description: 'The session to unarchive.' }],
         returns: 'resolution after durability.',
       },
       {
@@ -3351,6 +3383,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'A command was registered or unregistered.',
     description: 'A command was registered or unregistered. This is an unfiltered registry notification because a global or scoped change may affect any UI view. Observer failures are contained and cannot veto the registry mutation.',
     parameters: [],
+  },
+  {
+    name: 'compaction/summary-error',
+    mode: 'waterfall',
+    signature: '\'compaction/summary-error\'(payload: { session: Session; sourceEventSeqs: readonly SessionSeq[]; error: unknown; signal?: AbortSignal }, next: () => boolean): boolean',
+    summary: 'Recover a failed summary request by synchronously recording a durable change to its selected input.',
+    description: 'Recover a failed summary request by synchronously recording a durable change to its selected input. Return true only after making progress; the provider re-derives and re-prices the selection before retrying. Call next() when the failure cannot be recovered. Decisions survive a later summary failure or cancellation.',
+    parameters: [{ name: 'payload', description: '.signal - optional compaction cancellation signal.' }, { name: 'next', description: 'delegate to the next recovery listener.' }],
   },
   {
     name: 'cordis/dynamic-package',
@@ -3677,7 +3717,7 @@ export const EVENT_API: readonly EventApiEntry[] = [
     mode: 'emit',
     signature: '\'workflow/agent-end\'(info: WorkflowRunInfo, agent: WorkflowAgentEndInfo): void',
     summary: 'One `agent()` call settled (clean result, child failure, or run cancellation).',
-    description: 'One `agent()` call settled (clean result, child failure, or run cancellation). Paired with Events[\'workflow/agent-start\'] by `agent.seq`, exactly once per started call on every stop path — on an engine termination path (a worker killed past its grace) the end is engine-synthesized with outcome `\'cancelled\'`.',
+    description: 'One `agent()` call settled (clean result, child failure, or run cancellation). Paired with Events[\'workflow/agent-start\'] by `agent.seq`, exactly once per started call on every stop path — on an engine termination path the end is engine-synthesized with outcome `\'cancelled\'`.',
     parameters: [{ name: 'info', description: 'the run\'s identity snapshot.' }, { name: 'agent', description: 'the call identity plus its outcome.' }],
   },
   {
@@ -4506,7 +4546,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ImageBlock',
-    declaration: 'export interface ImageBlock {\n    type: \'image\';\n    attachment: ImageAttachmentRef;\n}',
+    declaration: 'export interface ImageBlock {\n    type: \'image\';\n    attachment: ImageAttachmentRef;\n    offloaded?: true;\n}',
   },
   {
     name: 'ImageMediaType',
@@ -4670,7 +4710,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmFailure',
-    declaration: 'export interface LlmFailure {\n    readonly message: string;\n    readonly code: string;\n    readonly status?: number;\n    readonly providerRetryAfterMs?: number;\n    readonly requestId?: ProviderRequestId;\n}',
+    declaration: 'export interface LlmFailure {\n    readonly message: string;\n    readonly code: string;\n    readonly status?: number;\n    readonly providerRetryAfterMs?: number;\n    readonly requestId?: ProviderRequestId;\n    readonly offloadImages?: number;\n}',
   },
   {
     name: 'LlmImageRequestPrice',
@@ -4678,7 +4718,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmImageRequestPricing',
-    declaration: 'export interface LlmImageRequestPricing {\n    priceImages(images: readonly ImageAttachmentRef[]): readonly LlmImageRequestPrice[];\n}',
+    declaration: 'export interface LlmImageRequestPricing {\n    priceImages(images: readonly ImageBlock[]): readonly LlmImageRequestPrice[];\n}',
   },
   {
     name: 'LlmModelContext',
@@ -4755,6 +4795,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ManualCompactAgentContext',
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
+  },
+  {
+    name: 'McpResourceProvider',
+    declaration: 'export interface McpResourceProvider {\n    request(request: McpResourceRequest, exec: ToolExecution): Promise<JsonValue>;\n}',
+  },
+  {
+    name: 'McpResourceRequest',
+    declaration: 'export type McpResourceRequest = {\n    method: \'resources/list\' | \'resources/templates/list\';\n    cursor?: string;\n} | {\n    method: \'resources/read\';\n    uri: string;\n};',
   },
   {
     name: 'Message',
@@ -5030,7 +5078,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PtcRunRequest',
-    declaration: 'export interface PtcRunRequest {\n    program: string;\n    bindings: PtcBindingNamespace[];\n    cwd?: string;\n    timeoutMs?: number;\n    sandboxPolicy?: SandboxExecutionPolicy;\n    signal?: AbortSignal;\n}',
+    declaration: 'export interface PtcRunRequest {\n    program: string;\n    bindings: PtcBindingNamespace[];\n    cwd?: string;\n    timeoutMs?: number | null;\n    sandboxPolicy?: SandboxExecutionPolicy;\n    signal?: AbortSignal;\n}',
   },
   {
     name: 'PtcRunResult',
@@ -5042,7 +5090,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PtcRunSpec',
-    declaration: 'export interface PtcRunSpec extends PtcRunRequest {\n    cwd: string;\n    timeoutMs: number;\n}',
+    declaration: 'export interface PtcRunSpec extends PtcRunRequest {\n    cwd: string;\n    timeoutMs: number | null;\n}',
   },
   {
     name: 'ReadFileLine',
@@ -5222,7 +5270,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Session',
-    declaration: 'export class Session {\n    get surface(): SessionSurface;\n    readonly header: SessionHeader;\n    readonly inheritedEventCount: SessionLogOffset;\n    get id(): SessionId;\n    readonly firstLiveSeq: SessionLogOffset;\n    static create(id: SessionId, seed?: readonly SessionEvent[], header?: SessionHeader, inheritedEventCount?: SessionLogOffset): Session;\n    static fromRestore(id: SessionId, seed: readonly SessionEvent[], header: SessionHeader, inheritedEventCount: SessionLogOffset, eventState: SessionSeedEventState): Session;\n    eventAt(seq: SessionSeq): SessionEvent | undefined;\n    snapshotEvents(fromSeq: SessionLogOffset = SessionLogOffset(0), toSeqExclusive: SessionLogOffset = this.seq): readonly SessionEvent[];\n    ownEvents(): readonly SessionEvent[];\n    isOwnSeq(seq: SessionSeq): boolean;\n    get seq(): SessionLogOffset;\n    append<T extends SessionEventType>(type: T, data: SessionEventMap[T], ...opts: T extends SurfaceEventType ? [\n        opts: SurfaceIntent<T>\n    ] : [\n    ]): SessionEvent<T>;\n    requestHeader(): EpochHeader | undefined;\n    requestContext(): RequestContext | undefined;\n    deriveMessages(): Message[];\n    deriveEventMessage(event: SessionEvent): Message | null;\n}',
+    declaration: 'export class Session {\n    get surface(): SessionSurface;\n    readonly header: SessionHeader;\n    readonly inheritedEventCount: SessionLogOffset;\n    get id(): SessionId;\n    readonly firstLiveSeq: SessionLogOffset;\n    static create(id: SessionId, seed?: readonly SessionEvent[], header?: SessionHeader, inheritedEventCount?: SessionLogOffset, projections?: readonly SessionMessageProjection[]): Session;\n    static fromRestore(id: SessionId, seed: readonly SessionEvent[], header: SessionHeader, inheritedEventCount: SessionLogOffset, eventState: SessionSeedEventState, projections?: readonly SessionMessageProjection[]): Session;\n    eventAt(seq: SessionSeq): SessionEvent | undefined;\n    snapshotEvents(fromSeq: SessionLogOffset = SessionLogOffset(0), toSeqExclusive: SessionLogOffset = this.seq): readonly SessionEvent[];\n    ownEvents(): readonly SessionEvent[];\n    isOwnSeq(seq: SessionSeq): boolean;\n    get seq(): SessionLogOffset;\n    append<T extends SessionEventType>(type: T, data: SessionEventMap[T], ...opts: T extends SurfaceEventType ? [\n        opts: SurfaceIntent<T>\n    ] : [\n    ]): SessionEvent<T>;\n    requestHeader(): EpochHeader | undefined;\n    requestContext(): RequestContext | undefined;\n    deriveMessages(): Message[];\n    deriveEventMessage(event: SessionEvent): Message | null;\n}',
   },
   {
     name: 'SessionAccess',
@@ -5449,6 +5497,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionLogSnapshot {\n    session: SessionHeader;\n    inheritedEventCount: SessionLogOffset;\n    events: SessionEvent[];\n}',
   },
   {
+    name: 'SessionMessageProjection',
+    declaration: 'export interface SessionMessageProjection<T extends SessionEventType = SessionEventType> {\n    type: T;\n    project(event: SessionEvent<T>, context: SessionMessageProjectionContext): ReadonlyMap<SessionSeq, Message>;\n}',
+  },
+  {
+    name: 'SessionMessageProjectionContext',
+    declaration: 'export interface SessionMessageProjectionContext {\n    nodes: readonly SessionSeq[];\n    events: readonly SessionEvent[];\n    baseSeq: SessionLogOffset;\n    messages: ReadonlyMap<SessionSeq, Message>;\n}',
+  },
+  {
     name: 'SessionObservation',
     declaration: 'export interface SessionObservation extends Disposable {\n    readonly source: \'live\' | \'prepared\';\n    readonly header: SessionHeader;\n    readonly inheritedEventCount: SessionLogOffsetType;\n    readonly events: readonly SessionEvent[];\n    readonly cursor: SessionSeqCursor;\n    readonly revision?: SessionPersistenceRevision;\n    readonly projections?: ProjectionSnapshot;\n    retain(): SessionObservation;\n}',
   },
@@ -5630,7 +5686,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionSurface',
-    declaration: 'export interface SessionSurface {\n    readonly nodes: readonly SessionSeq[];\n    readonly replaceGeneration: number;\n}',
+    declaration: 'export interface SessionSurface {\n    readonly nodes: readonly SessionSeq[];\n    readonly replaceGeneration: number;\n    readonly contentGeneration: number;\n}',
   },
   {
     name: 'SessionSurfaceSnapshot',
@@ -6699,6 +6755,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceRenameRequest',
     declaration: 'export interface WorkspaceRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceUnarchiveSessionRequest',
+    declaration: 'export interface WorkspaceUnarchiveSessionRequest {\n    readonly sessionId: SessionId;\n}',
   },
   {
     name: 'WorkspaceValue',

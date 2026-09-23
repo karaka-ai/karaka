@@ -2,7 +2,7 @@
 import { afterEach, expect, it } from 'vitest'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
-import { DeepSeekAdapter, resolveAdapterOptions } from '../src/index.ts'
+import { Config, DeepSeekAdapter, resolveAdapterOptions } from '../src/index.ts'
 import type { DeepSeekConnectionOptions } from '../src/index.ts'
 import { assemble, chunks, end, MODEL, options, server, sse, start, textEvents, user } from './messages/helpers.ts'
 
@@ -26,12 +26,27 @@ function adapter(connection: () => DeepSeekConnectionOptions) {
   })
 }
 
+it.each([false, true])('uses Messages when protocol is omitted, schema=%s', async (schema) => {
+  const http = await endpoint()
+  const raw = { baseURL: http.url }
+  const connection = resolveAdapterOptions(schema ? Config(raw) : raw)
+  const response = await assemble(adapter(() => connection).stream(options()))
+
+  expect(response.message.content).toEqual([{ type: 'text', text: 'Hello 世界' }])
+  expect(http.requests).toHaveLength(1)
+  expect(http.requests[0]).toMatchObject({
+    path: '/anthropic/v1/messages',
+    headers: { 'x-api-key': 'key-for-DEEPSEEK_API_KEY', 'anthropic-version': '2023-06-01' },
+    body: { model: MODEL, messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }] },
+  })
+})
+
 it('keeps the prepared Messages protocol, credential reference and endpoint after switching to Chat', async () => {
   const first = await endpoint(), second = await endpoint(response => response.end(chat))
   let connection = resolveAdapterOptions({ protocol: 'messages', baseURL: first.url, apiKeyEnv: 'MESSAGES_KEY', maxTokens: 12 })
   const llm = adapter(() => connection)
   const prepared = await llm.prepareCall('deepseek-official', MODEL)
-  connection = resolveAdapterOptions({ baseURL: second.url, apiKeyEnv: 'CHAT_KEY', maxTokens: 24 })
+  connection = resolveAdapterOptions({ protocol: 'chat-completions', baseURL: second.url, apiKeyEnv: 'CHAT_KEY', maxTokens: 24 })
   await chunks(prepared.stream(options()))
   await chunks(prepared.stream(options()))
   expect(prepared.model.defaultMaxTokens).toBe(12)
@@ -59,7 +74,7 @@ it('continues Messages → Chat → Messages with the same provider and without 
   const first = await assemble(llm.stream(options({ messages: history })))
   history.push(first.message, user('continue with Chat'))
   const saved = JSON.stringify(history)
-  connection = resolveAdapterOptions({ baseURL: http.url })
+  connection = resolveAdapterOptions({ protocol: 'chat-completions', baseURL: http.url })
   const second = await assemble(llm.stream(options({ messages: history })))
   expect(JSON.stringify(http.requests[1]?.body)).not.toContain('signature')
   expect(http.requests[1]?.body.messages).toContainEqual({ role: 'assistant', content: 'Messages answer', reasoning_content: 'Reasoning' })

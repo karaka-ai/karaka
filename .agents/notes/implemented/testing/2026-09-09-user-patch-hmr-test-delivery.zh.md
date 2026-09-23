@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-[macOS Sandbox 运行](https://github.com/deepseek-harness/deepseek-harness/actions/runs/34238200206/job/102101292119) 在等待首次用户 patch 新增时超时。本地并发复现表明，没有文件系统通知到达 HMR。轮询变体也会遗漏后续修改，此时 HMR 没有待执行的刷新。这些失败阻止刷新断言执行其负责验证的解析、激活与回滚行为。
+macOS Sandbox 运行 (run 34238200206, job 102101292119) 在等待首次用户 patch 新增时超时。本地并发复现表明，没有文件系统通知到达 HMR。轮询变体也会遗漏后续修改，此时 HMR 没有待执行的刷新。这些失败阻止刷新断言执行其负责验证的解析、激活与回滚行为。
 
 ## 决策
 

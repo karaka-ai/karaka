@@ -67,7 +67,9 @@
     "@deepseek-ai/dsh-user-approval": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

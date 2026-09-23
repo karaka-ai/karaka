@@ -136,6 +136,7 @@ describe('Node program process', () => {
     expect(runtime.executionInstructions).toBe('Each call runs in a fresh Node process. Node APIs are available through await import(...). Relative paths use the supplied working directory; process.env starts empty. Direct filesystem access follows this execution\'s sandbox policy.')
     expect(runtime.resolve({ program: '', bindings: [] }).timeoutMs).toBe(120_000)
     expect(runtime.resolve({ program: '', bindings: [], timeoutMs: 900_000 }).timeoutMs).toBe(600_000)
+    expect(runtime.resolve({ program: '', bindings: [], timeoutMs: null }).timeoutMs).toBeNull()
     for (const timeoutMs of [0, -1, NaN, Infinity]) expect(() => runtime.resolve({ program: '', bindings: [], timeoutMs })).toThrow()
     await expect(runtime.run({ program: '', bindings: [], cwd: process.cwd(), timeoutMs: 1000 })).rejects.toThrow('sandbox policy')
   })
@@ -164,11 +165,11 @@ describe('Node program process', () => {
     expect(result.error?.kind).toBe('timeout')
   })
 
-  it('cancels a live program and closes its managed process', async () => {
+  it.each([{}, { timeoutMs: null }] as const)('cancels a live program and closes its managed process with %j', async (timing) => {
     const { run } = await setup()
     const entered = Promise.withResolvers<undefined>()
     const controller = new AbortController()
-    const active = run({ program: 'await tools.enter({}); for (;;) {}', signal: controller.signal, bindings: bindings({ enter: async () => { entered.resolve(undefined); return null } }) })
+    const active = run({ ...timing, program: 'void tools.enter({}); for (;;) {}', signal: controller.signal, bindings: bindings({ enter: async () => { entered.resolve(undefined); return null } }) })
     await entered.promise
     controller.abort('stop')
     expect((await active).error).toEqual({ kind: 'abort', message: 'stop' })
@@ -220,11 +221,11 @@ describe('Node program process', () => {
     expect(Number(limits[1]) - Number(limits[0])).toBe(32 * 1024 * 1024)
   })
 
-  it('disposes active programs and rejects later execution', async () => {
+  it.each([{}, { timeoutMs: null }] as const)('disposes active programs and rejects later execution with %j', async (timing) => {
     const { ctx, run, runtime } = await setup()
     const spec = runtime.resolve({ program: '', bindings: [] })
     const entered = Promise.withResolvers<undefined>()
-    const active = run({ program: 'await tools.enter({}); await new Promise(() => {})', bindings: bindings({ enter: async () => { entered.resolve(undefined); return null } }) })
+    const active = run({ ...timing, program: 'await tools.enter({}); await new Promise(() => {})', bindings: bindings({ enter: async () => { entered.resolve(undefined); return null } }) })
     await entered.promise
     await ctx.fiber.dispose()
     expect((await active).error?.kind).toBe('abort')

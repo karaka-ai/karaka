@@ -59,6 +59,8 @@ Default file editing uses `read`, `write`, and `edit`. The `str_replace_editor` 
         maxOutputChars: 16000
 ```
 
+The bundle mounts [MCP resources](../../mcp/mcp-resources/README.md) once. Configure only [MCP client entries](../../mcp/mcp-client/README.md) for the servers you need. Clients mounted by another provider also count as configured in their scope. Callers with no configured server in scope receive no MCP tools or prompt text.
+
 ### Shell tools per platform
 
 On macOS and Linux you get the bash shell tools; on Windows you get the PowerShell twins instead, so exactly one shell stack is available per machine. The safety behavior is identical on every platform. A Windows host that prefers the unconfined PowerShell executor can switch the shell rows in its profile patch — the switch must disable both PowerShell rows and re-enable both bash rows, otherwise the profile fails to load.

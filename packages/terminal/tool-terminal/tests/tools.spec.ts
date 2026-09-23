@@ -10,7 +10,7 @@ import type { ToolSdkSchema } from '@deepseek-ai/dsh-tools/src/ts-types.ts'
 import TerminalSessionService, { TerminalSessionId } from '@deepseek-ai/dsh-terminal'
 import type { TerminalBackend, TerminalBackendSession, TerminalSendOperation, TerminalSendRequest, TerminalSessionStatus, TerminalSignal } from '@deepseek-ai/dsh-terminal'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
 import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 
@@ -114,7 +114,7 @@ async function setupBase(jobs: boolean) {
   ctx.terminals.registerBackend(stub.backend)
   if (jobs) {
     await ctx.plugin(LocalJobRegistry)
-    await ctx.plugin(ToolTasks)
+    await ctx.plugin(ToolJobs)
   }
   return { ctx, stub, agent: fakeAgent(ctx, jobs ? 'with-tasks' : 'foreground') }
 }

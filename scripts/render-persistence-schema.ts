@@ -101,13 +101,22 @@ function typeExpression(
   return reference(schemaDigest(canonicalizeSchema(schema.nodes, index)), entries)
 }
 
-function definition(entry: TypeDisplay, entries: ReadonlyMap<string, TypeDisplay>, locale: PersistenceCatalogLocale): string[] {
+function definition(
+  entry: TypeDisplay,
+  entries: ReadonlyMap<string, TypeDisplay>,
+  locale: PersistenceCatalogLocale,
+  sourceLink: (source: string) => string | undefined,
+  headingLevel: number,
+): string[] {
   const text = persistenceCatalogText[locale]
   const schema = entry.type.schema
   const node = nodeAt(schema, 0)
-  const lines = [`<a id="${entry.anchor}"></a>`, '', `### ${code(entry.label)}`, '', `SHA-256: ${code(entry.type.digest)}`, '']
+  const lines = [`<a id="${entry.anchor}"></a>`, '', `${'#'.repeat(headingLevel)} ${code(entry.label)}`, '', `SHA-256: ${code(entry.type.digest)}`, '']
   if (entry.type.sources.length > 0) {
-    lines.push(`${text.sources}${entry.type.sources.map(source => `[${code(source)}](../${sourcePath(source)})`).join(' · ')}`, '')
+    lines.push(`${text.sources}${entry.type.sources.map((source) => {
+      const href = sourceLink(sourcePath(source))
+      return href === undefined ? code(source) : `[${code(source)}](${href})`
+    }).join(' · ')}`, '')
   }
   const expression = (index: number): string => typeExpression(schema, index, entries, locale)
   switch (node.kind) {
@@ -146,13 +155,20 @@ function definition(entry: TypeDisplay, entries: ReadonlyMap<string, TypeDisplay
  * Render every tracked root with its exact digest and resolved type reference.
  * @param inventory - complete current-source schemas and declaration metadata.
  * @param locale - generated document language.
+ * @param introduction - paragraphs before the root table; defaults to current-source links.
+ * @param headingLevel - section depth within the containing reference.
  * @returns Markdown index including the history and contributor workflow links.
  */
-export function renderPersistenceSchemaIndex(inventory: PersistenceSchemaInventory, locale: PersistenceCatalogLocale = 'en'): string {
+export function renderPersistenceSchemaIndex(
+  inventory: PersistenceSchemaInventory,
+  locale: PersistenceCatalogLocale = 'en',
+  introduction: readonly string[] = [persistenceCatalogText[locale].fingerprintsIntro, persistenceCatalogText[locale].historyIntro],
+  headingLevel: 2 | 3 = 2,
+): string {
   const entries = displays(inventory)
   const text = persistenceCatalogText[locale]
   return [
-    `## ${text.fingerprints}`, '', text.fingerprintsIntro, '', text.historyIntro, '',
+    `${'#'.repeat(headingLevel)} ${text.fingerprints}`, '', ...introduction.flatMap(paragraph => [paragraph, '']),
     text.rootColumns, '|---|---|---|---|',
     ...inventory.roots.map(root => `| ${code(root.key)} | ${root.kind} | ${code(root.digest)} | ${reference(root.digest, entries)} |`), '',
   ].join('\n')
@@ -162,15 +178,22 @@ export function renderPersistenceSchemaIndex(inventory: PersistenceSchemaInvento
  * Render every reachable type once, with links for shared and recursive definitions.
  * @param inventory - complete current-source schemas and declaration metadata.
  * @param locale - generated document language.
+ * @param sourceLink - source path to URL; undefined keeps historical locations as text.
+ * @param headingLevel - section depth; individual definitions use the next heading level.
  * @returns Markdown definitions whose anchors use names or owning paths instead of hashes.
  */
-export function renderPersistenceSchemaDefinitions(inventory: PersistenceSchemaInventory, locale: PersistenceCatalogLocale = 'en'): string {
+export function renderPersistenceSchemaDefinitions(
+  inventory: PersistenceSchemaInventory,
+  locale: PersistenceCatalogLocale = 'en',
+  sourceLink: (source: string) => string | undefined = source => `../${source}`,
+  headingLevel: 2 | 3 = 2,
+): string {
   const entries = displays(inventory)
   const text = persistenceCatalogText[locale]
   const sorted = [...entries.values()].sort((left, right) => left.anchor < right.anchor ? -1 : left.anchor > right.anchor ? 1 : 0)
   return [
-    `## ${text.definitions}`, '', text.definitionsIntro, '',
-    ...sorted.flatMap(entry => definition(entry, entries, locale)),
+    `${'#'.repeat(headingLevel)} ${text.definitions}`, '', text.definitionsIntro, '',
+    ...sorted.flatMap(entry => definition(entry, entries, locale, sourceLink, headingLevel + 1)),
   ].join('\n')
 }
 

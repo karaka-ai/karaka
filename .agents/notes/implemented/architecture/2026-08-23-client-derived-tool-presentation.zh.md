@@ -387,7 +387,7 @@ Deliverables Definition 按 callId 观察 root `tool/call` 与成功 `tool/resul
 
 ## Fixture 与测试数据
 
-Client fixture 删除手写 `presentCall()`、`presentResult()`、`viewFor()` 与 fixture tool-view 类型。它继续产生与真实日志相同的 raw call、result content 和 result meta。
+组装 RemoteMock 场景不包含手写 `presentCall()`、`presentResult()`、`viewFor()` 或 tool-view 类型。它提供与真实日志相同的 raw call、result content 和 result meta。
 
 | Fixture | 必须保留的原始事实 |
 |---|---|
@@ -398,7 +398,7 @@ Client fixture 删除手写 `presentCall()`、`presentResult()`、`viewFor()` �
 | web | result meta 的 sources/answer 或 url/statusCode/truncated |
 | generic/custom | name、argsRaw、content、error |
 
-fixture 不导入 Host 工具包来计算页面展示，也不保留 presenter 镜像。同一 raw fixture 继续驱动 jsdom、built Web snapshot 与 `?fixture` 浏览器路径。
+该场景不导入 Host 工具包来计算页面展示，也不保留 presenter 镜像。同一 raw 场景在 jsdom 下驱动 built Web snapshot；真实 Host 浏览器用例独立覆盖网络路径。
 
 ## 展示等价矩阵
 
@@ -566,7 +566,7 @@ Host registry 允许不同 scope 为同一 tool name 提供不同定义；Sessio
 - ui-chat 与 ui-trajectory Tool Definition 测试；
 - ui-tool terminal、diff、read、search、web、row、tree 与 details 测试；
 - ui-deliverables produced-files 测试；
-- connection fixture 与 Client runtime 测试；
+- 组装 RemoteMock 与 Client runtime 测试；
 - 受影响 Host/Client TypeScript face；
 - lint 与 duplication；
 - 受影响源文件 per-file 100% coverage；
