@@ -1,5 +1,6 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId, SessionLogOffset, type Session } from '@deepseek-ai/dsh-session'
+import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import { expect, it, vi } from 'vitest'
 import { UserId } from '../src/index.ts'
 import KarakaSessionReferenceResolver from '../src/session-reference.ts'
@@ -23,7 +24,7 @@ async function references(candidateLimit?: number) {
     listSessions: async () => [...stored.values()].map(header => ({ header, live: true, persisted: true })),
     readSurface,
   } satisfies Pick<typeof ctx.sessionQuery, 'listSessions' | 'readSurface'>
-  ctx.provide('sessionQuery', sessionQuery as typeof ctx.sessionQuery)
+  ctx.provide('sessionQuery', Object.setPrototypeOf(sessionQuery, SessionQueryEngine.prototype) as SessionQueryEngine)
   const resolver = candidateLimit === undefined
     ? new KarakaSessionReferenceResolver(ctx)
     : new KarakaSessionReferenceResolver(ctx, { candidateLimit })
