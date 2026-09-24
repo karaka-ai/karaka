@@ -16,6 +16,8 @@ import {
   UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { AssistantMarkdown, type AssistantMarkdownProps } from '../src/client/chat/AssistantMarkdown.tsx'
+import { useDetailedPresentation } from './presentation-fixture.client.ts'
+import { useDisclosure } from '../src/client/chat/use-disclosure.ts'
 import { StatsPills } from '../src/client/chat/StatsPills.tsx'
 import { zh } from '../src/client/locale.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
@@ -331,7 +333,7 @@ describe('MessageItem arms', () => {
         kind: 'context',
         seq: 3,
         content: [{ type: 'text', text: 'line one\n\nline two' }],
-        source: { kind: 'plugin', plugin: 'fixture', empty: {}, list: [] },
+        source: { kind: 'fixture', empty: {}, list: [] },
         producer: { role: 'inject', label: 'fixture' },
         form: null,
       } as never}
@@ -351,7 +353,7 @@ describe('MessageItem arms', () => {
     expect(ctxView.container.querySelector('[data-context-text]')?.textContent)
       .toBe('line one\n\nline two')
     const fields = [...ctxView.container.querySelectorAll('[data-context-fields] dt')].map(node => node.textContent)
-    expect(fields).toEqual(['plugin', 'empty', 'list'])
+    expect(fields).toEqual(['empty', 'list'])
 
     fireEvent.keyDown(disclosure, { key: ' ' })
     expect(disclosure.getAttribute('aria-expanded')).toBe('false')
@@ -650,7 +652,7 @@ describe('MessageItem arms', () => {
     const view = render(
       <MessageItem t={t} node={{
         kind: 'context', seq: 3, content: [{ type: 'text', text: 'x' }],
-        source: { kind: 'plugin', plugin: 'later', form: 'a-later-form' },
+        source: { kind: 'later', form: 'a-later-form' },
         producer: { role: 'inject', label: 'later' },
         form: null,
       } as never}
@@ -658,7 +660,7 @@ describe('MessageItem arms', () => {
     )
     fireEvent.click(view.getByRole('button', { name: /^上下文注入\s*later$/ }))
     const fields = [...view.container.querySelectorAll('[data-context-fields] dt')].map(node => node.textContent)
-    expect(fields).toEqual(['plugin', 'form'])
+    expect(fields).toEqual(['form'])
   })
 
   it('the snapshot form attributes each part to the subsystem that produced it', () => {
@@ -668,8 +670,7 @@ describe('MessageItem arms', () => {
         seq: 3,
         content: [{ type: 'text', text: 'Current runtime context.\n\nsandbox\n\nworkspace' }],
         source: {
-          kind: 'plugin',
-          plugin: '@deepseek-ai/dsh-system-prompt',
+          kind: 'runtime-context',
           form: 'snapshot',
           sections: [{ name: 'sandbox:policy', text: 'workspace-write' }, { name: 'workspace', text: '/repo' }],
         },
@@ -690,7 +691,7 @@ describe('MessageItem arms', () => {
         kind: 'context',
         seq: 3,
         content: [{ type: 'text', text: 'background job bash-1 finished.' }],
-        source: { kind: 'plugin', plugin: 'tool-jobs', form: 'notice', summary: 'bash pnpm test [status: completed]' },
+        source: { kind: 'tool-jobs', form: 'notice', summary: 'bash pnpm test [status: completed]' },
         producer: { role: 'inject', label: 'tool-jobs' },
         form: 'notice',
       } as never}
@@ -705,7 +706,7 @@ describe('MessageItem arms', () => {
     const view = render(
       <MessageItem t={t} node={{
         kind: 'context', seq: 3, content: [{ type: 'text', text: 'notice prose' }],
-        source: { kind: 'plugin', plugin: 'tool-jobs', form: 'notice' },
+        source: { kind: 'tool-jobs', form: 'notice' },
         producer: { role: 'inject', label: 'tool-jobs' },
         form: 'notice',
       } as never}
@@ -828,6 +829,24 @@ describe('MessageItem arms', () => {
     expect(view.getByRole('heading', { name: '摘要标题' })).toBeTruthy()
     fireEvent.click(row)
     expect(row.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('anchors the sticky-header selector: the compaction body sits under compactionRow only while open', () => {
+    const view = render(
+      <MessageItem t={t} node={{
+        kind: 'compaction', seq: 5, time: 1_000,
+        summary: '## 摘要标题\n\n保留的事实。',
+        summaryEventSeq: 4,
+        shadowedItemCount: 16,
+        shadowedTokenCount: 11_309,
+      }}
+      />,
+    )
+    // Collapsed there is no body sibling, so the rule's `:has(.compactionBody)`
+    // gate never matches.
+    expect(view.container.querySelector('[class*="compactionRow"] [class*="compactionBody"]')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: /上下文已压缩/ }))
+    expect(view.container.querySelector('[class*="compactionRow"] [class*="compactionBody"]')).not.toBeNull()
   })
 
   it('a marker whose cited summary event fell outside the window is not expandable', () => {
@@ -1026,7 +1045,8 @@ describe('useCalendarDay boundary refresh', () => {
 describe('small branch tails', () => {
   it('AssistantMarkdown single-line reasoning summary skips the newline cut', () => {
     const view = render(
-      <AssistantMarkdown
+      <AssistantMarkdown useDisclosure={useDisclosure}
+        usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'reasoning', text: 'one-liner' }]}
         streaming={false}
@@ -1046,6 +1066,7 @@ describe('small branch tails', () => {
     const source = { getSnapshot: () => snap, subscribe: () => () => {} }
     const view = render(
       <StatsPills
+        usePerformanceUsage={selector => selector('detailed')}
         t={t}
         useChat={bindSnapshotSelector(source)}
         useProjection={(key: string) => key === 'tokenUsage'

@@ -167,11 +167,22 @@ function systemMessage(text: string) {
     id: `system-${text}`,
     role: 'system',
     content: [{ type: 'text', text }],
-    source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-system-prompt' },
+    source: { kind: 'system-prompt' },
   }
 }
 
 describe('Trajectory conversation Definitions', () => {
+  it('addresses tool-call inspection with the persisted call identity', () => {
+    expect(trajectoryViewDefinition.toolCallFocus?.('call-1')).toBe('call-1')
+  })
+
+  it('rejects developer history until presentation is implemented', () => {
+    expect(() => assembler([at(0, 'developer/message', { turn: 1, step: 1, message: {
+      id: 'developer', role: 'developer', source: { kind: 'tool-registry' },
+      content: [{ type: 'tool-addition', toolName: 'search' }],
+    } }, { surfaceOp: 'append' })])).toThrow('developer messages are not supported yet')
+  })
+
   it('assembles streaming usage, preserves retry facts, and materializes interruption', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -335,12 +346,19 @@ describe('Trajectory conversation Definitions', () => {
     const finalizedPacked = snapshot(assembler(finalizedInputs))
     expect(finalizedPacked.eventNodes.find(node => node.kind === 'assistant')).toMatchObject({
       blocks: [{ kind: 'text', text: 'done' }],
-      timing: { firstTokenTime: null },
+      timing: { firstTokenTime: 3_000 },
     })
     expect(finalizedPacked.requests).toMatchObject([{
       purpose: 'assistant',
       retry: 1,
     }])
+
+    const windowed = assembler(finalizedInputs.slice(2), true)
+    const assistant = () => snapshot(windowed).eventNodes.find(node => node.kind === 'assistant')
+    expect(assistant()).toMatchObject({ timing: { stepStartTime: null, firstTokenTime: 3_000 } })
+    windowed.prepend(finalizedInputs.slice(0, 2), false)
+    windowed.flush()
+    expect(assistant()).toEqual(finalizedPacked.eventNodes.find(node => node.kind === 'assistant'))
 
     const namedToolHistory = [
       at(40, 'turn/start', { turn: 3 }),
@@ -365,7 +383,7 @@ describe('Trajectory conversation Definitions', () => {
     const namedToolPacked = snapshot(assembler(namedToolInputs))
     expect(namedToolPacked.eventNodes.find(node => node.kind === 'assistant')).toMatchObject({
       blocks: [{ kind: 'tool-call', callId: 'call-2', name: 'read', argsRaw: '' }],
-      timing: { firstTokenTime: null },
+      timing: { firstTokenTime: 4_000 },
     })
   })
 
@@ -445,14 +463,11 @@ describe('Trajectory conversation Definitions', () => {
         step: 1,
         message: {
           id: 'result-root-a',
-          role: 'user',
+          role: 'tool',
+          toolCallId: 'root-a',
           source: { kind: 'tool', callId: 'root-a' },
-          content: [{
-            type: 'tool-result',
-            toolCallId: 'root-a',
-            content: [{ type: 'text', text: 'root failed' }],
-            isError: true,
-          }],
+          content: [{ type: 'text', text: 'root failed' }],
+          isError: true,
         },
         error: { name: 'ToolError', code: 'failed' },
         meta: { presentation: 'raw' },
@@ -502,7 +517,7 @@ describe('Trajectory conversation Definitions', () => {
         id: 'checkpoint',
         role: 'user',
         content: [{ type: 'text', text: 'summary checkpoint' }],
-        source: { kind: 'plugin', plugin: 'compact', compactionId: 'complete' },
+        source: { kind: 'compact-checkpoint', compactionId: 'complete' },
       }),
       at(4, 'compaction/end', { compactionId: 'complete', turn: null }),
       at(5, 'compaction/start', { compactionId: 'orphan', turn: null }),
@@ -795,7 +810,7 @@ describe('Trajectory conversation Definitions', () => {
       at(11, 'step/start', { turn: 1, step: 3 }),
       at(12, 'user/message', {
         turn: 1, step: 3, id: 'summary', role: 'user',
-        content: [{ type: 'text', text: 'summary' }], source: { kind: 'plugin', plugin: 'compaction' },
+        content: [{ type: 'text', text: 'summary' }], source: { kind: 'compact-checkpoint', compactionId: 'compaction-1' },
       }, { surfaceOp: { op: 'replace', startSeq: 5, endSeq: 9 }, sourceEventSeqs: [5, 8, 9] }),
       at(13, 'request/header', {
         reason: 'series', header: { config: { provider: 'test', model: 'test' }, tools: [] },
@@ -848,7 +863,7 @@ describe('Trajectory conversation Definitions', () => {
       at(6, 'system/message', { turn: 1, step: 1, message: systemMessage('B') }, { surfaceOp: 'append' }),
       at(7, 'request/header', { reason: 'resume', header: { config: { provider: 'test', model: 'test' } } }),
       at(8, 'user/message', {
-        ...systemMessage('summary'), role: 'user', source: { kind: 'plugin', plugin: 'compaction' },
+        ...systemMessage('summary'), role: 'user', source: { kind: 'compact-checkpoint', compactionId: 'compaction-1' },
       }, { surfaceOp: { op: 'replace', startSeq: 2, endSeq: 6 } }),
       at(9, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('reply', 'reply') }),
     ])

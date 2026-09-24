@@ -29,9 +29,13 @@ Mount this provider with [`dsh-ssh`](../ssh/README.md) and its filesystem provid
 
 Ordinary spawn returns a handle while remote allocation proceeds. Piped stdin and the optional duplex control endpoint accept writes during allocation. Terminal allocation, writes, foreground inspection, signals and termination retain their asynchronous interfaces.
 
+Terminal requests forward `shellActivity` to the execution provider, and `inspectActivity()` returns its validated state and revision. Opted-in terminals remain addressable after root exit until their owner explicitly terminates them; the SSH helper lease still governs connection-level cleanup.
+
 A direct exit reported by `done` does not prove managed-range quiescence; `waitForExit()` observes that separately. Its optional signal bounds the entire observation, including pending allocation and termination, and cancellation returns `false` without stopping the process. An already confirmed empty range returns `true`; genuine observation failures reject. `terminate()` targets the same remote owner. Connection loss rejects unconfirmed work, and automatic replay never follows an ambiguous launch or mutation.
 
 -----
+
+Terminal shell facts and executable verification come from the remote helper. Lookup misses remain distinct from SSH failures. PTY creation forwards the caller's `terminalType`, and `resize()` updates the remote terminal without replacing its process.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

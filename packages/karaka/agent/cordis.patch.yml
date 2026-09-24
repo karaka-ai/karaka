@@ -52,17 +52,22 @@
       config:
         provider: deepseek-official
         model: !!js process.env.KARAKA_MODEL ?? 'deepseek-flash'
-    - id: agent-presets
-      name: '@deepseek-ai/dsh-agent-presets'
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
         default: application
-        includeShippedRoot: false
-        includeUserRoot: true
-        roots:
-          - path: !!js process.env.KARAKA_PRESET_ROOT
-            trust: system
-          - path: !!js process.env.KARAKA_AGENTS_DIR ?? process.env.KARAKA_PRESET_ROOT
-            trust: user
+    - id: preset-application
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: application
+        name: Application
+        description: Application-owned tools with the upstream DSH agent engine.
+        plugins:
+          - id: tool-policy
+            name: '@karaka-ai/agent/tool-policy'
+            config:
+              mode: native
+              allow: !!js JSON.parse(process.env.KARAKA_PRESET_TOOL_ALLOW ?? '[]')
     - id: agent-loop
       name: '@deepseek-ai/dsh-agent-loop'
       config:

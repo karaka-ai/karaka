@@ -21,7 +21,7 @@ describe.skipIf(process.platform === 'win32')('SSH stream capabilities', () => {
     const owner = new RemoteProcesses(new Context(), root, 1, 5000)
     let stream: Socket | undefined
     try {
-      const prepared = await owner.prepare({ argv: ['true'], cwd: root, graceMs: 100, terminal: { rows: 24, cols: 80 } })
+      const prepared = await owner.prepare({ argv: ['true'], cwd: root, graceMs: 100, terminal: { terminalType: 'dumb', rows: 24, cols: 80 } })
       const endpoint = prepared.streams.terminal!
       const raw = createConnection(endpoint.path)
       await once(raw, 'connect')
@@ -40,7 +40,7 @@ describe.skipIf(process.platform === 'win32')('SSH stream capabilities', () => {
     const owner = new RemoteProcesses(new Context(), root, 1, 5000)
     const sockets: Socket[] = []
     try {
-      const prepared = await owner.prepare({ argv: ['true'], cwd: root, graceMs: 100, terminal: { rows: 24, cols: 80 } })
+      const prepared = await owner.prepare({ argv: ['true'], cwd: root, graceMs: 100, terminal: { terminalType: 'dumb', rows: 24, cols: 80 } })
       const endpoint = prepared.streams.terminal!
       const raw = [createConnection(endpoint.path), createConnection(endpoint.path)]
       await Promise.all(raw.map(socket => once(socket, 'connect')))

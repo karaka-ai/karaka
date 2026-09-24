@@ -7,8 +7,8 @@ import { createScope } from '@deepseek-ai/dsh-scope'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolRunContext, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
-import { ApplicationId, TenantId, UserId, type ApplicationOwner, type KarakaIdentity } from '@karaka-ai/identity'
-import type { ServerAuth } from '@karaka-ai/server-auth'
+import { ApplicationId, KarakaIdentity, TenantId, UserId, type ApplicationOwner } from '@karaka-ai/identity'
+import { ServerAuth } from '@karaka-ai/server-auth'
 import type { Tool } from '@modelcontextprotocol/client'
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
 import { toNodeHandler, type NodeIncomingMessageLike } from '@modelcontextprotocol/node'
@@ -24,11 +24,13 @@ async function applicationFixture() {
   await root.plugin(AgentRegistry)
   const owners = new WeakMap<Session, ApplicationOwner>()
   // This fixture supplies trusted authority answers; identity persistence has its own suite.
-  root.provide('karakaIdentity', {
+  const identity = {
     ownerOfCached: (session: Session) => owners.get(session),
     ownerOf: async (session: Session) => owners.get(session),
-  } as unknown as KarakaIdentity)
-  root.provide('serverAuth', { authorizeTools: async () => 'Bearer application' } as unknown as ServerAuth)
+  }
+  root.provide('karakaIdentity', Object.setPrototypeOf(identity, KarakaIdentity.prototype) as KarakaIdentity)
+  const serverAuth = { authorizeTools: async () => 'Bearer application' }
+  root.provide('serverAuth', Object.setPrototypeOf(serverAuth, ServerAuth.prototype) as ServerAuth)
   const driver = root.plugin(Object.assign(() => {}, { inject }))
   await driver
   const requests: unknown[] = []
@@ -156,8 +158,8 @@ describe('application MCP catalogs', () => {
     const f = await applicationFixture()
     const scoped = f.agent('owned', f.owner)
     await f.mount()
-    scoped.unregister()
-    scoped.scope.ctx.agents.register(scoped.value)
+    await scoped.unregister()
+    await scoped.scope.ctx.agents.register(scoped.value)
     expect((await f.invoke(scoped.value)).isError).toBe(false)
     expect(f.requests).toHaveLength(1)
   })

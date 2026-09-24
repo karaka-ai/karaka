@@ -1,6 +1,0 @@
-# Application tools require both endpoint permission and explicit preset opt-in.
-- id: tool-policy
-  name: '@karaka-ai/agent/tool-policy'
-  config:
-    mode: native
-    allow: !!js JSON.parse(process.env.KARAKA_PRESET_TOOL_ALLOW ?? '[]')

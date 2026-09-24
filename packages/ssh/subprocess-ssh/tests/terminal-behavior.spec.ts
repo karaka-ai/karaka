@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { SshSubprocessRuntime } from '../src/index.ts'
 
 const id = 'aa910b47-e7d7-467b-8421-3331569dd02b'
-const spec: SubprocessTerminalSpawnSpec = { argv: ['bash'], cwd: '/remote/workspace', rows: 24, cols: 80, graceMs: 100 }
+const spec: SubprocessTerminalSpawnSpec = { argv: ['bash'], cwd: '/remote/workspace', terminalType: 'dumb', rows: 24, cols: 80, graceMs: 100 }
 const completion = { outcome: { exitCode: 0, signal: null }, spills: {}, collected: {} }
 
 async function setup(options: {
@@ -42,7 +42,7 @@ async function setup(options: {
         if (options.terminateFailure !== undefined) throw options.terminateFailure
         finished.resolve(completion)
         value = null
-      } else if (method === 'terminal.write') value = null
+      } else if (method === 'terminal.write' || method === 'terminal.resize') value = null
       else if (method === 'terminal.inspect') value = foreground
       else if (method === 'terminal.signal') value = 321
       else throw new Error(`Unexpected terminal request ${method}`)
@@ -89,13 +89,15 @@ describe('SSH terminal behavior', () => {
     test.remote.write('terminal output')
     expect(String((await data)[0])).toBe('terminal output')
     await handle.write('input\n')
+    await handle.resize(120, 40)
+    expect(test.calls.find(call => call.method === 'terminal.resize')?.params).toEqual({ id, cols: 120, rows: 40 })
     expect(await handle.inspectForeground()).toBeUndefined()
     test.setForeground({ processGroupId: 321, inputWaiting: true })
     expect(await handle.inspectForeground()).toEqual({ processGroupId: 321, inputWaiting: true })
     expect(await handle.signalForeground('SIGINT')).toBe(321)
     expect(test.calls.find(call => call.method === 'process.prepare')?.params).toEqual({
       argv: ['bash'], cwd: spec.cwd, env: { KEEP: 'value' }, graceMs: 100,
-      terminal: { rows: 24, cols: 80 },
+      terminal: { terminalType: 'dumb', rows: 24, cols: 80 },
     })
     expect(test.calls.find(call => call.method === 'terminal.write')?.params).toEqual({ id, value: 'input\n' })
     expect(test.calls.find(call => call.method === 'terminal.signal')?.params).toEqual({ id, value: 'SIGINT' })

@@ -1,5 +1,6 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId, SessionLogOffset, type Session } from '@deepseek-ai/dsh-session'
+import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import { expect, it, vi } from 'vitest'
 import { UserId } from '../src/index.ts'
 import KarakaSessionReferenceResolver from '../src/session-reference.ts'
@@ -19,10 +20,11 @@ async function references(candidateLimit?: number) {
     return { session: header, inheritedEventCount: SessionLogOffset(0), capturedThroughSeq: null, events: [] }
   })
   // The inherited resolver uses metadata listing and exact surface reads, not search indexing.
-  ctx.provide('sessionQuery', {
+  const sessionQuery = {
     listSessions: async () => [...stored.values()].map(header => ({ header, live: true, persisted: true })),
     readSurface,
-  } as unknown as typeof ctx.sessionQuery)
+  } satisfies Pick<typeof ctx.sessionQuery, 'listSessions' | 'readSurface'>
+  ctx.provide('sessionQuery', Object.setPrototypeOf(sessionQuery, SessionQueryEngine.prototype) as SessionQueryEngine)
   const resolver = candidateLimit === undefined
     ? new KarakaSessionReferenceResolver(ctx)
     : new KarakaSessionReferenceResolver(ctx, { candidateLimit })

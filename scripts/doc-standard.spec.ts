@@ -54,6 +54,7 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
  * library; the check re-derives the entry shape so a stale entry fails loud.
  */
 const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
+  'packages/experimental/browser-use-runtime': 'Provider-owned browser resource management and MCP integration helpers; no plugin entry.',
   'packages/boot/app-boot': 'Boot library the app bins import; plain helper exports.',
   'packages/boot/cmdline': 'Command-line library the app bins import; plain module exports.',
   'packages/client/store': 'Browser-side state primitives; plain function/type exports.',
@@ -72,6 +73,7 @@ const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
   'packages/session/session-format-catalog': 'Generated build-static Session format inventory with no plugin registration.',
   'packages/session/session-format-v0-to-v1': 'Pure released-v0 codec and adjacent migration library.',
   'packages/session/session-format-v2-to-v3': 'Pure released-v2 codec and adjacent migration library.',
+  'packages/session/session-format-v3-to-v4': 'Released V3 codec reuse and adjacent migration library.',
   'packages/session/session-telemetry': 'Telemetry Service Definition and capture library; providers mount the backend.',
   'packages/session/session-title-llm': 'Shared LLM title-provider registration and request policy.',
   'packages/subagent/subagent-in-process-driver': 'Shared one-shot child-agent driver used by provider plugins.',
@@ -91,6 +93,7 @@ const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
   'packages/util/chunked-list': 'Persistent collection operations and checkpoint validation without a plugin surface.',
   'packages/util/home-paths': 'Zero-dependency harness-home path resolver.',
   'packages/util/launch-environment': 'Zero-dependency environment resolver.',
+  'packages/util/lazy-require': 'Caller-relative CommonJS-compatible dependency loader.',
   'packages/util/native-command': 'Host-side subprocess runner utility.',
   'packages/util/output-retention': 'Zero-dependency retention utility.',
   'packages/util/package-manifest': 'Shared package manifest declarations with type-only exports.',

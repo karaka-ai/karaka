@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-18-experimental-agent-teams-packages.md
-2026-08-18-experimental-agent-teams-packages.md: 2a00b651e0073434a5a68df13b9716adcab5fccf
-2026-08-18-experimental-agent-teams-packages.zh.md: df73ee5c05fd3a25bf843bee10b06535a1512783
+2026-08-18-experimental-agent-teams-packages.md: 92eba148b328135301b196c9a17e49ee23ddb3f6
+2026-08-18-experimental-agent-teams-packages.zh.md: 6f4d004a78e32e2c27ad65648c446b3cd54c07ad

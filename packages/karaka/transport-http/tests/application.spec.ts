@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { agentEvents } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, LlmAttemptId } from '@deepseek-ai/dsh-llm'
+import AttachmentStore from '@deepseek-ai/dsh-attachment'
 import { UserId } from '@karaka-ai/identity'
 import { applicationFixture, owner } from './application-fixture.ts'
 
@@ -74,7 +75,8 @@ it('rejects unavailable providers and image support before admitting a prompt', 
   await expect(controller.prompt({ ...prompt, content: [] })).rejects.toMatchObject({ code: 'session/model-unavailable' })
   await expect(controller.prompt(prompt)).rejects.toMatchObject({ code: 'session/attachment-invalid' })
   const admitPromptContent = vi.fn(async () => [{ type: 'text' as const, text: 'admitted image' }])
-  ctx.provide('attachments', { admitPromptContent } as unknown as typeof ctx.attachments)
+  const attachments = { admitPromptContent }
+  ctx.provide('attachments', Object.setPrototypeOf(attachments, AttachmentStore.prototype) as AttachmentStore)
   llm.resolveModelInfo.mockResolvedValueOnce({ inputModalities: ['text'] })
   await expect(controller.prompt(prompt)).rejects.toMatchObject({ code: 'session/attachment-invalid' })
   expect(followups.get(chatId)).not.toHaveBeenCalled()

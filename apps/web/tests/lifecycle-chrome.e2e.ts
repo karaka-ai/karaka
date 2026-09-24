@@ -23,7 +23,8 @@ import {
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import {
-  connectFreshWorkspace, newEnglishPage, saveFailureShot, writeComposerDraft, ZH_BROWSER_LOCALE,
+  connectFreshWorkspace, connectFreshWorkspaceZh, expandOwningTurnProcess, newEnglishPage, saveFailureShot,
+  writeComposerDraft, ZH_BROWSER_LOCALE,
 } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/lifecycle-chrome', import.meta.url))
@@ -34,6 +35,7 @@ const COMMAND_MENU_EXPECTED = join(SNAPSHOT_DIR, 'command-menu.expected.md')
 const COMMAND_MENU_ZH_EXPECTED = join(SNAPSHOT_DIR, 'command-menu-zh.expected.md')
 const FUZZY_COMMAND_MENU_EXPECTED = join(SNAPSHOT_DIR, 'command-menu-fuzzy.expected.md')
 const PLAN_ACTIVE_EXPECTED = join(SNAPSHOT_DIR, 'plan-active.expected.md')
+const PLAN_ACTIVE_ZH_EXPECTED = join(SNAPSHOT_DIR, 'plan-active-zh.expected.md')
 const CONNECTION_ERROR_EXPECTED = join(SNAPSHOT_DIR, 'connection-error.expected.md')
 // Post-reload golden: the same settled conversation rebuilt purely from
 // persistence + history — byte-equal rendering is exactly the recovery claim.
@@ -153,7 +155,7 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       await inputPage.keyboard.insertText('这是任务')
       await expect.poll(() => input.textContent()).toBe(`${token} 这是任务`)
       for (let i = 0; i < 5; i++) await input.press('Backspace')
-      const tokenText = () => input.locator('[data-lexical-text][style*="warn-label"]').textContent()
+      const tokenText = () => input.locator('[data-lexical-text][style*="business-primary"]').textContent()
       await expect.poll(() => input.textContent()).toBe(token)
       await expect.poll(() => input.getAttribute('data-phase')).toBe('claimed')
       await expect.poll(tokenText).toBe(token)
@@ -195,7 +197,7 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     }
   })
 
-  it.skipIf(MODE === 'record')('shows active Plan as the warn-state status action', async () => {
+  it.skipIf(MODE === 'record')('shows active Plan as the business-state status action', async () => {
     const activeScaffold = await launchWebScaffold()
     const activePage = await newEnglishPage(browser)
     const activeTripwire = watchConsole(activePage)
@@ -220,25 +222,36 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       await compareOrRefreshGolden(PLAN_ACTIVE_EXPECTED, planSnapshot, MODE)
       const planStyle = await planButton.evaluate((element) => {
         const probe = document.createElement('span')
-        probe.style.color = 'var(--dsw-alias-state-warn-label)'
-        probe.style.backgroundColor = 'var(--dsw-alias-state-warn-tertiary)'
+        probe.style.color = 'var(--dsw-alias-state-business-primary)'
+        probe.style.backgroundColor = 'var(--dsw-alias-state-business-tertiary)'
         document.body.append(probe)
         const actual = getComputedStyle(element)
         const reference = getComputedStyle(probe)
+        // The sibling access-mode trigger: the chip shares its corner
+        // curvature (the theme's superellipse, not a circular capsule).
+        const accessMode = document.querySelector('button[aria-label^="Access mode"]')
         const result = {
           color: actual.color,
           backgroundColor: actual.backgroundColor,
+          height: actual.height,
           borderRadius: actual.borderRadius,
+          cornerShape: actual.getPropertyValue('corner-shape'),
           fontSize: actual.fontSize,
           referenceColor: reference.color,
           referenceBackgroundColor: reference.backgroundColor,
+          siblingCornerShape: accessMode === null ? null : getComputedStyle(accessMode).getPropertyValue('corner-shape'),
         }
         probe.remove()
         return result
       })
       expect(planStyle.color).toBe(planStyle.referenceColor)
       expect(planStyle.backgroundColor).toBe(planStyle.referenceBackgroundColor)
-      expect(planStyle.borderRadius).toBe('999px')
+      expect(planStyle.height).toBe('28px')
+      // Half the 28px height, the compact Button geometry, under the theme's
+      // corner curvature; a 999px pill would need the circular opt-out.
+      expect(planStyle.borderRadius).toBe('14px')
+      expect(planStyle.siblingCornerShape).not.toBeNull()
+      expect(planStyle.cornerShape).toBe(planStyle.siblingCornerShape)
       expect(planStyle.fontSize).toBe('13px')
       await planButton.click()
       await expect.poll(() => planButton.count()).toBe(0)
@@ -250,6 +263,39 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     } finally {
       await activePage.close()
       await activeScaffold.close()
+    }
+  })
+
+  it.skipIf(MODE === 'record')('shows the active Plan chip with the Chinese copy', async () => {
+    const zhScaffold = await launchWebScaffold()
+    const zhPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    const zhTripwire = watchConsole(zhPage)
+    try {
+      await zhPage.goto(zhScaffold.authenticatedUrl, { waitUntil: 'load' })
+      await zhPage.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+      await connectFreshWorkspaceZh(zhPage, zhScaffold.workspaceCwd)
+      const input = zhPage.locator('[data-composer-input]').first()
+      await zhPage.getByRole('button', { name: '添加文件或调用指令' }).click()
+      const menu = zhPage.getByRole('listbox', { name: '触发候选建议' })
+      await menu.waitFor({ timeout: 10_000 })
+      await menu.getByRole('option', { name: '计划 plan 进入或退出计划模式', exact: true }).click()
+      await expect.poll(() => input.textContent()).toBe('/计划 ')
+      await input.press('Enter')
+      const planButton = zhPage.getByRole('button', { name: '计划模式已开启，按下关闭' })
+      await planButton.waitFor({ timeout: 10_000 })
+      await expect.poll(() => input.textContent(), { timeout: 10_000 }).toBe('')
+      const planSnapshot = await captureStableAria(zhPage, '[class*="frame"]', zhScaffold.workspaceCwd)
+      await compareOrRefreshGolden(PLAN_ACTIVE_ZH_EXPECTED, planSnapshot, MODE)
+      await planButton.click()
+      await expect.poll(() => planButton.count()).toBe(0)
+      expect(zhTripwire.pageErrors).toEqual([])
+      expect(zhTripwire.warnings).toEqual([])
+    } catch (error) {
+      await saveFailureShot(zhPage, 'web-e2e-plan-active-zh').catch(() => undefined)
+      throw error
+    } finally {
+      await zhPage.close()
+      await zhScaffold.close()
     }
   })
 
@@ -277,10 +323,12 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       const originalViewport = page.viewportSize() ?? { width: 1680, height: 1000 }
       if (MODE !== 'record') await page.setViewportSize({ width: 480, height: 1000 })
       const observedReasoning = Promise.withResolvers<undefined>()
+      const reasoningComplete = Promise.withResolvers<undefined>()
       const releaseStream = MODE === 'record' ? undefined : scaffold.ctx.on('llm/stream', async function* (_options, next) {
         let reasoning = false
         for await (const chunk of next()) {
           if (reasoning && chunk.type !== 'reasoning-delta') {
+            reasoningComplete.resolve(undefined)
             await observedReasoning.promise
           }
           if (chunk.type === 'reasoning-delta') reasoning = true
@@ -290,17 +338,13 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
       try {
         await input.press('Enter')
         if (MODE !== 'record') {
-          const liveTail = page.locator('[data-variant="think"][data-state="running"] [data-follow-end]')
-          await expect.poll(async () => {
-            if (await liveTail.count() !== 1) return false
-            return await liveTail.evaluate((element) => {
-              const text = element.firstElementChild
-              if (!(text instanceof HTMLElement)) return false
-              const viewport = element.getBoundingClientRect()
-              const content = text.getBoundingClientRect()
-              return content.width > viewport.width && Math.abs(content.right - viewport.right) <= 1
-            })
-          }, { timeout: 10_000, interval: 10 }).toBe(true)
+          const thinking = page.locator('[data-variant="think"][data-state="running"]')
+          await expandOwningTurnProcess(page, thinking)
+          await expect.poll(() => thinking.getByRole('button').getAttribute('aria-expanded')).toBe('false')
+          await reasoningComplete.promise
+          expect(await thinking.getAttribute('data-preview')).toBeNull()
+          expect(await thinking.getByRole('button').getAttribute('aria-expanded')).toBe('false')
+          expect(await thinking.locator('[data-streaming]').isVisible()).toBe(false)
         }
         observedReasoning.resolve(undefined)
         return await settled
@@ -339,6 +383,45 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     const turnEnds = sessionEvents.filter(e => e.type === 'turn/end')
     expect(turnEnds).toHaveLength(1)
     expect((turnEnds[0] as SessionEvent & { data: { reason: { kind: string } } }).data.reason.kind).toBe('completed')
+  }, 60_000)
+
+  it.skipIf(MODE === 'record')('pins an open Think header to the conversation scrollport (real layout)', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-think-sticky'))
+    // The settled turn collapses its process row, which hides the Think row.
+    // The fixture's recorded reasoning is one line, too short to overflow the
+    // scrollport, so this case proves the CSS resolves onto the Think header in
+    // a real browser (jsdom computes no sticky layout); the pinned-while-
+    // scrolling and z-rank evidence belongs to the compaction path in
+    // seeded-history.e2e.ts, whose summary length that suite controls.
+    const thinkRow = page.locator('[data-variant="think"]').first()
+    await thinkRow.waitFor({ state: 'attached', timeout: 15_000 })
+    const process = page.locator('[data-turn-process]').first()
+    const processWasOpen = await process.getAttribute('aria-expanded') === 'true'
+    try {
+      await expandOwningTurnProcess(page, thinkRow)
+      const collapsedHeader = thinkRow.locator('[data-disclosure-row]').first()
+      await collapsedHeader.waitFor({ timeout: 10_000 })
+      // Collapsed, the rule's `data-open` gate is absent and the header stays in
+      // flow. It is `relative` here — the row is the sweep-glare overlay anchor
+      // — so the assertion is the absence of `sticky`, not a specific value.
+      expect(await collapsedHeader.evaluate(element => getComputedStyle(element).position)).not.toBe('sticky')
+      await collapsedHeader.click()
+      const openHeader = page.locator('[data-variant="think"] [data-open] [data-disclosure-row]').first()
+      await openHeader.waitFor({ timeout: 10_000 })
+      const openStyle = await openHeader.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { position: style.position, top: style.top }
+      })
+      expect(openStyle.position).toBe('sticky')
+      expect(openStyle.top).toBe('0px')
+    } finally {
+      // Restore the settled state the reload goldens below are captured in.
+      const openThinkRow = page.locator('[data-variant="think"] [data-open] [data-disclosure-row]')
+      if (await openThinkRow.count() > 0) await openThinkRow.first().click()
+      if (!processWasOpen && await process.getAttribute('aria-expanded') === 'true') await process.click()
+    }
+    await expect.poll(() => page.locator('[data-variant="think"] [data-open]').count(), { timeout: 5_000 }).toBe(0)
+    expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
   it.skipIf(MODE === 'record')('recovers the whole surface across a reload from the log alone', async () => {
@@ -523,7 +606,7 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     await assertFixtureInventory(SNAPSHOT_DIR, [
       'session.v3.jsonl', 'replay.override.json', 'command-menu.expected.md',
       'command-menu-fuzzy.expected.md', 'command-menu-zh.expected.md', 'connection-error.expected.md',
-      'hero.expected.md', 'plan-active.expected.md',
+      'hero.expected.md', 'plan-active.expected.md', 'plan-active-zh.expected.md',
       'reloaded.expected.md', 'reloaded-expanded.expected.md',
     ])
   })

@@ -25,11 +25,7 @@ await initializeProfile(home, packageRoot)
 const dshBin = resolve(dirname(require.resolve('@deepseek-ai/dsh/package.json')), 'lib/bin.js')
 const child = spawn(process.execPath, [dshBin, '--profile', 'karaka', ...patch === undefined ? [] : ['--patch', patch]], {
   stdio: 'inherit',
-  env: {
-    ...process.env, DSH_HOME: home,
-    KARAKA_PRESET_ROOT: resolve(packageRoot, 'presets'),
-    KARAKA_AGENTS_DIR: process.env.KARAKA_AGENTS_DIR ?? resolve(process.cwd(), 'agents'),
-  },
+  env: { ...process.env, DSH_HOME: home },
 })
 let stopping = false
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

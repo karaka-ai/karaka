@@ -35,9 +35,9 @@ async function fixture() {
 }
 
 // Include preserves YAML !!js nodes until Entry.disabled evaluates them.
-function expression(source: string): boolean {
-  const node: JsExpr = { __jsExpr: source }
-  return node as unknown as boolean
+function withDisabledExpression(options: EntryOptions, source: string): EntryOptions {
+  Reflect.set(options, 'disabled', { __jsExpr: source } satisfies JsExpr)
+  return options
 }
 
 function guard(): EntryOptions {
@@ -60,9 +60,9 @@ it('admits only after enabled Loader entries activate and honors effective disab
   ctx.loader.builtins.healthy = () => { activated() }
   await ctx.loader.root.update([
     guard(),
-    { id: 'healthy', name: 'cordis:healthy', disabled: expression('false') },
+    withDisabledExpression({ id: 'healthy', name: 'cordis:healthy' }, 'false'),
     { id: 'disabled-import', name: 'cordis:missing', disabled: true },
-    { id: 'conditional-import', name: 'cordis:missing', disabled: expression('true') },
+    withDisabledExpression({ id: 'conditional-import', name: 'cordis:missing' }, 'true'),
   ])
   await ctx.loader.await()
   expect(activated).toHaveBeenCalledOnce()
@@ -130,7 +130,7 @@ it.each([
   await ctx.loader.root.update(rows)
   await ctx.loader.await()
   // Re-evaluate the effective getter at the launcher's settled-tree boundary.
-  ctx.loader.resolve('conditional').options.disabled = expression(source)
+  withDisabledExpression(ctx.loader.resolve('conditional').options, source)
   ready.commit()
   expect(ctx.karakaStartup.ready).toBe(false)
   expect(exit).toHaveBeenCalledExactlyOnceWith(1)

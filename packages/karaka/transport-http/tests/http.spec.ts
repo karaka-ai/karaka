@@ -1,6 +1,6 @@
 /** HTTP byte limits and response settlement without host ports or process-global hooks. */
 import { EventEmitter, getEventListeners } from 'node:events'
-import { IncomingMessage, type ServerResponse } from 'node:http'
+import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { badRequest, json, readObject, writeEvent, writeJsonEvent } from '../src/http.ts'
@@ -18,8 +18,8 @@ function responseBody(accept = true) {
     write: vi.fn((_text: string) => accept),
     writeHead: vi.fn(),
     end: vi.fn(),
-  })
-  return { response, http: response as unknown as ServerResponse }
+  }) satisfies EventEmitter & Pick<ServerResponse, 'write' | 'writeHead' | 'end'>
+  return { response, http: Object.setPrototypeOf(response, ServerResponse.prototype) as ServerResponse }
 }
 
 function expectRequestCleanup(request: IncomingMessage, signal: AbortSignal) {

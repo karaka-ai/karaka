@@ -202,6 +202,14 @@ export interface SubprocessHandle {
  */
 export type SubprocessTerminalSignal = 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGTSTP' | 'SIGHUP'
 
+/** Shell-selection facts from the subprocess provider's execution environment. */
+export interface SubprocessTerminalEnvironment {
+  /** Operating-system family that interprets executable paths and shell arguments. */
+  platform: 'posix' | 'windows'
+  /** Login or environment-selected shell, when the provider can resolve one. */
+  defaultShell?: string
+}
+
 /** A fully specified terminal-process spawn. */
 export interface SubprocessTerminalSpawnSpec {
   /** Executable and arguments; `argv[0]` is the program. */
@@ -214,6 +222,10 @@ export interface SubprocessTerminalSpawnSpec {
   rows: number
   /** Initial terminal column count. */
   cols: number
+  /** Terminal emulation advertised to the child through TERM. */
+  terminalType: string
+  /** Request supported interactive-shell lifecycle observation; unsupported launches report unknown activity. */
+  shellActivity?: boolean | undefined
   /** TERM-to-KILL cleanup grace for the complete terminal session. */
   graceMs: number
   /** Cancellation of terminal allocation; a published handle owns its later lifetime. */
@@ -226,6 +238,14 @@ export interface SubprocessTerminalForeground {
   processGroupId: number
   /** Whether the provider can currently prove that group is waiting on terminal input. */
   inputWaiting: boolean
+}
+
+/** Provider observation of shell lifecycle and surviving owned jobs. */
+export interface SubprocessTerminalActivity {
+  /** Idle requires positive prompt evidence and no observed foreground, background, or stopped jobs. */
+  state: 'idle' | 'busy' | 'unknown'
+  /** Changes with input, shell transitions, and changed process observations; scoped to this handle. */
+  revision: number
 }
 
 /**
@@ -247,10 +267,21 @@ export interface SubprocessTerminalHandle {
    */
   write(data: string): Promise<void>
   /**
+   * Change the terminal dimensions and notify its foreground application.
+   * @param cols - positive terminal column count.
+   * @param rows - positive terminal row count.
+   */
+  resize(cols: number, rows: number): Promise<void>
+  /**
    * Inspect the current foreground process group.
    * @returns its id and input-wait fact, or undefined when no foreground group can be resolved.
    */
   inspectForeground(): Promise<SubprocessTerminalForeground | undefined>
+  /**
+   * Observe command activity without interpreting output or treating silence as completion.
+   * @returns a fresh observation; unsupported shells and incomplete observations report unknown.
+   */
+  inspectActivity(): Promise<SubprocessTerminalActivity>
   /**
    * Deliver a signal to the current foreground process group.
    * @param signal - permitted terminal signal.

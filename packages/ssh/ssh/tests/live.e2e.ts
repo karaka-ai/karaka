@@ -191,7 +191,7 @@ describe.skipIf(!enabled)('POSIX SSH runtime acceptance', () => {
     const test = await setup()
     try {
       const terminal = await test.ctx.subprocess.spawnTerminal({
-        argv: ['/bin/bash', '--noprofile', '--norc', '-i'], cwd: test.root, rows: 24, cols: 80, graceMs: 500,
+        terminalType: 'dumb', argv: ['/bin/bash', '--noprofile', '--norc', '-i'], cwd: test.root, rows: 24, cols: 80, graceMs: 500,
       })
       const output: string[] = []
       const received = Promise.withResolvers<undefined>()
