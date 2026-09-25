@@ -1,6 +1,55 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/agent/README.md
-README.md: b12c46f18d543999fda1d2d5f6a2cd9507ebdf58
-README.zh.md: 37c93215dd6a952b00b5542bf467ef557cc86964
+/:
+  en: ce78b5f1bf78d9f6
+  zh: 5115d859355869f7
+/karaka-ai-agent:
+  en: 5eb8b54084f2b2b5
+  zh: 816083b17aa88470
+/karaka-ai-agent/summary:
+  en: d506c620924ff886
+  zh: 4574d824a64ce321
+/karaka-ai-agent/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 960784dfc25d899e
+/karaka-ai-agent/use-this-package:
+  en: a2d55e1527d8a8a1
+  zh: 2e0edcc0bda15a1f
+/karaka-ai-agent/use-this-package/configure-the-application:
+  en: f35e838983ad3634
+  zh: 52d4b7530d4da3f0
+/karaka-ai-agent/use-this-package/author-tools-and-browser-clients:
+  en: 41db3dfc70a98418
+  zh: c62540754b76155e
+/karaka-ai-agent/understand-the-implementation:
+  en: 40ee9beb477cac78
+  zh: 720ffdcacebcc8d8
+/karaka-ai-agent/further-exploration:
+  en: ea697b3fb870a70b
+  zh: e391bdb2da2392aa
+/karaka-ai-agent/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/karaka-ai-agent/model-experience/application-system-prompt:
+  en: b65aa10817b5ec7d
+  zh: 30e1b1c0731d4893
+/karaka-ai-agent/model-experience/application-system-prompt/what-the-model-sees:
+  en: cb60c7386137a370
+  zh: 84a1092a8f4854bf
+/karaka-ai-agent/model-experience/application-system-prompt/what-the-model-sees/default-application-persona:
+  en: 6aa3077d1b8838db
+  zh: d7ce3cf5aa369608
+/karaka-ai-agent/model-experience/application-system-prompt/token-effect:
+  en: 079416cd321ef2d8
+  zh: 785b5da2814986e5
+/karaka-ai-agent/model-experience/application-system-prompt/kv-cache-effect:
+  en: 7340b669e7001bbe
+  zh: 5f43fa2ccde7a351
+/karaka-ai-agent/known-limitations-and-deferred-work:
+  en: 55babd6a297fb4fb
+  zh: a7f3c8c68940d609
+/karaka-ai-agent/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 8ec3e73528ddb1a6

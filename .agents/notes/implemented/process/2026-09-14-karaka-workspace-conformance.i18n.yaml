@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-14-karaka-workspace-conformance.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-14-karaka-workspace-conformance.md
-2026-09-14-karaka-workspace-conformance.md: ee8d79ece71fbaf4824bc0335a89effb64542902
-2026-09-14-karaka-workspace-conformance.zh.md: e23a670928383aff7b28329aaca1293849206f65
+/agent-note-karaka-workspace-conformance:
+  en: 76e677166c750aad
+  zh: 77a2fe31520d6bfb
+/agent-note-karaka-workspace-conformance/problem:
+  en: f4f0f641e42c2efc
+  zh: 6b5b342e02a6f1a1
+/agent-note-karaka-workspace-conformance/decision:
+  en: ca58f0530141f682
+  zh: 50ccdf32c4d46cb8
+/agent-note-karaka-workspace-conformance/alternatives-considered:
+  en: 9579a017a1fe7e49
+  zh: 26e015ab8a4da6c6
+/agent-note-karaka-workspace-conformance/consequences:
+  en: 42df658c5087e4a5
+  zh: 8f3254c16ddd5414

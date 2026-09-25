@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-14-karaka-ci-build-and-hosted-runners.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-14-karaka-ci-build-and-hosted-runners.md
-2026-09-14-karaka-ci-build-and-hosted-runners.md: b452ec4145187280484bcefaae362205955df1d2
-2026-09-14-karaka-ci-build-and-hosted-runners.zh.md: bb75021bfaafa6cedcd034338bc0dfce9d34b897
+/agent-note-karaka-ci-build-ownership-and-hosted-runners:
+  en: 0a4223494baea268
+  zh: a7d22907f1695963
+/agent-note-karaka-ci-build-ownership-and-hosted-runners/problem:
+  en: 31a6d56145e67aad
+  zh: 1e4a8436d9de0212
+/agent-note-karaka-ci-build-ownership-and-hosted-runners/decision:
+  en: ddc48f5ce2fc507e
+  zh: d70439d4e5211cfb
+/agent-note-karaka-ci-build-ownership-and-hosted-runners/alternatives-considered:
+  en: d231596aeab44d6d
+  zh: e7552fa365d08136
+/agent-note-karaka-ci-build-ownership-and-hosted-runners/consequences:
+  en: d7abb3a092084349
+  zh: 4310a3df0ae57c9c

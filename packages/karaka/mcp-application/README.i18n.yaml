@@ -1,6 +1,55 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/mcp-application/README.md
-README.md: a65a0511dc4d3396bd5f1d04bd428aa78f1f5152
-README.zh.md: da04f1afb296b1e613c13bcebc20d15ed2f3638d
+/:
+  en: 407b4102d6357db1
+  zh: 98cab653b3613b8c
+/karaka-ai-mcp-application:
+  en: 32070f1ad9f14b0a
+  zh: 713988961147b9d7
+/karaka-ai-mcp-application/summary:
+  en: 6b855f717bbd2cde
+  zh: bf34a065c60be654
+/karaka-ai-mcp-application/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: c457910d5dd1f64d
+/karaka-ai-mcp-application/use-this-package:
+  en: 8a6191e4debe8949
+  zh: 07f4b6386fce6af9
+/karaka-ai-mcp-application/understand-the-implementation:
+  en: 59c88e081b53b1d6
+  zh: 819f747764b14392
+/karaka-ai-mcp-application/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/karaka-ai-mcp-application/model-experience/admitted-application-tools:
+  en: 977d5466679dd6de
+  zh: ac1a8cb84cc82c82
+/karaka-ai-mcp-application/model-experience/admitted-application-tools/what-the-model-sees:
+  en: f759e3bb2a8fa44d
+  zh: 282a804ca0bfed4f
+/karaka-ai-mcp-application/model-experience/admitted-application-tools/token-effect:
+  en: 0ac87a634b8aa256
+  zh: 62748f2746d680eb
+/karaka-ai-mcp-application/model-experience/admitted-application-tools/kv-cache-effect:
+  en: a135c4b06574f7e2
+  zh: 8b08e5c45e8546a5
+/karaka-ai-mcp-application/model-experience/tool-results-and-argument-failures:
+  en: 03e2e137bc278c97
+  zh: 31faf303de4228cb
+/karaka-ai-mcp-application/model-experience/tool-results-and-argument-failures/what-the-model-sees:
+  en: 10e5f0d8dd405a21
+  zh: c96933e0aa7c393f
+/karaka-ai-mcp-application/model-experience/tool-results-and-argument-failures/token-effect:
+  en: f848c38287f5504d
+  zh: d5c0a2597f2f3639
+/karaka-ai-mcp-application/model-experience/tool-results-and-argument-failures/kv-cache-effect:
+  en: 735688740476ac85
+  zh: e7368ba2bdfe7ea1
+/karaka-ai-mcp-application/known-limitations-and-deferred-work:
+  en: 1a35d67bfbd31297
+  zh: 6292952574580070
+/karaka-ai-mcp-application/known-limitations-and-deferred-work/dev-note:
+  en: b836f01bd0bceb4a
+  zh: 25e979141fbe5501

@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/transport-http/README.md
-README.md: 36afc125c1b430833abae8552e84aebd7fac73da
-README.zh.md: b55be2b19648030bd10ff394e7d26807f0a03ac6
+/:
+  en: 4c6904e189304530
+  zh: bd30b2da67b80bb3
+/karaka-ai-transport-http:
+  en: 4c2428284a34dcfb
+  zh: b9f9e22a868f6484
+/karaka-ai-transport-http/summary:
+  en: 381a6978af5c0e16
+  zh: 2e083ee8b139f304
+/karaka-ai-transport-http/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: c457910d5dd1f64d
+/karaka-ai-transport-http/use-this-package:
+  en: 81dbd2880dd51e43
+  zh: 5ad4746999311a8e
+/karaka-ai-transport-http/understand-the-implementation:
+  en: 42c72716919dccbc
+  zh: a27ecaca702c56a5
+/karaka-ai-transport-http/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/karaka-ai-transport-http/model-experience/admitted-chat-input:
+  en: c11c99bb8fbe9ab6
+  zh: 2a6ff40c9c3ad8a3
+/karaka-ai-transport-http/model-experience/admitted-chat-input/what-the-model-sees:
+  en: fb735f27ab7b2f5f
+  zh: 7fc3e36fd8f0a05f
+/karaka-ai-transport-http/model-experience/admitted-chat-input/token-effect:
+  en: 1a2e0b42c70b1dfc
+  zh: 93202d1997a1703b
+/karaka-ai-transport-http/model-experience/admitted-chat-input/kv-cache-effect:
+  en: b98076a4c3c9c87c
+  zh: 6b95e22779664cb6
+/karaka-ai-transport-http/known-limitations-and-deferred-work:
+  en: 1183505c9d93d984
+  zh: 146074b4928cb7bc
+/karaka-ai-transport-http/known-limitations-and-deferred-work/dev-note:
+  en: b836f01bd0bceb4a
+  zh: 25e979141fbe5501
