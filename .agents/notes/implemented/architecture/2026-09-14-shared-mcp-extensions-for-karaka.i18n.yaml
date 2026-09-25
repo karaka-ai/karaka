@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-14-shared-mcp-extensions-for-karaka.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-14-shared-mcp-extensions-for-karaka.md
-2026-09-14-shared-mcp-extensions-for-karaka.md: e6c4ea64e04ed0b8a5611c55dabe23ad9f6f5925
-2026-09-14-shared-mcp-extensions-for-karaka.zh.md: 2bb8e8c82bf48ca9f5d509206295e63526996846
+/agent-note-shared-mcp-extensions-for-karaka:
+  en: ffde7868d5d867f0
+  zh: 4839ced11ffdfa12
+/agent-note-shared-mcp-extensions-for-karaka/problem:
+  en: 6ef29042813b95d0
+  zh: f0f7c2af8c2ff40f
+/agent-note-shared-mcp-extensions-for-karaka/decision:
+  en: 6d2107b89a05e093
+  zh: 9847429142f917fe
+/agent-note-shared-mcp-extensions-for-karaka/alternatives-considered:
+  en: fc02d1279fe6708f
+  zh: bcd5e826b38f3b6c
+/agent-note-shared-mcp-extensions-for-karaka/testing:
+  en: 74a63191c140d09e
+  zh: a6afa33d2e09de24
+/agent-note-shared-mcp-extensions-for-karaka/consequences:
+  en: a2152b6b18f3a84b
+  zh: e28dc9f464dcb856

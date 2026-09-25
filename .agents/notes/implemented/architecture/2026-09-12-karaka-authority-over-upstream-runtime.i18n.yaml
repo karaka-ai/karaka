@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-12-karaka-authority-over-upstream-runtime.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-12-karaka-authority-over-upstream-runtime.md
-2026-09-12-karaka-authority-over-upstream-runtime.md: 85fda5301954f50fe8e26522bc087dceea87ff01
-2026-09-12-karaka-authority-over-upstream-runtime.zh.md: c8be21cb46778a6c580b6d07cc32c323bf0cc9a8
+/agent-note-karaka-authority-over-the-unchanged-upstream-runtime:
+  en: bd72e4427164c5b2
+  zh: 072e6fce63e2a562
+/agent-note-karaka-authority-over-the-unchanged-upstream-runtime/problem:
+  en: 053ac0f9464092e5
+  zh: bba27322fb580219
+/agent-note-karaka-authority-over-the-unchanged-upstream-runtime/decision:
+  en: 30344f772a1b1393
+  zh: 38be0b0ba2e0b74e
+/agent-note-karaka-authority-over-the-unchanged-upstream-runtime/alternatives-considered:
+  en: 6351f3b587d380d2
+  zh: 8d4cfcbdb2ca3cdf
+/agent-note-karaka-authority-over-the-unchanged-upstream-runtime/consequences:
+  en: 7fd782755d2cd0e2
+  zh: 2620a02ce09809eb
+/agent-note-karaka-authority-over-the-unchanged-upstream-runtime/testing:
+  en: e9d5c8251a07f4f6
+  zh: f8724b2a94960222
