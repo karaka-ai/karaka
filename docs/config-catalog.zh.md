@@ -4272,7 +4272,6 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-workspace-changes -->
 
-
 <!-- BEGIN GENERATED config-catalog:@karaka-ai/browser-auth -->
 <a id="karaka-aibrowser-auth"></a>
 
@@ -4410,6 +4409,7 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@karaka-ai/transport-http -->
+
 ## 无配置的可加载插件
 
 这些插件通过 `cordis.yml` 中不含 `config:` 块的条目加载；它们未声明任何配置接口。

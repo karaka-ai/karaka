@@ -4270,7 +4270,6 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-workspace-changes -->
 
-
 <!-- BEGIN GENERATED config-catalog:@karaka-ai/browser-auth -->
 <a id="karaka-aibrowser-auth"></a>
 
@@ -4408,6 +4407,7 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@karaka-ai/transport-http -->
+
 ## Loadable plugins with no config
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
