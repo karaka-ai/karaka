@@ -1,6 +1,13 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for karaka.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/karaka.md
-karaka.md: 61df250bbe0e2b62bfc0f37c96ae0e51ff914814
-karaka.zh.md: e4d9fd85d83370698a9d8bafa7351d42f7d31b98
+/karaka-application-access:
+  en: 1ba6688deb83579e
+  zh: 17e692ecfdf4b130
+/karaka-application-access/ownership-and-credentials:
+  en: 61f8d516eeca7ee3
+  zh: 8c6edbda28cf11cd
+/karaka-application-access/chat-and-tools:
+  en: 2ea42b317f5174bf
+  zh: 2f6010ab00a259d3

@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-18-karaka-upstream-ci-contracts.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-09-18-karaka-upstream-ci-contracts.md
-2026-09-18-karaka-upstream-ci-contracts.md: 750f945730cbc89820ff89fd8a9590a0336bd1cf
-2026-09-18-karaka-upstream-ci-contracts.zh.md: c722b274dd046add7f802ca8cbab5daea03b783a
+/agent-note-karaka-upstream-integration-ci-contracts:
+  en: eb2a2dd456eef3e1
+  zh: a65e83571f5aa9ab
+/agent-note-karaka-upstream-integration-ci-contracts/problem:
+  en: e7b782428cbbf91e
+  zh: 5dcada8c676901ed
+/agent-note-karaka-upstream-integration-ci-contracts/decision:
+  en: 9083b11ea8557dca
+  zh: 324107b4c67ed707
+/agent-note-karaka-upstream-integration-ci-contracts/alternatives-considered:
+  en: 1c4c2dfb7877aaee
+  zh: 550c09b9e82b5c8f
+/agent-note-karaka-upstream-integration-ci-contracts/testing:
+  en: 123e726d79ed4b1a
+  zh: 4574f48f7ac3ab89
+/agent-note-karaka-upstream-integration-ci-contracts/consequences:
+  en: 045d6ff9ebe025ce
+  zh: 9e545b8e2d2049b2

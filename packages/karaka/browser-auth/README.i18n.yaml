@@ -1,6 +1,46 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/browser-auth/README.md
-README.md: 4a1d74d4ff70e084a5e6437179586cd4e3a71912
-README.zh.md: 6f543942d9565d7a7488ddfab8ba2e62da6e55e0
+/:
+  en: a6f18e9ef82ef28c
+  zh: 2850686ea11436d5
+/karaka-ai-browser-auth:
+  en: 178c32686984ba3b
+  zh: 845c340a1ea0cf82
+/karaka-ai-browser-auth/summary:
+  en: addc8fe8769d9112
+  zh: 16f4416e0c3986ce
+/karaka-ai-browser-auth/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 241a9f41d4857cbd
+/karaka-ai-browser-auth/use-this-package:
+  en: 9d333153400de5ca
+  zh: 27dc72092e639a28
+/karaka-ai-browser-auth/understand-the-implementation:
+  en: 945fe9bcfa314e63
+  zh: 6ffe396cd545c26d
+/karaka-ai-browser-auth/further-exploration:
+  en: fd6a5b553798c62c
+  zh: 9ba997e92d534eb4
+/karaka-ai-browser-auth/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/karaka-ai-browser-auth/model-experience/authorization:
+  en: 7fbdd2ccbbc062cd
+  zh: 91dae22d1917ae4f
+/karaka-ai-browser-auth/model-experience/authorization/what-the-model-sees:
+  en: df1bf1f206a64656
+  zh: 1d499b3a6d4e1f39
+/karaka-ai-browser-auth/model-experience/authorization/token-effect:
+  en: b8cc73c268921be8
+  zh: 569f1ca2969967a5
+/karaka-ai-browser-auth/model-experience/authorization/kv-cache-effect:
+  en: c4cb722c5cd86ac4
+  zh: 2ad05573c8375a88
+/karaka-ai-browser-auth/known-limitations-and-deferred-work:
+  en: 9173350ec5ed9c1a
+  zh: e3e7f5e32497fec4
+/karaka-ai-browser-auth/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 6c5f9788c6536776

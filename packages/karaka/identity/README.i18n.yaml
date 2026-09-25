@@ -1,6 +1,46 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/identity/README.md
-README.md: a91998379cf5a152a499e4b8e9d39bc9b2575cc3
-README.zh.md: d882101983aea793145b7458a434b76c921b75e0
+/:
+  en: f475217174f85990
+  zh: 95f824640a6f9f65
+/karaka-ai-identity:
+  en: 50832e070a1c80d0
+  zh: 55145f438a6726f4
+/karaka-ai-identity/summary:
+  en: 2f70184c19f916b5
+  zh: b76b94b47c21bf47
+/karaka-ai-identity/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 241a9f41d4857cbd
+/karaka-ai-identity/use-this-package:
+  en: 09fa928b57a8e0aa
+  zh: c5a13accd1272a15
+/karaka-ai-identity/understand-the-implementation:
+  en: bcfab7f7d1463516
+  zh: 58cd5986ff3d0635
+/karaka-ai-identity/further-exploration:
+  en: a18bee4d19e76cf0
+  zh: 1339f16005a498b3
+/karaka-ai-identity/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/karaka-ai-identity/model-experience/authorization:
+  en: 7fbdd2ccbbc062cd
+  zh: 91dae22d1917ae4f
+/karaka-ai-identity/model-experience/authorization/what-the-model-sees:
+  en: d55659472d2dcf71
+  zh: f30e71d99e63a40b
+/karaka-ai-identity/model-experience/authorization/token-effect:
+  en: 1615166375390761
+  zh: 089d3303be038f35
+/karaka-ai-identity/model-experience/authorization/kv-cache-effect:
+  en: a1ae53dd10e6299c
+  zh: d158720d30315de5
+/karaka-ai-identity/known-limitations-and-deferred-work:
+  en: f1a4db24ed261a4b
+  zh: 1d3970a5b8f80f53
+/karaka-ai-identity/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 6c5f9788c6536776

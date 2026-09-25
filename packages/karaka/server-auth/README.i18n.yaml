@@ -1,6 +1,46 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/server-auth/README.md
-README.md: f682843ef4813ccd8bbdc223f5ef5f32d6c4202d
-README.zh.md: d5ac1ca49885d608656e8de44a8f1c215f0f38f8
+/:
+  en: 252644a0e686325a
+  zh: 7c4eeb75bf54504f
+/karaka-ai-server-auth:
+  en: 241f3502698e0bf6
+  zh: e89d1f9c96913116
+/karaka-ai-server-auth/summary:
+  en: 7bc28370f29306d6
+  zh: 0e432f3abcf147cc
+/karaka-ai-server-auth/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 241a9f41d4857cbd
+/karaka-ai-server-auth/use-this-package:
+  en: 8bcca0e7658fc0dd
+  zh: da714c10367baaf3
+/karaka-ai-server-auth/understand-the-implementation:
+  en: bdeba9c04ed68ed0
+  zh: f2d549e4e4d3b649
+/karaka-ai-server-auth/further-exploration:
+  en: e266de7b97214de4
+  zh: 0af4b00e0057ad68
+/karaka-ai-server-auth/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/karaka-ai-server-auth/model-experience/authorization:
+  en: 7fbdd2ccbbc062cd
+  zh: 91dae22d1917ae4f
+/karaka-ai-server-auth/model-experience/authorization/what-the-model-sees:
+  en: f4dd1e63bb9cd1fd
+  zh: c3306153f0bd983d
+/karaka-ai-server-auth/model-experience/authorization/token-effect:
+  en: bbd653aefcc0aafa
+  zh: 1c5084750fc143cb
+/karaka-ai-server-auth/model-experience/authorization/kv-cache-effect:
+  en: b1ee4140f990ad70
+  zh: 9eade40663004417
+/karaka-ai-server-auth/known-limitations-and-deferred-work:
+  en: b9df64a1fc876ed8
+  zh: 3aa57e2722d7571f
+/karaka-ai-server-auth/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 6c5f9788c6536776
