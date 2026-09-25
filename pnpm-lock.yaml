@@ -9320,9 +9320,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
-      '@deepseek-ai/dsh-llm-deepseek':
+      '@deepseek-ai/dsh-llm-deepseek-api-key':
         specifier: workspace:*
-        version: link:../../llm/llm-deepseek
+        version: link:../../llm/llm-deepseek-api-key
       '@deepseek-ai/dsh-llm-retry':
         specifier: workspace:*
         version: link:../../llm/llm-retry
