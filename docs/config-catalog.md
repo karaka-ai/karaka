@@ -1991,7 +1991,7 @@ export interface LspLocalServerConfig {
 ## `@deepseek-ai/dsh-mcp-client`
 
 - `inject`: `tools`
-- `source`: [`packages/mcp/mcp-client/src/index.ts:104`](../packages/mcp/mcp-client/src/index.ts)
+- `source`: [`packages/mcp/mcp-client/src/index.ts:105`](../packages/mcp/mcp-client/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for one stdio or Streamable HTTP MCP server. */
@@ -4306,7 +4306,7 @@ export interface Config {
 
 ## `@karaka-ai/identity`
 
-- `inject`: `sessionPersistence` · `sessions` · `storage`
+- `inject`: `storage` · `sessions` · `sessionPersistence`
 - `source`: [`packages/karaka/identity/src/index.ts:28`](../packages/karaka/identity/src/index.ts)
 
 ```ts config-catalog
@@ -4323,7 +4323,7 @@ export interface Config {
 
 ## `@karaka-ai/mcp-application`
 
-- `inject`: `agents` · `karakaIdentity` · `serverAuth` · `tools`
+- `inject`: `tools` · `agents` · `karakaIdentity` · `serverAuth`
 - `refs`: [`ReconnectConfig`](../packages/mcp/mcp-client/src/index.ts)
 - `source`: [`packages/karaka/mcp-application/src/index.ts:16`](../packages/karaka/mcp-application/src/index.ts)
 
@@ -4384,7 +4384,7 @@ export interface ApplicationCredentialConfig {
 
 ## `@karaka-ai/transport-http`
 
-- `inject`: `agentDefaultModel` · `agents` · `karakaIdentity` · `karakaStartup` · `llm` · `serverAuth` · `sessionPersistence` · `sessionProjections` · `sessionQuery` · `sessions` · `webServer`
+- `inject`: `serverAuth` · `karakaIdentity` · `agents` · `sessions` · `sessionQuery` · `sessionPersistence` · `sessionProjections` · `agentDefaultModel` · `llm` · `webServer` · `karakaStartup`
 - `source`: [`packages/karaka/transport-http/src/index.ts:33`](../packages/karaka/transport-http/src/index.ts)
 
 ```ts config-catalog
