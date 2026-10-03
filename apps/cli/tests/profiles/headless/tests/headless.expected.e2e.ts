@@ -720,7 +720,7 @@ describe('headless stream-json snapshots', () => {
       expect(header?.config).toMatchInlineSnapshot(`
         {
           "maxTokens": 1024,
-          "model": "deepseek-v4-flash",
+          "model": "deepseek-flash",
           "provider": "deepseek",
           "reasoningEffort": "low",
         }
