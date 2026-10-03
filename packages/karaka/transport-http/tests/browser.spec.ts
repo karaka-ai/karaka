@@ -9,6 +9,12 @@ import {
   type BrowserClientConfig,
 } from '../src/browser.ts'
 
+async function collect<Value>(stream: AsyncIterable<Value>): Promise<Value[]> {
+  const values: Value[] = []
+  for await (const value of stream) values.push(value)
+  return values
+}
+
 function queue<Value>() {
   const values: Value[] = []
   const readers: ((value: Value) => void)[] = []
@@ -159,7 +165,7 @@ describe('browser application client', () => {
     const host = await fixture({ methods: [] })
     const { client } = await host.connected()
     await expect(client.chats.applicationAgents()).rejects.toThrow('not mounted')
-    await expect(Array.fromAsync(client.chats.applicationFollow({ chatId }))).rejects.toThrow('not mounted')
+    await expect(collect(client.chats.applicationFollow({ chatId }))).rejects.toThrow('not mounted')
     expect(host.requests).toHaveLength(1)
   })
 
@@ -212,7 +218,7 @@ describe('browser application client', () => {
       call.response.end('data: {"ok":false,"error":{"code":"done","message":"end","details":{}}}\n\n')
     }
     const { client } = await host.connected()
-    expect(await Array.fromAsync(client.chats.applicationFollow({ chatId }))).toEqual([
+    expect(await collect(client.chats.applicationFollow({ chatId }))).toEqual([
       { ok: true, value: { type: 'text-delta', cursor: 1, text: 'hello' } },
       { ok: false, error: { code: 'done', message: 'end', details: {} } },
     ])
@@ -222,11 +228,11 @@ describe('browser application client', () => {
     const host = await fixture()
     const { client } = await host.connected()
     host.respond = (call) => { json(call.response, { bad: true }, 403) }
-    expect(await Array.fromAsync(client.chats.applicationFollow({ chatId }))).toMatchObject([{ ok: false, error: { code: 'gateway/forbidden' } }])
+    expect(await collect(client.chats.applicationFollow({ chatId }))).toMatchObject([{ ok: false, error: { code: 'gateway/forbidden' } }])
     host.respond = (call) => { call.response.end('data: {"unexpected":true}\n\n') }
-    expect(await Array.fromAsync(client.chats.applicationFollow({ chatId }))).toMatchObject([{ ok: false, error: { code: 'gateway/internal' } }])
+    expect(await collect(client.chats.applicationFollow({ chatId }))).toMatchObject([{ ok: false, error: { code: 'gateway/internal' } }])
     host.respond = (call) => { call.response.writeHead(204); call.response.end() }
-    expect(await Array.fromAsync(client.chats.applicationFollow({ chatId }))).toMatchObject([{ ok: false, error: { message: 'Browser event response has no body' } }])
+    expect(await collect(client.chats.applicationFollow({ chatId }))).toMatchObject([{ ok: false, error: { message: 'Browser event response has no body' } }])
   })
 
   it('ends cancelled follows without reporting cancellation as an application failure', async () => {
@@ -234,11 +240,11 @@ describe('browser application client', () => {
     const { client } = await host.connected()
     const controller = new AbortController()
     controller.abort()
-    expect(await Array.fromAsync(client.chats.applicationFollow({ chatId }, controller.signal))).toEqual([])
+    expect(await collect(client.chats.applicationFollow({ chatId }, controller.signal))).toEqual([])
     const following = queue<ServerResponse>()
     host.respond = (call) => { call.response.writeHead(200); call.response.flushHeaders(); following.push(call.response) }
     const live = new AbortController()
-    const collected = Array.fromAsync(client.chats.applicationFollow({ chatId }, live.signal))
+    const collected = collect(client.chats.applicationFollow({ chatId }, live.signal))
     await following.read()
     live.abort()
     expect(await collected).toEqual([])

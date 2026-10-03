@@ -18,7 +18,7 @@ Karaka 根据[仓库 CI 决策](2026-09-14-karaka-ci-build-and-hosted-runners.zh
 
 ### 发布演练共用 Linux 开关
 
-`DSH_CI_FAILOVER_LINUX=selfhosted` 还会将符合条件的同仓库 PR 和 master 推送中的无凭据依赖布局作业与 dsh/vendor 两个打包作业路由到 `vm-backup`。[发布演练决策](2026-09-06-release-rehearsal-selfhosted.zh.md) 负责更严格的事件准入规则及保留托管的手动触发。这种耦合是有意的：持续设置变量来节省发布分钟，也会让符合条件的主 CI Linux 作业持续使用自托管。清除变量会让两类负载的后续运行返回各自的托管目标；发布操作始终保留托管。
+`DSH_CI_FAILOVER_LINUX=selfhosted` 还会将符合条件的同仓库 PR 和 master 推送中的无凭据依赖布局作业与 dsh/vendor 两个打包作业路由到 `vm-backup`。[dsh](../../../../.github/workflows/release.yml) 与 [vendor](../../../../.github/workflows/release-vendor.yml) 工作流选择器执行更严格的事件准入规则，并让手动触发保留托管运行器。这种耦合是有意的：持续设置变量来节省发布分钟，也会让符合条件的主 CI Linux 作业持续使用自托管。清除变量会让两类负载的后续运行返回各自的托管目标；发布操作始终保留托管。
 
 ### 自有池是什么
 
@@ -42,7 +42,7 @@ Karaka 根据[仓库 CI 决策](2026-09-14-karaka-ci-build-and-hosted-runners.zh
 
 ## 切换期间的容量
 
-Linux 开关启用期间，容量需覆盖 master 热备、主 CI 作业，以及每个符合条件的 PR 或 master 推送的三个发布演练作业。每个可信 PR 还会增加三个门禁并发度为一的 Node 兼容性作业，包括需要构建的 Node 22 条目和冷临时运行时下载。发布演练工作流依据[取消策略](2026-09-09-cancel-superseded-ci.zh.md)取消各工作流/引用组内被取代的运行；不同引用仍可能增加并发构建、打包和安装负载。延长自托管运行前，检查当前 CPU、内存、磁盘和队列压力；同一虚拟机上新增注册只增加调度槽位，不增加机器资源。不能只依据热备负载推断空闲容量。主机资源允许增加注册实例时，使用组织级注册 token（组织 Settings → Actions → Runners → New runner）。复制现有 runner 目录时**必须排除身份文件**——`rsync -a --exclude '.runner*' --exclude '.credentials*' --exclude '_diag' --exclude '_work' <src>/ <dst>/`（通配同时排除 `.runner_migrated`/`.credentials_migrated`——GitHub 会在迁移过的运行器上写入这些文件，它们同样会触发 already-configured 拒绝）——再跑 `config.sh`（原样拷贝 `.runner`/`.credentials` 会使其以 "already configured" 拒绝），然后**启动监听器**：`sudo ./svc.sh install ubuntu && sudo ./svc.sh start`。仅注册不会上线；启动服务增加的是调度槽位，而非 CPU 或内存。
+Linux 开关启用期间，容量需覆盖 master 热备、主 CI 作业，以及每个符合条件的 PR 或 master 推送的三个发布演练作业。每个可信 PR 还会增加三个门禁并发度为一的 Node 兼容性作业，包括需要构建的 Node 22 条目和冷临时运行时下载。发布演练工作流依据[取消策略](../../../../.github/workflows/release.yml)取消各工作流/引用组内被取代的运行；不同引用仍可能增加并发构建、打包和安装负载。延长自托管运行前，检查当前 CPU、内存、磁盘和队列压力；同一虚拟机上新增注册只增加调度槽位，不增加机器资源。不能只依据热备负载推断空闲容量。主机资源允许增加注册实例时，使用组织级注册 token（组织 Settings → Actions → Runners → New runner）。复制现有 runner 目录时**必须排除身份文件**——`rsync -a --exclude '.runner*' --exclude '.credentials*' --exclude '_diag' --exclude '_work' <src>/ <dst>/`（通配同时排除 `.runner_migrated`/`.credentials_migrated`——GitHub 会在迁移过的运行器上写入这些文件，它们同样会触发 already-configured 拒绝）——再跑 `config.sh`（原样拷贝 `.runner`/`.credentials` 会使其以 "already configured" 拒绝），然后**启动监听器**：`sudo ./svc.sh install ubuntu && sudo ./svc.sh start`。仅注册不会上线；启动服务增加的是调度槽位，而非 CPU 或内存。
 
 
 ### 切回
@@ -61,4 +61,4 @@ Linux 开关启用期间，容量需覆盖 master 热备、主 CI 作业，以�
 
 ## 后果
 
-从托管池故障中恢复只需切换受影响平台的变量（任何写者可设）加一次重跑，关键路径上没有合并。代价是每个平台都要维护第二套运行器拓扑：master 推送会调度热备通道，但依据[取消策略](2026-09-09-cancel-superseded-ci.zh.md)，只有已完成的结论才能证明就绪状态；而 `ci.yml` 中的快照并发与缓存恢复分支带有一条 `selfhosted` 支路（仅 Linux），必须与托管支路保持同步。按平台拆分开关多了一个需要管理的变量，但把每个开关的影响范围限定在单个平台的作业上。
+从托管池故障中恢复只需切换受影响平台的变量（任何写者可设）加一次重跑，关键路径上没有合并。代价是每个平台都要维护第二套运行器拓扑：master 推送会调度热备通道，但依据[取消策略](../../../../.github/workflows/ci.yml)，只有已完成的结论才能证明就绪状态；而 `ci.yml` 中的快照并发与缓存恢复分支带有一条 `selfhosted` 支路（仅 Linux），必须与托管支路保持同步。按平台拆分开关多了一个需要管理的变量，但把每个开关的影响范围限定在单个平台的作业上。
