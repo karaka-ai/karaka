@@ -24,6 +24,9 @@ updates:
       timezone: "Asia/Shanghai"
     cooldown:
       default-days: 30
+    ignore:
+      # Release tooling owns the editable workspace runtime version.
+      - dependency-name: "deepseek-harness-runtime-bin"
     labels:
       - "kind/dependency"
       - "area/infra"
