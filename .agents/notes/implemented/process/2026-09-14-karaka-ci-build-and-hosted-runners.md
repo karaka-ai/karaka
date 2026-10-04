@@ -14,6 +14,8 @@ The separate-build decision is superseded by [Karaka workspace conformance](2026
 
 [Pull-request CI](../../../../.github/workflows/ci.yml) defaults to `ubuntu-24.04` and `windows-2025`. Standard GitHub runners use lower gate, coverage and snapshot concurrency. The [platform failover switches](2026-07-26-ci-failover-runbook.md) and [Blacksmith overrides](2026-09-09-blacksmith-failover-leg.md) remain available when their pools are configured.
 
+[Post-merge CI](../../../../.github/workflows/ci-master.yml) runs on `main`, Karaka's default branch, to preserve the upstream platform signal on the fork. Python runtime checks for Linux ARM64 and both macOS architectures, plus Wine, run after merge and retain ordinary failure reporting. Frozen upstream notes describe historical DSH routing; this active note owns Karaka's branch choice.
+
 The [live API workflow](../../../../.github/workflows/e2e.yml) reports missing credentials in a notice and job summary, then skips its test job. [Python wheel CI](../../../../.github/workflows/build-exe-for-python-sdk.yml) skips only its live API step. A configured key enables the existing tests and their failures still fail CI. The [API security decision](../testing/2026-06-19-real-api-e2e-ci.md) continues to own trusted events and secret exposure.
 
 The [preview workflow](../../../../.github/workflows/build-preview-cloudflare.yml) always builds its artifacts; deployment, protected-image verification and URL comments require all four Cloudflare credentials. Missing credentials produce a notice and summary.
