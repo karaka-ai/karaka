@@ -18,7 +18,7 @@ Karaka 负责经过认证的 HTTP 传输、私有目录注册、继承策略检�
 
 共享的公开 MCP 工厂现在接收 `call(args, execution)`。元数据直接从该执行对象解析后才发送 SDK 请求，并保留其取消信号及工具定义。不再需要此前的执行局部委托：输出模式、规范结果、图像投影和终结过程直接由上游工厂负责。Karaka 只保留元数据、准备、作用域注册及传输扩展。普通 MCP 配置通过自身插件生命周期发布服务器资源与说明；Karaka 的直接连接入口不会将应用资源或说明发布到全局。[上游来源记录](../../../../packages/karaka/mcp-application/UPSTREAM.json)仍保留最初采用共享实现时的修订号。
 
-本决策仅取代 [Karaka 权限归属](2026-09-12-karaka-authority-over-upstream-runtime.zh.md)中复制 MCP 实现的决定。其独立持久身份、不变的 Session 格式和各 Agent 授权仍然有效。[MCP 功能记录](../feature/2026-07-07-mcp-client-plugin.zh.md)保留命名、协议和结果投影的理由。[工作区规范一致性记录](../process/2026-09-14-karaka-workspace-conformance.zh.md)负责编译器集成和精确的配置引导启动器分类。
+本决策仅取代 [Karaka 权限归属](2026-09-12-karaka-authority-over-upstream-runtime.zh.md)中复制 MCP 实现的决定。其独立持久身份、不变的 Session 格式和各 Agent 授权仍然有效。[MCP 功能记录](../../archived/feature/2026-07-07-mcp-client-plugin.md)保留命名、协议和结果投影的理由。[工作区规范一致性记录](../process/2026-09-14-karaka-workspace-conformance.zh.md)负责编译器集成和精确的配置引导启动器分类。
 
 ## Alternatives considered
 

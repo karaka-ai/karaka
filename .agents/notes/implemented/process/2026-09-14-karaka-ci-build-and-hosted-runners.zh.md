@@ -14,6 +14,8 @@ Status: implemented
 
 [拉取请求 CI](../../../../.github/workflows/ci.yml)默认使用 `ubuntu-24.04` 和 `windows-2025`。标准 GitHub 运行器使用较低的门禁、覆盖率和快照并发度。配置相应运行器池后，仍可使用[平台故障切换开关](2026-07-26-ci-failover-runbook.zh.md)和 [Blacksmith 覆盖配置](2026-09-09-blacksmith-failover-leg.zh.md)。
 
+[合并后 CI](../../../../.github/workflows/ci-master.yml)在 Karaka 的默认分支 `main` 上运行，保留 fork 中的上游平台验证信号。Linux ARM64 与两种 macOS 架构的 Python 运行时检查，以及 Wine，均在合并后运行，并保留普通失败报告。冻结的上游记录描述历史 DSH 路由；本活动记录负责 Karaka 的分支选择。
+
 [真实 API 工作流](../../../../.github/workflows/e2e.yml)通过通知与作业摘要报告凭证缺失，然后跳过测试作业。[Python wheel 包 CI](../../../../.github/workflows/build-exe-for-python-sdk.yml)仅跳过真实 API 步骤。配置密钥后，现有测试会启用，测试失败仍会使 CI 失败。[API 安全决策](../testing/2026-06-19-real-api-e2e-ci.zh.md)继续负责可信事件与密钥暴露策略。
 
 [预览工作流](../../../../.github/workflows/build-preview-cloudflare.yml)始终构建产物；部署、受保护镜像验证与 URL 评论要求四项 Cloudflare 凭证全部存在。缺少凭证时产生通知与摘要。
