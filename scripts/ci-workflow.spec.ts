@@ -1158,6 +1158,37 @@ describe('Issue lifecycle workflow', () => {
 })
 
 describe('npm release workflows', () => {
+  it('passes the optional vendor channel as a quoted argument while preserving default publication', () => {
+    const workflow = loadWorkflow('.github/workflows/release-vendor-publish.yml')
+    expect(workflow.on).toMatchObject({
+      workflow_dispatch: {
+        inputs: {
+          'dist-tag': {
+            required: false,
+            type: 'string',
+            default: '',
+          },
+        },
+      },
+    })
+    const publish = workflowJob(workflow, 'publish')
+    expect(publish.steps).toContainEqual({
+      name: 'Publish tarballs',
+      env: {
+        NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}',
+        RELEASE_DIST_TAG: '${{ inputs.dist-tag }}',
+      },
+      run: [
+        'args=()',
+        'if [[ -n "$RELEASE_DIST_TAG" ]]; then',
+        '  args+=(--dist-tag "$RELEASE_DIST_TAG")',
+        'fi',
+        'pnpm run release:publish --family vendor --from dist/npm-vendor "${args[@]}"',
+        '',
+      ].join('\n'),
+    })
+  })
+
   it('keeps publication dispatch-only and pack in the PR workflow', () => {
     // pack stays in the PR/main release workflows so a PR proves the set packs.
     for (const file of ['release.yml', 'release-vendor.yml']) {

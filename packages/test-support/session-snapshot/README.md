@@ -92,7 +92,7 @@ A scenario requiring a non-Windows host declares `posixOnly`, which skips its ru
 
 ### What can go wrong
 
-- **A turn-end wait fails** — `waitForTurnEnd` and `waitForSubagentTurnEnd` identify the session or child and deadline even when the first log harvest exceeds that deadline. Child waits also name the requested turn. Both retain the underlying failure as the error cause.
+- **A durable wait times out** — `waitForTurnStart`, `waitForTurnEnd`, `waitForSubagentTurnEnd`, `waitForGoalPhase`, and `waitForInboxMessage` identify the session or child and deadline even when the first log harvest exceeds that deadline. Child waits also name the requested turn. All retain the underlying failure as the error cause. `waitForTurnStart` rejects malformed turn records immediately.
 - **A fixture guard rejects the committed files** — orphan scenario dirs, missing files, multiple pins for one header class, duplicate sidecar content, unscrubbed prompt text or tool schemas, a `request/header` with no preceding `system/message`, and malformed pinning headers all fail the suite before comparisons run.
 - **The session harvest needs raw JSONL mode** — snapshot configs set the JSONL backend's `compression: 'none'`; compressed JSONL has no snapshot-harvest path.
 - **Built mode needs current artifacts** — run `pnpm run build` before selecting `DSH_EXAMPLE_MODE=lib`; source mode remains the zero-build path.
