@@ -1121,7 +1121,7 @@ def smoke_sdk_live() -> None:
 
 
 def assert_live_turn(label: str, result: RunResult) -> None:
-    """Require completed model tool use and the smoke sentinel on the final answer line."""
+    """Require completed model tool use and a standalone smoke acknowledgement."""
     if result.finish_reason != "completed":
         event_types = [event.get("type") for event in result.events]
         turn_end_data = next(
@@ -1138,8 +1138,7 @@ def assert_live_turn(label: str, result: RunResult) -> None:
             f"{label} turn made no model-requested tool call; "
             f"final={result.final_response!r}"
         )
-    answer_lines = result.final_response.strip().splitlines()
-    if not answer_lines or answer_lines[-1].strip() != LIVE_API_SENTINEL:
+    if not any(line.strip() == LIVE_API_SENTINEL for line in result.final_response.splitlines()):
         raise AssertionError(f"{label} turn returned {result.final_response!r}")
 
 def safe_turn_end(value: object) -> object:

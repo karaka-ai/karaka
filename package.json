@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-root",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-alpha.1",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -225,6 +225,7 @@
     "@types/jsdom": "^28.0.3",
     "@types/mdast": "^4.0.4",
     "@types/node": "^22.20.0",
+    "@types/semver": "^7.8.0",
     "@types/spdx-expression-parse": "^4.0.0",
     "@vitest/coverage-v8": "^4.1.8",
     "@yao-pkg/pkg": "6.21.0",
@@ -248,6 +249,7 @@
     "oxlint-tsgolint": "7.0.2001",
     "pnpm": "11.7.0",
     "publint": "^0.3.21",
+    "semver": "^7.8.5",
     "smol-toml": "^1.7.1",
     "spdx-expression-parse": "^5.0.0",
     "tar": "^7.5.0",

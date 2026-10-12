@@ -504,19 +504,9 @@ class SkillWatchManager {
       usePolling: this.config.usePolling,
       interval: this.config.pollIntervalMs,
     })
-    const handle: WatchHandle = {
-      mode,
-      close: () => watcher.close(),
-    }
     let ready = false
     const readiness = Promise.withResolvers<undefined>()
     const signal = this.lifecycle.signal
-    if (signal.aborted) {
-      await this.closeWatcher(handle)
-      signal.throwIfAborted()
-    }
-    const onAbort = (): void => { readiness.reject(signal.reason) }
-    signal.addEventListener('abort', onAbort, { once: true })
     const onError = (error: unknown): void => {
       if (!ready) {
         readiness.reject(error)
@@ -524,6 +514,24 @@ class SkillWatchManager {
       }
       this.handleWatcherError(state, error)
     }
+    const handle: WatchHandle = {
+      mode,
+      close: () => {
+        // `close()` drops every listener but leaves a scheduled write-settle
+        // poll; its straggler stats a file this teardown is deleting, which
+        // Windows reports as EPERM, and an 'error' emission with no listener
+        // is rethrown as an uncaught exception. Re-attach across the close.
+        const closing = watcher.close()
+        watcher.on('error', onError)
+        return closing
+      },
+    }
+    if (signal.aborted) {
+      await this.closeWatcher(handle)
+      signal.throwIfAborted()
+    }
+    const onAbort = (): void => { readiness.reject(signal.reason) }
+    signal.addEventListener('abort', onAbort, { once: true })
     watcher.on('error', onError)
     watcher.once('ready', () => {
       ready = true

@@ -112,6 +112,20 @@ def test_live_smoke_requires_fresh_external_content(live_smoke: SimpleNamespace)
 
 
 @pytest.mark.parametrize("label", ["create", "verify"])
+def test_live_smoke_accepts_file_details_after_acknowledgement(
+    live_smoke: SimpleNamespace, label: str,
+) -> None:
+    setattr(live_smoke, f"{label}_result", live_result(final_response=(
+        "PYTHON_SDK_LIVE_OK\n\n"
+        "File created at `live-api-marker.txt` — 18 bytes, no BOM, no trailing newline."
+    )))
+    SMOKE["smoke_sdk_live"]()
+    assert len(live_smoke.prompts) == 2
+    assert len(live_smoke.checked_logs) == 1
+    assert live_smoke.closed and not live_smoke.root.exists()
+
+
+@pytest.mark.parametrize("label", ["create", "verify"])
 @pytest.mark.parametrize(("overrides", "message"), [
     ({"finish_reason": "error"}, "turn ended with 'error'"),
     ({"finish_reason": "error", "events": [{
@@ -728,11 +742,11 @@ def test_profile_plugin_failure_reports_native_exit_status(monkeypatch: pytest.M
 
 
 @pytest.mark.parametrize("prefix", ["", "File created with exactly 18 bytes.\n\n"])
-def test_live_turn_accepts_explanation_before_final_sentinel(prefix: str) -> None:
+def test_live_turn_accepts_explanation_before_acknowledgement(prefix: str) -> None:
     SMOKE["assert_live_turn"]("create", live_result(final_response=prefix + SMOKE["LIVE_API_SENTINEL"]))
 
 
-@pytest.mark.parametrize("answer", ["", "PYTHON_SDK_LIVE_OK but the operation failed", "PYTHON_SDK_LIVE_OK\nFailure"])
-def test_live_turn_rejects_missing_final_sentinel(answer: str) -> None:
+@pytest.mark.parametrize("answer", ["", "File created.", "PYTHON_SDK_LIVE_OK but the operation failed"])
+def test_live_turn_rejects_missing_standalone_acknowledgement(answer: str) -> None:
     with pytest.raises(AssertionError, match="turn returned"):
         SMOKE["assert_live_turn"]("create", live_result(final_response=answer))

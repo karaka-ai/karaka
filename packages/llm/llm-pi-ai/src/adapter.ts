@@ -392,8 +392,6 @@ export class PiAiAdapter extends LlmAdapter {
       try {
         while (true) {
           const result = await watchdog.next(iterator)
-          const timeout = timeoutOf(watchdog.signal, 'LLM_STREAM_IDLE_TIMEOUT')
-          if (timeout !== undefined) throw timeout
           if (result.done) {
             exhausted = true
             return
@@ -403,11 +401,10 @@ export class PiAiAdapter extends LlmAdapter {
       } finally {
         if (!exhausted) {
           consumer.abort('pi-ai stream consumer stopped')
-          try {
-            await iterator.return(undefined)
-          } catch (_abortedSdkTeardown) {
-            // The stable signal already owns SDK termination; return-time abort cannot add an outcome.
-          }
+          // A demand the deadline abandoned can stay pending forever, and this
+          // generator queues its return behind it; the abort above owns SDK termination.
+          /* v8 ignore next -- the detached drain only rejects while unwinding an abandoned stream. */
+          void iterator.return(undefined).catch(() => {})
         }
       }
     } catch (error: unknown) {
