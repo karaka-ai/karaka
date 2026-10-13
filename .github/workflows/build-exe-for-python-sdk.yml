@@ -259,7 +259,9 @@ jobs:
       - name: Build single-exe
         env:
           DSH_BUILD_CLIENT_PROFILE: official
-        run: pnpm exec tsx scripts/build-exe-for-python-sdk.ts --targets=${{ matrix.target }}
+        run: >-
+          pnpm exec tsx scripts/build-exe-for-python-sdk.ts --targets=${{ matrix.target }}
+          ${{ inputs.ci && github.event_name == 'pull_request' && '--artifacts-only' || '' }}
 
       - name: Resolve platform outputs (POSIX)
         id: runtime-posix

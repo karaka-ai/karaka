@@ -61,11 +61,11 @@ After the configured endpoint returns HTTP 2xx, the adapter runs the prepared `a
 | `version` | `1` | Schema version for `dsh_plugin_packages` |
 | `packages` | array | Complete active set for this request |
 | `packages[].name` | string | Exact non-empty npm package name from the owning manifest |
-| `packages[].version` | string | Exact non-empty package version from the same manifest |
+| `packages[].version` | optional string | Exact non-blank package version from the same manifest; absent when unavailable |
 
-Every request re-reads active non-group Loader entries from the host tree and, when available for the request Session, its standing agent-preset tree. Relative and absolute modules use their nearest owning manifest; bare package entries follow the Loader resolution base that activated them. A named manifest without a non-empty version fails request preparation.
+Every request re-reads active non-group Loader entries from the host tree and, when available for the request Session, its standing agent-preset tree. Relative and absolute modules use their nearest owning manifest; bare package entries follow the Loader resolution base that activated them. A named manifest without a non-blank string version contributes `{ name }`, regardless of `private`. Missing names and unreadable manifests omit only the affected entries; package metadata does not block requests.
 
-The sender deduplicates exact `(name, version)` pairs and sorts first by `name`, then by `version`, with a locale-independent text comparison. Simultaneously active versions of one package remain separate entries. Receivers must not collapse the array by package name or infer package activation from array order.
+The sender deduplicates exact `(name, optional version)` pairs and sorts first by `name`, then by `version`, with a locale-independent text comparison and absent versions first. Simultaneously active versions of one package remain separate entries, including a name-only entry. Receivers must accept absent versions, must not collapse the array by package name, and must not infer package activation from array order.
 
 Disabled, pending, failed, unloading, disposed, and structural Loader entries are absent. Ordinary dependencies, loose modules without a named owning package, programmatically mounted child fibers, and in-memory dynamic plugins are also absent because they have no authoritative Loader-backed package identity.
 

@@ -20,7 +20,6 @@
   name: '@deepseek-ai/dsh-agent-instructions'
   config:
     maxBytes: 65536
-    dshHome: !!js process.cwd() + '/.dsh'
     projectRootMarkers:
       - .dsh-project
 

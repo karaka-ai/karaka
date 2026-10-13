@@ -61,11 +61,11 @@
 | `version` | `1` | `dsh_plugin_packages` 的 schema 版本 |
 | `packages` | 数组 | 本次请求的完整存活集合 |
 | `packages[].name` | 字符串 | 来自所属 manifest（元数据清单）的确切非空 npm 包名 |
-| `packages[].version` | 字符串 | 来自同一 manifest 的确切非空包版本 |
+| `packages[].version` | 可选字符串 | 来自同一 manifest 的确切非空白包版本；不可用时省略 |
 
-每个请求都会重新读取宿主树中的存活非分组 Loader 配置项；请求会话存在 standing agent-preset 树时，也会读取该树。相对与绝对模块使用距离自身最近的所属 manifest；裸包配置项使用激活自身的 Loader 解析基准。具名 manifest 未提供非空版本时，请求准备会失败。
+每个请求都会重新读取宿主树中的存活非分组 Loader 配置项；请求会话存在 standing agent-preset 树时，也会读取该树。相对与绝对模块使用距离自身最近的所属 manifest；裸包配置项使用激活自身的 Loader 解析基准。具名 manifest 的版本不是非空白字符串时，会贡献 `{ name }`，不受 `private` 影响。名称缺失或 manifest 不可读时，只省略对应配置项；包元数据不会阻塞请求。
 
-发送方会对确切 `(name, version)` 组合去重，并使用与 locale 无关的文本比较，先按 `name`、再按 `version` 排序。同一包的多个同时存活版本会保留为独立配置项。接收方不得按包名折叠该数组，也不得根据数组顺序推断包的激活关系。
+发送方会对确切 `(name, 可选 version)` 组合去重，并使用与 locale 无关的文本比较，先按 `name`、再按 `version` 排序，缺失版本排在前面。同一包的多个同时存活版本会保留为独立配置项，包括只有名称的配置项。接收方必须接受版本缺失，不得按包名折叠该数组，也不得根据数组顺序推断包的激活关系。
 
 该清单不包含已禁用、pending、failed、unloading、disposed 和结构性 Loader 配置项。普通依赖、没有具名所属包的松散模块、以编程方式挂载的子 fiber，以及内存动态插件也不在其中，因为它们没有权威的 Loader 包来源信息。
 

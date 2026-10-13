@@ -218,6 +218,7 @@
     { "path": "./packages/karaka/mcp-application" },
     { "path": "./packages/karaka/transport-http" },
     { "path": "./packages/karaka/agent" },
+    { "path": "./packages/experimental/translator" },
     { "path": "./packages/client/product-analytics/tsconfig.host.json" },
     { "path": "./packages/telemetry/otel" },
     { "path": "./packages/experimental/speech-to-text" },
