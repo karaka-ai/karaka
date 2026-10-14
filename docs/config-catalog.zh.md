@@ -67,8 +67,6 @@ export interface Config {
 ```ts config-catalog
 /** User-facing workspace instruction loader configuration. */
 export interface Config {
-  /** Harness home containing the fixed user-global `AGENTS.md`; defaults to `$DSH_HOME` or `~/.dsh`. */
-  dshHome?: string
   /** Directory entries that identify the project root while walking upward from the session cwd. */
   projectRootMarkers?: string[]
   /** UTF-8 byte cap for one rendered baseline or dynamic batch; non-positive or non-finite disables loading. */
@@ -1067,7 +1065,8 @@ export interface InspectorOptions {
 
 ## `@deepseek-ai/dsh-experimental-ptc-runtime-python`
 
-- `source`: [`packages/experimental/ptc-runtime-python/src/index.ts:42`](../packages/experimental/ptc-runtime-python/src/index.ts)
+- `inject`: `sandbox` · `sandboxPolicy`
+- `source`: [`packages/experimental/ptc-runtime-python/src/index.ts:45`](../packages/experimental/ptc-runtime-python/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: every cap, changeable from `cordis.yml` (no hardcoded tunables). */
@@ -1226,6 +1225,35 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-tool-agent-team -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-translator -->
+<a id="deepseek-aidsh-experimental-translator"></a>
+
+## `@deepseek-ai/dsh-experimental-translator`
+
+- `source`: [`packages/experimental/translator/src/index.ts:19`](../packages/experimental/translator/src/index.ts)
+
+```ts config-catalog
+/** Routing and bounds for one anonymous provider request. */
+export interface Config {
+  /** Provider selected when a consumer omits it. */
+  provider: TranslationProvider
+  /** Google-compatible anonymous translation endpoint. */
+  googleEndpoint: string
+  /** Bing-compatible Microsoft Edge browser translation endpoint. */
+  bingEndpoint: string
+  /** Deadline covering the request and complete response body, in milliseconds. */
+  timeoutMs: number
+  /** Maximum UTF-16 code units per request; at least two to admit one supplementary-plane character. */
+  maxTextChars: number
+  /** Maximum response body bytes before JSON parsing. */
+  maxResponseBytes: number
+}
+
+/** Anonymous browser endpoint selected for one translation. */
+export type TranslationProvider = 'google' | 'bing'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-translator -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-file-reference-local -->
 <a id="deepseek-aidsh-file-reference-local"></a>
@@ -2864,7 +2892,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-skill-filesystem`
 
 - `inject`: `skills`
-- `source`: [`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
+- `source`: [`packages/skill/skill-filesystem/src/index.ts:48`](../packages/skill/skill-filesystem/src/index.ts)
 
 ```ts config-catalog
 /** Local filesystem skill provider configuration. */

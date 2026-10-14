@@ -3454,6 +3454,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'translator',
+    summary: 'One Host service with explicit routing, cancellation and quiescent unload.',
+    description: 'One Host service with explicit routing, cancellation and quiescent unload.',
+    methods: [
+      {
+        signature: 'resolve(request: TranslationRequest): TranslationSpec',
+        description: 'Resolve provider and source-language defaults without sending text.',
+        parameters: [{ name: 'request', description: 'consumer text, destination and optional routing choices.' }],
+        returns: 'a complete specification; exceeding `maxTextChars` throws `TRANSLATION_TEXT_LIMIT`.',
+      },
+      {
+        signature: 'async translate(spec: TranslationSpec, signal?: AbortSignal): Promise<string>',
+        description: 'Translate one resolved specification; the selected provider receives its text.',
+        parameters: [{ name: 'spec', description: 'complete routing and language choices from `resolve()`.' }, { name: 'signal', description: 'optional caller cancellation, combined with service disposal.' }],
+        returns: 'translated plain text; rejects provider/limit failures and preserves cancellation reasons.',
+      },
+    ],
+  },
+  {
     key: 'typert',
     summary: 'Registry of generated schemas, package reflection, invocations, and Remote dependency providers.',
     description: 'Registry of generated schemas, package reflection, invocations, and Remote dependency providers.',
@@ -8049,6 +8068,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TranscriptionRequest',
     declaration: 'export interface TranscriptionRequest {\n    readonly audioBase64: string;\n    readonly providerId?: SpeechProviderId;\n    readonly language?: string;\n}',
+  },
+  {
+    name: 'TranslationProvider',
+    declaration: 'export type TranslationProvider = \'google\' | \'bing\';',
+  },
+  {
+    name: 'TranslationRequest',
+    declaration: 'export interface TranslationRequest {\n    readonly text: string;\n    readonly targetLanguage: string;\n    readonly sourceLanguage?: string;\n    readonly provider?: TranslationProvider;\n}',
+  },
+  {
+    name: 'TranslationSpec',
+    declaration: 'export interface TranslationSpec {\n    readonly text: string;\n    readonly targetLanguage: string;\n    readonly sourceLanguage: string;\n    readonly provider: TranslationProvider;\n}',
   },
   {
     name: 'TurnCompleteInput',

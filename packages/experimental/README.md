@@ -24,6 +24,7 @@ Experimental prototypes may change their contracts and carry no support promise.
 
 | Package | Role | ctx key |
 |---|---|---|
+| [`translator`](translator/README.md) | Anonymous Google and Bing text translation | `ctx.translator` |
 | [`speech-to-text`](speech-to-text/README.md) | Named speech recognition providers | `ctx.speechToText` |
 | [`speech-to-text-sensevoice`](speech-to-text-sensevoice/README.md) | Managed local SenseVoice inference | — |
 | [`api-speech-to-text`](api-speech-to-text/README.md) | Authenticated transient transcription Remote | `ctx.speechController` |

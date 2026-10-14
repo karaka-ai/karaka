@@ -250,6 +250,31 @@ describe('translation pairing records', () => {
       .toEqual(record(`${en}\nSee [bar](bar.zh.md).\n`, `${zh}\nSee [bar](bar.md).\n`))
   })
 
+  it('retains section hashes after normalized links move later heading offsets', () => {
+    const english = '# Guide\n\n[Reference](bar.md?x=1&amp;y=2#tail)\n\n## Tail\n\nTail body.\n'
+    const chinese = '# 指南\n\n[参考](bar.zh.md?x=1&amp;y=2#tail)\n\n## 尾部\n\n尾部正文。\n'
+    const trees = { en: parseTranslationMarkdown(english), zh: parseTranslationMarkdown(chinese) }
+    const originalTrees = structuredClone(trees)
+    const computed = computeTranslationPairingRecord(paths, english, chinese, context, trees)
+
+    expect([...computed]).toEqual([
+      ['/guide', { en: '3f43f06d1244d874', zh: '021cfe53b05ba084' }],
+      ['/guide/tail', { en: '945d8537bf1f2b5f', zh: '0a851cb395705d76' }],
+    ])
+    expect(computed).toEqual(record(english, chinese))
+    expect(trees).toEqual(originalTrees)
+  })
+
+  it('retains section hashes when the authored tree needs no link normalization', () => {
+    const english = '# Guide\n\nBody.\n'
+    const chinese = '# 指南\n\n正文。\n'
+    const trees = { en: parseTranslationMarkdown(english), zh: parseTranslationMarkdown(chinese) }
+
+    expect([...computeTranslationPairingRecord(paths, english, chinese, context, trees)]).toEqual([
+      ['/guide', { en: '5e1bfa97a822af7a', zh: '3409c92bef7306bb' }],
+    ])
+  })
+
   it('refuses sides with different heading counts', () => {
     expect(() => record(en, `${zh}\n## 额外\n`)).toThrow('docs/foo.md has 3 heading(s) but docs/foo.zh.md has 4')
   })

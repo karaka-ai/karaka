@@ -89,7 +89,7 @@ jobs:
       # The vendored packages publish their own sources and build outputs; the
       # host build produces what their manifests select.
       - name: Build
-        run: pnpm run build:lib:host
+        run: ${{ github.event_name == 'pull_request' && 'pnpm exec tsx scripts/compile-referenced-projects.ts host-libraries' || 'pnpm run build:lib:host' }}
 
       # Concurrency here is rehearsal-only: the credentialed publish workflows
       # invoke release:pack without the flag and keep the strictly serial path.

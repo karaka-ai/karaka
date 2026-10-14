@@ -2928,7 +2928,9 @@ function classShape(node: ts.ClassDeclaration): ts.ClassDeclaration {
     (ts.canHaveModifiers(member) ? ts.getModifiers(member) : undefined)?.some(modifier =>
       modifier.kind === ts.SyntaxKind.PrivateKeyword || modifier.kind === ts.SyntaxKind.ProtectedKeyword) ?? false
   const members = node.members.flatMap((member): ts.ClassElement[] => {
-    if (nonPublic(member) || (ts.isPropertyDeclaration(member) && ts.isPrivateIdentifier(member.name))) return []
+    const name = ts.getNameOfDeclaration(member)
+    if (ts.isClassStaticBlockDeclaration(member) || nonPublic(member)
+      || (name !== undefined && ts.isPrivateIdentifier(name))) return []
     if (ts.isMethodDeclaration(member)) {
       return [ts.factory.updateMethodDeclaration(
         member,

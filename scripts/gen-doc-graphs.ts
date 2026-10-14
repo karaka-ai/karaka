@@ -141,6 +141,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The [browser-auth package](../packages/karaka/browser-auth/README.md) verifies application-bound JWTs and allowed browser origins before creating a caller identity.',
   },
   {
+    key: 'translator',
+    pkg: 'experimental-translator',
+    title: 'Anonymous text translation',
+    mode: 'service',
+    note: 'Resolves Google or Bing requests and bounds provider calls independently of Sessions.',
+  },
+  {
     key: 'hmr',
     pkg: 'hmr',
     title: 'Serialized module and configuration reloads',

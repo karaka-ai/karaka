@@ -6,8 +6,8 @@
   en: a11f106978c9dce7
   zh: a11f106978c9dce7
 /session-persistence-event-catalog:
-  en: e7c80d1de4d328b4
-  zh: d9f368c27fd9f998
+  en: 1387c4505dde2faf
+  zh: 48570fa1c13d6910
 /session-persistence-event-catalog/persistence-type-fingerprints:
   en: 33dd28b1c768cd8b
   zh: 7256442baf2faed1
@@ -906,14 +906,14 @@
   en: 9ec6b8bd755f3e33
   zh: 9ec6b8bd755f3e33
 /session-persistence-event-catalog/resolved-persistence-types/agentinstructionchange:
-  en: c79fd9b4b7a0a5ba
-  zh: d196895911636220
+  en: 98710438ecb65dd6
+  zh: 82c06bda2056f000
 /session-persistence-event-catalog/resolved-persistence-types/agentinstructionchange~2:
   en: dba6b1babdde0cfe
   zh: 99b209824b99b693
 /session-persistence-event-catalog/resolved-persistence-types/agentinstructionsource:
-  en: 4b46cc6c412c939d
-  zh: 77fc7f61972ab194
+  en: ef87a859325357fc
+  zh: f132439b0161ece6
 /session-persistence-event-catalog/resolved-persistence-types/agentmessagesource:
   en: 69385a93c3abf7f5
   zh: 0adbb7fd29dccb2e

@@ -5,7 +5,9 @@
 
 [English](persistence-catalog.md) | 中文
 
-本目录列出仓库声明的每个持久化 Session 事件及其源码声明和解析类型，覆盖逻辑与物理 header、事件信封以及各插件的声明合并。回放规则参见 [Session](subsystems/session.zh.md)，存储规则参见[持久化](subsystems/persistence.zh.md)。
+本目录列出仓库声明的每个持久化 Session 事件及其源码声明和解析类型，覆盖逻辑与物理 header、事件信封及所有 SessionEventMap 声明合并。回放规则参见 [Session](subsystems/session.zh.md)，存储规则参见[持久化](subsystems/persistence.zh.md)。
+
+实验性记录单独列在[实验性插件记录目录](experimental-persistence-catalog.zh.md)中。
 
 运行 `pnpm run gen-persistence-catalog` 可重新生成目录的两种语言、配对记录、已知事件模块和机器 schema 目录。`pnpm run verify-persistence-catalog` 检查所有生成文件。声明围栏保留源码 JSDoc 和类型引用；解析后的定义展开其传递引用结构。
 
@@ -2935,7 +2937,7 @@ SHA-256: `af6e173f7be819bcd0a5c8d77918649c10ce761d8a184ff472f2e01ce64eb2e0`
 
 SHA-256: `83da72c6857601c75da11212ef847f57d457b9c99f0a82246dcdff3e26700239`
 
-来源：[`packages/context/agent-instructions/src/render.ts:47`](../packages/context/agent-instructions/src/render.ts)
+来源：[`packages/context/agent-instructions/src/render.ts:53`](../packages/context/agent-instructions/src/render.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -2962,7 +2964,7 @@ SHA-256: `2ab12a0e345658f9342816d773fe610f049982bcad82631f43b9205abe43e5ee`
 
 SHA-256: `6f22a9d02b9a1f1157f3b0e7bdccd7e7b12b085c4efdb709dfc74a465cd4e590`
 
-来源：[`packages/context/agent-instructions/src/state.ts:37`](../packages/context/agent-instructions/src/state.ts)
+来源：[`packages/context/agent-instructions/src/state.ts:40`](../packages/context/agent-instructions/src/state.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|

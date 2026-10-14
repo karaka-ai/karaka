@@ -18,6 +18,8 @@ flowchart LR
   svc_serverAuth["ctx.serverAuth<br/>Application server authentication"]
   pkg__karaka_ai_browser_auth["@karaka-ai/browser-auth"]
   svc_karakaBrowserAuth["ctx.karakaBrowserAuth<br/>Browser Connection credential verification"]
+  pkg_experimental_translator["experimental-translator"]
+  svc_translator["ctx.translator<br/>Anonymous text translation"]
   pkg_hmr["hmr"]
   svc_hmr["ctx.hmr<br/>Serialized module and configuration reloads"]
   pkg_app_boot["app-boot"]
@@ -342,6 +344,7 @@ flowchart LR
   pkg_experimental_ptc_runtime_python --> svc_ptcRuntime
   pkg_experimental_speech_to_text --> svc_speechToText
   pkg_experimental_speech_to_text_sensevoice --> svc_speechToText
+  pkg_experimental_translator --> svc_translator
   pkg_file_reference --> svc_fileReferences
   pkg_file_reference_local --> svc_fileReferences
   pkg_fs --> svc_fs
@@ -596,6 +599,7 @@ flowchart LR
 | `ctx.karakaIdentity` | `core` | `@karaka-ai/identity` | - | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | [identity 包](../packages/karaka/identity/README.zh.md) 在解析持久会话与 Session 引用前验证应用所有者的访问权限。 |
 | `ctx.serverAuth` | `seam` | `@karaka-ai/server-auth` | `@karaka-ai/server-auth` | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | [server-auth 包](../packages/karaka/server-auth/README.zh.md) 声明可替换的入站和出站认证，并提供共享 bearer 凭证实现。 |
 | `ctx.karakaBrowserAuth` | `core` | `@karaka-ai/browser-auth` | - | `@karaka-ai/transport-http` | - | [browser-auth 包](../packages/karaka/browser-auth/README.zh.md) 在创建调用者身份前验证绑定应用的 JWT 和允许的浏览器源。 |
+| `ctx.translator` | `service` | [`experimental-translator`](../packages/experimental/translator) | - | - | - | 独立于 Session 解析 Google 或 Bing 请求，并限制 Provider 调用。 |
 | `ctx.hmr` | `core` | [`hmr`](../packages/boot/hmr) | - | [`app-boot`](../packages/boot/app-boot) | - | 负责模块和精确配置监听；应用修改共用其队列，自动重载等待应用文件锁。 |
 | `ctx.pluginRegistryProbe` | `core` | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | 在 Host 上并发比较公共安装源响应；初始安装源推荐由 Client 负责。 |
 | `ctx.pluginManager` | `core` | [`plugin-manager`](../packages/boot/plugin-manager) | - | [`plugin-manager`](../packages/boot/plugin-manager), `ui-settings-plugin-inventory` | - | 与 CLI 共享 profile 包操作，并向 Web 和 Agent 调用方分别报告持久状态与运行状态。 |
