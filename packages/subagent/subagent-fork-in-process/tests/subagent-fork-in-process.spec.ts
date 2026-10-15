@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -30,6 +31,7 @@ async function setup(script: Script) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(fork, { providerName: 'fork' })
   ctx.llm.registerAdapter(['mock'], new MockAdapter(script))
@@ -195,6 +197,7 @@ describe('dsh-subagent-fork-in-process', () => {
   it('unregisters the provider when its fiber is disposed (HMR safety)', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(AgentRegistry)
     const fiber = await ctx.plugin(fork, { providerName: 'fork' })
@@ -211,6 +214,7 @@ describe('dsh-subagent-fork-in-process', () => {
     // Before any completed parent turn there is nothing to inherit, so the
     // child starts fresh rather than carrying an empty seed.
     const fresh = await provider.prepareContinuable!({
+      cwd: process.cwd(),
       sessionId: SessionId('continuable-fresh'),
       parent,
       signal,
@@ -221,6 +225,7 @@ describe('dsh-subagent-fork-in-process', () => {
     parent.followup(createUserMessage({ content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } }))
     await parent.whenIdle()
     const seeded = await provider.prepareContinuable!({
+      cwd: process.cwd(),
       sessionId: SessionId('continuable-seeded'),
       parent,
       signal,

@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from './working-directory-fixture.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -46,6 +47,7 @@ async function setup(
   persistenceDisposers.push(() => persistence.dispose())
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(TestSessionQuery)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
@@ -185,6 +187,7 @@ describe('SubagentRuntime.listChildren', () => {
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(TestSessionQuery)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     const ancestor = ctx.sessions.create(SessionId('catalog-ancestor'))
     ancestor.append('turn/start', { turn: 1 })
@@ -214,6 +217,7 @@ describe('SubagentRuntime.listChildren', () => {
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(TestSessionQuery)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     const parent = ctx.sessions.create(SessionId('chunk-parent'))
     for (let index = 0; index < 1_001; index += 1) {
@@ -245,6 +249,7 @@ describe('SubagentRuntime.listChildren', () => {
   it('fails loud when the query service is unavailable', async () => {
     const withoutProjection = new Context()
     await withoutProjection.plugin(SessionStore)
+    await mountWorkingDirectoryFixture(withoutProjection)
     await withoutProjection.plugin(SubagentRuntime)
     const parent = withoutProjection.sessions.create(SessionId('parent'))
     await expect(withoutProjection.subagents.listChildren(parent.id)).rejects.toMatchObject({
@@ -412,6 +417,7 @@ describe('SubagentRuntime.listDescendants', () => {
 
   it('fails before reading when the Session store or query service is absent', async () => {
     const ctx = new Context()
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await expect(ctx.subagents.listDescendants(SessionId('root'))).rejects.toMatchObject({ code: 'SUBAGENT_CONTROL_SESSION_STORE_UNAVAILABLE' })
     await ctx.plugin(SessionStore)

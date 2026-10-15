@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
@@ -22,6 +23,7 @@ type Script = ConstructorParameters<typeof MockAdapter>[0]
 async function setup(script: Script, parentOptions: Partial<AgentOptions> = {}) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SubagentRuntime)
   const adapter = new MockAdapter(script)
@@ -36,6 +38,7 @@ function request(parent: Agent, signal = new AbortController().signal) {
     prompt: [{ type: 'text' as const, text: 'child task' }],
     parent,
     signal,
+    cwd: parent.session?.header.cwd ?? process.cwd(),
     descriptor: snapshotSubagentDescriptor({
       mode: 'one-shot',
       provider: 'test',
@@ -375,6 +378,26 @@ describe('startInProcessRun', () => {
     }, {})).rejects.toThrow('unknown global tool')
     expect(ctx.agents.list()).toHaveLength(beforeAgents)
     expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+  })
+
+  it('rolls back child creation when its context has no directory service', async () => {
+    const ctx = new Context()
+    await mountAgentLoopTestDependencies(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    const adapter = new MockAdapter([])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = await ctx.agentLoop.create(SessionId('parent-without-directory-service'), { provider: 'mock', model: 'mock' })
+    const beforeAgents = ctx.agents.list().length
+    const beforeSessions = ctx.sessions.list().length
+    try {
+      await expect(startInProcessRun(request(parent), {}))
+        .rejects.toThrow('in-process subagents require the working-directory service')
+      expect(ctx.agents.list()).toHaveLength(beforeAgents)
+      expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+      expect(adapter.requests).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('treats abort after factory publication as a cancelled run with an id', async () => {

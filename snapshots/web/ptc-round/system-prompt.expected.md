@@ -285,6 +285,8 @@ interface ToolArgsMap {
   } & Record<string, JsonValue>;
   /** Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. It runs in the background by default and returns a subagent id you can continue with `send_message`; you are notified when the run settles. */
   subagent: {
+    /** Initial child working directory. Relative paths use your current directory; omitted inherits it. Later directory changes in either agent are independent. */
+    cwd?: string;
     /** A short (3-5 word) description of the delegated task, for display. */
     description: string;
     /** The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs. */
@@ -294,6 +296,8 @@ interface ToolArgsMap {
   } & Record<string, JsonValue>;
   /** Delegate a task to a subagent that inherits this conversation: a child agent seeded with all completed turns so far (it does not see the current in-flight turn). Use this when the subtask builds on this conversation's context — a follow-up analysis, a review, a continuation — without consuming this conversation's context for the work itself. You receive its result, not its intermediate steps. It runs in the background by default and returns a subagent id you can continue with `send_message`; you are notified when the run settles. */
   subagent_fork: {
+    /** Initial child working directory. Relative paths use your current directory; omitted inherits it. Later directory changes in either agent are independent. */
+    cwd?: string;
     /** A short (3-5 word) description of the delegated task, for display. */
     description: string;
     /** The task for the subagent. It already sees this conversation's completed turns, so build on them freely and state only what is new. */
@@ -336,6 +340,11 @@ interface ToolArgsMap {
     /** 1–4 search queries; their results are merged. */
     queries: string[];
   } & Record<string, JsonValue>;
+  /** Read the current working directory, or change it with cd. Relative paths use the current directory. Existing shells and running processes keep their own directories. */
+  working_directory: {
+    /** Existing directory to enter. Omit to read the current directory. */
+    cd?: string;
+  } & Record<string, JsonValue>;
   /** Create or fully replace a UTF-8 text file. */
   write: {
     /** Path to write, resolved by the filesystem backend. Provide `file_path` before `content` in the arguments. */
@@ -360,13 +369,16 @@ interface ToolOutputMap {
   bash: {
     kind: "background";
     jobId: string;
+    cwd: string;
   } | {
     kind: "promoted";
+    cwd: string;
     jobId: string;
     timeoutMs: number;
     output: string;
   } | {
     kind: "foreground";
+    cwd: string;
     exitCode: number | null;
     signal: string | null;
     timedOut: boolean;
@@ -408,6 +420,7 @@ interface ToolOutputMap {
     activation: "armed" | "disarmed";
   };
   edit: {
+    /** Canonical absolute path in the filesystem execution world. */
     path: string;
     before: string;
     after: string;
@@ -501,6 +514,7 @@ interface ToolOutputMap {
     }[];
   };
   read: {
+    /** Canonical absolute path in the filesystem execution world. */
     path: string;
     offset: number;
     lines: {
@@ -510,6 +524,7 @@ interface ToolOutputMap {
     totalLines: number;
   };
   read_image: {
+    /** Canonical absolute path in the filesystem execution world. */
     path: string;
     image: {
       attachmentId: string;
@@ -908,7 +923,12 @@ interface ToolOutputMap {
     }[];
     truncated: boolean;
   };
+  working_directory: {
+    /** Current absolute working directory. */
+    cwd: string;
+  };
   write: {
+    /** Canonical absolute path in the filesystem execution world. */
     path: string;
     operation: "create" | "update";
     before: string | null;
@@ -933,5 +953,3 @@ Prefer showing the primary results within your final response alongside a brief 
 The DeepSeek Harness implementation checkout is at {{sourceRoot}}. The checkout location and current working directory are separate values and may differ; never infer the working directory from this path. Use pwd to determine the current working directory. Use this checkout only to inspect or extend DSH itself.
 
 You are interacting with the user through the DeepSeek Harness Web GUI at {{webUrl}}. When the user refers to "this page", "this GUI", or "this app" without naming another target, they mean this GUI. The browser provides no implicit DOM, route, or screenshot context. The client-plugin HMR receiver is active, but client-plugin changes reload without a refresh only while `pnpm run dev:web` is also running from this same checkout to rebuild their bundles; verify that watcher before promising automatic updates. Every other change — the apps/web shell and plain packages — requires rebuilding the affected Web artifacts and verifying this existing URL after a page refresh. Starting another server does not update this GUI. The apps/web Vite entry builds the shell but is not a standalone application because only dsh web injects window.__DSH_BOOT__. Do not start a replacement server unless the user asks; if one is needed, use a managed background job and verify its exact URL.
-
-Your working directory is {{cwd}}.

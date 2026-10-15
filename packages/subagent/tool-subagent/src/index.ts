@@ -387,6 +387,10 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             : ' This call waits for the result by default.'
           : ' This call waits for the subagent and returns its result.') + choiceDescription,
         parameters: {
+          cwd: {
+            type: 'string',
+            description: 'Initial child working directory. Relative paths use your current directory; omitted inherits it. Later directory changes in either agent are independent.',
+          },
           description: {
             type: 'string',
             required: true,
@@ -513,6 +517,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
           exec.signal.throwIfAborted()
           const maxDepth = runtimeCtx.subagents.resolveMaxDepth(config.maxDepth)
           const request = {
+            ...args.cwd === undefined ? {} : { cwd: args.cwd },
             label: args.description,
             prompt: [{ type: 'text', text: args.prompt }] as ContentBlock[],
             parent,

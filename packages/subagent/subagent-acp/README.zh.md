@@ -38,7 +38,6 @@ kind: "package-reference"
 | `providerName` | `acp` | `ctx.subagents` 上的注册表名称 |
 | `command` | 必填 | 每次运行时 spawn 的可执行文件（子 ACP agent） |
 | `args` | `[]` | 命令参数 |
-| `cwd` | 父会话 cwd | 子进程及其 ACP 会话的工作目录覆盖值 |
 | `permission` | `reject` | 自动应答权限请求：拒绝，或选择第一个 `allow_once` 或 `allow_always` 选项（`allow`） |
 | `env` | `{}` | 叠加在已清理凭据的父环境之上的显式子环境 |
 | `disposeEofGraceMs` | `6000` | stdin EOF 之后、平台终止之前的宽限 |
@@ -91,7 +90,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 ### 启动与所有权流程
 
-一次启动先解析子 agent 的工作目录（配置的 `cwd` 覆盖值，否则取父会话 cwd），经子进程 seam spawn 命令，完成 ACP `initialize` 与 `newSession` 握手，然后才发布运行。兑现意味着远程会话已就绪、所有权已转移给调用方。dispose（资源释放）是幂等的：先关闭 stdin 并按配置的宽限等待协作式完全停稳，再经 SIGTERM 升级到 SIGKILL，并等待整个 managed range 退出。清理失败会作为有序的安全事实保持可观察，且绝不声称已经完全停稳。
+一次启动先解析子 agent 的工作目录（请求覆盖值，否则取父级当前有效目录），经子进程 seam spawn 命令，完成 ACP `initialize` 与 `newSession` 握手，然后才发布运行。兑现意味着远程会话已就绪、所有权已转移给调用方。dispose（资源释放）是幂等的：先关闭 stdin 并按配置的宽限等待协作式完全停稳，再经 SIGTERM 升级到 SIGKILL，并等待整个 managed range 退出。清理失败会作为有序的安全事实保持可观察，且绝不声称已经完全停稳。
 
 ### 停止原因映射
 

@@ -60,6 +60,8 @@ This section explains the design decisions behind the library and points at the 
 
 ### Processing pipeline
 
+`selectHookGroups` selects nonempty matching groups in config order. Each bridge resolves the current working directory only when this selection contains commands to run. `appendHookInvoked` omits absent or undefined matchers from the recorded event.
+
 The library is a chain of single-purpose steps, one function each: validate the matcher pattern, run the command through the `dsh-shell` executor, decode the outcome, merge every matched hook's outcome into one most-restrictive result, and record the durable `hook/*` event pair. The matcher's `mode` parameter is the single axis the dialects differ on — `claude-code` interprets a pattern as literal alternatives or a regex, `codex` always as an unanchored regex. Every step degrades to a contained outcome instead of throwing, so a hook can never crash the calling turn: an invalid regex is a non-match, an executor rejection becomes a `HookOutput` with no exit code, exit 2 blocks with stderr as the reason, and every other failure stays non-blocking. Merging applies `deny > ask > allow` precedence, keeps the first `continue: false` stop sticky, and accumulates context in hook order. Detached runs are tracked so `fiber.dispose()` reaches quiescence. The steps live in [`src/matcher.ts`](src/matcher.ts), [`src/runner.ts`](src/runner.ts), [`src/codec.ts`](src/codec.ts), [`src/merge.ts`](src/merge.ts), [`src/events.ts`](src/events.ts), and [`src/detached.ts`](src/detached.ts).
 
 ### `hook/*` session events
@@ -82,7 +84,7 @@ The [hook-protocol-lib Agent Note](../../../.agents/notes/archived/feature/2026-
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Public exports of every primitive and event helper |
-| [`src/matcher.ts`](src/matcher.ts) | Match-all sentinels, literal-vs-regex mode, validation and runtime matching |
+| [`src/matcher.ts`](src/matcher.ts) | Matcher validation, dialect matching, and nonempty command-group selection |
 | [`src/runner.ts`](src/runner.ts) | `runHook` execution through `ctx.shell` and `DEFAULT_HOOK_TIMEOUT_MS` |
 | [`src/codec.ts`](src/codec.ts) | Exit-code and structured-stdout decoding into `HookOutput` |
 | [`src/merge.ts`](src/merge.ts) | Most-restrictive merge and the `MergedHookOutcome` type |

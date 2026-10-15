@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+`terminal_open` 默认使用 Session 的当前工作目录，并以该目录解析相对 `cwd` 覆盖值。Session 切换目录后，已打开的终端仍保留各自的目录。
+
 当组合挂载了终端后端、且模型应当能跨调用使用终端状态时启用这些工具——使用调试器单步调试、在 REPL 中探索，或中断前台命令后回到 shell。指引章节会引导模型对有界操作使用单次 bash、read、write 与 edit 工具。
 
 ### 六个工具

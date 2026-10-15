@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 /**
  * Composition inheritance: a child runs on the preset its parent runs on.
  *
@@ -38,6 +39,7 @@ async function setupPresetHost(): Promise<{ ctx: Context; adapter: MockAdapter; 
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await mountAgentLoopTestDependencies(ctx)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(AgentPresets, { default: 'coding' })
   for (const [id, tool] of [['coding', 'preset_only'], ['reviewing', 'reviewing_only']] as const) {
@@ -60,6 +62,7 @@ function spawnRequest(parent: Agent) {
     prompt: [{ type: 'text' as const, text: 'child task' }],
     parent,
     signal: new AbortController().signal,
+    cwd: parent.session?.header.cwd ?? process.cwd(),
     descriptor: snapshotSubagentDescriptor({
       mode: 'one-shot' as const,
       provider: 'spawn',

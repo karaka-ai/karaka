@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
+import { provideWorkingDirectoryFixture, mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'
 import { NodePtcRuntime } from '@deepseek-ai/dsh-ptc-runtime-node'
 import * as FsObservationPolicy from '@deepseek-ai/dsh-fs-observation-policy'
@@ -253,6 +253,7 @@ it('certifies eight Auto risk/authorization cases with zero retries and zero ski
   if (REAL && !process.env.DEEPSEEK_API_KEY) throw new Error('Real Auto certification requires DEEPSEEK_API_KEY')
   const root = await mkdtemp(join(tmpdir(), 'dsh-auto-review-'))
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   try {
     await chmod(root, 0o700)
     const workspace = join(root, 'workspace')
@@ -360,6 +361,7 @@ it.each(['native', 'ptc-inner'] as const)('feeds denial back, re-reviews a new c
 }, async (path) => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-auto-review-recovery-'))
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   try {
     const dshHome = join(root, 'home')
     await mkdir(dshHome)

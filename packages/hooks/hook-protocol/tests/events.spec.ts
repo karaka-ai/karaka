@@ -21,14 +21,12 @@ describe('hook/* session events', () => {
     expect((ev as unknown as { surfaceOp?: unknown }).surfaceOp).toBeUndefined()
   })
 
-  it('omits matcher when absent (match-all hook)', () => {
+  it.each([{}, { matcher: undefined }])('omits an absent or undefined matcher from the event (%j)', (matcher) => {
     const session = Session.create(SessionId('s'))
-    appendHookInvoked(session, { turn: 2, point: 'Stop', dialect: 'codex', handlerId: 'h2' })
+    appendHookInvoked(session, { turn: 2, point: 'Stop', dialect: 'codex', handlerId: 'h2', ...matcher })
 
     const ev = session.snapshotEvents().find(e => e.type === 'hook/invoked')
-    if (ev?.type === 'hook/invoked') {
-      expect('matcher' in ev.data).toBe(false)
-    }
+    expect(ev?.data).toEqual({ turn: 2, point: 'Stop', dialect: 'codex', handlerId: 'h2' })
   })
 
   it('appendHookResult derives decision/exitCode/stderrSummary from the output', () => {

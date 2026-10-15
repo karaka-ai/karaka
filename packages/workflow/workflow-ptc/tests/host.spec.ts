@@ -1,3 +1,4 @@
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Context } from '@deepseek-ai/cordis'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { PtcBindingFunction, PtcRunRequest, PtcRunResult, PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
@@ -31,6 +32,7 @@ async function setup(execute?: (bindings: HostBindings, spec: PtcRunSpec) => Pro
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjections)
   await ctx.plugin(SandboxPolicy, { mode: 'read-only' })
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   ctx.subagents.registerProvider({
     name: 'stub',
@@ -56,6 +58,35 @@ async function setup(execute?: (bindings: HostBindings, spec: PtcRunSpec) => Pro
 }
 
 describe('workflow host callback validation', () => {
+  it('retains its selected directory for the process and later children when the parent moves', async () => {
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    let launched: PtcRunSpec | undefined
+    const { ctx, start, parent } = await setup(async (bindings, spec) => {
+      launched = spec
+      entered.resolve(undefined)
+      await release.promise
+      await bindings.startChild!({ prompt: 'child' })
+      return completed
+    })
+    const initial = `${process.cwd()}/selected`
+    const ensureDirectory = vi.spyOn(ctx.workingDirectory, 'ensure').mockResolvedValue(initial)
+    const childStart = vi.spyOn(ctx.subagents, 'start')
+    const run = start()
+    try {
+      await entered.promise
+      ensureDirectory.mockResolvedValue(`${process.cwd()}/later`)
+      release.resolve(undefined)
+      expect((await run.result).stopReason).toBe('completed')
+      expect(launched?.cwd).toBe(initial)
+      expect(launched?.sandboxPolicy?.workspaceRoot).toBe(parent.session.header.cwd)
+      expect(childStart).toHaveBeenCalledWith('stub', expect.objectContaining({ cwd: initial }))
+      expect(ensureDirectory).toHaveBeenCalledOnce()
+    } finally {
+      release.resolve(undefined)
+      await run.dispose()
+    }
+  })
   it.each([
     ['startChild', null, 'requires an object'],
     ['startChild', [], 'requires an object'],

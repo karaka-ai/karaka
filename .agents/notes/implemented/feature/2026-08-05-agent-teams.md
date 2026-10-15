@@ -50,9 +50,9 @@ Shared tasks are complete snapshots with Team-local ids and monotonic revisions.
 
 ## Shared checkout boundary
 
-All members use the same cwd and observe writes immediately. The policy tells members to partition tasks, record advisory write scopes, order dependent work, and let the Lead inspect the final diff and run tests. A filesystem stale-version rejection requires rereading and rebasing the intended change. No equivalent guarantee is claimed for Bash, formatters, code generation, or direct external writes.
+Members start in the Lead’s current directory and observe shared filesystem writes immediately. Later directory changes stay local to each Session. The policy tells members to partition tasks, record advisory write scopes, order dependent work, and let the Lead inspect the final diff and run tests. A filesystem stale-version rejection requires rereading and rebasing the intended change. No equivalent guarantee is claimed for Bash, formatters, code generation, or direct external writes.
 
-Worktree isolation is not a harness runtime behavior. A deployment or prompt may arrange separate worktrees, but the Team domain does not infer branches, merge changes, or silently change cwd. This preserves the existing same-world subagent and sandbox contracts.
+The Team domain does not infer branches, create worktrees, merge changes, or silently change cwd. A deployment or caller can use [explicit worktree creation](2026-09-13-explicit-worktree-creation.md) separately. This preserves the existing same-world subagent and sandbox contracts.
 
 ## Web projection
 

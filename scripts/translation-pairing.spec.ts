@@ -133,6 +133,7 @@ describe('translation pairing manifest', () => {
 
 describe('translation pairing switchers', () => {
   it('exempts only paired generated English sources from reciprocal switchers', () => {
+    expect(requiresSourceLanguageSwitcher('docs/cli-help.md')).toBe(false)
     expect(requiresSourceLanguageSwitcher('docs/config-catalog.md')).toBe(false)
     expect(requiresSourceLanguageSwitcher('docs/cordis-api/context.md')).toBe(false)
     expect(requiresSourceLanguageSwitcher('docs/cordis-api/inherited.md')).toBe(false)

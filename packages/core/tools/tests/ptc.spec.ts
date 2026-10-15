@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, ToolCallId  } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
@@ -64,6 +65,7 @@ interface SetupOptions {
 
 async function setup(options: SetupOptions = {}) {
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(SystemPrompt, { ...options.toolOrder ? { toolOrder: options.toolOrder } : {} })
   await ctx.plugin(ToolRuntime, { mode: options.mode ?? 'ptc', ...options.maxParallelSubCalls !== undefined ? { maxParallelSubCalls: options.maxParallelSubCalls } : {} })
   let runtime: FakeRuntime | undefined
@@ -129,6 +131,42 @@ async function runCode(
     ...extras.signal ? { signal: extras.signal } : {},
   })
 }
+
+it('logs detached frozen nested metadata without changing the binding value or log-content policy', async () => {
+  const { ctx, runtime } = await setup({ mode: 'ptc' })
+  try {
+    const metadata = { cwd: '/selected', path: '/selected/note.txt' }
+    ctx.tools.register(defineTool({
+      name: 'location', description: 'Read a fixture.', parameters: {},
+      output: {
+        schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }],
+        presentationMeta: () => metadata,
+      }, execute: async () => 'original contents',
+    }))
+    ctx.on('tools/ptc-dispatch-log', async () => [{ type: 'text', text: 'redacted durable preview' }])
+    const session = Session.create(SessionId('ptc-location'))
+    const agent = { session } as Agent
+    runtime.behavior = async (request) => {
+      const value = await request.bindings[0]!.functions.location!({})
+      expect(value).toBe('original contents')
+      metadata.cwd = '/later'
+      metadata.path = '/later/other.txt'
+      return { logs: [], value }
+    }
+    const result = await runCode(ctx, 'return await tools.location({})', { agent })
+    expect(result.isError).toBe(false)
+    expect(result.content).toEqual([{ type: 'text', text: 'original contents' }])
+    const event = session.snapshotEvents().find(event => event.type === 'tool/ptc-dispatch')
+    expect(event?.data.content).toEqual([{ type: 'text', text: 'redacted durable preview' }])
+    expect(event?.data.meta).toEqual({ cwd: '/selected', path: '/selected/note.txt' })
+    expect(Object.isFrozen(event?.data.meta)).toBe(true)
+    const restored = Session.create(session.id, session.snapshotEvents(), session.header)
+    expect(restored.snapshotEvents().find(event => event.type === 'tool/ptc-dispatch')?.data.meta)
+      .toEqual({ cwd: '/selected', path: '/selected/note.txt' })
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
 
 describe('mode-aware wire contribution', () => {
   it.each([
@@ -544,6 +582,7 @@ describe('mode-aware wire contribution', () => {
 
   it('removes run_code and the SDK section when the registry fiber disposes (HMR safety)', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt, {})
     await ctx.plugin(FakeRuntime, {})
     const fiber = await ctx.plugin(ToolRuntime, { mode: 'ptc' })
@@ -1582,11 +1621,40 @@ describe('the run_code dispatch bridge', () => {
 
   it('executing run_code under a missing runtime is a structured isError, not a crash', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt, {})
     await ctx.plugin(ToolRuntime, { mode: 'ptc' })
     const result = await runCode(ctx, 'program')
     expect(result.isError).toBe(true)
     expect((result.content[0] as { text: string }).text).toContain('requires a PTC runtime')
+  })
+
+  it('refuses an agent-owned program before dispatch when its directory owner is missing', async () => {
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime, { mode: 'ptc' })
+      await ctx.plugin(FakeRuntime)
+      const runtime = ctx.ptcRuntime as FakeRuntime
+      const calls = registerEcho(ctx)
+      const { agent, events } = fakeAgent()
+      runtime.behavior = async (request) => {
+        await request.bindings[0]!.functions.echo!({ value: 'blocked' })
+        return { logs: [] }
+      }
+
+      const result = await runCode(ctx, 'return await tools.echo({ value: "blocked" })', { agent })
+
+      expect(result.isError).toBe(true)
+      expect(result.content).toEqual([{
+        type: 'text', text: 'Error: dsh-tools: run_code with an Agent requires workingDirectory',
+      }])
+      expect(runtime.lastRequest).toBeUndefined()
+      expect(calls).toEqual([])
+      expect(events).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('presents the model-authored description as the execute-card title over the program input', async () => {
@@ -1934,6 +2002,7 @@ describe('the run_code dispatch bridge', () => {
 
   it('direct construction rejects a non-positive parallel sub-call cap at load', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt, {})
     expect(() => new ToolRuntime(ctx, { mode: 'ptc', maxParallelSubCalls: 0 }))
       .toThrow('maxParallelSubCalls must be a positive integer')
@@ -1941,6 +2010,7 @@ describe('the run_code dispatch bridge', () => {
 
   it('direct construction in PTC mode defaults the parallel sub-call cap', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt, {})
     const registry = new ToolRuntime(ctx, { mode: 'ptc' })
     expect(registry.get(RUN_CODE_NAME)).toBeDefined()
@@ -1948,6 +2018,7 @@ describe('the run_code dispatch bridge', () => {
 
   it('defaults to native mode under direct construction with no config', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt, {})
     const registry = new ToolRuntime(ctx)
     expect(registry.get(RUN_CODE_NAME)).toBeUndefined()
@@ -1956,6 +2027,7 @@ describe('the run_code dispatch bridge', () => {
   })
   it('denies a model-direct native-tool call under PTC mode as UNKNOWN_TOOL', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt, {})
     const registry = new ToolRuntime(ctx, { mode: 'ptc' })
     registerEcho(ctx, 'write')
@@ -1976,6 +2048,7 @@ describe('the run_code dispatch bridge', () => {
 
   it('routes a pre-aborted collapsed call through ABORTED_BEFORE_DISPATCH', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt, {})
     const registry = new ToolRuntime(ctx, { mode: 'ptc' })
     registerEcho(ctx, 'write')
@@ -2243,7 +2316,7 @@ describe('per-program execution controls', () => {
       expect(JSON.stringify(schema.parameters)).toContain('sandbox_permissions')
       expect(schema.description).toContain('Nested tools retain their own policies')
       expect(schema.description).toContain('Programs start with an empty environment.')
-      expect(schema.description).toContain("The working directory is the Session's current directory.")
+      expect(schema.description).toContain("Each program starts in the Session's current directory. Running programs keep their initial directory.")
     } finally { await ctx.fiber.dispose() }
     const python = await setup({ runtime: { language: 'python' } })
     try {
@@ -2251,7 +2324,7 @@ describe('per-program execution controls', () => {
       expect(JSON.stringify(schema.parameters)).not.toContain('timeoutMs')
       expect(JSON.stringify(schema.parameters)).not.toContain('sandbox_permissions')
       expect(schema.description).not.toContain('Programs start with an empty environment.')
-      expect(schema.description).toContain("The working directory is the Session's current directory.")
+      expect(schema.description).toContain("Each program starts in the Session's current directory. Running programs keep their initial directory.")
       const rejected = await python.tools.execute({
         callId: ToolCallId('hidden-timeout'), name: RUN_CODE_NAME, signal: testToolSignal,
         arguments: { code: 'pass', description: 'Try unsupported timeout', timeoutMs: 5 },

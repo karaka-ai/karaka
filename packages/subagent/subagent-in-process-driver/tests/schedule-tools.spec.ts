@@ -46,7 +46,7 @@ async function setupScheduleHost(): Promise<{ ctx: Context; parent: Agent; dispa
   ctx.baseUrl = pathToFileURL(FIXTURES).href + '/'
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
-  await mountAgentLoopTestDependencies(ctx)
+  await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
   await ctx.plugin(JsonlSessionPersistence, { root })
   await ctx.plugin(Storage)
   const pool = new MemoryMediaPool()
@@ -86,6 +86,7 @@ function spawnRequest(parent: Agent) {
     label: 'child task',
     prompt: [{ type: 'text' as const, text: 'child task' }],
     parent,
+    cwd: parent.ctx.get('workingDirectory')!.get(parent.session),
     signal: new AbortController().signal,
     descriptor: snapshotSubagentDescriptor({
       mode: 'one-shot' as const,

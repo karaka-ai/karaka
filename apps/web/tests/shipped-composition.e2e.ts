@@ -502,6 +502,7 @@ const EXPECTED_TOOLS = [
   'web_fetch',
   'web_search',
   'workflow',
+  'working_directory',
   'write',
 ]
 
@@ -594,12 +595,8 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
       "mode": "always",
     }
   `)
-  // The catalog belongs to an AGENT, not to the process: every model-facing row
-  // now lives in a preset mounted under one session's scope, so the global
-  // layer holds nothing and a caller must name the agent to see anything. This
-  // composes from the deployment default — what a session that names no preset
-  // gets — which is the shape this test has always been about.
-  expect(ctx.tools.schemas().map(schema => schema.name)).toEqual([])
+  // The directory tool is global; the deployment's default preset supplies the agent's remaining tools.
+  expect(ctx.tools.schemas().map(schema => schema.name)).toEqual(['working_directory'])
   const handle = await ctx.agents.create({
     sessionId: SessionId('shipped-composition'),
     setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
