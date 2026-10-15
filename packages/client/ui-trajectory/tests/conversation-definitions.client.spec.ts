@@ -466,6 +466,7 @@ describe('Trajectory conversation Definitions', () => {
         name: 'read',
         arguments: { path: 'README.md' },
         content: [{ type: 'text', text: 'contents' }],
+        meta: { cwd: '/selected', path: '/selected/README.md' },
       }),
       at(7, 'tool/ptc-dispatch-start', {
         rootCallId: 'root-a', parentCallId: 'root-b:code:1', subCallId: 'root-b:ptc:2',
@@ -505,6 +506,7 @@ describe('Trajectory conversation Definitions', () => {
       meta: { presentation: 'raw' },
       subCalls: [{
         kind: 'tool-result', callId: 'root-b:code:1', parentCallId: 'root-a', call: { name: 'read' },
+        meta: { cwd: '/selected', path: '/selected/README.md' },
         subCalls: [{
           kind: 'tool-result', callId: 'root-b:ptc:2', parentCallId: 'root-b:code:1',
           callTime: 1_700_000_000_007, content: [{ type: 'text', text: 'not executed' }],

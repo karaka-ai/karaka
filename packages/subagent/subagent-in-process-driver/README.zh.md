@@ -25,6 +25,8 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
+解析后的请求携带绝对路径 `cwd`。创建时在继承事件之后、发布子级之前应用该目录；不可变会话头继续记录父级的起始目录。
+
 你通过提供方后端而非组合到达本包：`dsh-subagent-spawn-in-process` 与 `dsh-subagent-fork-in-process` 各自调用 `startInProcessRun(request, options)` 并拥有其外围的一切。本页记录两者共享的生命周期，使你读懂一个后端的行为后即可推断另一个。
 
 ### 一次运行提供什么

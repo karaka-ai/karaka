@@ -1,4 +1,5 @@
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { provideWorkingDirectoryFixture, mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -9,7 +10,6 @@ import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as HooksCodex from '@deepseek-ai/dsh-hooks-codex'
@@ -46,6 +46,7 @@ function writeHooks(dir: string, hooks: unknown): void {
 async function harness(dir: string, adapter: MockAdapter, beforeHooks?: (ctx: Context) => void): Promise<Context> {
   const ctx = new Context()
   contexts.push(ctx)
+  provideWorkingDirectoryFixture(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(LocalSubprocessRuntime)
@@ -69,6 +70,37 @@ async function waitFor(predicate: () => boolean, timeout = 5000, interval = 10):
     await new Promise(r => setTimeout(r, interval))
   }
 }
+
+describe('unmatched hooks and directory recovery', () => {
+  it.each([
+    {},
+    { PreToolUse: [{ matcher: 'AnotherTool', hooks: [{ type: 'command', command: 'exit 1' }] }] },
+    { PreToolUse: [{ hooks: [] }] },
+  ])('does not validate a missing directory when no hook command will run', async (hooks) => {
+    const dir = configDir()
+    writeHooks(dir, hooks)
+    const ctx = await harness(dir, new MockAdapter([]))
+    const ensure = vi.spyOn(ctx.get('workingDirectory')!, 'ensure')
+      .mockRejectedValue(new Error('original directory is missing'))
+    try {
+      ctx.tools.register(defineContentToolFixture({
+        name: 'working_directory', description: 'recover a directory',
+        parameters: { cd: { type: 'string', required: true } },
+        async execute(args) { return [{ type: 'text', text: args.cd }] },
+      }))
+      const agent = await ctx.agentLoop.create(SessionId('recovery'), { provider: 'mock', model: 'mock' })
+      const result = await ctx.tools.execute({
+        name: 'working_directory', callId: ToolCallId('recover'), arguments: { cd: dir },
+        agent, signal: new AbortController().signal,
+      })
+      expect(result.isError).toBe(false)
+      expect(ensure).not.toHaveBeenCalled()
+    } finally {
+      ensure.mockRestore()
+      await ctx.fiber.dispose()
+    }
+  })
+})
 
 describe('hooks-codex bridge', () => {
   it('awaits a registry-announced resume hook without a creation signal', async () => {
@@ -203,6 +235,7 @@ describe('hooks-codex bridge', () => {
     writeHooks(dir, { UserPromptSubmit: [{ hooks: [{ type: 'command', command: deny }] }] })
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await mountAgentLoopTestDependencies(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(LocalSubprocessRuntime)
@@ -226,6 +259,7 @@ describe('hooks-codex bridge', () => {
     const slow = script(dir, 'slow.sh', `#!/usr/bin/env bash\necho $$ > "${pidFile}"\ntouch "${marker}"\nsleep 30\n`)
     writeHooks(dir, { SessionStart: [{ hooks: [{ type: 'command', command: slow }] }] })
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await mountAgentLoopTestDependencies(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(LocalSubprocessRuntime)
@@ -253,12 +287,12 @@ describe('hooks-codex bridge', () => {
   it('has the namespace-plugin export shape (no stray default) so the Loader keeps name/inject/apply', () => {
     expect('default' in HooksCodex).toBe(false)
     expect(HooksCodex.name).toBe('hooks-codex')
-    expect(HooksCodex.inject).toEqual(['shell', 'sessionProjections'])
+    expect(HooksCodex.inject).toEqual(['shell', 'sessionProjections', 'workingDirectory'])
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(HooksCodex) as Record<string, unknown>
     expect(unwrapped).toBe(HooksCodex)
     expect(unwrapped.name).toBe('hooks-codex')
-    expect(unwrapped.inject).toEqual(['shell', 'sessionProjections'])
+    expect(unwrapped.inject).toEqual(['shell', 'sessionProjections', 'workingDirectory'])
     expect(typeof unwrapped.apply).toBe('function')
   })
 })

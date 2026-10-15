@@ -1,4 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq, SessionId } from '@deepseek-ai/dsh-session'
@@ -51,6 +52,7 @@ async function bench() {
     ),
   }) as never)
   installSessionReadTestServices(ctx)
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   const controller = createSessionTestController(ctx, defaults)
   return { ctx, controller }

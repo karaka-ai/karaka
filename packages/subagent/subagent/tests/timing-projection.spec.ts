@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from './working-directory-fixture.ts'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore from '@deepseek-ai/dsh-session'
@@ -31,6 +32,7 @@ describe('subagent timing projection', () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     const serviceFiber = await ctx.plugin(SubagentRuntime)
 
     const before = ctx.sessionProjections.snapshot(ctx.sessions.create()).values

@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 This reference defines the profile, plugin-management, and config-dump command modes. Argv is parsed once through [`src/args.ts`](../src/args.ts), and [`src/bin.ts`](../src/bin.ts) dynamically imports only the selected runner.
 
+The [generated command help](../../../docs/cli-help.md) contains complete launcher, plugin-management, and shipped-profile help. Run `pnpm run gen-cli-help` to refresh it; `pnpm run verify-cli-help` checks it against the current CLI.
+
 ## Profile boot
 
 `dsh <name>` abbreviates `dsh --profile <name>` and boots the profile at `$DSH_HOME/profiles/<name>`. The shorthand name must immediately follow `dsh`; `plugin` remains the plugin-management command, so boot a profile with that name using `dsh --profile plugin`. The effective tree is composed over an empty root by applying, in order: each bundle patch named in the profile manifest's `dsh.profile.bundles` list, the profile's own `cordis.patch.yml`, the home-level `$DSH_HOME/cordis.patch.yml` (machine-local preferences shared by every profile, so it outranks the per-profile layer), and each `--patch <path>` overlay in argv order. Later layers win per row; a patch replaces the targeted row's complete `config` value rather than deep-merging keys, and may insert new rows. The final YAML composition controls whether `dsh-hmr` watches configuration; without HMR, changes require restart. A parse, schema, resolution, or plugin boot failure is reported and exits nonzero. SIGINT and SIGTERM dispose the mounted root before exit.
@@ -79,6 +81,8 @@ New directories and files request modes `0700` and `0600` on POSIX. The CLI prin
 ## Plugin management
 
 `dsh plugin --profile <name> <args...>` initializes the profile when missing (shipped template, or `@deepseek-ai/dsh-base` alone for other names), then forwards `<args...>` to `pnpm` with the profile directory as working directory — `add`, `remove`, `why`, `update`, and every other pnpm verb work unchanged; pnpm must be on PATH. Relative path specs (`.`, `../plugin`, and their `file:`/`link:` forms) are anchored to the invoking directory first, so `add .` from a plugin checkout installs that checkout, not the profile. After every successful run, `dsh.profile.bundles` is reconciled against the installed state: each dependency resolving to a package whose manifest declares `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }` joins the layer stack (so an `update` that gains the declaration activates it), a bundle-less dependency stays plain with a one-time warning, and a removed dependency leaves the stack.
+
+`dsh plugin` reads `--profile` only before the forwarded arguments, which start at the first token it does not recognize, so `--profile <name>` comes first. When the forwarded arguments begin with the pnpm command, everything after that command reaches pnpm verbatim, including `-h` and `--help`. When they begin with a pnpm option such as `--filter <selector>` or `-r`, a later `-h` or `--help` still prints the forwarder's help instead of pnpm's, so put the pnpm command before them to reach pnpm's help. `-h` or `--help` before any forwarded argument prints the forwarder's own help and exits 0.
 
 The Codex and Claude Code subagent providers are separate optional Bundles. Add either package, both in one command, or remove either package independently:
 

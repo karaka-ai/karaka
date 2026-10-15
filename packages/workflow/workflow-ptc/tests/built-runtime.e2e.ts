@@ -32,7 +32,7 @@ import { Context } from '@deepseek-ai/cordis'
 import PtcWorkflowEngine from '@deepseek-ai/dsh-workflow-ptc'
 const ctx = new Context()
 try {
-  for (const name of ['session', 'session-projection', 'fs-local', 'subprocess-local', 'sandbox-local']) {
+  for (const name of ['session', 'session-projection', 'system-prompt', 'fs-local', 'working-directory', 'subprocess-local', 'sandbox-local']) {
     await ctx.plugin((await import('@deepseek-ai/dsh-' + name)).default, {})
   }
   await ctx.plugin((await import('@deepseek-ai/dsh-sandbox-policy')).default, { mode: 'read-only', workspaceRoot: process.argv[2] })
@@ -59,7 +59,7 @@ try {
     args: { outside: process.argv[3] },
     meta: { name: 'built-smoke', description: 'built workflow runtime' },
     subagentProvider: 'built-selected',
-    parent: { id: session.id, session, options: {} },
+    parent: { id: session.id, session, options: {}, ctx },
   })
   try {
     const result = await run.result

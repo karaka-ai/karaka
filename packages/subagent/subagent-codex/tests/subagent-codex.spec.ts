@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -8,7 +9,7 @@ import * as yaml from 'js-yaml'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime, { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {
@@ -428,6 +429,7 @@ describe('task admission and package contracts', () => {
   it('registers the default descriptor, validates config, and unregisters on HMR', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const fiber = await ctx.plugin(codex, {})
@@ -458,6 +460,7 @@ describe('task admission and package contracts', () => {
   it('keeps named instances, runs, and HMR ownership isolated', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const safeChild = fakeChild()
@@ -561,6 +564,7 @@ describe('task admission and package contracts', () => {
   it('rejects duplicate provider names without replacing the first instance', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const firstFiber = await ctx.plugin(codex, {
@@ -597,6 +601,7 @@ describe('task admission and package contracts', () => {
   it('resolves the safe permission default when apply is called directly', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const child = fakeChild()
@@ -689,27 +694,6 @@ describe('task admission and package contracts', () => {
     wire.close()
   })
 
-  it('requires a parent session cwd without suggesting unsupported config', async () => {
-    const ctx = new Context()
-    await ctx.plugin(SessionProjectionRegistry)
-    await ctx.plugin(SubagentRuntime)
-    await ctx.plugin(LocalSubprocessRuntime)
-    const spawn = vi.spyOn(ctx.subprocess, 'spawn')
-    await ctx.plugin(codex, {})
-
-    await expect(ctx.subagents.start('codex', {
-      prompt: [{ type: 'text', text: 'task' }],
-      parent: {
-        id: 'parent-without-cwd',
-        session: { header: {} },
-      } as unknown as Agent,
-      signal: new AbortController().signal,
-    })).rejects.toThrow(
-      'subagent-codex: no working directory for the child — delegate from a parent session that has one',
-    )
-    expect(spawn).not.toHaveBeenCalled()
-    await ctx.fiber.dispose()
-  })
 
   it('keeps the namespace export shape', () => {
     expect('default' in codex).toBe(false)
@@ -2119,6 +2103,7 @@ describe('run lifecycle and quiescence', () => {
   it('uses the registered provider config and logs flattened errors', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const child = fakeChild()
@@ -2157,7 +2142,7 @@ describe('run lifecycle and quiescence', () => {
     expect(invalidCwdError.message).not.toContain('relative/SECRET_TOKEN')
     expect(invalidCwdError.cause).toBeInstanceOf(Error)
     expect((invalidCwdError.cause as Error).message)
-      .toContain('relative/SECRET_TOKEN')
+      .toContain(resolve('relative/SECRET_TOKEN'))
     expect(spawn).not.toHaveBeenCalled()
 
     const invalidCwdAbort = new AbortController()
@@ -2166,7 +2151,12 @@ describe('run lifecycle and quiescence', () => {
       prompt: [{ type: 'text', text: 'task' }],
       parent: invalidCwdParent,
       signal: invalidCwdAbort.signal,
-    })).rejects.toThrow('aborted before app-server startup')
+    })).rejects.toThrow('cancel invalid cwd startup')
+    expect(() => ctx.subagents.getProvider('codex-diagnostic')!.start({
+      ...request(undefined, invalidCwdAbort.signal),
+      cwd: resolve('relative/SECRET_TOKEN'),
+      descriptor: snapshotSubagentDescriptor({ mode: 'one-shot', provider: 'codex-diagnostic', label: 'cancelled startup' }),
+    })).toThrow('request was aborted before app-server startup')
     expect(spawn).not.toHaveBeenCalled()
 
     const starting = ctx.subagents.start('codex-diagnostic', {

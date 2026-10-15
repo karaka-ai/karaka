@@ -44,7 +44,7 @@ SDK 使用 base 默认提供的 `read`、`write` 和 `edit`。要添加 `str_rep
 
 #### 模型看到什么
 
-profile 在第一方指导之前提供 `You are a coding agent powered by the {{model}} model.`，并在独立的 persona 后缀中提供 `Your working directory is {{cwd}}.`。确切的 SDK 初始化路由与会话 cwd 会解析其中的占位符。默认文件工具 schema 包含 `read`、`write` 和 `edit`，不包含 `str_replace_editor`。
+profile 在第一方指导之前提供 `You are a coding agent powered by the {{model}} model.`；SDK 初始化路由解析 `{{model}}`。每个 Session 通过 [`dsh-working-directory`](../../session/working-directory/README.zh.md) 提供的必需 user-role 上下文接收当前目录。默认文件工具 schema 包含 `read`、`write` 和 `edit`，不包含 `str_replace_editor`。
 
 #### Token 影响
 

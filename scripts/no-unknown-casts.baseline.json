@@ -8,9 +8,6 @@
   "apps/cli/tests/profiles/acp/tests/cleanup.ts": {
     "04bc8a44533574365dfedf563e2356458bcf95f990a00906938c977c1d683356": 1
   },
-  "apps/cli/tests/profiles/headless/tests/ptc.e2e.ts": {
-    "25e22fc52656ecfa64043e399e125dcb91feff05049727e056a46482a3d34867": 1
-  },
   "apps/cli/tests/profiles/headless/tests/session-format-guard.expected.e2e.ts": {
     "340837865a9f6222ae46d41b594c4c079ae3935c004433c76da047df31c8008f": 1
   },
@@ -124,9 +121,6 @@
   },
   "packages/acp/acp/tests/approval.spec.ts": {
     "cfa5e037e20d61e7139f1482c8be264ec74720280b531c39791eca1947834b5c": 1
-  },
-  "packages/acp/acp/tests/bridge.spec.ts": {
-    "a0a51a92f7a4db90baaf3a95b40a9816d4d628534f6fc97e766b8da3f1ea71d8": 1
   },
   "packages/acp/acp/tests/content.spec.ts": {
     "45e226235f6b865973de0f0fe92892cfb0007e0596ed4263015df7e4db1e578d": 1,
@@ -1830,16 +1824,8 @@
     "daa15206e19d6a8fbae646d678889b2e6933ece824e48dd06c95d2096861d5c1": 1
   },
   "packages/subagent/subagent-acp/tests/subagent-acp.spec.ts": {
-    "3b530b6b250a0ea0e48b5802ae6ad5cf361cd7ead3046d9e5d09087abd735fce": 1,
-    "7f8d86b28f8d58460ec0a1efc0dc3b2333a3dce0bddbfb5461761258795bb87f": 1,
-    "b1eb8cf60e80ab0aaed7dae202d2a8c485b23d5797bf9162209d666182d6c703": 1,
-    "bf51b161c3c9ca3603b93db55b2c5721bab63a993fef808f2e6cdd619aacc190": 1,
     "daa15206e19d6a8fbae646d678889b2e6933ece824e48dd06c95d2096861d5c1": 2,
-    "ea9ae2bf5224204cbf222eccd26cd385ed84a3843e48c47452597d36a616ae65": 1,
     "f77e5cbd2d2d911087f7faecc4b0b5bffdfb44ca5d0bcf7823ba9777feca7799": 2
-  },
-  "packages/subagent/subagent-claude-code/tests/real-deepseek.e2e.ts": {
-    "dee4487a97778a2383f1b378d59b3dae098152273d956dc360f23c69680fe0ea": 1
   },
   "packages/subagent/subagent-claude-code/tests/real-product.spec.ts": {
     "03847806b1cfd410cc85f1e90d671aac43e667c5c41e5792c729fd4ff655fb6b": 1,
@@ -1847,7 +1833,6 @@
     "adda026f7ad49b47496f381a0c04997300597d040b8a81045a848573485ed299": 1
   },
   "packages/subagent/subagent-claude-code/tests/subagent-claude-code.spec.ts": {
-    "101af668daf0fb9a7df21757c781ed58f7cf6770a1f5021a5da4ce58080c1f5f": 1,
     "2cedee48f4fb8ce4bbd10567fdfbee69e8dd11dbc85af9b824de33c2b77abfbf": 1,
     "4e94c461ab08f535e20f71ebe8bb9a8c911a936c7068f24e259956c06d17c05d": 2,
     "aa1a9402165afaeb270967390b13cae2a59916bc52f13b4f600315d7a0fe2032": 1,
@@ -1864,7 +1849,6 @@
     "adda026f7ad49b47496f381a0c04997300597d040b8a81045a848573485ed299": 1
   },
   "packages/subagent/subagent-codex/tests/subagent-codex.spec.ts": {
-    "101af668daf0fb9a7df21757c781ed58f7cf6770a1f5021a5da4ce58080c1f5f": 1,
     "aa1a9402165afaeb270967390b13cae2a59916bc52f13b4f600315d7a0fe2032": 1,
     "fa05a5e504ed74b5a07cb6281c787b507eb6c44db768803f4dad034dd69cb3b9": 1
   },

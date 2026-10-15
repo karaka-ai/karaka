@@ -45,7 +45,7 @@ const [
 const storageRoot = await mkdtemp(join(tmpdir(), "jsonrpc-built-scope-"));
 const ctx = new Context();
 try {
-  await mountAgentLoopTestDependencies(ctx);
+  await mountAgentLoopTestDependencies(ctx, { workingDirectory: true });
   await ctx.plugin(AgentLoop, { agents: [] });
   await ctx.plugin(SubagentRuntime);
   await ctx.plugin(JsonlSessionPersistence, { root: storageRoot });

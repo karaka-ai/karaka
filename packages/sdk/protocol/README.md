@@ -33,12 +33,14 @@ Wire one JSON-RPC 2.0 message per `\n`-terminated line over byte streams you own
 
 ### The SDK methods
 
-Both wire ends share one method set: three client-to-server requests and four server-to-client notifications.
+Both wire ends share one method set: five client-to-server requests and four server-to-client notifications.
 
 | Direction | Method | Payload types |
 |---|---|---|
 | client→server | `initialize` | `InitializeParams` → `InitializeResult` |
 | client→server | `session/prompt` | `SessionPromptParams` → `SessionPromptResult` (durable enqueue receipt) |
+| client→server | `session/working-directory/get` | `SessionWorkingDirectoryParams` → `SessionWorkingDirectoryResult` |
+| client→server | `session/working-directory/set` | `SessionWorkingDirectorySetParams` → `SessionWorkingDirectoryResult` |
 | client→server | `shutdown` | no params → `{}` |
 | server→client | `session.event` | `SessionEventNotification` (every session in the runtime, unfiltered) |
 | server→client | `session.status` | `SessionStatusNotification` (whole-agent `running`/`idle` transition) |

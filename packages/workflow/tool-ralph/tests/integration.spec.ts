@@ -33,7 +33,7 @@ async function mountExecution(ctx: Context): Promise<string> {
 async function mountRalph(script: MockScript, config: toolRalph.Config) {
   const ctx = new Context()
   const adapter = new MockAdapter(script)
-  await mountAgentLoopTestDependencies(ctx)
+  await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
   const cwd = await mountExecution(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SubagentRuntime)
@@ -71,7 +71,7 @@ describe('dsh-tool-ralph over the real spawn and sandboxed PTC stack', () => {
       toolCallResponse('round-1', STRUCTURED_OUTPUT_TOOL, firstReport),
       toolCallResponse('round-2', STRUCTURED_OUTPUT_TOOL, finalReport),
     ])
-    await mountAgentLoopTestDependencies(ctx)
+    await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
     const cwd = await mountExecution(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(SubagentRuntime)

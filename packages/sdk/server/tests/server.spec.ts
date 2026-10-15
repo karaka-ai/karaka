@@ -1,9 +1,10 @@
 import { MESSAGES_RESPONSE } from './messages-response.ts'
+import { mountWorkingDirectoryFixture } from '../../../subagent/subagent/tests/working-directory-fixture.ts'
 import { createUserMessage, LlmAdapter, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +19,7 @@ import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import SubagentRuntime, { type SubagentResult, type SubagentRunEndInfo } from '@deepseek-ai/dsh-subagent'
 import type { JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
 import { HarnessSdkJsonRpcServer } from '../src/index.ts'
+import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 class FakeTransport implements JsonRpcTransportPeer {
   notifications: { method: string; params?: Record<string, unknown> }[] = []
@@ -58,10 +60,11 @@ async function mockCompletionServer(): Promise<{ url: string; requests: unknown[
   return { url: `http://127.0.0.1:${address.port}`, requests, headers }
 }
 
-async function makeHarness(storageDir: string) {
+async function makeHarness(storageDir: string, workingDirectory = false) {
   const ctx = new Context()
-  await mountAgentLoopTestDependencies(ctx)
+  await mountAgentLoopTestDependencies(ctx, { workingDirectory })
   await ctx.plugin(AgentLoop, { agents: [] })
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(JsonlSessionPersistence, { root: storageDir })
   await new Promise(resolve => setTimeout(resolve, 50))
@@ -109,6 +112,40 @@ async function settleSubagent(
 }
 
 describe('HarnessSdkJsonRpcServer', () => {
+  it('changes effective directories through RPC while preserving Session origins and replayable context', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-sdk-directory-'))
+    const child = join(root, 'child')
+    await mkdir(child)
+    const ctx = await makeHarness(join(root, 'sessions'), true)
+    ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('directory observed')]))
+    const transport = new FakeTransport()
+    const server = new HarnessSdkJsonRpcServer(ctx, transport)
+    try {
+      await expect(server.handleRequest('session/working-directory/get', { sessionId: 'a' }))
+        .rejects.toThrow('SDK server is not initialized')
+      await expect(server.handleRequest('session/working-directory/set', { sessionId: 'a', path: child }))
+        .rejects.toThrow('SDK server is not initialized')
+      expect(ctx.agents.list()).toEqual([])
+      await server.initialize({ cwd: root, provider: 'mock', model: 'mock' })
+      await expect(server.handleRequest('session/working-directory/get', { sessionId: 'a' })).resolves.toEqual({ cwd: root })
+      const selected = await realpath(child)
+      await expect(server.handleRequest('session/working-directory/set', { sessionId: 'a', path: 'child' })).resolves.toEqual({ cwd: selected })
+      await expect(server.handleRequest('session/working-directory/get', { sessionId: 'b' })).resolves.toEqual({ cwd: root })
+      const agent = ctx.agents.get(SessionId('a'))!
+      expect(agent.session.header.cwd).toBe(root)
+      await server.prompt({ sessionId: 'a', contentBlocks: [{ type: 'text', text: 'where' }] })
+      await agent.whenIdle()
+      expect(agent.session.snapshotEvents().some(event => event.type === 'user/message'
+        && event.data.content.some(block => block.type === 'text'
+          && block.text.includes(JSON.stringify(selected))))).toBe(true)
+      await expect(server.handleRequest('session/working-directory/get', {})).rejects.toThrow('sessionId')
+      await expect(server.handleRequest('session/working-directory/set', { sessionId: 'a', path: 3 })).rejects.toThrow('path string')
+    } finally {
+      await server.shutdown()
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
   it('creates a harness agent and calls the configured OpenAI-compatible endpoint', { timeout: 15_000 }, async () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-'))
     const llmServer = await mockCompletionServer()

@@ -43,7 +43,7 @@ ctx.slots.inject('tool.call.toolview', () =>
   }, BusinessToolRow))
 ```
 
-owner 载荷为 `ToolCallOwnerProps`：`callId`、`toolName`、`phase` 判别字段及对应阶段的 `block`、可选 `cwd` 与 `home`、会话授权的 `loadImage` loader（供结果携带持久图像的视图使用），以及普通的 `openFile`/`inspect` 回调。PTC dispatch 块保留事件的 `parentCallId`；根会话调用没有该字段，因此后代调用都走同一条按 key 分发路径：已注册视图的调用（如 `read_image`）也会在嵌套处渲染对应卡片，未注册的后代调用则保持通用压平形式。路径摘要先相对会话 cwd 缩短，再把剩余的 POSIX Host home 写成 `~`；`filePath` 与 Host 打开仍使用作者给出的文件系统路径。注册项会收到常规的会话 slot 运行时共享数据，但不会收到 React 节点或运行时服务。
+owner 载荷为 `ToolCallOwnerProps`：`callId`、`toolName`、`phase` 判别字段及对应阶段的 `block`、可选 `cwd` 与 `home`、会话授权的 `loadImage` loader（供结果携带持久图像的视图使用），以及普通的 `openFile`/`inspect` 回调。PTC dispatch 块保留事件的 `parentCallId`；根会话调用没有该字段，因此后代调用都走同一条按 key 分发路径：已注册视图的调用（如 `read_image`）也会在嵌套处渲染对应卡片，未注册的后代调用则保持通用压平形式。路径摘要先相对会话 cwd 缩短，再把剩余的 POSIX Host home 写成 `~`；`filePath` 与 Host 打开优先使用操作发生时记录的绝对结果路径，显示标签仍保留原始参数。成功的旧根调用结果继续回退到原参数；运行中的相对路径等待结果。注册项会收到常规的会话 slot 运行时共享数据，但不会收到 React 节点或运行时服务。
 
 ### 内置视图
 
@@ -89,6 +89,8 @@ Auto 拒绝优先于按工具名选择的专门视图。其通用行保留调用
 
 展开后的状态圆点和文字使用静态语义色。操作回执和任务输出的标题保持中性色，展开时省略标题中的状态。中断回执仅确认已发出中断请求。
 
+终端提示标签使用结果记录的 `cwd`。成功的旧根 shell 调用回退到原始工作区与调用参数中的 workdir；运行中的调用只有在 workdir 为绝对路径时才显示目录。终端发送不会根据 Session 推测进程目录。
+
 terminal model 使用浏览器安全入口 `@deepseek-ai/dsh-spill-policy/notice` 的 `hasSpillNotice`，而非独立的 UI 匹配规则。[spill-policy README](../../spill/spill-policy/README.zh.md#shared-notice-ownership) 负责提示文本的格式化与识别。该检查保守地选择通用输出；匹配的文本无法证明其来源，回放也不改变已记录的结果字节。
 
 ### 声明的可选能力
@@ -131,6 +133,7 @@ terminal model 使用浏览器安全入口 `@deepseek-ai/dsh-spill-policy/notice
 这些限制定义分派深度与视图归属；它们是当前包约束。
 
 - **Host 不把 `run_code` 暴露为 PTC mode 程序 binding**：生产事件只产生一层分发；递归的运行时/UI 约定支持嵌套。
+- **历史嵌套相对位置**——缺少展示元数据的旧 PTC dispatch 不推断相对文件目标或命令目录；绝对调用路径仍可使用。
 - **第一方工具视图集中在本包**：它们可以通过 keyed slot 独立迁移到各自所属的业务包。
 - **Web 工具链接总是打开新标签页**：折叠的 `web_fetch` URL 与展开的 web 卡片链接不遵循 `ui-chat` 的链接打开方式设置，因为工具视图没有外部链接回调。
 - **工具文案复用 `ui-conversation` locale namespace**：工具标题、行 chrome 与无 Cordis 的 primitive label 使用该字典；展示转换器模型保留 locale key 或数据，而不是已渲染文案。

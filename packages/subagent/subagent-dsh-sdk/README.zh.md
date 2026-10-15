@@ -31,7 +31,7 @@ kind: "package-reference"
 
 当子进程必须是完整的 harness 对等体——拥有自己的组合、会话持久化、模型路由与工具——而不是共享父进程的 agent 时，选择此后端。当子进程必须共享父级组合或遵守父级强制的非路由能力时，请选择进程内后端：本提供方接受 agent 路由选项，但会拒绝结构化输出、深度上限、工具过滤或 persona，而不是静默省略。
 
-提供方声明 `agentOptions: true`，同时保持 `outputSchema`/`depthLimit`/`toolFilter`/`persona` 为 false，并且 `inheritsParentContext: false`。不可变的 `agentRouteDefaults` 会在模型覆盖与确切路由预检前，把配置的 provider／model 基线公开给 `dsh-tool-subagent`；`start()` 则为直接调用方独立应用同一份配置默认值，包括 `maxTokens`。agent 路由值通过显式白名单跨越 SDK 协议；子进程仍是另一进程里的全新运行时，唯一从父 agent 本身派生的值是工作区 cwd。基于本提供方的 `dsh-tool-subagent` 部署应设置 `maxDepth: 'provider-managed'`——子 harness 拥有自己的递归预算。
+提供方声明 `agentOptions: true`，同时保持 `outputSchema`/`depthLimit`/`toolFilter`/`persona` 为 false，并且 `inheritsParentContext: false`。不可变的 `agentRouteDefaults` 会在模型覆盖与确切路由预检前，把配置的 provider／model 基线公开给 `dsh-tool-subagent`；`start()` 则为直接调用方独立应用同一份配置默认值，包括 `maxTokens`。agent 路由值通过显式白名单跨越 SDK 协议；子进程仍是另一进程里的全新运行时，子进程使用所选有效目录，而其 Session 保留父级起始目录。基于本提供方的 `dsh-tool-subagent` 部署应设置 `maxDepth: 'provider-managed'`——子 harness 拥有自己的递归预算。
 
 ### 配置
 
@@ -42,7 +42,6 @@ kind: "package-reference"
 | `profile` | `sdk` | 具名子 profile |
 | `patches` | `[]` | 每次启动的有序 profile patch 文件，在插件加载时解析并校验 |
 | `dshHome` | 必填 | 每个嵌套子进程的绝对隔离 Harness home |
-| `cwd` | 父会话 cwd | 子进程及其 SDK 会话的工作目录覆盖值 |
 | `provider` | `deepseek-official` | 写入子进程 `initialize` 的提供方路由 |
 | `model` | `deepseek-v4-flash` | 写入子进程 `initialize` 的模型 |
 | `maxTokens` | 适配器／提供方路由默认值 | 写入子进程 `initialize` 的单次请求输出 token 上限 |

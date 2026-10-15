@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+每个钩子事件开始时，钩子进程及其载荷中的 `cwd` 均使用 Session 的当前工作目录。
+
 挂载本包并把 `configPath` 指向你的 `hooks.json`，你已有的钩子就会在 agent 运行中的对应时刻开始触发。在第一个钩子生效之前无需其他设置。
 
 ### 何时选择
@@ -61,7 +63,7 @@ kind: "package-reference"
 
 ### 钩子如何运行与失败
 
-- 钩子在你的项目目录（agent 的会话工作区）中运行，因此钩子里的 `pwd` 与相对路径指向你的项目，而非服务器启动目录。
+- 钩子在 agent 的 Session 当前目录中运行；`pwd`、载荷中的 `cwd` 与相对路径保持一致。
 - 一份配置应用于整个进程：启动时只读取一次，相对 `configPath` 从启动进程的目录解析。
 - 只运行同步 command 钩子；`async: true` 或非 command 钩子会被跳过并给出警告。
 - 同一事件上的钩子按配置顺序逐个运行。

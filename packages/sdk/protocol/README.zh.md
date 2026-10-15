@@ -33,12 +33,14 @@ kind: "package-library"
 
 ### SDK 方法
 
-两个协议端共享同一套方法：三个客户端到服务端请求与四个服务端到客户端通知。
+两个协议端共享同一套方法：五个客户端到服务端请求与四个服务端到客户端通知。
 
 | 方向 | 方法 | 载荷类型 |
 |---|---|---|
 | client→server | `initialize` | `InitializeParams` → `InitializeResult` |
 | client→server | `session/prompt` | `SessionPromptParams` → `SessionPromptResult`（持久入队回执） |
+| 客户端→服务端 | `session/working-directory/get` | `SessionWorkingDirectoryParams` → `SessionWorkingDirectoryResult` |
+| 客户端→服务端 | `session/working-directory/set` | `SessionWorkingDirectorySetParams` → `SessionWorkingDirectoryResult` |
 | client→server | `shutdown` | 无参数 → `{}` |
 | server→client | `session.event` | `SessionEventNotification`（运行时内每个会话，不过滤） |
 | server→client | `session.status` | `SessionStatusNotification`（整个 agent（智能体）的 `running`/`idle` 转换） |

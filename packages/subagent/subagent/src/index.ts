@@ -32,6 +32,8 @@ import type { Volatile } from '@deepseek-ai/cordis'
 
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { isAbsolute, resolve } from 'node:path'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import type {} from '@deepseek-ai/dsh-attachment'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
@@ -200,6 +202,7 @@ export class SubagentRuntime extends TypertRemoteService {
     maxDepth: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(1).volatile(),
     maxActiveSubagents: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(8).volatile(),
   })
+  static inject = ['workingDirectory']
   private providers = new Map<string, SubagentProvider>()
   private continuations: SubagentContinuationManager | undefined
   /**
@@ -564,7 +567,11 @@ export class SubagentRuntime extends TypertRemoteService {
       provider: name,
       ...request.label !== undefined ? { label: request.label } : {},
     })
-    const resolved: ResolvedSubagentStartRequest = { ...request, descriptor }
+    const cwd = request.cwd !== undefined && isAbsolute(request.cwd)
+      ? request.cwd
+      : resolve(await this.ctx.workingDirectory.ensure(request.parent, request.signal), request.cwd ?? '.')
+    request.signal.throwIfAborted()
+    const resolved: ResolvedSubagentStartRequest = { ...request, cwd, descriptor }
     const run = await provider.start(resolved)
     const child = run.localAgent?.session
     if (child !== undefined) {

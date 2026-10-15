@@ -60,6 +60,8 @@ kind: "package-library"
 
 ### 处理流水线
 
+`selectHookGroups` 按配置顺序选出包含命令的匹配组。仅当所选组中有待运行的命令时，各桥接才解析当前工作目录。`appendHookInvoked` 不会将缺失或值为 undefined 的 matcher 写入事件。
+
 本库是一串单一用途的步骤，每个步骤一个函数：校验 matcher pattern、通过 `dsh-shell` 执行器运行命令、解码结果、把每个匹配 hook 的结果合并为最严格的一个结果，并记录持久的 `hook/*` 事件对。matcher 的 `mode` 参数是两个方言唯一的差异轴——`claude-code` 把 pattern 解释为字面量备选或正则，`codex` 始终解释为未锚定正则。每个步骤都会降级为受控结果而不是抛异常，因此钩子永远不会使调用轮次崩溃：无效正则是运行时的不匹配，执行器拒绝会变成没有退出码的 `HookOutput`，退出码 2 以 stderr 作为原因阻塞，其他失败均不阻塞。合并应用 `deny > ask > allow` 优先级，保持首个 `continue: false` 停止的粘性，并按 hook 顺序累积上下文。脱离运行会被跟踪，因此 `fiber.dispose()` 能达到完全停稳。这些步骤位于 [`src/matcher.ts`](src/matcher.ts)、[`src/runner.ts`](src/runner.ts)、[`src/codec.ts`](src/codec.ts)、[`src/merge.ts`](src/merge.ts)、[`src/events.ts`](src/events.ts) 与 [`src/detached.ts`](src/detached.ts)。
 
 ### `hook/*` 会话事件
@@ -82,7 +84,7 @@ kind: "package-library"
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 每个原语与事件辅助函数的公开导出 |
-| [`src/matcher.ts`](src/matcher.ts) | 匹配全部哨兵、字面量或正则模式、校验与运行时匹配 |
+| [`src/matcher.ts`](src/matcher.ts) | matcher 校验、方言匹配，以及包含命令的匹配组选择 |
 | [`src/runner.ts`](src/runner.ts) | 通过 `ctx.shell` 的 `runHook` 执行与 `DEFAULT_HOOK_TIMEOUT_MS` |
 | [`src/codec.ts`](src/codec.ts) | 退出码与结构化 stdout 解码为 `HookOutput` |
 | [`src/merge.ts`](src/merge.ts) | 最严格合并与 `MergedHookOutcome` 类型 |

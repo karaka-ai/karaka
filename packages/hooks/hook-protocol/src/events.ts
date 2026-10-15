@@ -19,8 +19,8 @@ export interface HookInvocation {
   dialect: HookDialect
   /** A stable id correlating the invoked event with its result. */
   handlerId: string
-  /** The matcher-group pattern that selected it (absent for match-all). */
-  matcher?: string
+  /** The matcher-group pattern; absent or `undefined` is omitted from the event. */
+  matcher?: string | undefined
 }
 
 /** The decided outcome half of the pair. */
@@ -70,7 +70,7 @@ export function summarizeStderr(stderr: string, maxChars: number): string | unde
 /**
  * Append a `hook/invoked` event naming the handler and hook point to `session`.
  * @param session - the session whose open turn records the event.
- * @param invocation - the invocation identity; an absent `matcher` is omitted from the payload.
+ * @param invocation - the invocation identity; absent or `undefined` matchers are omitted from the payload.
  */
 export function appendHookInvoked(session: Session, invocation: HookInvocation): void {
   session.append('hook/invoked', {

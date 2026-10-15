@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Hook processes and their payload `cwd` use the Session's current working directory when each hook point starts.
+
 Mount this package, point `configPath` at your `hooks.json`, and the hooks you already have start firing at the corresponding moments in agent runs. There is nothing else to set up before the first hook works.
 
 ### When to choose it
@@ -61,7 +63,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### How hooks run and fail
 
-- Hooks run in your project directory — the agent's session workspace — so `pwd` and relative paths in your hooks refer to your project, not the server's launch directory.
+- Hooks run in the agent's current Session directory; `pwd`, payload `cwd`, and relative paths agree.
 - One config applies to the whole process: it is read once at startup, and a relative `configPath` resolves from the directory that launched the process.
 - Only synchronous command hooks run; an `async: true` or non-command hook is skipped with a warning.
 - Hooks on the same event run one after another, in config order.

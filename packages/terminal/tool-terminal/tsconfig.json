@@ -37,6 +37,9 @@
     },
     {
       "path": "../../jobs/jobs"
+    },
+    {
+      "path": "../../session/working-directory"
     }
   ]
 }

@@ -269,7 +269,7 @@ export function ancestorChain(root: string, cwd: string): string[] {
 
 /**
  * Find descendant directories crossed between a cwd and a touched file.
- * @param root - session cwd that bounds nested discovery.
+ * @param root - current working directory that bounds nested discovery.
  * @param touchedPath - absolute path or path relative to `root`.
  * @returns descendant directories from shallowest through the touched file's parent.
  */

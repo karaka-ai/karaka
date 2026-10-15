@@ -61,7 +61,11 @@ async function checkPty() {
   // A Windows GUI executable needs a console-owning shell when launched inside ConPTY.
   const executable = process.platform === 'win32' ? process.env.ComSpec : process.execPath
   const args = process.platform === 'win32' ? ['/d', '/c', 'node', script] : [script]
-  const terminal = pty.spawn(executable, args, { cwd: scratch, env, cols: 80, rows: 24 })
+  // Mirror the product's Windows allocation: the console host node-pty ships.
+  const terminal = pty.spawn(executable, args, {
+    cwd: scratch, env, cols: 80, rows: 24,
+    ...(process.platform === 'win32' ? { useConptyDll: true } : {}),
+  })
   let output = ''
   let exited = false
   let timedOut = false
