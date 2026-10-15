@@ -52,10 +52,15 @@ async function storedEvents(ctx: Context, id: SessionId): Promise<readonly Sessi
   }
 }
 
+/** Read the service-owned mailbox for recovery and acknowledgement synchronization. */
+function teamMailbox(ctx: Context): TeamMailbox {
+  const { mailbox } = ctx.agentTeams as unknown as { readonly mailbox: TeamMailbox }
+  return mailbox
+}
+
 /** Await mailbox acknowledgements through their flush and dispatch completion. */
 async function settleMailbox(ctx: Context): Promise<void> {
-  const { mailbox } = ctx.agentTeams as unknown as { readonly mailbox: TeamMailbox }
-  await Promise.all(mailbox.pendingDispatches())
+  await Promise.all(teamMailbox(ctx).pendingDispatches())
 }
 
 async function disposeContext(ctx: Context): Promise<void> {
@@ -213,33 +218,48 @@ for (const backend of backends) {
       await first.dispose()
 
       const second = await stack(backend, storageRoot, [textResponse('cold resumed answer')])
-      const activeHandle = await second.ctx.agents.resume({
-        resumeSessionId: activeRootId,
-        agentOptions: { provider: 'mock', model: 'mock' },
-      })
-      const failedHandle = await second.ctx.agents.resume({
-        resumeSessionId: failedRootId,
-        agentOptions: { provider: 'mock', model: 'mock' },
-      })
-      await vi.waitFor(() => {
-        expect(durable(activeHandle.agent).members[0]?.phase).toBe('active')
-        const failedMember = durable(failedHandle.agent).members[0]
-        expect(failedMember?.phase).toBe('failed')
-        expect(failedMember?.error).toContain('child Session recovery failed')
-      }, { timeout: 5_000 })
+      const recovery = vi.spyOn(teamMailbox(second.ctx), 'recoverFor')
+      try {
+        const activeHandle = await second.ctx.agents.resume({
+          resumeSessionId: activeRootId,
+          agentOptions: { provider: 'mock', model: 'mock' },
+        })
+        const failedHandle = await second.ctx.agents.resume({
+          resumeSessionId: failedRootId,
+          agentOptions: { provider: 'mock', model: 'mock' },
+        })
+        await vi.waitFor(() => {
+          expect(durable(activeHandle.agent).members[0]?.phase).toBe('active')
+          const failedMember = durable(failedHandle.agent).members[0]
+          expect(failedMember?.phase).toBe('failed')
+          expect(failedMember?.error).toContain('child Session recovery failed')
+        }, { timeout: 5_000 })
 
-      const receipt = await second.ctx.agentTeams.sendMessage(activeHandle.agent, {
-        target: 'recoverable',
-        content: [{ type: 'text', text: 'resume after reconciliation' }],
-        signal: SIGNAL,
-      })
-      expect(receipt.status).toBe('accepted')
-      await vi.waitFor(() => { expect(second.ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
-      await vi.waitFor(() => { expect(durable(activeHandle.agent).pendingMessages).toEqual([]) })
+        // The active roster edge precedes mailbox recovery; wait for this Lead's
+        // recovery promise before requiring immediate acceptance of a new message.
+        await vi.waitFor(() => {
+          expect(recovery.mock.calls.some(([agent]) => agent === activeHandle.agent)).toBe(true)
+        }, { timeout: 5_000 })
+        const recoveryIndex = recovery.mock.calls.findIndex(([agent]) => agent === activeHandle.agent)
+        const recovered = recovery.mock.results[recoveryIndex]
+        if (recovered?.type !== 'return') throw new Error('Lead mailbox recovery did not start')
+        await recovered.value
 
-      await activeHandle.dispose()
-      await failedHandle.dispose()
-      await second.dispose()
+        const receipt = await second.ctx.agentTeams.sendMessage(activeHandle.agent, {
+          target: 'recoverable',
+          content: [{ type: 'text', text: 'resume after reconciliation' }],
+          signal: SIGNAL,
+        })
+        expect(receipt.status).toBe('accepted')
+        await vi.waitFor(() => { expect(second.ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+        await vi.waitFor(() => { expect(durable(activeHandle.agent).pendingMessages).toEqual([]) })
+
+        await activeHandle.dispose()
+        await failedHandle.dispose()
+        await second.dispose()
+      } finally {
+        recovery.mockRestore()
+      }
     })
 
     it('reconciles a provisioning child whose initial prompt is durably pending', {
