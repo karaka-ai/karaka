@@ -1,38 +1,60 @@
-/** Pinned Host and page calendars keep page timers on their real schedule across navigations. */
+/** Fixture-day clock pins keep page scheduling native at every real-to-fixture distance. */
 import { chromium, type Browser } from 'playwright'
-import { afterAll, beforeAll, expect, it } from 'vitest'
-import { newEnglishPage, pinBrowserClock, pinHostClock, WEB_FIXTURE_TIME } from './support.ts'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { newEnglishPage, pinBrowserClock, WEB_FIXTURE_TIME } from './support.ts'
 
-let browser: Browser | undefined
-let hostClock: ReturnType<typeof pinHostClock> | undefined
+// Host clock shifts spread over one 2^32 ms period of the real-to-fixture
+// distance; Playwright's page clock stopped page timers in half of that period.
+const DISTANCE_PERIOD_MS = 2 ** 32
+const HOST_SHIFTS_MS = Array.from({ length: 8 }, (_, index) => index * DISTANCE_PERIOD_MS / 8)
 
-beforeAll(async () => {
-  hostClock = pinHostClock()
-  browser = await chromium.launch()
-})
+describe('web e2e: pinned fixture clocks', () => {
+  let browser: Browser
 
-afterAll(async () => {
-  try {
+  beforeAll(async () => {
+    browser = await chromium.launch()
+  }, 120_000)
+
+  afterAll(async () => {
     await browser?.close()
-  } finally {
-    hostClock?.mockRestore()
-  }
-})
+  })
 
-it('fires page timers after each navigation while reading the fixture day', async () => {
-  const page = await newEnglishPage(browser!)
-  await pinBrowserClock(page)
-  for (const body of ['<p>first document</p>', '<p>second document</p>']) {
-    await page.goto(`data:text/html,${encodeURIComponent(body)}`)
-    const fired = page.evaluate(() => Promise.all([
-      new Promise<void>((resolve) => { setTimeout(resolve, 0) }),
-      new Promise<void>((resolve) => { requestAnimationFrame(() => { resolve() }) }),
-    ]).then(() => 'fired' as const))
-    // The Node timer runs on the real clock, so it bounds a stalled page.
-    const stalled = new Promise<'stalled'>((resolve) => { setTimeout(() => { resolve('stalled') }, 5_000) })
-    expect(await Promise.race([fired, stalled])).toBe('fired')
-    const read = await page.evaluate(() => ({ now: Date.now(), constructed: new Date().getTime() }))
-    expect(Math.abs(read.now - WEB_FIXTURE_TIME)).toBeLessThan(120_000)
-    expect(Math.abs(read.constructed - WEB_FIXTURE_TIME)).toBeLessThan(120_000)
-  }
+  it.each(HOST_SHIFTS_MS)('runs page timers and reads the fixture day with the Host clock %d ms behind it', async (shift) => {
+    const hostStartedAt = performance.now()
+    const hostClock = vi.spyOn(Date, 'now').mockImplementation(() =>
+      WEB_FIXTURE_TIME - shift + Math.floor(performance.now() - hostStartedAt))
+    const page = await newEnglishPage(browser)
+    try {
+      await pinBrowserClock(page)
+      for (const navigation of ['initial', 'replacement']) {
+        await page.goto(`data:text/html,<body>${navigation}</body>`)
+        const pageStartedAt = await page.evaluate(() => {
+          requestAnimationFrame(() => { document.body.dataset.frame = 'done' })
+          setTimeout(() => { document.body.dataset.timer = 'done' }, 20)
+          return Date.now()
+        })
+        await expect.poll(() => page.evaluate(() => ({
+          frame: document.body.dataset.frame,
+          timer: document.body.dataset.timer,
+        })), { timeout: 5_000 }).toEqual({ frame: 'done', timer: 'done' })
+        const dates = await page.evaluate(() => ({
+          now: Date.now(),
+          day: new Date().toISOString().slice(0, 10),
+          explicit: new Date(0).getTime(),
+          parsed: Date.parse('2000-01-01T00:00:00Z'),
+        }))
+        expect(pageStartedAt).toBeGreaterThanOrEqual(WEB_FIXTURE_TIME)
+        expect(dates.now).toBeGreaterThan(pageStartedAt)
+        expect(dates.day).toBe(new Date(WEB_FIXTURE_TIME).toISOString().slice(0, 10))
+        expect(dates.explicit).toBe(0)
+        expect(dates.parsed).toBe(946_684_800_000)
+      }
+    } finally {
+      try {
+        await page.close()
+      } finally {
+        hostClock.mockRestore()
+      }
+    }
+  }, 60_000)
 })
