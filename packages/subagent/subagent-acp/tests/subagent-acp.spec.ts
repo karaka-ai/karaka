@@ -1,12 +1,13 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { PassThrough, type Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime, { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -47,6 +48,7 @@ interface SetupEnv {
 async function setup(mockEnv: SetupEnv = {}, permission: 'allow' | 'reject' = 'reject') {
   const ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(acp, {
@@ -455,194 +457,48 @@ describe('disposeAcpChild (the backend-owned teardown ladder over seam verbs)', 
 })
 
 describe('cwd resolution', () => {
-  it('falls back to the parent session cwd for the child process AND its ACP session', async () => {
-    // realpath: on macOS `tmpdir()` sits behind a symlink (/var → /private/var),
-    // and the child reports its REAL process.cwd() — compare canonical paths.
-    const workdir = realpathSync(mkdtempSync(join(tmpdir(), 'acp-parent-cwd-')))
-    try {
-      const ctx = await setup({ MOCK_ECHO_CWD: '1' })
-      const parent = { id: 'parent', session: { header: { cwd: workdir } } } as unknown as Agent
-      const run = await ctx.subagents.start('acp', { prompt: [{ type: 'text' as const, text: 'p' }], parent, signal: new AbortController().signal })
-      const result = await run.result
-      await run.dispose()
-      // Line 1: where the child process actually ran; line 2: the workspace the
-      // backend announced in `session/new`. Both must be the parent's workspace.
-      expect(text(result.output)).toBe(`${workdir}\n${workdir}`)
-    } finally {
-      rmSync(workdir, { recursive: true, force: true })
-    }
-  })
-
-  it('rejects before spawning when neither config.cwd nor the parent session provides one', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'acp-no-cwd-'))
-    const sentinel = join(tmp, 'spawned')
-    try {
-      const ctx = new Context()
-      await ctx.plugin(SessionProjectionRegistry)
-      await ctx.plugin(SubagentRuntime)
-      await ctx.plugin(LocalSubprocessRuntime)
-      // A command that would create the sentinel if the child were ever spawned.
-      await ctx.plugin(acp, { providerName: 'acp', command: 'touch', args: [sentinel], permission: 'reject', env: {} })
-      const parent = { id: 'parent', session: { header: {} } } as unknown as Agent
-      await expect(ctx.subagents.start('acp', { prompt: [{ type: 'text' as const, text: 'p' }], parent, signal: new AbortController().signal }))
-        .rejects.toThrow(`subagent-acp: ${expectedFailure('stage: initialize; category: configuration')}`)
-      // Resolution failed BEFORE the process boundary — nothing was launched.
-      expect(existsSync(sentinel)).toBe(false)
-    } finally {
-      rmSync(tmp, { recursive: true, force: true })
-    }
-  })
-
-  it('prefers the configured cwd override to the parent session cwd', async () => {
-    const configured = realpathSync(mkdtempSync(join(tmpdir(), 'acp-cfg-cwd-')))
-    const parentDir = realpathSync(mkdtempSync(join(tmpdir(), 'acp-parent-cwd-')))
-    try {
-      const ctx = new Context()
-      await ctx.plugin(SessionProjectionRegistry)
-      await ctx.plugin(SubagentRuntime)
-      await ctx.plugin(LocalSubprocessRuntime)
-      await ctx.plugin(acp, {
-        providerName: 'acp',
-        command: process.execPath,
-        args: [mockServer],
-        cwd: configured,
-        permission: 'reject',
-        env: { MOCK_ECHO_CWD: '1' },
-      })
-      const parent = { id: 'parent', session: { header: { cwd: parentDir } } } as unknown as Agent
-      const run = await ctx.subagents.start('acp', { prompt: [{ type: 'text' as const, text: 'p' }], parent, signal: new AbortController().signal })
-      const result = await run.result
-      await run.dispose()
-      expect(text(result.output)).toBe(`${configured}\n${configured}`)
-    } finally {
-      rmSync(configured, { recursive: true, force: true })
-      rmSync(parentDir, { recursive: true, force: true })
-    }
-  })
-
-  it('resolves a relative config cwd against the launch directory at load', async () => {
-    // The child process AND its announced ACP session cwd must both get the
-    // ABSOLUTE form — DSH's own ACP server rejects a relative session cwd, and
-    // deferring resolution to spawn would hide the launch-dir dependency.
-    const relative = 'packages/subagent/subagent-acp'
-    const absolute = resolve(relative)
-    const ctx = new Context()
-    await ctx.plugin(SessionProjectionRegistry)
-    await ctx.plugin(SubagentRuntime)
-    await ctx.plugin(LocalSubprocessRuntime)
-    await ctx.plugin(acp, {
-      providerName: 'acp',
-      command: process.execPath,
-      args: [mockServer],
-      cwd: relative,
-      permission: 'reject',
-      env: { MOCK_ECHO_CWD: '1' },
-    })
-    const run = await ctx.subagents.start('acp', request())
+  it('uses the runtime directory when the parent has no origin', async () => {
+    const ctx = await setup({ MOCK_ECHO_CWD: '1' })
+    const parent = { id: 'parent', session: { header: {} } } as unknown as Agent
+    const run = await ctx.subagents.start('acp', { ...request('p'), parent })
     const result = await run.result
     await run.dispose()
-    expect(text(result.output)).toBe(`${realpathSync(absolute)}\n${absolute}`)
+    const cwd = realpathSync(process.cwd())
+    expect(text(result.output)).toBe(`${cwd}\n${cwd}`)
   })
 
-  it('rejects an empty config cwd at load', async () => {
-    // `path.resolve('')` is the process cwd, so an empty string would silently
-    // reintroduce the launch-directory fallback this resolution removed.
-    const ctx = new Context()
-    await ctx.plugin(SessionProjectionRegistry)
-    await ctx.plugin(SubagentRuntime)
-    await ctx.plugin(LocalSubprocessRuntime)
-    await expect(ctx.plugin(acp, {
-      providerName: 'acp',
-      command: 'true',
-      args: [],
-      cwd: '',
-      permission: 'reject',
-      env: {},
-    })).rejects.toThrow('config cwd must not be empty')
-    await ctx.fiber.dispose()
-  })
-
-  // Windows ACLs do not expose the POSIX directory search-bit state this fixture creates.
-  it.skipIf(process.platform === 'win32')('rejects a config cwd directory without search permission at load', async () => {
-    // statSync().isDirectory() is true for a mode-600 directory, but a
-    // subprocess cwd needs SEARCH permission — spawn would fail EACCES.
-    const tmp = mkdtempSync(join(tmpdir(), 'acp-noexec-'))
-    chmodSync(tmp, 0o600)
+  it('uses an explicit child directory without changing the parent origin', async () => {
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'acp-selected-cwd-')))
     try {
-      const ctx = new Context()
-      await ctx.plugin(SessionProjectionRegistry)
-      await ctx.plugin(SubagentRuntime)
-      await ctx.plugin(LocalSubprocessRuntime)
-      await expect(ctx.plugin(acp, {
-        providerName: 'acp',
-        command: 'true',
-        args: [],
-        cwd: tmp,
-        permission: 'reject',
-        env: {},
-      })).rejects.toThrow('not an accessible directory')
-      await ctx.fiber.dispose()
+      const ctx = await setup({ MOCK_ECHO_CWD: '1' })
+      const run = await ctx.subagents.start('acp', { ...request('p'), cwd })
+      const result = await run.result
+      await run.dispose()
+      expect(text(result.output)).toBe(`${cwd}\n${cwd}`)
+      expect(fakeParent.session.header.cwd).toBe(process.cwd())
     } finally {
-      chmodSync(tmp, 0o700)
-      rmSync(tmp, { recursive: true, force: true })
+      rmSync(cwd, { recursive: true, force: true })
     }
   })
 
-  it('rejects a config cwd that is not an accessible directory at load', async () => {
-    const ctx = new Context()
-    await ctx.plugin(SessionProjectionRegistry)
-    await ctx.plugin(SubagentRuntime)
-    await ctx.plugin(LocalSubprocessRuntime)
-    await expect(ctx.plugin(acp, {
-      providerName: 'acp',
-      command: 'true',
-      args: [],
-      cwd: '/nonexistent/acp-child-workspace',
-      permission: 'reject',
-      env: {},
-    })).rejects.toThrow('not an accessible directory')
-    await ctx.fiber.dispose()
+  it('resolves a relative override against the parent current directory', async () => {
+    const ctx = await setup({ MOCK_ECHO_CWD: '1' })
+    const cwd = 'packages/subagent/subagent-acp'
+    const run = await ctx.subagents.start('acp', { ...request('p'), cwd })
+    const result = await run.result
+    await run.dispose()
+    const absolute = realpathSync(resolve(cwd))
+    expect(text(result.output)).toBe(`${absolute}\n${absolute}`)
   })
 
-  it('rejects a parent session cwd that is not absolute', async () => {
-    // SessionHeader documents cwd as absolute; a relative value here is a broken
-    // header, and resolving it against the server process cwd would silently
-    // re-introduce the launch-directory dependency this resolution removes.
-    const ctx = await setup({})
-    const parent = { id: 'parent', session: { header: { cwd: 'relative/workspace' } } } as unknown as Agent
-    await expect(ctx.subagents.start('acp', { prompt: [{ type: 'text' as const, text: 'p' }], parent, signal: new AbortController().signal }))
-      .rejects.toThrow(`subagent-acp: ${expectedFailure('stage: initialize; category: configuration')}`)
-  })
-
-  it('rejects a parent session cwd that names a FILE, not a directory', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'acp-file-cwd-'))
-    const file = join(tmp, 'a-file')
-    writeFileSync(file, 'x')
+  it('rejects a missing selected directory before process startup', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'acp-missing-cwd-'))
     try {
       const ctx = await setup({})
-      const parent = { id: 'parent', session: { header: { cwd: file } } } as unknown as Agent
-      await expect(ctx.subagents.start('acp', { prompt: [{ type: 'text' as const, text: 'p' }], parent, signal: new AbortController().signal }))
+      await expect(ctx.subagents.start('acp', { ...request('p'), cwd: join(root, 'missing') }))
         .rejects.toThrow(`subagent-acp: ${expectedFailure('stage: initialize; category: configuration')}`)
     } finally {
-      rmSync(tmp, { recursive: true, force: true })
-    }
-  })
-
-  it('rejects a parent session cwd that is not an accessible directory, before spawning', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'acp-bad-parent-cwd-'))
-    const sentinel = join(tmp, 'spawned')
-    try {
-      const ctx = new Context()
-      await ctx.plugin(SessionProjectionRegistry)
-      await ctx.plugin(SubagentRuntime)
-      await ctx.plugin(LocalSubprocessRuntime)
-      await ctx.plugin(acp, { providerName: 'acp', command: 'touch', args: [sentinel], permission: 'reject', env: {} })
-      const parent = { id: 'parent', session: { header: { cwd: join(tmp, 'vanished') } } } as unknown as Agent
-      await expect(ctx.subagents.start('acp', { prompt: [{ type: 'text' as const, text: 'p' }], parent, signal: new AbortController().signal }))
-        .rejects.toThrow(`subagent-acp: ${expectedFailure('stage: initialize; category: configuration')}`)
-      expect(existsSync(sentinel)).toBe(false)
-    } finally {
-      rmSync(tmp, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })
@@ -784,7 +640,15 @@ describe('dsh-subagent-acp', () => {
       prompt: [{ type: 'text' as const, text: 'p' }],
       parent,
       signal: controller.signal,
-    })).rejects.toThrow('subagent request was aborted before the ACP child started')
+    })).rejects.toThrow('This operation was aborted')
+    const spawn = vi.spyOn(ctx.subprocess, 'spawn')
+    expect(() => ctx.subagents.getProvider('acp')!.start({
+      ...request('p', controller.signal),
+      cwd: process.cwd(),
+      descriptor: snapshotSubagentDescriptor({ mode: 'one-shot', provider: 'acp', label: 'cancelled startup' }),
+    })).toThrow('subagent request was aborted before the ACP child started')
+    expect(spawn).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
   })
 
   it('reports an initialize-stage process exit without copying the transport error', async () => {
@@ -1414,6 +1278,7 @@ describe('dsh-subagent-acp', () => {
     onTestFinished(() => { start.mockRestore() })
     const ready = join(tmp, 'trap-armed')
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(acp, {
@@ -1455,6 +1320,7 @@ describe('dsh-subagent-acp', () => {
     ]) {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
+      await mountWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       await expect(ctx.plugin(acp, { providerName: 'acp', command: 'true', args: [], permission: 'reject', env: {}, ...bad }))
@@ -1466,6 +1332,7 @@ describe('dsh-subagent-acp', () => {
   it('classifies a returned-handle startup failure through the provider load path', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(acp, {
@@ -1705,6 +1572,7 @@ describe('dsh-subagent-acp', () => {
   it('unregisters the provider when its fiber is disposed (HMR safety)', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const fiber = await ctx.plugin(acp, { providerName: 'acp', command: 'x', args: [], permission: 'reject', env: {} })

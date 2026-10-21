@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-从右侧栏开始页选择已安装的 shell，在会话工作区运行命令。在标签页上重命名终端，并在刷新页面后恢复保留的进程。折叠侧栏让命令继续运行，关闭终端标签页则请求结束进程。Tab 补全使用 shell 的配置。命令使用执行环境中系统用户的权限，独立于 Agent 权限；详见[用户终端执行](../../api/terminal-controller/README.zh.md#use-this-package)。
+从右侧栏开始页选择已安装的 shell，在 Session 当前工作目录运行命令。在标签页上重命名终端，并在刷新页面后恢复保留的进程。折叠侧栏让命令继续运行，关闭终端标签页则请求结束进程。Tab 补全使用 shell 的配置。命令使用执行环境中系统用户的权限，独立于 Agent 权限；详见[用户终端执行](../../api/terminal-controller/README.zh.md#use-this-package)。
 
 ## 目录
 

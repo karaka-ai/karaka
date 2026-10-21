@@ -155,6 +155,12 @@
     # Shared projection registry: subagent catalog identity (mode/label) folds
     # through its registered units, so the `list_agents` surface below fails
     # loud without it; web layers reuse this same mount for list rows.
+    - id: working-directory
+      name: '@deepseek-ai/dsh-working-directory'
+
+    - id: tool-working-directory
+      name: '@deepseek-ai/dsh-tool-working-directory'
+
     - id: session-projection
       name: '@deepseek-ai/dsh-session-projection'
 

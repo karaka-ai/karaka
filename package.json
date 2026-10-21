@@ -151,6 +151,8 @@
     "verify-client-domain-graph": "tsx scripts/verify-client-domain-graph.ts",
     "gen-tsconfig-paths": "tsx scripts/gen-tsconfig-paths.ts",
     "verify-tsconfig-paths": "tsx scripts/gen-tsconfig-paths.ts --check",
+    "gen-cli-help": "tsx scripts/gen-cli-help.ts",
+    "verify-cli-help": "tsx scripts/gen-cli-help.ts --check",
     "gen-cordis-catalog": "tsx scripts/gen-cordis-catalog.ts",
     "verify-cordis-catalog": "tsx scripts/gen-cordis-catalog.ts --check",
     "gen-cordis-api": "tsx scripts/gen-cordis-api.ts",
@@ -261,6 +263,10 @@
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.8",
     "@deepseek-ai/dsh-skill-office": "workspace:*",
-    "@deepseek-ai/dsh-tool-workspace-dependencies": "workspace:*"
+    "@deepseek-ai/dsh-tool-workspace-dependencies": "workspace:*",
+    "@deepseek-ai/dsh-tool-working-directory": "workspace:*",
+    "@deepseek-ai/dsh-working-directory": "workspace:*",
+    "@deepseek-ai/dsh-experimental-worktree": "workspace:*",
+    "@deepseek-ai/dsh-experimental-tool-worktree": "workspace:*"
   }
 }

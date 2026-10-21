@@ -87,7 +87,7 @@ dsh --profile web --no-open --port 8080
 
 ### patch 语义
 
-patch 会替换目标行的整个 `config`，因此每个 Web 行都重述自己拥有的每个键：基础行上的 persona 前缀与后缀模板、`DSH_TOOLS_MODE` PTC mode 开关与 `session-query-sqlite` 值，随后 `insert` 添加 Web 宿主行、传输层与浏览器名录。`webserver` 与 `web-runtime` 行注入 `webStartup` 提供方并直接读取本次调用的取值；`connection` 行则改为读取 web-runtime 行发布的、与绑定相关的 `webRuntime` 值，即该提供方的 authority 加上全接口绑定的 LAN 字面量。base 以进程级挂载的按 agent 工具行在这里被禁用，由 preset 名录接管；每项宿主层与 preset 层归属决策的理由以行内注释写在 patch 里。
+patch 会替换目标行的整个 `config`，因此每个 Web 行都重述自己拥有的每个键：基础行上的 persona 前缀模板、`DSH_TOOLS_MODE` PTC mode 开关与 `session-query-sqlite` 值，随后 `insert` 添加 Web 宿主行、传输层与浏览器名录。`webserver` 与 `web-runtime` 行注入 `webStartup` 提供方并直接读取本次调用的取值；`connection` 行则改为读取 web-runtime 行发布的、与绑定相关的 `webRuntime` 值，即该提供方的 authority 加上全接口绑定的 LAN 字面量。base 以进程级挂载的按 agent 工具行在这里被禁用，由 preset 名录接管；每项宿主层与 preset 层归属决策的理由以行内注释写在 patch 里。
 
 ### 公告应用 URL
 

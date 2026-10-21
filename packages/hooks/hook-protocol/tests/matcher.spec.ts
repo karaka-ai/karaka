@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matcherDiagnostic, matchesMatcher } from '@deepseek-ai/dsh-hook-protocol'
+import { matcherDiagnostic, matchesMatcher, selectHookGroups, type MatcherGroup } from '@deepseek-ai/dsh-hook-protocol'
 
 describe('matchesMatcher — match-all sentinels (both dialects)', () => {
   for (const mode of ['claude-code', 'codex'] as const) {
@@ -70,5 +70,34 @@ describe('matcherDiagnostic — parse-time diagnostics', () => {
   it('returns a stable diagnostic for invalid regexes in either dialect', () => {
     expect(matcherDiagnostic('(', 'claude-code')).toBe('invalid claude-code regex matcher "("')
     expect(matcherDiagnostic('[', 'codex')).toBe('invalid codex regex matcher "["')
+  })
+})
+
+describe('selectHookGroups', () => {
+  it.each(['claude-code', 'codex'] as const)('%s: absent and empty hook points select no commands', (mode) => {
+    expect(selectHookGroups(undefined, 'Bash', mode)).toEqual([])
+    expect(selectHookGroups([], 'Bash', mode)).toEqual([])
+  })
+
+  it.each(['claude-code', 'codex'] as const)('%s: selects nonempty matching groups in config order', (mode) => {
+    const first: MatcherGroup = { matcher: '*', hooks: [{ command: 'first' }] }
+    const second: MatcherGroup = { matcher: '^Bash$', hooks: [{ command: 'second' }, { command: 'third' }] }
+    const groups: MatcherGroup[] = [
+      { matcher: '*', hooks: [] },
+      first,
+      { matcher: 'Read', hooks: [{ command: 'unmatched' }] },
+      second,
+    ]
+    const selected = selectHookGroups(groups, 'Bash', mode)
+    expect(selected).toEqual([first, second])
+    expect(selected[0]).toBe(first)
+    expect(selected[1]).toBe(second)
+    expect(groups).toHaveLength(4)
+  })
+
+  it('keeps Claude literal matching distinct from Codex regex matching', () => {
+    const group: MatcherGroup = { matcher: 'Bash', hooks: [{ command: 'matched' }] }
+    expect(selectHookGroups([group], 'BashOutput', 'claude-code')).toEqual([])
+    expect(selectHookGroups([group], 'BashOutput', 'codex')).toEqual([group])
   })
 })

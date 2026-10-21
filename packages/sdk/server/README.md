@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+`session/working-directory/get` accepts `{ sessionId }`; `session/working-directory/set` accepts `{ sessionId, path }`. Both return `{ cwd }` and create an unknown Session without starting a model turn. Reads recover missing directories through the working-directory service; changes preserve origin metadata and permissions, and reach the model through logged user context.
+
 Mount this plugin when a runtime must serve SDK clients: add it to a `cordis.yml` that composes the agent service, boot the runtime, and clients connect over stdio. The common path is explicit — the plugin needs the `agents` service; every other capability comes from the surrounding tree.
 
 ### Wiring

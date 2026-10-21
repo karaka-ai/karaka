@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { loadOverlayPatches } from '../packages/boot/app-boot/src/index.ts'
 import { readPluginMeta } from '../packages/boot/app-boot/src/package-meta.ts'
-import { OPTIONAL_BUNDLES, bundlePatchPaths, composeEntries } from '../packages/boot/app-boot/src/profile.ts'
+import { OPTIONAL_BUNDLES, PROFILE_TEMPLATES, bundlePatchPaths, composeEntries } from '../packages/boot/app-boot/src/profile.ts'
 import type { DshBundleManifest } from '../packages/util/package-manifest/src/types.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -61,6 +61,17 @@ describe('optional bundles', () => {
       const matches = composed.filter(entry => entry.id === patch.id)
       expect(matches).toHaveLength(1)
       expect(matches[0]?.name).toBe(shippedComposed.find(entry => entry.id === patch.id)?.name)
+    }
+  })
+
+  it('offers Git Worktrees as one disabled bundle with its runtime and tool', () => {
+    const name = '@deepseek-ai/dsh-experimental-tool-worktree'
+    expect(OPTIONAL_BUNDLES).toContain(name)
+    for (const template of Object.values(PROFILE_TEMPLATES)) expect(template.bundles).not.toContain(name)
+    const rows = composeEntries([...shipped, bundle(name).patches])
+    for (const moduleName of [name, '@deepseek-ai/dsh-experimental-worktree']) {
+      expect(composeEntries(shipped).some(row => row.name === moduleName)).toBe(false)
+      expect(rows.filter(row => row.name === moduleName && row.disabled !== true)).toHaveLength(1)
     }
   })
 

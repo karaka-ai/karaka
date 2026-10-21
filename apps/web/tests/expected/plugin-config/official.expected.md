@@ -6,7 +6,7 @@
   - button "添加插件"
   - button "选择添加插件方式"
 - heading "官方" [level=3]
-- text: "8"
+- text: "9"
 - list:
   - listitem:
     - button "查看 智能体团队": 智能体团队
@@ -20,6 +20,10 @@
     - button "查看 开发者工具": 开发者工具
     - text: 实验性 查看调试会话原始数据、聊天消息分组数据，以及调试 NodeJS 后端
     - switch "启用 开发者工具"
+  - listitem:
+    - button "查看 Git 工作树": Git 工作树
+    - text: 实验性 让智能体创建新的 Git 分支与工作树，并在其中继续工作。
+    - switch "启用 Git 工作树"
   - listitem:
     - button "查看 语音输入": 语音输入
     - text: 实验性 在本机使用 SenseVoice 转写录音，首次使用需安装依赖。

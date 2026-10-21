@@ -254,6 +254,7 @@ export async function reconcileInstructionContext(
   versionCache: InstructionVersionCache,
   fileSystem: FileSystem,
   options: {
+    cwd: string
     authorityMessages: readonly UserMessage[]
     scopeMessages: readonly UserMessage[]
     touchedPaths: readonly string[]
@@ -265,8 +266,7 @@ export async function reconcileInstructionContext(
 ): Promise<ReconciledInstructionContext | undefined> {
   const session = agent.session
   const effective = visibleInstructionChanges(agent, options.authorityMessages)
-  /* v8 ignore next -- normal agents carry an absolute session cwd. */
-  const cwd = session.header.cwd ?? process.cwd()
+  const cwd = options.cwd
   // TODO(frozen-project-root): retain the baseline root for the loop instance;
   // recomputing it after marker edits reinterprets the existing relative scope keys.
   const projectRoot = options.projectRoot

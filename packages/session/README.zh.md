@@ -44,6 +44,8 @@ session 组让对话持久保存，恢复已发布的日志格式，并使已提
 | 包 | 职责 | ctx key |
 |---|---|---|
 | [`session-projection/`](session-projection/README.zh.md) | 定义并驱动把已提交事件折叠为完整当前值的投影单元 | `ctx.sessionProjections` |
+| [`working-directory/`](working-directory/README.zh.md) | 拥有每个 Session 的有效执行目录和用户上下文变更 | `ctx.workingDirectory` |
+| [`tool-working-directory/`](tool-working-directory/README.zh.md) | 通过一个工具读取或改变当前目录 | `working_directory` |
 | [`session-projection-cache/`](session-projection-cache/README.zh.md) | 持久化投影检查点，使冷读跳过全量日志加载 | `ctx.sessionProjectionCache` |
 | [`session-stats/`](session-stats/README.zh.md) | 通过 `sessionStats` 单元提供全日志会话计数与墙钟时间 | 注册到 `ctx.sessionProjections` |
 | [`session-turn-outline/`](session-turn-outline/README.zh.md) | 通过 `turnOutline` 单元提供全日志轮次大纲（轮次、`turn/start` seq、提示词预览） | 注册到 `ctx.sessionProjections` |
@@ -72,6 +74,7 @@ session 组让对话持久保存，恢复已发布的日志格式，并使已提
 ## 相关文档
 
 - [会话持久化子系统](../../docs/subsystems/persistence.zh.md)——后端无关的服务语义、flush 检查点与崩溃恢复。
+- [工作目录子系统](../../docs/subsystems/working-directory.zh.md) — 有效目录与恢复。
 - [会话投影子系统](../../docs/subsystems/session-projection.zh.md)——投影单元约定与驱动语义。
 - [会话标题子系统](../../docs/subsystems/session-title.zh.md)——标题资格、回退与提供方流程。
 - [会话遥测子系统](../../docs/subsystems/session-telemetry.zh.md)——捕获、脱敏与投递模式。

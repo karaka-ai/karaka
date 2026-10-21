@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AttachmentStore, { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
@@ -64,6 +65,7 @@ class VisionAdapter extends LlmAdapter {
 async function setup(content: JsonValue[], maxInlineTokens: number) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-multimodal-spill-'))
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx, root)
   onTestFinished(async () => {
     try { await ctx.fiber.dispose() } finally { await rm(root, { recursive: true, force: true }) }
   })

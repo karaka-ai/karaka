@@ -25,6 +25,8 @@ Use `dsh-tool-terminal` when an agent needs persistent terminal state or interac
 <a id="use-this-package"></a>
 ## Use this package
 
+`terminal_open` defaults to the Session's current working directory and resolves relative `cwd` overrides from it. Open terminals keep their own directory after the Session changes directory.
+
 Enable these tools when the composition mounts a terminal backend and the model should be able to use terminal state across calls — stepping a debugger, exploring in a REPL, or returning to a shell after interrupting a foreground command. The guidance section steers the model toward the one-shot bash, read, write, and edit tools for bounded operations.
 
 ### The six tools

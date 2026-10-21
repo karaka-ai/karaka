@@ -43,7 +43,7 @@ ctx.slots.inject('tool.call.toolview', () =>
   }, BusinessToolRow))
 ```
 
-The owner payload is `ToolCallOwnerProps`: `callId`, `toolName`, the `phase` discriminant and its stage-specific `block`, optional `cwd` and `home`, the session-authorized `loadImage` loader (for a view whose result carries durable images), and plain `openFile`/`inspect` callbacks. A PTC dispatch block retains its event's `parentCallId`; a root Session call has no such field, so descendants route through the same keyed dispatch — a registered view such as `read_image` renders its card there, and unregistered descendants keep the generic flattened form. Path summaries relativize to the Session cwd first, then replace a leftover POSIX Host home with `~`; `filePath` and Host open keep the authored filesystem path. The registration receives the normal Session slot runtime share but no React node or Runtime service.
+The owner payload is `ToolCallOwnerProps`: `callId`, `toolName`, the `phase` discriminant and its stage-specific `block`, optional `cwd` and `home`, the session-authorized `loadImage` loader (for a view whose result carries durable images), and plain `openFile`/`inspect` callbacks. A PTC dispatch block retains its event's `parentCallId`; a root Session call has no such field, so descendants route through the same keyed dispatch — a registered view such as `read_image` renders its card there, and unregistered descendants keep the generic flattened form. Path summaries relativize to the Session cwd first, then replace a leftover POSIX Host home with `~`; `filePath` and Host open prefer the operation-time absolute result path while displayed labels keep the authored argument. Successful older root results retain their argument fallback; pending relative paths wait for a result. The registration receives the normal Session slot runtime share but no React node or Runtime service.
 
 ### Built-in views
 
@@ -89,6 +89,8 @@ Recorded tool details cover goal and schedule tools, Cordis inspection, workflow
 
 Expanded status dots and labels use static semantic colors. Receipt and job-output headers keep neutral text and omit the status while expanded. An interruption receipt confirms only that interruption was requested.
 
+Terminal prompt labels use recorded result `cwd`. Older successful root shell calls fall back to their original workspace and authored workdir; running calls show a directory only when their workdir is absolute. Terminal sends do not infer a process directory from the Session.
+
 The terminal model uses `hasSpillNotice` from the browser-safe `@deepseek-ai/dsh-spill-policy/notice` entry, not an independent UI pattern. The [spill-policy README](../../spill/spill-policy/README.md#shared-notice-ownership) owns notice formatting and recognition. This check conservatively selects generic output; matching text cannot authenticate its source, and replay leaves recorded result bytes untouched.
 
 ### Declared optional capabilities
@@ -131,6 +133,7 @@ None; this package neither assembles nor sends a provider request.
 These limits define the dispatch depth and the view ownership; they are current package constraints.
 
 - **The Host excludes `run_code` from PTC mode program bindings** — production events produce one dispatch level; the recursive Runtime/UI contract supports nesting.
+- **Historical nested relative locations** — Older PTC dispatches without presentation metadata do not infer relative file targets or command directories; absolute call paths remain usable.
 - **First-party Tool views are colocated here** — they can move to their owning business packages independently through the keyed slot.
 - **Web tool links always open a new tab** — the collapsed `web_fetch` URL and the expanded web card links ignore the `ui-chat` link-opening setting because Tool views receive no external-link callback.
 - **Tool copy reuses the `ui-conversation` locale namespace** — tool titles, row chrome, and Cordis-free primitive labels use that dictionary; presenter models retain locale keys or data rather than rendered wording.

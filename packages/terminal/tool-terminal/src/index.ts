@@ -4,6 +4,8 @@
  * @module @deepseek-ai/dsh-tool-terminal
  */
 
+import type {} from '@deepseek-ai/dsh-working-directory'
+import { resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -25,7 +27,7 @@ declare module '@deepseek-ai/dsh-jobs' {
 /** Cordis plugin name. */
 export const name = 'tool-terminal'
 /** Required capability, registry, and prompt services. */
-export const inject = ['terminals', 'tools', 'systemPrompt']
+export const inject = ['terminals', 'tools', 'systemPrompt', 'workingDirectory']
 
 /** Default cap for one complete model-facing terminal result. */
 export const DEFAULT_MAX_RESULT_BYTES = 256 * 1024
@@ -166,7 +168,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     parameters: {
       type: { type: 'string', required: true, description: 'Registered terminal backend type, usually "shell".' },
       name: { type: 'string', description: 'Optional owner-local display name such as "main" or "gdb".' },
-      cwd: { type: 'string', description: 'Initial working directory. Defaults to the deployment workspace root.' },
+      cwd: { type: 'string', description: 'Initial working directory, relative to the Session current directory when not absolute.' },
     },
     finalizeContent,
     output: {
@@ -182,10 +184,12 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
     async execute(args: SpawnArgs, exec) {
       if (args.type.length === 0) throw new Error('type must be a non-empty string')
-      const result = await ctx.terminals.spawn(requireAgent(exec.agent), {
+      const owner = requireAgent(exec.agent)
+      const cwd = await ctx.workingDirectory.ensure(owner, exec.signal)
+      const result = await ctx.terminals.spawn(owner, {
         type: args.type,
         ...args.name !== undefined ? { name: args.name } : {},
-        ...args.cwd !== undefined ? { cwd: args.cwd } : {},
+        cwd: args.cwd === undefined ? cwd : resolve(cwd, args.cwd),
       }, exec.signal)
       return result
     },

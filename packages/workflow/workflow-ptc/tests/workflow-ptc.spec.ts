@@ -1,3 +1,4 @@
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { describe, expect, it, vi } from 'vitest'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -136,6 +137,7 @@ async function setup(options?: SetupOptions) {
   const ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
   await mountPtcRuntime(ctx)
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   const provider = new StubProvider(
     'stub',
@@ -461,6 +463,7 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
       await mountPtcRuntime(ctx)
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       const provider: SubagentProvider = {
         name: 'rejecting',
@@ -522,6 +525,7 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
       await mountPtcRuntime(ctx)
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       const provider: SubagentProvider = {
         name: 'bad-dispose',
@@ -546,6 +550,7 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
       await mountPtcRuntime(ctx)
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       const provider: SubagentProvider = {
         name: 'coercion-trap-dispose',
@@ -763,6 +768,7 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
       await mountPtcRuntime(ctx)
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       const aborted: string[] = []
       const provider: SubagentProvider = {
@@ -885,6 +891,7 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
     it('waits for a late provider publication to release its file after cancellation', async () => {
       const ctx = new Context()
       const { root } = await mountPtcRuntime(ctx, 'read-only')
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       const requested = Promise.withResolvers<SubagentStartRequest>()
       const release = Promise.withResolvers<undefined>()
@@ -990,6 +997,7 @@ await new Promise(() => {})`))
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
       await mountPtcRuntime(ctx)
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       const fiber = await ctx.plugin(PtcWorkflowEngine, {})
       expect(ctx.get('workflowEngine')).toBeDefined()

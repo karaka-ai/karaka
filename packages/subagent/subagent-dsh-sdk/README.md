@@ -31,7 +31,7 @@ Mount this provider when a delegation should run as a complete Harness runtime i
 
 Choose this backend when the child must be a full harness peer — its own composition, session persistence, model route, and tools — rather than an agent that shares the parent's process. Choose an in-process backend when the child must share the parent's composition or honor parent-enforced non-route capabilities: this provider accepts agent route options but rejects structured output, depth caps, tool filters, and personas rather than silently omitting them.
 
-The provider advertises `agentOptions: true`, with `outputSchema`/`depthLimit`/`toolFilter`/`persona` false, and `inheritsParentContext: false`. Its immutable `agentRouteDefaults` publish the configured provider/model baseline to `dsh-tool-subagent` before model overrides and exact-route preflight; `start()` independently applies the same configuration defaults for direct callers and `maxTokens`. Agent route values cross the SDK wire as an explicit whitelist; the child remains a fresh runtime in another process, and the only value derived from the parent agent itself is the workspace cwd. `dsh-tool-subagent` deployments over this provider set `maxDepth: 'provider-managed'` — the child harness owns its own recursion budget.
+The provider advertises `agentOptions: true`, with `outputSchema`/`depthLimit`/`toolFilter`/`persona` false, and `inheritsParentContext: false`. Its immutable `agentRouteDefaults` publish the configured provider/model baseline to `dsh-tool-subagent` before model overrides and exact-route preflight; `start()` independently applies the same configuration defaults for direct callers and `maxTokens`. Agent route values cross the SDK wire as an explicit whitelist; the child remains a fresh runtime in another process, and the child process uses the selected effective directory while its Session retains the parent origin directory. `dsh-tool-subagent` deployments over this provider set `maxDepth: 'provider-managed'` — the child harness owns its own recursion budget.
 
 ### Configuration
 
@@ -42,7 +42,6 @@ The provider advertises `agentOptions: true`, with `outputSchema`/`depthLimit`/`
 | `profile` | `sdk` | Named child profile |
 | `patches` | `[]` | Ordered per-launch profile patch files, resolved and checked at plugin load |
 | `dshHome` | required | Absolute isolated Harness home for every nested child process |
-| `cwd` | parent session cwd | Working-directory override for the child process and its SDK session |
 | `provider` | `deepseek-official` | Provider route sent in the child's `initialize` |
 | `model` | `deepseek-v4-flash` | Model sent in the child's `initialize` |
 | `maxTokens` | adapter/provider route default | Per-request output-token cap sent in the child's `initialize` |

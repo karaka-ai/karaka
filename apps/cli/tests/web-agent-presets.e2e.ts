@@ -208,11 +208,9 @@ beforeAll(async () => {
 }, 120_000)
 
 describe('the shipped Web composition', () => {
-  it('leaves the global tool layer empty', () => {
-    // Every model-facing tool belongs to a preset, `ask_user_question`
-    // included: a tool in the global layer reaches EVERY agent regardless of
-    // which preset composed it, expanding that preset's tool list.
-    expect(toolNames(ctx)).toEqual([])
+  it('exposes only the directory tool in the global layer', () => {
+    // Directory selection is global; action tools belong to their Agent presets.
+    expect(toolNames(ctx)).toEqual(['working_directory'])
   })
 
   it('keeps the token meter and its context-meter projections on the host plane', async () => {
@@ -267,7 +265,7 @@ describe('the shipped Web composition', () => {
         'schedule_create', 'schedule_delete', 'schedule_list', 'schedule_update',
         'send_message', 'skill',
         'subagent', 'subagent_fork', 'todo_write', 'update_goal', 'web_fetch', 'web_search',
-        'workflow', 'write',
+        'workflow', 'working_directory', 'write',
       ])
       expect(ctx.commands.find(handle.agent, 'goal')).toBeDefined()
     } finally {
@@ -319,7 +317,7 @@ describe('the shipped Web composition', () => {
       expect(assembly.sections).toEqual([
         { name: 'deployment:persona-prefix', text: MINIMAL_PROMPT },
       ])
-      expect(assembly.tools.map(tool => tool.name)).toEqual(['bash'])
+      expect(assembly.tools.map(tool => tool.name)).toEqual(['bash', 'working_directory'])
       expect(assembly.tools.find(tool => tool.name === 'bash')?.description).toBe(MINIMAL_BASH_DESCRIPTION)
       expect(ctx.commands.find(handle.agent, 'goal')).toBeUndefined()
       // serviceFor reports preset-owned providers; unisolated consumers inherit the host fs.
@@ -343,14 +341,14 @@ describe('the shipped Web composition', () => {
       setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'minimal').then(() => undefined),
     })
     try {
-      expect(toolNames(ctx, minimal.agent)).toEqual(['bash'])
+      expect(toolNames(ctx, minimal.agent)).toEqual(['bash', 'working_directory'])
       expect(toolNames(ctx, full.agent).length).toBeGreaterThan(10)
 
       await minimal.dispose()
 
       // Tearing the minimal session down leaves the full one whole.
       expect(toolNames(ctx, full.agent).length).toBeGreaterThan(10)
-      expect(toolNames(ctx)).toEqual([])
+      expect(toolNames(ctx)).toEqual(['working_directory'])
     } finally {
       await full.dispose()
     }
@@ -509,7 +507,7 @@ describe('the shipped Web composition', () => {
       // stays the preset's choice — minimal mounts no `tool-skill`, so its
       // tool table has no loader even though the global layer is readable.
       expect((await ctx.skills.list({ scope: handle.agent })).map(skill => skill.name)).toContain('dsh-badge')
-      expect(toolNames(ctx, handle.agent)).toEqual(['bash'])
+      expect(toolNames(ctx, handle.agent)).toEqual(['bash', 'working_directory'])
     } finally {
       await handle.dispose()
     }
@@ -611,7 +609,7 @@ describe('product Bundle and user-preset intersection', () => {
             expect(tools).toEqual(expect.arrayContaining(['job_kill', 'job_list', 'job_output']))
             for (const productTool of productTools) {
               expect(toolParameterNames(productCtx, handle.agent, productTool)).toEqual([
-                'description', 'prompt', 'run_in_background',
+                'cwd', 'description', 'prompt', 'run_in_background',
               ])
             }
           } finally {
@@ -862,9 +860,8 @@ describe('the default preset as a user setting', () => {
         setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
       })
       try {
-        // `mount()` with no id resolves the effective default. One tool, not
-        // `standard`'s catalog: the setting decided the composition.
-        expect(toolNames(ctx, handle.agent)).toEqual(['bash'])
+        // An omitted preset id resolves the stored default instead of the composed default.
+        expect(toolNames(ctx, handle.agent)).toEqual(['bash', 'working_directory'])
       } finally {
         await handle.dispose()
       }
@@ -910,7 +907,7 @@ describe('a profile patch stored before Developer tools owned preset selection',
       setup: agentCtx => legacy.agentPresets.mount(agentCtx).then(() => undefined),
     })
     try {
-      expect(toolNames(legacy, handle.agent)).toEqual(['bash'])
+      expect(toolNames(legacy, handle.agent)).toEqual(['bash', 'working_directory'])
     } finally {
       await handle.dispose()
     }
@@ -927,7 +924,7 @@ describe('a session keeps the preset it was created with', () => {
     try {
       // The api-proxy guard reads exactly this: the header records what the
       // session runs, so naming anything else is a caller error rather than a
-      // switch. Its history was produced under `minimal`'s single tool.
+      // switch.
       expect(handle.agent.session.header.agentPreset).toBe('minimal')
     } finally {
       await handle.dispose()

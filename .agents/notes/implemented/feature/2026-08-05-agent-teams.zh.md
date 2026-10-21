@@ -50,9 +50,9 @@ Peer 通讯使用 Lead 日志 mailbox。投递前先追加并 flush `team/messag
 
 ## Shared checkout boundary
 
-所有 member 使用相同 cwd，并立即观察写入。策略要求 member 切分任务、记录提示性 write scope、为有序工作添加依赖，并由 Lead 检查最终 diff 和运行测试。文件系统 stale-version 拒绝后必须重新读取并 rebase 修改意图。Bash、formatter、codegen 与直接外部写入不具备等价保证。
+所有 member 创建时使用 Lead 的当前目录，并立即观察共享文件系统写入。后续目录变更仅影响各自 Session。策略要求 member 切分任务、记录提示性 write scope、为有序工作添加依赖，并由 Lead 检查最终 diff 和运行测试。文件系统 stale-version 拒绝后必须重新读取并 rebase 修改意图。Bash、formatter、codegen 与直接外部写入不具备等价保证。
 
-Worktree isolation 不是 harness runtime 行为。deployment 或 prompt 可以安排独立 worktree，但 Team 领域不会推断 branch、merge 变更或静默改变 cwd。这样保留既有 same-world subagent 与 sandbox 契约。
+Team 领域不会推断 branch、创建 worktree、merge 变更或静默改变 cwd。deployment 或调用方可以另外使用[显式工作树创建](2026-09-13-explicit-worktree-creation.zh.md)。这样保留既有 same-world subagent 与 sandbox 契约。
 
 ## Web projection
 

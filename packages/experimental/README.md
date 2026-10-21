@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Experimental prototypes may change their contracts and carry no support promise. New packages publish by default; private packages must also appear in the [private-exception list](../../scripts/experimental-package-policy.ts). All current packages publish under their `@deepseek-ai/dsh-experimental-*` names, including the opt-in Agent Teams composition, Auto review, Cua Driver providers, browser-use backends, cross-realm Inspector, CPython PTC backend, and browser-worker preview libraries. Released products outside this group must not depend on experimental packages. The dsh installation ships the Agent Teams, voice input, and Auto review packages as optional bundles switched on from the Web sidebar's Plugins page ([decision](../../.agents/notes/implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.md)); the other packages are libraries or explicit compositions.
+Experimental prototypes may change their contracts and carry no support promise. New packages publish by default; private packages must also appear in the [private-exception list](../../scripts/experimental-package-policy.ts). All current packages publish under their `@deepseek-ai/dsh-experimental-*` names, including the opt-in Agent Teams composition, Auto review, Cua Driver providers, browser-use backends, cross-realm Inspector, CPython PTC backend, and browser-worker preview libraries. Released products outside this group must not depend on experimental packages. The dsh installation ships its optional bundles switched off; the GUI plugin manager offers them in the Official group ([decision](../../.agents/notes/implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.md)); the other packages are libraries or explicit compositions.
 
 ## Table of Contents
 
@@ -47,8 +47,10 @@ Experimental prototypes may change their contracts and carry no support promise.
 | [`session-inspector`](session-inspector/README.md) | Sidebar tables for raw Session logs and Chat nodes | — |
 | [`inspector-profile`](inspector-profile/README.md) | Optional Web bundle for Session log and Chat node inspection | — |
 | [`tool-agent-team`](tool-agent-team/README.md) | Nine tools that let the model create, message, and coordinate teammates | registers scoped tools on `ctx.tools` |
+| [`tool-worktree`](tool-worktree/README.md) | Optional bundle and model tool for creating and entering worktrees | `ctx.tools` |
 | [`webworker-packer`](webworker-packer/README.md) | Builds the gzip-compressed VFS image consumed by the browser worker preview | library and CLI — no ctx key |
 | [`webworker-runtime`](webworker-runtime/README.md) | Runs the harness plugin tree inside a dedicated browser worker | library and worker entry — no ctx key |
+| [`worktree`](worktree/README.md) | Creates a named Git worktree and changes the calling Session directory | `ctx.worktrees` |
 
 -----
 
@@ -56,6 +58,7 @@ Experimental prototypes may change their contracts and carry no support promise.
 ## Related documentation
 
 - [Experimental publication reference](../../scripts/experimental-package-policy.ts) — public defaults and private exceptions.
+- [Worktrees](../../docs/subsystems/worktrees.md) — explicit branch and checkout creation.
 - [Computer use](../../docs/subsystems/computer-use.md) — desktop provider choices.
 - [Browser use](../../docs/subsystems/browser-use.md) — browser provider choices and Session ownership.
 - [Agent Teams subsystem](../../docs/subsystems/agent-team.md) — durable Team types and the `ctx.agentTeams` service API.

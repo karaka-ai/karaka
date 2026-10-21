@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { createUserMessage, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
 import { Context, symbols, type EffectMeta } from '@deepseek-ai/cordis'
@@ -26,6 +27,7 @@ async function setup(script: Script) {
   const adapter = new MockAdapter(script)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(spawn, { providerName: 'spawn' })
   ctx.llm.registerAdapter(['mock'], adapter)
@@ -170,7 +172,7 @@ describe('dsh-subagent-spawn-in-process', () => {
     controller.abort()
     const { ctx, parent } = await setup([])
     await expect(start(ctx, 'spawn', { prompt: [{ type: 'text', text: 'p' }], parent, signal: controller.signal }))
-      .rejects.toThrow('aborted before child publication')
+      .rejects.toThrow('This operation was aborted')
   })
 
   it('same-tick cancellation rejects start and prevents child publication', async () => {
@@ -233,6 +235,7 @@ describe('dsh-subagent-spawn-in-process', () => {
     const provider = ctx.subagents.getProvider('spawn')!
     expect(typeof provider.prepareContinuable).toBe('function')
     const spec = await provider.prepareContinuable!({
+      cwd: process.cwd(),
       sessionId: SessionId('continuable-child'),
       parent,
       signal: new AbortController().signal,
@@ -292,6 +295,7 @@ describe('dsh-subagent-spawn-in-process', () => {
   it('unregisters the provider when its fiber is disposed (HMR safety)', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(AgentRegistry)
     const fiber = await ctx.plugin(spawn, { providerName: 'spawn' })
@@ -322,6 +326,7 @@ describe('dsh-subagent-spawn-in-process', () => {
     const adapter = new MockAdapter(['hang'])
     await mountAgentLoopTestDependencies(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     const fiber = await ctx.plugin(spawn, { providerName: 'spawn' })
     ctx.llm.registerAdapter(['mock'], adapter)
@@ -350,6 +355,7 @@ describe('dsh-subagent-spawn-in-process', () => {
     const ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     const fiber = await ctx.plugin(spawn, { providerName: 'spawn' })
     const parent = await ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })

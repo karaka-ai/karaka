@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
@@ -98,6 +99,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)(
       const ctx = new Context()
       contexts.push(ctx)
       await ctx.plugin(SessionProjectionRegistry)
+      await mountWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       const handles: SubprocessHandle[] = []

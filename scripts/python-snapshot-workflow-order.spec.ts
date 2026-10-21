@@ -57,7 +57,7 @@ describe('advanced Python snapshot workflow ordering', () => {
     const assembly = ctx.plugin({
       name: 'workflow-order-driver-test',
       async apply(inner: Context) {
-        await mountAgentLoopTestDependencies(inner)
+        await mountAgentLoopTestDependencies(inner, { workingDirectory: true })
         await inner.plugin(AgentLoop, { agents: [] })
         await inner.plugin(SubagentRuntime)
         await inner.plugin(spawn, { providerName: 'spawn' })

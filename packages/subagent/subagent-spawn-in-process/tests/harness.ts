@@ -25,6 +25,7 @@ export async function spawnHarness(workdir: string): Promise<Context> {
   // delegation nudge lives in the e2e's user prompt and the subagent tool's
   // own description.
   await mountAgentLoopTestDependencies(ctx, {
+    workingDirectory: true,
     systemPrompt: { personaPrefix: 'You are a coding agent. Report only when the requested work is done.' },
   })
   await ctx.plugin(AgentLoop, { agents: [] })

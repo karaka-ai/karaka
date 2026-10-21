@@ -10,7 +10,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -148,11 +148,11 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
   },
   'persistent-tools': {
     environment: { DSH_SYSTEM_PROMPT: MINIMAL_SYSTEM_PROMPT },
-    expectedTools: { bash: ['command'], str_replace_editor: ['command', 'path'] },
+    expectedTools: { bash: ['command'], str_replace_editor: ['command', 'path'], working_directory: [] },
     expectedSystem: MINIMAL_SYSTEM_PROMPT,
     expectedToolDescriptions: { bash: MINIMAL_BASH_DESCRIPTION },
     runtimeContext: {
-      includes: ['Current DSH file policy: danger-full-access', 'Approval prompts are disabled in this session'],
+      includes: ['Current working directory:', 'Current DSH file policy: danger-full-access', 'Approval prompts are disabled in this session'],
       excludes: ['workspace-write'],
     },
   },
@@ -548,7 +548,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
   finalWorkspace: WorkspaceSnapshotEntry[]
   cwd: string
 }> {
-  const cwd = await mkdtemp(join(tmpdir(), `sdk-snapshot-${scenario.name}-`))
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), `sdk-snapshot-${scenario.name}-`)))
   const dshHome = join(cwd, '.dsh')
   const sessionsRoot = join(dshHome, 'sessions')
   const replayFixtures = recording ? [] : await hydrateReplayFixtures(scenario, cwd)

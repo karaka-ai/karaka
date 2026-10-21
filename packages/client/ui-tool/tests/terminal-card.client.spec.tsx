@@ -132,8 +132,8 @@ describe('terminalCardModel', () => {
       call: { name: 'bash', argsRaw: shellArgs({ workdir: 'packages/ui' }) },
     }))?.card.cwd).toBe('packages/ui')
     expect(terminalCardModel(settled())?.card.cwd).toBeUndefined()
-    // The running arm resolves identically.
-    expect(terminalCardModel(running(), '/w/app')?.card.cwd).toBe('/w/app')
+    // An omitted running workdir has no recorded operation-time directory yet.
+    expect(terminalCardModel(running(), '/w/app')?.card.cwd).toBeUndefined()
   })
 
   it('normalizes a relative workdir so the label names the directory actually used', () => {
@@ -154,6 +154,21 @@ describe('terminalCardModel', () => {
     expect(terminalCardModel(settled({ call: { name: 'bash', argsRaw: shellArgs({ workdir: '../elsewhere' }) } }))?.card.cwd).toBe('../elsewhere')
   })
 
+  it('uses the recorded command directory after the Session changes again', () => {
+    for (const name of ['bash', 'pwsh']) {
+      const block = settled({ call: { name, argsRaw: shellArgs({ workdir: 'nested' }) }, meta: { cwd: '/b/nested' } })
+      expect(terminalCardModel(block, '/a')?.card.cwd).toBe('/b/nested')
+      expect(terminalCardModel(block, '/c')?.card.cwd).toBe('/b/nested')
+      expect(terminalCardModel({ ...block, parentCallId: 'outer' }, '/a')?.card.cwd).toBe('/b/nested')
+      expect(terminalCardModel({ ...block, parentCallId: 'outer' }, '/c')?.card.cwd).toBe('/b/nested')
+      expect(terminalCardModel(settled({ ...block, meta: { cwd: 'relative' } }), '/a')?.card.cwd).toBe('/a/nested')
+      expect(terminalCardModel(settled({ ...block, meta: { cwd: 'C:\\b\\nested' } }), '/a')?.card.cwd).toBe('C:\\b\\nested')
+    }
+    expect(terminalCardModel(running({ argsRaw: shellArgs({ workdir: 'nested' }) }), '/a')?.card.cwd).toBeUndefined()
+    expect(terminalCardModel(settled({ parentCallId: 'outer' }), '/a')?.card.cwd).toBeUndefined()
+    expect(terminalCardModel(running({ argsRaw: shellArgs({ workdir: '/absolute' }) }), '/a')?.card.cwd).toBe('/absolute')
+  })
+
   it('keeps a UNC server and share as an unpoppable root', () => {
     // Windows cannot climb above a share, so `..` from the share root stays put.
     expect(terminalCardModel(settled({ call: { name: 'bash', argsRaw: shellArgs({ workdir: '..' }) } }), '\\\\server\\share')?.card.cwd).toBe('\\\\server\\share')
@@ -168,7 +183,7 @@ describe('terminalCardModel', () => {
     const run = running({ name: 'terminal_send', argsRaw })
     expect(terminalCardModel(run, '/w/app')).toMatchObject({
       copy: { kind: 'terminal-send', text: 'make', sessionId: 'pty-3' },
-      card: { cwd: '/w/app', running: true },
+      card: { cwd: undefined, running: true },
     })
     const done = settled({ call: { name: 'terminal_send', argsRaw }, content: [{ type: 'text', text: 'ok' }] })
     expect(localizeTerminalCardModel(terminalCardModel(done)!, enT)).toMatchObject({

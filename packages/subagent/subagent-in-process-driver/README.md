@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+The resolved request carries an absolute `cwd`. Creation applies that directory after inherited events and before publishing the child; its immutable header continues to record the parent's origin directory.
+
 You reach this package through a provider backend, not a composition: `dsh-subagent-spawn-in-process` and `dsh-subagent-fork-in-process` each call `startInProcessRun(request, options)` and own everything around it. This page documents the lifecycle both share so you can read one backend's behavior and reason about the other.
 
 ### What one run provides

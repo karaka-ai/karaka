@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -59,18 +60,19 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('ACP backend with-key e2e (drive 
     const childLaunch = resolveChildLaunch(join(workdir, '.dsh-child'))
     ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(acp, {
       providerName: 'acp',
       command: childLaunch.command,
       args: childLaunch.args,
-      cwd: workdir,
       permission: 'reject',
       env: childLaunch.env as Record<string, string>,
     })
 
     const run = await ctx.subagents.start('acp', {
+      cwd: workdir,
       prompt: [{ type: 'text', text: 'Reply with exactly the word PONG and nothing else. Do not use any tools.' }],
       parent: fakeParent,
       signal: new AbortController().signal,
@@ -91,19 +93,20 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('ACP backend with-key e2e (drive 
     const childLaunch = resolveChildLaunch(join(workdir, '.dsh-child'))
     ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(acp, {
       providerName: 'acp',
       command: childLaunch.command,
       args: childLaunch.args,
-      cwd: workdir,
       // The child needs to act (run bash), so approve its permission prompts.
       permission: 'allow',
       env: childLaunch.env as Record<string, string>,
     })
 
     const run = await ctx.subagents.start('acp', {
+      cwd: workdir,
       prompt: [{ type: 'text', text:
         'Use the bash tool to write the text ACP_CHILD_WAS_HERE into a file named proof.txt '
         + 'in the current directory. Then reply DONE.' }],

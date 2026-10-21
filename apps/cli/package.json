@@ -102,7 +102,8 @@
     "@deepseek-ai/dsh-atomic-write": "workspace:*",
     "@deepseek-ai/dsh-agent-preset": "workspace:*",
     "@deepseek-ai/dsh-experimental-voice-input-bundle": "workspace:*",
-    "@deepseek-ai/dsh-experimental-auto-review": "workspace:*"
+    "@deepseek-ai/dsh-experimental-auto-review": "workspace:*",
+    "@deepseek-ai/dsh-experimental-tool-worktree": "workspace:*"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "1.4.0",

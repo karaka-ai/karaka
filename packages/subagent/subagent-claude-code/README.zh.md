@@ -57,7 +57,7 @@ dsh --profile <name>
 | `plan` | 使用原生规划模式，拒绝执行审批，并把完整计划作为最终答案返回 |
 | `bypassPermissions` | 显式设置 SDK 的危险确认并跳过权限检查 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-claude-code)是每个受支持字段及其 JSDoc 的穷尽式真源。已配置的 `model` 会原样传给该提供方实例的每次 query；省略时保留原生模型选择。具有凭证特征的环境变量会在显式 `env` 覆盖生效前被移除，因此供子进程使用的 API 密钥必须在该配置中显式提供。提供方省略 SDK 的 `settingSources` 选项，因此 Claude Code 会相对于父会话 cwd 读取宿主机常规的用户、项目与本地设置。它不会复制或过滤这些文件、创建或修改登录状态、检查 `PATH`，也不会回退到宿主 `claude` 可执行文件。
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-claude-code)是每个受支持字段及其 JSDoc 的穷尽式真源。已配置的 `model` 会原样传给该提供方实例的每次 query；省略时保留原生模型选择。具有凭证特征的环境变量会在显式 `env` 覆盖生效前被移除，因此供子进程使用的 API 密钥必须在该配置中显式提供。提供方省略 SDK 的 `settingSources` 选项，因此 Claude Code 会相对于所选子级工作目录 读取宿主机常规的用户、项目与本地设置。它不会复制或过滤这些文件、创建或修改登录状态、检查 `PATH`，也不会回退到宿主 `claude` 可执行文件。
 
 ### 暴露工具
 
@@ -114,7 +114,7 @@ dsh --profile <name>
 
 ### 运行流程
 
-一次启动只接受非空的文本块序列，并根据父会话确定子级 cwd。它创建私有 `AbortController`，用精确拼接的任务调用官方 SDK `query()`，并仅在 SDK 的 custom-spawn 钩子已经提供由子进程 seam 管理的活动 CLI 句柄后发布运行。提供方完整迭代消息流，只接受满足 `subtype: "success"`、`is_error: false` 且 `result` 非空白、随后迭代器正常结束的 `result` 消息。其余一切结果都映射为带固定类别的 `error` 诊断，命名生命周期阶段与已观测进程结果——类别集合见 [`src/run.ts`](src/run.ts)。本地取消会在结果竞态中胜出并映射为 `aborted`，且不附带失败诊断。
+一次启动只接受非空的文本块序列，并使用子代理服务选择的子级 cwd。它创建私有 `AbortController`，用精确拼接的任务调用官方 SDK `query()`，并仅在 SDK 的 custom-spawn 钩子已经提供由子进程 seam 管理的活动 CLI 句柄后发布运行。提供方完整迭代消息流，只接受满足 `subtype: "success"`、`is_error: false` 且 `result` 非空白、随后迭代器正常结束的 `result` 消息。其余一切结果都映射为带固定类别的 `error` 诊断，命名生命周期阶段与已观测进程结果——类别集合见 [`src/run.ts`](src/run.ts)。本地取消会在结果竞态中胜出并映射为 `aborted`，且不附带失败诊断。
 
 </details>
 
@@ -140,7 +140,7 @@ dsh --profile <name>
 
 #### 模型看到什么
 
-Claude Code 子级会在一个全新的 SDK query 中接收独立文本任务。它的工作区是父会话 cwd；所选提供方实例会固定已配置的模型、环境与非交互权限模式，而省略的模型及其余产品设置来自 Claude 原生配置。可执行版本来自 Bundle 锁定的 SDK 平台载荷。
+Claude Code 子级会在一个全新的 SDK query 中接收独立文本任务。它的工作区是所选子级工作目录；所选提供方实例会固定已配置的模型、环境与非交互权限模式，而省略的模型及其余产品设置来自 Claude 原生配置。可执行版本来自 Bundle 锁定的 SDK 平台载荷。
 
 #### Token 影响
 

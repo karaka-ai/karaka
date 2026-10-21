@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import LocalAttachments from '@deepseek-ai/dsh-attachment-local'
@@ -44,6 +45,7 @@ const imagesOf = (content: readonly ContentBlock[]): ImageBlock[] => content.fil
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-image-recovery-'))
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx, root)
   onTestFinished(async () => {
     try { await ctx.fiber.dispose() } finally { await rm(root, { recursive: true, force: true }) }
   })
