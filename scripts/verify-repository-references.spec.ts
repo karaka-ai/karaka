@@ -99,7 +99,7 @@ describe('maintained repository reference policy', () => {
 
   it('distinguishes uv artifact byte counts from numeric and hexadecimal commit references', () => {
     const numeric = String(6_344_383)
-    const commit = 'abcdef1234567890abcdef1234567890abcdef1234'
+    const commit = 'abcdef1234567890abcdef1234567890abcdef12'
     const commits = new Set([numeric, commit])
     const artifact = `{ url = "https://files.pythonhosted.org/example.whl", hash = "sha256:${'0'.repeat(64)}", size = ${numeric} }`
     const lock = `version = 1\n[[package]]\nname = "example"\nsdist = ${artifact}\n`

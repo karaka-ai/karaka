@@ -59,8 +59,12 @@ function sourcePinSpan(file: string, source: string): readonly [number, number] 
 function artifactSizeSpans(file: string, source: string): readonly (readonly [number, number])[] {
   if (!/(?:^|\/)uv\.lock$/.test(file) || source.includes('"""') || source.includes("'''")) return []
   try { parseToml(source) } catch { return [] }
-  const row = /^[ \t]*(?:sdist[ \t]*=[ \t]*)?\{[ \t]*url[ \t]*=[ \t]*"(?:\\.|[^"\\\n])*",[ \t]*hash[ \t]*=[ \t]*"sha256:[a-f\d]{64}",[ \t]*size[ \t]*=[ \t]*(\d+)(?=[ \t]*[,}])/gm
-  return [...source.matchAll(row)].map(match => {
+  const row = new RegExp(
+    String.raw`^[ \t]*(?:sdist[ \t]*=[ \t]*)?\{[ \t]*url[ \t]*=[ \t]*"(?:\\.|[^"\\\n])*",[ \t]*`
+      + String.raw`hash[ \t]*=[ \t]*"sha256:[a-f\d]{64}",[ \t]*size[ \t]*=[ \t]*(\d+)(?=[ \t]*[,}])`,
+    'gm',
+  )
+  return [...source.matchAll(row)].map((match) => {
     const value = match[1] ?? ''
     const start = match.index + match[0].length - value.length
     return [start, start + value.length] as const

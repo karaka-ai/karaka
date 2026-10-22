@@ -214,6 +214,7 @@ describe('package source corpus', () => {
     expect(result.violations).toEqual([])
     expect(result.excluded).toEqual([
       { file: 'packages/experimental/webworker-packer/src/bin.ts', reason: 'shebang' },
+      { file: 'packages/karaka/agent/src/bin.ts', reason: 'shebang' },
       { file: 'packages/test-support/llm-mock-server/src/bin.ts', reason: 'shebang' },
     ])
   }, 60_000)
