@@ -5,7 +5,7 @@ import { makeTranslate, RemoteError, sessionSnapshot } from '@deepseek-ai/dsh-cl
 import type {
   SessionListState, SessionSummary, SessionSnapshot,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SubagentAddress, SubagentCatalogRow } from '@deepseek-ai/dsh-subagent/client'
+import type { SubagentAddress, SubagentCatalogEntry } from '@deepseek-ai/dsh-subagent/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import {
@@ -26,7 +26,11 @@ const CHILD = 'child' as SessionId
 const GRANDCHILD = 'grandchild' as SessionId
 const t: SubagentHeaderLineageProps['t'] = makeTranslate(zh)
 
-type CatalogFixture = { entries: readonly (SubagentCatalogRow | { id: SessionId; mode: 'unknown'; label?: string; activity: 'inactive' })[]; parentAvailable: boolean; state: 'loading' | 'ready' | 'error'; error: SessionListState['projectionsBySession'][SessionId]['error'] }
+type CatalogFixtureEntry<Entry = SubagentCatalogEntry> = Entry extends SubagentCatalogEntry
+  ? Omit<Entry, 'createdAt'> & { activity: 'running' | 'inactive' }
+  : never
+
+type CatalogFixture = { entries: readonly CatalogFixtureEntry[]; parentAvailable: boolean; state: 'loading' | 'ready' | 'error'; error: SessionListState['projectionsBySession'][SessionId]['error'] }
 
 function catalog(over: Partial<CatalogFixture> = {}): CatalogFixture {
   return {
@@ -1045,4 +1049,20 @@ describe('SubagentReadOnlyComposer', () => {
     render(<SubagentReadOnlyComposer matched={{ reason: 'one-shot' }} t={t} />)
     expect(screen.getByRole('status').textContent).toContain('一次性任务不支持后续消息')
   })
+})
+
+
+it('shows external membership without an execution status or child Session navigation', () => {
+  const input = props(catalog({ entries: [
+    { id: CHILD, mode: 'external', label: 'External review', activity: 'inactive' },
+  ] }))
+  render(<HeaderCatalog {...input} />)
+  hoverCatalog(screen.getByRole('button', { name: /子智能体/ }))
+  const row = screen.getByRole('treeitem', { name: /External review.*外部任务/ })
+  expect(row.getAttribute('aria-disabled')).toBe('true')
+  expect(row.hasAttribute('aria-expanded')).toBe(false)
+  expect(row.getAttribute('aria-label')).not.toMatch(/已完成|未运行|结果待定/)
+  fireEvent.click(row)
+  expect(input.openChild).not.toHaveBeenCalled()
+  expect(input.openChildAside).not.toHaveBeenCalled()
 })

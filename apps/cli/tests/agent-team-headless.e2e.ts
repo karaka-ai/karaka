@@ -88,11 +88,11 @@ describe('dsh run with Agent Teams enabled', () => {
       expect(files).toHaveLength(4)
       const logs = await Promise.all(files.map(file => readFile(join(sessions, file), 'utf8')))
       const parsed = logs.map(records)
-      const workflowChild = parsed.find(log => log.some(record => record.type === 'subagent/descriptor'
-        && (record.data as { mode: string }).mode === 'one-shot'))
+      const workflowChild = parsed.find(log => log.some(record => record.type === 'user/message'
+        && JSON.stringify((record.data as { content: unknown }).content) === JSON.stringify([{ type: 'text', text: 'TEAM_WORKFLOW_CHILD' }])))
       expect(workflowChild).toBeDefined()
       expect(workflowChild!.find(record => record.type === 'subagent/descriptor')?.data)
-        .toMatchObject({ mode: 'one-shot', provider: 'spawn' })
+        .toMatchObject({ mode: 'continuable', provider: 'spawn' })
       expect(workflowChild!.filter(record => record.type === 'user/message'
         && (record.data as { source: { kind: string } }).source.kind === 'user').map(record => record.data))
         .toEqual([expect.objectContaining({ content: [{ type: 'text', text: 'TEAM_WORKFLOW_CHILD' }] })])

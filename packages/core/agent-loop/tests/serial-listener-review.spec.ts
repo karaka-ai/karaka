@@ -107,7 +107,7 @@ describe('serial creation listener integrations', () => {
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
     const preset = createScope(ctx, { preset: 'review' })
-    await preset.ctx.plugin(SubagentTool, { provider: 'spawn', modelSelectionSettings: true, backgroundMode: 'continuable' })
+    await preset.ctx.plugin(SubagentTool, { provider: 'spawn', modelSelectionSettings: true })
     try {
       await expect(ctx.agents.create({
         sessionId: SessionId('review-tool'),

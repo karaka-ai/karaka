@@ -378,12 +378,10 @@
       config:
         provider: spawn
         toolName: subagent
-        backgroundMode: continuable
 
     # Fork omits model selection so provider/model stay equal to the parent and
-    # the inherited history remains eligible for KV Cache reuse. This base row
-    # stays one-shot; preset layers may select continuable mode without adding a
-    # child-only system-prompt section or tool schema ahead of that history.
+    # the inherited history remains eligible for KV Cache reuse. Parent and child
+    # share the messaging tools; return guidance follows the inherited history.
     # See .agents/notes/implemented/feature/2026-08-18-model-selected-subagent-routes.md
     # and .agents/notes/implemented/architecture/2026-08-10-fork-children-stay-one-shot.md.
     - id: tool-subagent-fork
@@ -391,7 +389,6 @@
       config:
         provider: fork
         toolName: subagent_fork
-        backgroundMode: one-shot
 
     - id: ptc-runtime
       name: '@deepseek-ai/dsh-ptc-runtime-node'

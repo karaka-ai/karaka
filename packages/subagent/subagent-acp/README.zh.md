@@ -90,7 +90,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 ### 启动与所有权流程
 
-一次启动先解析子 agent 的工作目录（请求覆盖值，否则取父级当前有效目录），经子进程 seam spawn 命令，完成 ACP `initialize` 与 `newSession` 握手，然后才发布运行。兑现意味着远程会话已就绪、所有权已转移给调用方。dispose（资源释放）是幂等的：先关闭 stdin 并按配置的宽限等待协作式完全停稳，再经 SIGTERM 升级到 SIGKILL，并等待整个 managed range 退出。清理失败会作为有序的安全事实保持可观察，且绝不声称已经完全停稳。
+一次启动使用管理器解析的子 agent 工作目录（请求覆盖值，否则取父级当前有效目录），经子进程 seam spawn 命令，完成 ACP `initialize` 与 `newSession` 握手，然后才发布运行。兑现后，外部运行由 activation 管理器接管。任务接受后会解除启动信号的绑定；activation 凭据用于取消执行并等待清理。每个 activation 只运行一个任务，不能接收追加输入。dispose（资源释放）是幂等的：先关闭 stdin 并按配置的宽限等待协作式完全停稳，再经 SIGTERM 升级到 SIGKILL，并等待整个 managed range 退出。清理失败会作为有序的安全事实保持可观察，且绝不声称已经完全停稳。
 
 ### 停止原因映射
 
@@ -138,11 +138,11 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 #### 模型看到什么
 
-通过 `dsh-tool-subagent`，父级只接收子 agent 最终的流式 assistant 文本或该消费方给出的精确停止原因错误，不接收中间消息或工具流量。未完成的结果会先呈现安全诊断，再单独保留部分 assistant 输出。发布前已经取消的请求会精确变为 `Error: subagent request was aborted before the ACP child started`；其他启动失败只包含固定的 `Subagent failure (...)` 行。
+通过 `dsh-tool-subagent`，父模型先收到 child id，随后收到含最终或部分 assistant 文本、停止原因与安全诊断的完成通知。父会话独立保存外部任务身份和完整终态结果。中间消息与工具通信不进入父会话。
 
 #### Token 影响
 
-父级输入只增加最终结果或错误，其内容依赖数据，并保留到压缩（compaction）为止。本提供方自身不会添加父级 schema。
+父级输入增加启动确认与完成通知，内容大小取决于数据，并保留到压缩（compaction）为止。本提供方自身不会向父级添加任何 schema。
 
 #### KV Cache 影响
 

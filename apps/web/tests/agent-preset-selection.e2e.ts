@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import {
   SESSION_FORMAT_VERSION, SessionId as sessionId, type SessionEvent, type SessionHeader, type SessionId,
 } from '@deepseek-ai/dsh-session'
-import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import { SUBAGENT_DESCRIPTOR_VERSION } from '@deepseek-ai/dsh-subagent'
 import { createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import {
   captureStableAria, compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole,
@@ -163,9 +163,10 @@ async function seedSubagent(scaffold: WebScaffold, parentId: SessionId): Promise
       type: 'subagent/descriptor',
       seq: 2,
       time: SEEDED_CHILD_CREATED_AT + 2,
-      data: snapshotSubagentDescriptor({
+      data: {
+        version: SUBAGENT_DESCRIPTOR_VERSION,
         mode: 'one-shot', provider: 'spawn', label: 'header order probe',
-      }),
+      },
     },
     {
       type: 'turn/end',

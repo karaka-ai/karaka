@@ -17,6 +17,7 @@ import type {
   SessionListState, SessionLiveEventEntry,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import { apply as applyLocale, inject as localeInject } from '@deepseek-ai/dsh-client-locale/client'
 import {
   chatSnapshot as emptyChatSnapshot, conversationSnapshot, makeTranslate, sessionSnapshot,
@@ -304,9 +305,9 @@ const listState = (overrides: Partial<SessionListState> = {}): SessionListState 
     },
   },
   phase: 'ready',
-  projectionsBySession: { [PARENT_ID]: { state: 'ready', error: null, values: { subagentCatalog: [
-    { createdAt: 1, id: CHILD_ID, mode: 'one-shot' },
-  ] } } },
+  projectionsBySession: { [CHILD_ID]: { state: 'ready', error: null, values: {
+    subagent: { mode: 'one-shot', seq: SessionSeq(0) },
+  } } },
   ...overrides,
 })
 
@@ -669,10 +670,10 @@ describe('WorkflowRunPanel', () => {
   it('defers normal completion collapse until focused member content loses focus', () => {
     const sessions = listState({
       ids: [PARENT_ID, CHILD_ID, SECOND_ID],
-      projectionsBySession: { [PARENT_ID]: { state: 'ready', error: null, values: { subagentCatalog: [
-        { createdAt: 1, id: CHILD_ID, mode: 'one-shot' },
-        { createdAt: 1, id: SECOND_ID, mode: 'one-shot' },
-      ] } } },
+      projectionsBySession: {
+        [CHILD_ID]: { state: 'ready', error: null, values: { subagent: { mode: 'one-shot', seq: SessionSeq(0) } } },
+        [SECOND_ID]: { state: 'ready', error: null, values: { subagent: { mode: 'one-shot', seq: SessionSeq(0) } } },
+      },
       byId: {
         ...listState().byId,
         [SECOND_ID]: {
@@ -834,22 +835,24 @@ describe('WorkflowRunPanel', () => {
     expect(screen.getByRole('button', { name: /未分阶段/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('opens a running member confirmed by the direct parent catalog', () => {
+  it.each(['one-shot', 'continuable'] as const)('opens a running %s member from its own identity without a parent catalog', (mode) => {
     const data: WorkflowRunChatData = {
       name: 'audit', status: 'running', phases: [phase()],
     }
     const openSession = vi.fn()
-    const sessions = listState()
+    const sessions = listState({ projectionsBySession: { [CHILD_ID]: { state: 'ready', error: null, values: {
+      subagent: { mode, label: 'worker', seq: SessionSeq(0) },
+    } } } })
     render(<WorkflowRunPanel {...panelProps(data, sessions, openSession)} />)
     fireEvent.click(screen.getByRole('button', { name: '打开 worker' }))
     expect(openSession).toHaveBeenCalledWith({
       parentSessionId: PARENT_ID,
       childSessionId: CHILD_ID,
-      mode: 'one-shot',
+      mode,
     })
   })
 
-  it('uses observed running state for a catalog-only member', () => {
+  it('uses observed running state for a member absent from the visible list', () => {
     const data: WorkflowRunChatData = { name: 'audit', status: 'running', phases: [phase()] }
     const sessions = listState({
       ids: [PARENT_ID],
@@ -868,7 +871,7 @@ describe('WorkflowRunPanel', () => {
     expect(screen.queryByRole('button', { name: '打开 worker' })).toBeNull()
   })
 
-  it('promotes a running member when its parent catalog arrives', () => {
+  it('promotes a running member when its own identity arrives', () => {
     const data: WorkflowRunChatData = {
       name: 'audit', status: 'running', phases: [phase()],
     }
@@ -879,9 +882,10 @@ describe('WorkflowRunPanel', () => {
   })
 
   it.each([
-    ['catalog absent', listState({ projectionsBySession: {} }), 'running'],
-    ['catalog empty', listState({ projectionsBySession: { [PARENT_ID]: { state: 'ready', error: null, values: { subagentCatalog: [] } } } }), 'running'],
-    ['wrong parent', listState({ projectionsBySession: { ['other' as SessionId]: { state: 'ready', error: null, values: { subagentCatalog: [{ createdAt: 1, id: CHILD_ID, mode: 'one-shot' }] } } } }), 'running'],
+    ['external execution', listState({ ids: [PARENT_ID], byId: { [PARENT_ID]: listState().byId[PARENT_ID]! }, projectionsBySession: {} }), 'running'],
+    ['identity absent', listState({ projectionsBySession: {} }), 'running'],
+    ['identity invalid', listState({ projectionsBySession: { [CHILD_ID]: { state: 'ready', error: null, values: { subagent: null } } } }), 'running'],
+    ['wrong parent', listState({ byId: { ...listState().byId, [CHILD_ID]: { ...listState().byId[CHILD_ID]!, parentId: 'other' as SessionId } } }), 'running'],
     ['child inactive', listState({ byId: { ...listState().byId, [CHILD_ID]: { ...listState().byId[CHILD_ID]!, running: false } } }), 'running'],
     ['member terminal', listState(), 'completed'],
   ] as const)('does not navigate when %s', (_name, sessions, memberStatus) => {

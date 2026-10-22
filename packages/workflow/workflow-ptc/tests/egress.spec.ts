@@ -29,7 +29,7 @@ describe('workflow program environment', () => {
       const run = ctx.workflowEngine.start({
         script: "return { ...globalThis.constructor.constructor('return process')().env }",
         meta: { name: 'environment', description: 'program environment' },
-        parent: fakeParent(ctx),
+        parent: await fakeParent(ctx),
       })
       try {
         const result = await run.result

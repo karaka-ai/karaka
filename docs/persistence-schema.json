@@ -15011,7 +15011,7 @@
       "kind": "event",
       "event": "subagent/catalog",
       "surface": false,
-      "digest": "3abae7324356f155cb42450c00b806d134ec93bd6439d2063b8d724162d58604",
+      "digest": "53750b9abf61efb7992b0aadc3e247ec927449c63266df28230fd1139f5590ac",
       "schema": {
         "root": 0,
         "nodes": [
@@ -15025,7 +15025,7 @@
               },
               {
                 "name": "ignorable",
-                "type": 14,
+                "type": 17,
                 "optional": true
               },
               {
@@ -15040,7 +15040,7 @@
               },
               {
                 "name": "type",
-                "type": 15,
+                "type": 18,
                 "optional": false
               }
             ],
@@ -15052,8 +15052,9 @@
               2,
               7,
               9,
-              11,
-              12
+              12,
+              14,
+              15
             ]
           },
           {
@@ -15163,6 +15164,45 @@
               },
               {
                 "name": "version",
+                "type": 11,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "external"
+          },
+          {
+            "kind": "literal",
+            "value": 2
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "childCreatedAt",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "childId",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "label",
+                "type": 4,
+                "optional": true
+              },
+              {
+                "name": "mode",
+                "type": 13,
+                "optional": false
+              },
+              {
+                "name": "version",
                 "type": 6,
                 "optional": false
               }
@@ -15193,7 +15233,7 @@
               },
               {
                 "name": "mode",
-                "type": 10,
+                "type": 13,
                 "optional": false
               },
               {
@@ -15224,7 +15264,7 @@
               },
               {
                 "name": "mode",
-                "type": 13,
+                "type": 16,
                 "optional": false
               },
               {
@@ -22404,15 +22444,6 @@
       "sources": []
     },
     {
-      "digest": "1de64ea9a0849ce631b7e4e1255ae773fabd94a4a7c8d27e716f8012302e12c0",
-      "names": [
-        "packages/subagent/subagent/src/catalog.ts#SubagentCatalogEvent"
-      ],
-      "sources": [
-        "packages/subagent/subagent/src/catalog.ts:28"
-      ]
-    },
-    {
       "digest": "1df34a6c086866ffdc2dd9e8e5c581c3751a010cdf6b8538a7327f7a3237f0b4",
       "names": [
         "packages/goal/goal/src/domain.ts#GoalSnapshotChangeMeta"
@@ -22812,11 +22843,6 @@
       ]
     },
     {
-      "digest": "3abae7324356f155cb42450c00b806d134ec93bd6439d2063b8d724162d58604",
-      "names": [],
-      "sources": []
-    },
-    {
       "digest": "3b04790e08b35241ffa0d38f6d7e4f8788aa921341f6c0d7574a329397c59408",
       "names": [],
       "sources": []
@@ -23026,7 +23052,7 @@
         "packages/subagent/subagent/src/continuation-messages.ts#AgentMessageSource"
       ],
       "sources": [
-        "packages/subagent/subagent/src/continuation-messages.ts:15"
+        "packages/subagent/subagent/src/continuation-messages.ts:14"
       ]
     },
     {
@@ -23153,7 +23179,7 @@
         "packages/subagent/subagent/src/continuation-messages.ts#SubagentSettledMessageSource"
       ],
       "sources": [
-        "packages/subagent/subagent/src/continuation-messages.ts:30"
+        "packages/subagent/subagent/src/continuation-messages.ts:29"
       ]
     },
     {
@@ -23234,6 +23260,11 @@
       "sources": [
         "packages/core/session/src/types.ts:273"
       ]
+    },
+    {
+      "digest": "53750b9abf61efb7992b0aadc3e247ec927449c63266df28230fd1139f5590ac",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "53cf1704ae0709c7678bcf070c83c619fc48ca1b5c173b74cfa8702f22a8e492",
@@ -24972,6 +25003,11 @@
       "sources": []
     },
     {
+      "digest": "cbbe8377ee744964537dbafd83607219e58ba79a13f6db0d0645c7ad3d5e8a09",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "cbca49bde16b656d5b8fbe4a8a507769f7b594c6287782b809c03814941bc5e3",
       "names": [],
       "sources": []
@@ -25504,6 +25540,15 @@
       "sources": []
     },
     {
+      "digest": "f731ffe80810b0289b3e694d8f40af6f01865c02a622ee457be90ca808b66e87",
+      "names": [
+        "packages/subagent/subagent/src/catalog.ts#SubagentCatalogEvent"
+      ],
+      "sources": [
+        "packages/subagent/subagent/src/catalog.ts:28"
+      ]
+    },
+    {
       "digest": "f789af5ab844827eb5a4f357c0afae1eeed108c6c22d8ca1a56e586b349a7c85",
       "names": [],
       "sources": []
@@ -25577,6 +25622,11 @@
       "sources": [
         "packages/skill/tool-skill/src/index.ts:35"
       ]
+    },
+    {
+      "digest": "fc351843b8ecbd05d739c4ca4fcd4bc7cfad6c0beacbbd48389959bb1bf06cf3",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "fcf427290c6213c2a7feb57492d832ce324f5b9737a759f424dab69e6bd101a0",

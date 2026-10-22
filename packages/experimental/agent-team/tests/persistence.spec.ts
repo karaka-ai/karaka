@@ -202,7 +202,8 @@ for (const backend of backends) {
         first.ctx.sessions.flush(activeRoot.session),
         first.ctx.sessions.flush(failedRoot.session),
       ])
-      await first.ctx.subagents.startContinuable({
+      await first.ctx.subagents.startActivation({
+        delivery: 'parent',
         childId,
         provider: 'spawn',
         label: 'recoverable recovery',

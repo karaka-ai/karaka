@@ -9,7 +9,8 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 import { createUserMessage, ToolCallId  } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import { STRUCTURED_OUTPUT_TOOL } from '@deepseek-ai/dsh-subagent-in-process-driver'
+import { STRUCTURED_OUTPUT_TOOL } from '@deepseek-ai/dsh-subagent'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import PtcWorkflowEngine from '@deepseek-ai/dsh-workflow-ptc'
 import { MockAdapter, maxTokensResponse, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
@@ -26,6 +27,7 @@ async function mountExecution(ctx: Context): Promise<string> {
     await rm(cwd, { recursive: true, force: true })
   })
   await mountWorkflowRuntime(ctx, { cwd })
+  await ctx.plugin(JsonlSessionPersistence, { root: join(cwd, '.sessions') })
   return cwd
 }
 
@@ -92,8 +94,8 @@ describe('dsh-tool-ralph over the real spawn and sandboxed PTC stack', () => {
     const children: Agent[] = []
     const phases: string[] = []
     ctx.on('workflow/phase', (_run, title) => { phases.push(title) })
-    ctx.on('workflow/agent-start', (_run, child) => {
-      const agent = ctx.agents.get(child.childId)
+    ctx.on('subagent/start', (child) => {
+      const agent = ctx.agents.get(child.id)
       expect(agent).toBeDefined()
       children.push(agent!)
     })
@@ -274,15 +276,21 @@ describe('dsh-tool-ralph over the real spawn and sandboxed PTC stack', () => {
       agent: parent,
       signal: controller.signal,
     })
-    await childStarted
-
-    controller.abort()
-    const result = await pending
-
-    expect(result.isError).toBe(true)
-    expect((result.content[0] as { text: string }).text).toContain('Ralph workflow was cancelled')
-    expect(outcomes).toEqual(['cancelled'])
-    expect(ctx.agents.get(children[0]!.id)).toBeUndefined()
-    await parentHandle.dispose()
+    try {
+      await Promise.race([
+        childStarted,
+        pending.then((result) => { throw new Error(`Ralph settled before its child started: ${JSON.stringify(result.content)}`) }),
+      ])
+      controller.abort()
+      const result = await pending
+      expect(result.isError).toBe(true)
+      expect((result.content[0] as { text: string }).text).toContain('Ralph workflow was cancelled')
+      expect(outcomes).toEqual(['cancelled'])
+      expect(ctx.agents.get(children[0]!.id)).toBeUndefined()
+    } finally {
+      controller.abort()
+      await pending
+      await parentHandle.dispose()
+    }
   })
 })

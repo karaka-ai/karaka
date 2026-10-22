@@ -540,6 +540,8 @@ describe('coverage partition coordinator', () => {
     expect(allConfigs).toContain('c.spec.ts')
     for (const source of partitionConfigs) {
       expect(source).toContain("from '../../vitest.config.ts'")
+      expect(source).toContain("from '../../scripts/coverage-fork-diagnostics.ts'")
+      expect(source).toContain('pool: coverageForkPool')
     }
     const mergeCommand = commands[3]
     if (mergeCommand === undefined) throw new Error('coverage merge command was not observed')

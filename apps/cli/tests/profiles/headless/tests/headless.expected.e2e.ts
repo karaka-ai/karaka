@@ -757,12 +757,12 @@ describe('headless stream-json snapshots', () => {
         const parent = logs.find(log => typeof log.header.parentSession !== 'string')
         if (parent === undefined) throw new Error('Agent Teams snapshot did not persist its Lead')
         const rows = parseJsonl(parent.content)
-        const workflowChild = logs.find(log => parseJsonl(log.content).some(row => row.type === 'subagent/descriptor'
-          && (row.data as JsonObject).mode === 'one-shot'))
+        const workflowChild = logs.find(log => parseJsonl(log.content).some(row => row.type === 'user/message'
+          && JSON.stringify((row.data as JsonObject).content) === JSON.stringify([{ type: 'text', text: 'TEAM_WORKFLOW_CHILD' }])))
         if (workflowChild === undefined) throw new Error('Team profile did not persist its workflow child')
         const workflowRows = parseJsonl(workflowChild.content)
         expect(workflowRows.find(row => row.type === 'subagent/descriptor')?.data)
-          .toMatchObject({ mode: 'one-shot', provider: 'spawn' })
+          .toMatchObject({ mode: 'continuable', provider: 'spawn' })
         expect(workflowRows.filter(row => row.type === 'user/message'
           && ((row.data as JsonObject).source as JsonObject).kind === 'user').map(row => row.data))
           .toEqual([expect.objectContaining({ content: [{ type: 'text', text: 'TEAM_WORKFLOW_CHILD' }] })])
@@ -963,13 +963,13 @@ describe('headless stream-json snapshots', () => {
     await expectHeadlessStream(normalized, streamExpected)
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('delivers a continuable child result without parent polling', async () => {
+  it('notifies the parent when a continuable child settles without polling', async () => {
     const parentReplay = join(settlementScenarioDir, 'parent.replay.jsonl')
     const parentOverride = join(settlementScenarioDir, 'parent.override.json')
     const childReplay = join(settlementScenarioDir, 'child.replay.jsonl')
     const childExpected = join(settlementScenarioDir, 'child.expected.jsonl')
     const streamExpected = join(settlementScenarioDir, 'stream-json.expected.jsonl')
-    const task = 'Start one continuable background subagent and answer from its completion notice. Do not call list_agents, send_message, job_output, or job_list.'
+    const task = 'Start one continuable subagent and acknowledge its completion notice. Do not call list_agents or send_message.'
     let runCwd = ''
     const result = await runLoaderSmoke({
       label: 'continuable settlement headless stream-json snapshot',
@@ -1012,6 +1012,10 @@ describe('headless stream-json snapshots', () => {
           })
         })
         expect(notices).toHaveLength(1)
+        expect(notices[0]).toMatchObject({
+          source: { kind: 'subagent-settled', form: 'notice', senderSessionId: child.header.id },
+        })
+        expect(JSON.stringify(notices[0])).toContain('finished and will do no further work unless you send it more.')
         expect(JSON.stringify(notices[0])).toContain('CHILD_RESULT')
 
         const context = contextFromLogs([parent.content, child.content])
@@ -1027,7 +1031,7 @@ describe('headless stream-json snapshots', () => {
     const records = parseJsonl(result.stdout)
     expect(records.at(-1)).toMatchObject({
       type: 'result',
-      output: 'PARENT_RECEIVED_CHILD_RESULT',
+      output: 'PARENT_RECEIVED_SETTLEMENT_NOTICE',
     })
     const normalized = normalizeHeadlessStream(result.stdout, runCwd)
     if (refreshing) await writeFile(streamExpected, normalized)

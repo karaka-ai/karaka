@@ -162,7 +162,7 @@ export class SessionManager {
     for (const parentSessionId of this.projectionStores.keys()) {
       const child = this.projectionStores.get(parentSessionId)?.values().subagentCatalog
         ?.find(entry => entry.id === sessionId)
-      if (child !== undefined) {
+      if (child !== undefined && child.mode !== 'external') {
         return {
           parentSessionId,
           childSessionId: sessionId,
@@ -248,7 +248,7 @@ export class SessionManager {
         const address = this.addresses.get(sessionId)
         const child = address === undefined ? undefined : this.projectionStores.get(address.parentSessionId)?.values().subagentCatalog
           ?.find(entry => entry.id === sessionId)
-        if (child !== undefined) {
+        if (child !== undefined && child.mode !== 'external') {
           // A catalogued child exists only after its delegated session has
           // durable history, even though child rows do not carry `blank`.
           session.handleBlank(false)

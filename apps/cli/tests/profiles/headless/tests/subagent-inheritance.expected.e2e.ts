@@ -132,11 +132,12 @@ describe('parent-only override inheritance snapshot', () => {
         const childRecords = child.trimEnd().split('\n').map(
           line => JSON.parse(line) as Record<string, unknown>,
         )
-        expect(childRecords[1]).toMatchObject({
+        expect(childRecords.find(record => record.type === 'sandbox/mode')).toMatchObject({
           type: 'sandbox/mode',
-          seq: SessionSeq(0),
           data: { mode: 'read-only', source: 'delegation' },
         })
+        expect(childRecords.findIndex(record => record.type === 'sandbox/mode'))
+          .toBeLessThan(childRecords.findIndex(record => record.type === 'turn/start'))
 
         const runtimeContexts = (content: string): string[] => content.trimEnd().split('\n').flatMap((line) => {
           const record = JSON.parse(line) as {

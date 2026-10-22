@@ -158,7 +158,6 @@ describe('subprocessRunHandle', () => {
       requestCancel,
       teardown,
     })
-    expect(run.localAgent).toBeUndefined()
     expect(String(run.id)).toBe('run-1')
     const disposal = run.dispose()
     expect(run.dispose()).toBe(disposal)

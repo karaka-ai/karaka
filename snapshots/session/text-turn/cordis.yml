@@ -51,7 +51,6 @@
   config:
     provider: spawn
     toolName: subagent
-    backgroundMode: continuable
     maxDepth: 1
 
 - id: tool-subagent-fork
@@ -59,8 +58,6 @@
   config:
     provider: fork
     toolName: subagent_fork
-    backgroundMode: one-shot
-    enableRunInBackground: false
     maxDepth: 1
 
 - id: fs-sandbox

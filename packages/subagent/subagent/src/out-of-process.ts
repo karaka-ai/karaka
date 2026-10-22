@@ -200,13 +200,12 @@ export interface SubprocessRunHandleParts {
  * local cancellation — there is no assumption the child cooperates — and then
  * awaits the backend's teardown to actual exit.
  * @param parts - the run identity, result, cancellation wiring, and teardown.
- * @returns the seam run handle (`localAgent` is `undefined` for remote runs).
+ * @returns the external run handle.
  */
 export function subprocessRunHandle(parts: SubprocessRunHandleParts): SubagentRun {
   let disposal: Promise<void> | undefined
   return {
     id: parts.id,
-    localAgent: undefined,
     result: parts.result,
     dispose(): Promise<void> {
       if (disposal !== undefined) return disposal

@@ -11,7 +11,7 @@ import {
   type SessionEvent, type SessionHeader, type SessionId,
 } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent'
-import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import { snapshotSubagentDescriptor, SUBAGENT_DESCRIPTOR_VERSION } from '@deepseek-ai/dsh-subagent'
 import {
   acknowledgeReloadConnectionLoss, captureExpandedTurnProcessAria, captureStableAria,
   compareOrRefreshGolden,
@@ -138,7 +138,8 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
     await parentInput.press('Enter')
     expect(await parentSettled).toBe(parent.id)
 
-    const started = await scaffold.ctx.subagents.startContinuable({
+    const started = await scaffold.ctx.subagents.startActivation({
+      delivery: 'parent',
       provider: 'spawn',
       label: LABEL,
       signal: new AbortController().signal,
@@ -193,9 +194,10 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
         type: 'subagent/descriptor',
         seq: 2,
         time: oneShotAt + 2,
-        data: snapshotSubagentDescriptor({
+        data: {
+          version: SUBAGENT_DESCRIPTOR_VERSION,
           mode: 'one-shot', provider: 'spawn', label: ONE_SHOT_LABEL,
-        }),
+        },
       },
       {
         type: 'turn/end',

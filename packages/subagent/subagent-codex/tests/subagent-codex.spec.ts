@@ -1,4 +1,6 @@
 import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
+import { randomUUID } from 'node:crypto'
+import { startExternalActivation, externalTestParent } from '../../subagent/tests/external-activation-helpers.ts'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -9,7 +11,7 @@ import * as yaml from 'js-yaml'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import SubagentRuntime, { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {
@@ -498,11 +500,11 @@ describe('task admission and package contracts', () => {
     expect(added).toEqual(['codex-safe', 'codex-bypass'])
 
     const safeController = new AbortController()
-    const safeStarting = ctx.subagents.start(
+    const safeStarting = startExternalActivation(ctx,
       'codex-safe',
       request(undefined, safeController.signal),
     )
-    const bypassStarting = ctx.subagents.start('codex-bypass', request())
+    const bypassStarting = startExternalActivation(ctx, 'codex-bypass', request())
     for (const [child, model] of [
       [safeChild, 'codex-safe-model'],
       [bypassChild, 'codex-bypass-model'],
@@ -523,7 +525,7 @@ describe('task admission and package contracts', () => {
     await safeFiber.dispose()
     expect(ctx.subagents.list()).toEqual(['codex-bypass'])
     expect(removed).toEqual(['codex-safe'])
-    await expect(ctx.subagents.start('codex-safe', request()))
+    await expect(startExternalActivation(ctx, 'codex-safe', request()))
       .rejects.toMatchObject({ code: 'NO_PROVIDER' })
 
     const safeTurn = await safeChild.peer.nextMethod('turn/start')
@@ -538,7 +540,7 @@ describe('task admission and package contracts', () => {
       output: [{ type: 'text', text: 'bypass answer' }],
       stopReason: 'completed',
     })
-    safeController.abort(new Error('stop only the safe instance'))
+    void safeRun.dispose()
     await expect(safeRun.result).resolves.toEqual({
       output: [],
       stopReason: 'aborted',
@@ -608,7 +610,7 @@ describe('task admission and package contracts', () => {
     vi.spyOn(ctx.subprocess, 'spawn').mockReturnValue(child.handle)
     codex.apply(ctx, { env: {}, disposeGraceMs: 3_000 })
     expect(ctx.subagents.getProvider('codex')).toBeDefined()
-    const starting = ctx.subagents.start('codex', request())
+    const starting = startExternalActivation(ctx, 'codex', request())
     const initialize = await child.peer.nextMethod('initialize')
     child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await child.peer.nextMethod('initialized')
@@ -694,6 +696,28 @@ describe('task admission and package contracts', () => {
     wire.close()
   })
 
+  it.each([false, true])('rejects a missing parent directory before spawning (cancelled: %s)', async (cancelled) => {
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SessionProjectionRegistry)
+      await mountWorkingDirectoryFixture(ctx)
+      await ctx.plugin(SubagentRuntime)
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(codex, {})
+      const spawn = vi.spyOn(ctx.subprocess, 'spawn')
+      const controller = new AbortController()
+      if (cancelled) controller.abort()
+      const provider = ctx.subagents.getProvider('codex')!
+      await expect(Promise.resolve().then(async () => provider.start!({
+        ...request(undefined, controller.signal),
+        parent: await externalTestParent(ctx),
+        cwd: resolve('missing-parent-' + randomUUID()),
+      }))).rejects.toThrow(cancelled
+        ? 'request was aborted before app-server startup'
+        : 'stage: initialize; category: unknown')
+      expect(spawn).not.toHaveBeenCalled()
+    } finally { await ctx.fiber.dispose() }
+  })
 
   it('keeps the namespace export shape', () => {
     expect('default' in codex).toBe(false)
@@ -1487,7 +1511,6 @@ describe('run lifecycle and quiescence', () => {
       graceMs: DEFAULT_DISPOSE_GRACE_MS,
       env: { OPENAI_API_KEY: 'fake' },
     })
-    expect(run.localAgent).toBeUndefined()
 
     const turnStart = await child.peer.nextMethod('turn/start')
     child.peer.send(
@@ -2120,46 +2143,7 @@ describe('run lifecycle and quiescence', () => {
       disposeGraceMs: 25,
     })
 
-    const invalidCwdParent = {
-      id: 'parent-with-invalid-cwd',
-      session: { header: { cwd: 'relative/SECRET_TOKEN' } },
-    } as unknown as Agent
-    const invalidCwdError: unknown = await ctx.subagents.start('codex-diagnostic', {
-      prompt: [{ type: 'text', text: 'task' }],
-      parent: invalidCwdParent,
-      signal: new AbortController().signal,
-    }).then(
-      () => undefined,
-      (error: unknown) => error,
-    )
-    expect(invalidCwdError).toBeInstanceOf(Error)
-    if (!(invalidCwdError instanceof Error)) {
-      throw new Error('expected safe invalid-cwd failure')
-    }
-    expect(invalidCwdError.message).toContain(
-      expectedFailureDiagnostic('initialize', 'unknown'),
-    )
-    expect(invalidCwdError.message).not.toContain('relative/SECRET_TOKEN')
-    expect(invalidCwdError.cause).toBeInstanceOf(Error)
-    expect((invalidCwdError.cause as Error).message)
-      .toContain(resolve('relative/SECRET_TOKEN'))
-    expect(spawn).not.toHaveBeenCalled()
-
-    const invalidCwdAbort = new AbortController()
-    invalidCwdAbort.abort(new Error('cancel invalid cwd startup'))
-    await expect(ctx.subagents.start('codex-diagnostic', {
-      prompt: [{ type: 'text', text: 'task' }],
-      parent: invalidCwdParent,
-      signal: invalidCwdAbort.signal,
-    })).rejects.toThrow('cancel invalid cwd startup')
-    expect(() => ctx.subagents.getProvider('codex-diagnostic')!.start({
-      ...request(undefined, invalidCwdAbort.signal),
-      cwd: resolve('relative/SECRET_TOKEN'),
-      descriptor: snapshotSubagentDescriptor({ mode: 'one-shot', provider: 'codex-diagnostic', label: 'cancelled startup' }),
-    })).toThrow('request was aborted before app-server startup')
-    expect(spawn).not.toHaveBeenCalled()
-
-    const starting = ctx.subagents.start('codex-diagnostic', {
+    const starting = startExternalActivation(ctx, 'codex-diagnostic', {
       prompt: [{ type: 'text', text: 'task' }],
       parent: fakeParent,
       signal: new AbortController().signal,

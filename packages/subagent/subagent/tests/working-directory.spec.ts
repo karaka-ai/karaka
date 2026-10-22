@@ -1,3 +1,5 @@
+import { startTestActivation } from './local-activation.ts'
+import { mountWorkingDirectoryFixture } from './working-directory-fixture.ts'
 import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,18 +32,18 @@ async function fixture() {
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(JsonlSessionPersistence, { root: join(root, 'sessions') })
   await ctx.plugin(TestSessionQuery)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(Spawn, { providerName: 'spawn' })
   await ctx.plugin(Fork, { providerName: 'fork' })
-  ctx.llm.registerAdapter(['mock'], new MockAdapter([
-    textResponse('parent'), textResponse('child'), textResponse('continued'),
-  ]))
+  const adapter = new MockAdapter([textResponse('parent'), textResponse('child'), textResponse('continued')])
+  ctx.llm.registerAdapter(['mock'], adapter)
   const { agent: parent } = await ctx.agents.create({
     sessionId: SessionId('directory-parent'),
     meta: { cwd: origin },
     agentOptions: { provider: 'mock', model: 'mock' },
   })
-  return { ctx, parent, origin, first, second }
+  return { ctx, parent, origin, first, second, adapter }
 }
 
 describe('subagent working directories', () => {
@@ -51,11 +53,11 @@ describe('subagent working directories', () => {
     parent.followup(createUserMessage({ content: [{ type: 'text', text: 'record first directory' }], source: { kind: 'user' } }))
     await parent.whenIdle()
     const selected = await ctx.workingDirectory.set(parent, second)
-    const run = await ctx.subagents.start(provider, {
+    const run = await startTestActivation(ctx, provider, {
       parent, prompt: [{ type: 'text', text: 'child' }], signal: new AbortController().signal,
     })
     await run.result
-    const child = run.localAgent!
+    const child = run.localAgent
     expect(child.session.header.cwd).toBe(origin)
     expect(ctx.workingDirectory.get(child.session)).toBe(selected)
     await ctx.workingDirectory.set(parent, first)
@@ -66,7 +68,8 @@ describe('subagent working directories', () => {
   it.each(['relative', 'absolute'])('retains an explicit %s directory when a continuable child cold-resumes', async (form) => {
     const { ctx, parent, origin, first, second } = await fixture()
     const selected = await realpath(second)
-    const started = await ctx.subagents.startContinuable({
+    const started = await ctx.subagents.startActivation({
+      delivery: 'caller',
       provider: 'spawn', label: 'directory child',
       request: { parent, cwd: form === 'absolute' ? second : 'second', prompt: [{ type: 'text', text: 'child' }] },
       signal: new AbortController().signal,
@@ -83,8 +86,9 @@ describe('subagent working directories', () => {
     expect(last?.data).toMatchObject({ cwd: selected })
   })
 
-  it('rolls back a continuable child whose setup realm has no directory service', async () => {
-    const { ctx, parent, second } = await fixture()
+  it('rolls back a local child whose setup realm has no directory service', async () => {
+    const { ctx, parent, second, adapter } = await fixture()
+    const beforeSessions = ctx.sessions.list().length
     const childId = SessionId('missing-directory-service')
     const create = ctx.agents.create.bind(ctx.agents)
     const creation = vi.spyOn(ctx.agents, 'create').mockImplementation(options => create({
@@ -92,14 +96,17 @@ describe('subagent working directories', () => {
       setup: (childCtx, child) => options.setup?.(childCtx.isolate('workingDirectory'), child),
     }))
     try {
-      await expect(ctx.subagents.startContinuable({
+      await expect(ctx.subagents.startActivation({
+        delivery: 'caller',
         provider: 'spawn', label: 'unavailable directory service', childId,
         request: { parent, cwd: second, prompt: [{ type: 'text', text: 'child' }] },
         signal: new AbortController().signal,
-      })).rejects.toThrow('continuable subagents require the working-directory service')
+      })).rejects.toThrow(/subagents require the working-directory service/)
 
       expect(ctx.agents.list().map(agent => agent.id)).toEqual([parent.id])
       expect(parent.session.snapshotEvents().filter(event => event.type === 'subagent/catalog')).toEqual([])
+      expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+      expect(adapter.requests).toEqual([])
     } finally {
       creation.mockRestore()
     }

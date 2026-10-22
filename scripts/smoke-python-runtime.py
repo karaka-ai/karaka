@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from deepseek_harness import RunResult
+    from deepseek_harness import Notification, RunResult
 
 
 EXPECTED_TEXT = "runtime smoke ok"
@@ -261,7 +261,6 @@ def write_advanced_profile_patch(root: Path, name: str, sessions: Path) -> Path:
             "config": {
                 "provider": "spawn",
                 "toolName": "subagent",
-                "backgroundMode": "one-shot",
             },
         },
         {"insert": [
@@ -295,6 +294,7 @@ class MockModelHandler(BaseHTTPRequestHandler):
     """Return deterministic text, worker, and orchestration completions."""
 
     requests: list[dict[str, object]] = []
+    direct_child_finished = threading.Event()
 
     def do_POST(self) -> None:
         if self.path != "/v1/messages":
@@ -306,8 +306,13 @@ class MockModelHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
         self.end_headers()
+        opening = message_start()
+        self.wfile.write(f"event: {opening['type']}\ndata: {json.dumps(opening)}\n\n".encode())
+        self.wfile.flush()
         chunks = completion_chunks(body)
-        for chunk in chunks:
+        if chunks[0] != opening:
+            raise AssertionError("model fixture response must begin with message_start")
+        for chunk in chunks[1:]:
             self.wfile.write(f"event: {chunk['type']}\ndata: {json.dumps(chunk)}\n\n".encode())
         self.wfile.flush()
 
@@ -643,8 +648,10 @@ def advanced_tool_followup(
             },
         )
     if call_id == "advanced-direct-child" and tool_name == "subagent":
-        if "DIRECT_CHILD_OK" not in tool_text:
-            raise AssertionError(f"subagent returned no expected child value: {tool_text}")
+        if not tool_text.startswith("started subagent "):
+            raise AssertionError(f"subagent returned no child identity: {tool_text}")
+        if not MockModelHandler.direct_child_finished.wait(timeout=30):
+            raise AssertionError("direct child did not emit its terminal SDK notification")
         assert_advertised_tool(body, "workflow")
         return tool_call_chunks(
             "advanced-workflow",
@@ -1532,6 +1539,7 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
                 Path(__file__).resolve().parent / "fixtures/python-snapshot-workflow-order.mjs"
             ).as_uri(), "config": {
                 "parentSessionId": SNAPSHOT_SESSION_ID, "prompt": SNAPSHOT_WORKFLOW_CHILD_PROMPT,
+                "direct": {"prompt": SNAPSHOT_DIRECT_CHILD_PROMPT, "callId": "advanced-direct-child"},
             }},
             {"id": "snapshot-message-feedback", "name": "@deepseek-ai/dsh-message-feedback",
              "config": {"maxNoteBytes": 1024}},
@@ -1560,9 +1568,18 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
             base_url=base_url,
             request_timeout_seconds=60,
         ) as harness:
-            result = harness.run(SNAPSHOT_PROMPT, session_id=SNAPSHOT_SESSION_ID)
+            MockModelHandler.direct_child_finished.clear()
 
-        assert result.final_response == SNAPSHOT_FINAL_TEXT, result.final_response
+            def observe_child(notification: "Notification") -> None:
+                if (notification.method == "subagent.finished"
+                        and message_text(notification.payload.get("lastAssistantMessage")) == "DIRECT_CHILD_OK"):
+                    MockModelHandler.direct_child_finished.set()
+
+            result = harness.run(
+                SNAPSHOT_PROMPT, session_id=SNAPSHOT_SESSION_ID, on_notification=observe_child,
+            )
+
+        assert result.final_response == SNAPSHOT_FINAL_TEXT, (result.final_response, harness.client._runtime_diagnostics())
         offloads = [event for event in result.events if event.get("type") == "image/offload"]
         if len(offloads) != 1 or "surfaceOp" in offloads[0]:
             raise AssertionError(f"advanced snapshot expected one standalone image offload: {offloads}")

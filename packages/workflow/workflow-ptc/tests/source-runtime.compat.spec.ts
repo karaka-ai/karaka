@@ -21,7 +21,7 @@ async function setup(mode: SandboxMode) {
     start: () => Promise.reject(new Error('source runtime smoke must not start a child')),
   })
   await ctx.plugin(PtcWorkflowEngine, {})
-  return { ctx, parent: fakeParent(ctx), ...files }
+  return { ctx, parent: await fakeParent(ctx), ...files }
 }
 
 it('runs the default workflow config through the source PTC runtime', async () => {

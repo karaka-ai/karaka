@@ -1,4 +1,5 @@
 import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
+import { startExternalActivation } from '../../subagent/tests/external-activation-helpers.ts'
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
@@ -120,7 +121,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)(
         id: 'deepseek-e2e-parent',
         session: { header: { cwd: workspace } },
       } as unknown as Agent
-      const run = await ctx.subagents.start('codex', {
+      const run = await startExternalActivation(ctx, 'codex', {
         prompt: [{
           type: 'text',
           text: `Reply with exactly ${nonce} and nothing else. Do not use tools.`,

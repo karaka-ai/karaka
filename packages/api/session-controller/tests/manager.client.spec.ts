@@ -730,6 +730,17 @@ describe('Host Remote event routing', () => {
 })
 
 describe('subagent catalogs', () => {
+  it('retains external membership without creating a local browsing address', ({ mock, remote }) => {
+    const manager = makeManager(mock, remote)
+    onTestFinished(() => manager.dispose())
+    const entries = [{ id: S2, createdAt: 1, mode: 'external' as const, label: 'external task' }]
+    manager.handleControlFrame({ type: 'projection', sessionId: S1, key: 'subagentCatalog', seq: 0, value: entries })
+
+    expect(manager.getListSnapshot().projectionsBySession[S1]?.values.subagentCatalog).toEqual(entries)
+    expect(manager.subagentAddress(S2)).toBeUndefined()
+    expect(manager.getListSnapshot().items).toEqual([])
+  })
+
   it('keeps a catalog-discovered child address across identity resolution and status frames', async ({ mock, remote, start }) => {
     remote.session.list.mockImplementation(() => Promise.resolve(ok({ items: [
       summary(S1),

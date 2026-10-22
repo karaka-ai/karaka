@@ -1523,12 +1523,11 @@
     "71fa45c63f1d2dc12e6a4da1120a9ca227ef1b1ffbce510cd0d8847d85f278c0": 9,
     "80fa2ee81263d11fc1fafe6b7dbb608e8ed6e7c7e8e7fa3e726b600e82425294": 1,
     "82025e3228e5dab025f1c3434c0303baf066b7f40f30352764abc7374a693928": 1,
-    "9234f1edeb197a3cc5e423e04ea3b9d79da97e1f231db0bca529810ab3e0d100": 1,
     "926edbfe0199937da6ec9d119cfd16f6cbc674a242de8f433980da6e6ea8b13b": 1,
     "9b52ca4ca1a86eb1d34576ca3c210d2e09677553e2a0b0e505675782034c147e": 1,
     "9c3213cd8f09df05b9aceba2033b68f6b61c1abe2231167622ef3fa462d77424": 1,
     "a03ef245e286d905868294bee2e81ac282cfa0a5161a1edd6d8b0aa167932fb6": 1,
-    "ae0162b189937f84fb9a162eabbc7496f7e196c00e960aef4fe8e5b3e4b87d8d": 4,
+    "ae0162b189937f84fb9a162eabbc7496f7e196c00e960aef4fe8e5b3e4b87d8d": 3,
     "d54d74835af1518a4723a7cc803efc0d4e8e337ebb80b813b6ef76bdb813be17": 1
   },
   "packages/session-query/session-log-export/tests/archive.host.spec.ts": {
@@ -1696,9 +1695,6 @@
   "packages/session/session-persistence-jsonl/tests/lease.spec.ts": {
     "94e6c4d15a19729cf60005d29c0985aa4e5bd984b92f40c2b5d8e996bb651997": 1
   },
-  "packages/session/session-persistence-jsonl/tests/migration-verifier.spec.ts": {
-    "6bad3f6cf7fc26c871be029dc2a4f12d01ce7a49f314b0d728453e7575af28d1": 1
-  },
   "packages/session/session-persistence-jsonl/tests/native-source-admission.spec.ts": {
     "24b3f41708c436a3b161317d9b04439dff484aa8f5a913ed3c68a299f490e3b9": 1
   },
@@ -1834,8 +1830,7 @@
   },
   "packages/subagent/subagent-claude-code/tests/subagent-claude-code.spec.ts": {
     "2cedee48f4fb8ce4bbd10567fdfbee69e8dd11dbc85af9b824de33c2b77abfbf": 1,
-    "4e94c461ab08f535e20f71ebe8bb9a8c911a936c7068f24e259956c06d17c05d": 2,
-    "aa1a9402165afaeb270967390b13cae2a59916bc52f13b4f600315d7a0fe2032": 1,
+    "4e94c461ab08f535e20f71ebe8bb9a8c911a936c7068f24e259956c06d17c05d": 1,
     "cdcbd6cc73a09b6613864cdfb5b14d0cf66dc2484d26916cb32929deca1032de": 3,
     "f85c96616fff1bb1e21886bd2fad64e9e34d89d090ab96ab7804f702278cd23d": 4,
     "fa05a5e504ed74b5a07cb6281c787b507eb6c44db768803f4dad034dd69cb3b9": 1
@@ -1849,26 +1844,11 @@
     "adda026f7ad49b47496f381a0c04997300597d040b8a81045a848573485ed299": 1
   },
   "packages/subagent/subagent-codex/tests/subagent-codex.spec.ts": {
-    "aa1a9402165afaeb270967390b13cae2a59916bc52f13b4f600315d7a0fe2032": 1,
     "fa05a5e504ed74b5a07cb6281c787b507eb6c44db768803f4dad034dd69cb3b9": 1
   },
   "packages/subagent/subagent-dsh-sdk/tests/subagent-dsh-sdk.spec.ts": {
     "daa15206e19d6a8fbae646d678889b2e6933ece824e48dd06c95d2096861d5c1": 2,
     "f77e5cbd2d2d911087f7faecc4b0b5bffdfb44ca5d0bcf7823ba9777feca7799": 1
-  },
-  "packages/subagent/subagent-in-process-driver/src/structured.ts": {
-    "2994ddac72096564a65b1d11cfe50c5b5f21de0cca775ed7b758d031b9a4df99": 1
-  },
-  "packages/subagent/subagent-in-process-driver/tests/structured.spec.ts": {
-    "647bbba1ee35ea6acd23faa1e2988e24c49f0284be571ab3e716ab36a11cc38c": 1,
-    "fd4628b951a78392c07e54a33588263377c3c85c90dc33ce0b7f78e904b1c2ad": 1
-  },
-  "packages/subagent/subagent-in-process-driver/tests/subagent-in-process-driver.spec.ts": {
-    "5bc99a74ad50605215a43105e8b5d19ab8126149a99bcafcb6cf20c9992874d4": 1,
-    "69d9dd6917cd45e70ef0ed273bea2e4a01fef7cb808458a7f0606b90f260cb2b": 1,
-    "79d2d214c7600ab9023c27b97ec626b9e3ce33f0b42f3f6233dfd142387fbdcf": 1,
-    "996a2d673209758e45b46af235339d8dccc9d20cfea97ea34f536d3ed8842812": 1,
-    "b50b6842b3565ea7f1441afb3214ab0ccf027df0e44bb485005935849c46f8ea": 1
   },
   "packages/subagent/subagent/src/catalog.ts": {
     "3e704e331ed2fc5d4c0855e2455b31b82924c525f2e267416e393cdbd36c251b": 1,
@@ -1889,11 +1869,6 @@
   "packages/subagent/subagent/tests/catalog.spec.ts": {
     "7e2e5f940dc4eaeefee0650619f7a736c5bead03fb248b2394c1a29a3328b105": 1
   },
-  "packages/subagent/subagent/tests/continuation-internals.ts": {
-    "3745fdae681f5fd4fa6825b3987604ceed308de0ef68181e9b3b8405a288b1b0": 1,
-    "ae5776af8c1e9965a4eca94bcbc07b65da8d2e9e24e4570d2141b34d60b4f90f": 1,
-    "dacc9babb26371c6c047d8a504e4c7da0e2032f83620ab63ec667276284d1c35": 1
-  },
   "packages/subagent/subagent/tests/continuation.spec.ts": {
     "ae5776af8c1e9965a4eca94bcbc07b65da8d2e9e24e4570d2141b34d60b4f90f": 1
   },
@@ -1907,11 +1882,7 @@
     "e770821c1f637aca0a346d5f6e6f0873ca4d7e3b070b557cddf773c160ec599a": 1
   },
   "packages/subagent/tool-subagent/src/index.ts": {
-    "11233be4a60a9dfb99acc5fbf90c5185c2101516379f3224866557301bbb048c": 1,
     "7fe58280287ff63d40e979e72329f975e11015a95e9a8eec207a5a78748d3c89": 4
-  },
-  "packages/subagent/tool-subagent/tests/harness.ts": {
-    "1a2098d6ff345b66d13f9822385af407ac03acdabeb607c2bd18a75987c410a5": 1
   },
   "packages/subagent/tool-subagent/tests/model-selection.spec.ts": {
     "9a362ded6cf17e795dc9cb0c88a672eb17c03d90ae87987f53dbb3a3f6bcc467": 1
@@ -1920,10 +1891,7 @@
     "e770821c1f637aca0a346d5f6e6f0873ca4d7e3b070b557cddf773c160ec599a": 1
   },
   "packages/subagent/tool-subagent/tests/tool-subagent.spec.ts": {
-    "65e1dff6ee6fedd8c89582d5197e791126c328ff859ce4509a69619afbc4c63f": 1,
-    "719322ba287998bcfb906150f393012229c1ec3e4b59bd106469319ba402a09a": 1,
-    "a5bde0aa0b7d2193204df547d0a9b7e9e116afead259c1914dc93486a8af4f0a": 1,
-    "b6277d8ca00f4653c46b62f27a1743fdbb00465b2aaa4687ea0cb4119adee4e3": 1
+    "719322ba287998bcfb906150f393012229c1ec3e4b59bd106469319ba402a09a": 1
   },
   "packages/subprocess/subprocess-local/tests/linux-scope.spec.ts": {
     "8497f236582c842e59edf49dce625d59d16a828048731d7c2b9625bb1270f32f": 1
@@ -2161,9 +2129,6 @@
   },
   "packages/workflow/tool-workflow/tests/tool-workflow.spec.ts": {
     "061944ebda38f8da144d88cfa668e6336efc68c33441a9fe3215d8c001124526": 2
-  },
-  "packages/workflow/workflow-ptc/tests/setup.ts": {
-    "eedb5ebd5377314cae568128ab901b78a063216d34f322aa8ad8a33d9e14df54": 1
   },
   "packages/workflow/workflow-ptc/tests/workflow-ptc.spec.ts": {
     "3ddf655a4c4522404be3c2758f0511c7605887c72d9d91cb4ad521433cbdb0b4": 1,

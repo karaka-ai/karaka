@@ -30,7 +30,6 @@
       config:
         provider: codex
         toolName: subagent_codex
-        backgroundMode: one-shot
         maxDepth: 'provider-managed'
 
     - id: tool-subagent-claude-code
@@ -38,7 +37,6 @@
       config:
         provider: claude-code
         toolName: subagent_claude_code
-        backgroundMode: one-shot
         maxDepth: 'provider-managed'
 
     - id: tool-subagent-claude-primary
@@ -46,7 +44,6 @@
       config:
         provider: claude-primary
         toolName: subagent_claude_primary
-        backgroundMode: one-shot
         maxDepth: 'provider-managed'
 
     - id: tool-subagent-claude-secondary
@@ -54,5 +51,4 @@
       config:
         provider: claude-secondary
         toolName: subagent_claude_secondary
-        backgroundMode: one-shot
         maxDepth: 'provider-managed'

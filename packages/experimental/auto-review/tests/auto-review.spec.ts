@@ -1,3 +1,4 @@
+import { externalTestParent } from '../../../subagent/subagent/tests/external-activation-helpers.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Context } from '@deepseek-ai/cordis'
@@ -28,8 +29,8 @@ import SessionStore, {
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubagentRuntime, {
   NO_START_CAPABILITIES,
-  snapshotSubagentDescriptor,
-  type ResolvedSubagentStartRequest,
+  SUBAGENT_DESCRIPTOR_VERSION,
+  type SubagentStartRequest,
 } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-shell'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -549,10 +550,11 @@ describe('native review request', () => {
     setApprovalPolicy(session, 'never')
     const agent = agentFor(session)
     appendHeader(session, [{ name: 'probe', description: 'probe', parameters: { type: 'object' } }])
-    session.append('subagent/descriptor', snapshotSubagentDescriptor({
+    session.append('subagent/descriptor', {
+      version: SUBAGENT_DESCRIPTOR_VERSION,
       mode: 'one-shot',
       provider: 'in-process',
-    }))
+    })
     appendUser(session, 'Delete target as the delegated child task.', { kind: 'user' })
     appendUser(session, 'A later unattributed user-role fact.', { kind: 'user' })
     appendUser(session, 'Do not delete target.', {
@@ -1210,7 +1212,7 @@ describe('out-of-process delegation boundary', () => {
       scriptedDecision('allow', 'allow'),
     ])
     await ctx.plugin(SubagentRuntime)
-    let providerRequest: ResolvedSubagentStartRequest | undefined
+    let providerRequest: SubagentStartRequest | undefined
     ctx.subagents.registerProvider({
       name: 'remote-boundary',
       capabilities: NO_START_CAPABILITIES,
@@ -1220,7 +1222,6 @@ describe('out-of-process delegation boundary', () => {
         providerRequest = request
         return {
           id: SessionId('remote-boundary-child'),
-          localAgent: undefined,
           result: Promise.resolve({
             output: [{ type: 'text', text: 'remote child completed' }],
             stopReason: 'completed',
@@ -1232,11 +1233,12 @@ describe('out-of-process delegation boundary', () => {
     await ctx.plugin(ToolSubagent, {
       provider: 'remote-boundary',
       toolName: 'delegate_remote',
-      enableRunInBackground: false,
       maxDepth: 'provider-managed',
     })
 
-    const { session, agent } = autoSession(ctx, 'remote-delegation', process.cwd())
+    const agent = await externalTestParent(ctx, process.cwd())
+    const session = agent.session
+    ctx.permissionPresets.set(session, AUTO_PRESET)
     setApprovalPolicy(session, 'never')
     const schema = ctx.tools.schemas(agent).find(item => item.name === 'delegate_remote')
     if (schema === undefined) throw new Error('remote delegation tool schema is missing')
