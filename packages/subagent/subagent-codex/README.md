@@ -74,7 +74,7 @@ The tool returns a child id after accepting the task and sends its result to the
 
 ### What you get
 
-The completion notice contains the final Codex answer, or the stop reason and optional safe diagnostic. The parent Session also retains the external task identity and complete terminal result independently of the notice; no local child Session is created. Product reasoning, tool activity, raw stderr, and workspace diffs do not enter the parent Session.
+The completion notice contains the final Codex answer, or the stop reason and optional safe diagnostic. The parent Session retains the external task identity and the delivered completion notice; the activation receipt supplies the full captured result without an independent durable archive. No local child Session is created. Product reasoning, tool activity, raw stderr, and workspace diffs do not enter the parent Session.
 
 ### Failure and recovery
 

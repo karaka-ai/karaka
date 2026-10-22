@@ -151,7 +151,7 @@ Independent of the parent request cache. Each SDK child can reuse only prefixes 
 
 #### What the model sees
 
-Through `dsh-tool-subagent`, the parent model first receives a child id, then a completion notice containing final or partial assistant text, the stop reason, and safe diagnostic. The parent Session independently retains the external task identity and complete terminal result. Intermediate messages and tool traffic do not enter the parent Session.
+Through `dsh-tool-subagent`, the parent model first receives a child id, then a completion notice containing final or partial assistant text, the stop reason, and safe diagnostic. The parent Session retains the external task identity and the delivered completion notice; the activation receipt supplies the full captured result without an independent durable archive. Intermediate messages and tool traffic do not enter the parent Session.
 
 #### Token effect
 
@@ -170,7 +170,7 @@ These limits define when this backend is a poor fit or needs special operational
 
 - **A fresh runtime process per run** — no pooling; a harness runtime boots a full plugin tree, so per-run spawn cost is higher than the ACP backend's typical child.
 - **No non-route start-time capabilities** — the parent can select the child agent route but cannot enforce `outputSchema`, depth, tool filters, or persona inside the child process; configure the selected child profile and its ordered patches instead.
-- **The child's transcript stays in the child's own session root** — the parent log retains the external task identity and full result, while the streamed `session.event` channel is consumed for output extraction rather than transcript replication.
+- **The child's transcript stays in the child's own session root** — the parent log retains the external task identity and delivered completion notice, while the streamed `session.event` channel is consumed for output extraction rather than transcript replication.
 - **Local child processes only** — the resolved working directory is a local path; a remote runtime would need its own backend.
 
 <a id="dev-note"></a>
