@@ -206,10 +206,14 @@ describe('coverage file inventory', () => {
     const exemptDir = join(root, 'packages/experimental/webworker-runtime/tests')
     await mkdir(exemptDir, { recursive: true })
     await writeFile(join(exemptDir, 'transform-corpus.spec.ts'), '')
+    const epochHeader = join(root, 'scripts/persistence-epoch-header.spec.ts')
+    await mkdir(dirname(epochHeader), { recursive: true })
+    await writeFile(epochHeader, '')
     const output = JSON.stringify([
       { projectName: 'thread-safe', file: join(root, 'packages/a/tests/a.spec.ts') },
       { projectName: 'process-bound', file: join(root, 'packages/b/tests/with spaces.spec.ts') },
       { projectName: 'thread-safe', file: join(exemptDir, 'transform-corpus.spec.ts') },
+      { projectName: 'thread-safe', file: epochHeader },
     ])
     const inventory = parseFileInventory(output, root)
     expect(inventory.files).toEqual([

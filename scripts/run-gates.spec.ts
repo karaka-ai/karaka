@@ -492,6 +492,22 @@ describe('gate graph validation', () => {
     },
   )
 
+  it.each(['ci-coverage', 'ci-windows-complete'] as const)(
+    'runs the real-repository epoch header contract in the required plain gate for %s',
+    async (mode) => {
+      const gates = withPnpmEntrypoint(() => gatesForMode(mode))
+      const heavy = gates.find(gate => gate.id === 'coverage-exempt-heavy')!
+      expect(heavy.allowFailure).not.toBe(true)
+      expect(heavy.args.filter(argument => argument === 'scripts/persistence-epoch-header.spec.ts')).toHaveLength(1)
+      expect(heavy.args).not.toContain('--coverage')
+      expect(gates.find(gate => gate.id === 'coverage')?.env).toMatchObject({ DSH_COVERAGE_EXEMPT_HEAVY: '1' })
+      const results = await runGates(gates, 8, async gate =>
+        resultFor(gate, gate.id === 'coverage-exempt-heavy' ? 'failed' : 'passed'))
+      expect(results.filter(result => result.status === 'failed' && !result.gate.allowFailure).map(result => result.gate.id))
+        .toEqual(['coverage-exempt-heavy'])
+    },
+  )
+
   it('keeps native Windows coverage blocking and behind the complete build', () => {
     const complete = withPnpmEntrypoint(() => gatesForMode('ci-windows-complete'))
     const observational = withPnpmEntrypoint(() => gatesForMode('ci-windows-observational-ready'))
