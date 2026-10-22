@@ -593,7 +593,7 @@ describe('web e2e: long Chat scroll contract', () => {
       const artifactRoot = fileURLToPath(new URL('../../../.artifacts/screenshots/visible-fold/', import.meta.url))
       await mkdir(artifactRoot, { recursive: true })
       const evidence = await mkdtemp(join(artifactRoot, `${scenario.name}-`))
-      const controlledClock = scenario.name === 'content-growth-during-fold' || scenario.name === 'cancel-all-during-fold'
+      const controlledClock = !scenario.reduced
       await withScrollWorld({
         failureShot: `visible-fold-${scenario.name}`,
         controlledClock,
@@ -681,10 +681,11 @@ describe('web e2e: long Chat scroll contract', () => {
         })
         const promptGate = Promise.withResolvers<undefined>()
         const promptBlocked = Promise.withResolvers<undefined>()
-        const holdPrompt = async (route: Route): Promise<void> => {
+        let promptHandled: Promise<void> | undefined
+        const holdPrompt = (route: Route): Promise<void> => {
           promptBlocked.resolve(undefined)
-          await promptGate.promise
-          await route.continue()
+          promptHandled = promptGate.promise.then(() => route.continue())
+          return promptHandled
         }
         await page.route('**/api/session/prompt', holdPrompt)
         const trace = page.evaluate(({ marker, race }) => new Promise<FoldMotionSample[]>((resolveTrace) => {
@@ -767,10 +768,17 @@ describe('web e2e: long Chat scroll contract', () => {
                 if (!(button instanceof HTMLButtonElement)) throw new Error('Send control is not a button')
                 button.click()
               })
-              await expect.poll(async () => {
-                await page.clock.runFor(16)
-                return page.locator('[data-fold-race-applied]').count()
-              }, { timeout: 10_000 }).toBe(1)
+              if (scenario.name === 'content-growth-during-fold' || scenario.name === 'cancel-all-during-fold') {
+                await expect.poll(async () => {
+                  await page.clock.runFor(16)
+                  return page.locator('[data-fold-race-applied]').count()
+                }, { timeout: 10_000 }).toBe(1)
+              } else {
+                await expect.poll(async () => {
+                  await page.clock.runFor(16)
+                  return page.locator('[data-chat-motion="collapse"]').count()
+                }, { timeout: 10_000 }).toBeGreaterThan(0)
+              }
               await expect.poll(async () => {
                 await page.clock.runFor(16)
                 return page.locator('[data-chat-motion="collapse"]').count()
@@ -806,6 +814,7 @@ describe('web e2e: long Chat scroll contract', () => {
           await nextPaint(page)
         } finally {
           promptGate.resolve(undefined)
+          await promptHandled
           release()
           await page.unroute('**/api/session/prompt', holdPrompt)
           await page.locator('[data-conversation-scroll]').evaluate(host => host.dispatchEvent(new Event('dsh-test-fold-stop')))
