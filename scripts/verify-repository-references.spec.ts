@@ -97,6 +97,32 @@ describe('maintained repository reference policy', () => {
     expect(scanRepositoryReferences(fixture.root)).toHaveLength(4)
   })
 
+  it('distinguishes uv artifact byte counts from numeric and hexadecimal commit references', () => {
+    const numeric = String(6_344_383)
+    const commit = 'abcdef1234567890abcdef1234567890abcdef1234'
+    const commits = new Set([numeric, commit])
+    const artifact = `{ url = "https://files.pythonhosted.org/example.whl", hash = "sha256:${'0'.repeat(64)}", size = ${numeric} }`
+    const lock = `version = 1\n[[package]]\nname = "example"\nsdist = ${artifact}\n`
+    expect(findRepositoryReferences('python/sdk/uv.lock', lock, commits)).toEqual([])
+    expect(findRepositoryReferences('python/sdk/uv.lock', `${lock}wheels = [\n    ${artifact},\n]\n`, commits)).toEqual([])
+    for (const reference of [numeric, commit]) {
+      expect(findRepositoryReferences('python/sdk/uv.lock', `${lock}note = "${reference}"\n`, commits))
+        .toEqual([{ file: 'python/sdk/uv.lock', line: 5, kind: 'commit-hash' }])
+      expect(findRepositoryReferences('python/sdk/uv.lock', lock.replace('example.whl', reference), commits))
+        .toEqual([{ file: 'python/sdk/uv.lock', line: 4, kind: 'commit-hash' }])
+    }
+    expect(findRepositoryReferences('python/sdk/uv.lock', lock.replace(`size = ${numeric}`, `size = "${numeric}"`), commits))
+      .toEqual([{ file: 'python/sdk/uv.lock', line: 4, kind: 'commit-hash' }])
+    expect(findRepositoryReferences('python/sdk/uv.lock', `${lock}# size = ${numeric}\n`, commits))
+      .toEqual([{ file: 'python/sdk/uv.lock', line: 5, kind: 'commit-hash' }])
+    expect(findRepositoryReferences('python/sdk/uv.lock', `note = """\n${artifact}\n"""\n`, commits))
+      .toEqual([{ file: 'python/sdk/uv.lock', line: 2, kind: 'commit-hash' }])
+    expect(findRepositoryReferences('python/sdk/uv.lock', `${lock}invalid = [`, commits))
+      .toEqual([{ file: 'python/sdk/uv.lock', line: 4, kind: 'commit-hash' }])
+    expect(findRepositoryReferences('notes.md', lock, commits))
+      .toEqual([{ file: 'notes.md', line: 4, kind: 'commit-hash' }])
+  })
+
   it('permits only the validated source pin field in the exact Karaka source record file', (test) => {
     const fixture = repository(test)
     const file = 'packages/karaka/mcp-application/UPSTREAM.json'

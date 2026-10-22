@@ -5,6 +5,7 @@ import { lstatSync, readFileSync, readlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { parse as parseToml } from 'smol-toml'
 import { canonicalReferenceText } from './verify-public-repository-links.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -54,6 +55,18 @@ function sourcePinSpan(file: string, source: string): readonly [number, number] 
   return source.slice(start, end) === record.commit ? [start, end] : undefined
 }
 
+/** Numeric artifact byte counts in canonical uv lock rows are data, not Git references. */
+function artifactSizeSpans(file: string, source: string): readonly (readonly [number, number])[] {
+  if (!/(?:^|\/)uv\.lock$/.test(file) || source.includes('"""') || source.includes("'''")) return []
+  try { parseToml(source) } catch { return [] }
+  const row = /^[ \t]*(?:sdist[ \t]*=[ \t]*)?\{[ \t]*url[ \t]*=[ \t]*"(?:\\.|[^"\\\n])*",[ \t]*hash[ \t]*=[ \t]*"sha256:[a-f\d]{64}",[ \t]*size[ \t]*=[ \t]*(\d+)(?=[ \t]*[,}])/gm
+  return [...source.matchAll(row)].map(match => {
+    const value = match[1] ?? ''
+    const start = match.index + match[0].length - value.length
+    return [start, start + value.length] as const
+  })
+}
+
 /**
  * Inspect a maintained source file against known commit identifiers.
  * @param file - Repository-relative path used in diagnostics and exclusions.
@@ -69,6 +82,7 @@ export function findRepositoryReferences(
   if (!isMaintained(file)) return []
   const references: RepositoryReference[] = []
   const sourcePin = sourcePinSpan(file, source)
+  const artifactSizes = artifactSizeSpans(file, source)
   let offset = 0
   for (const [index, line] of source.split('\n').entries()) {
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
@@ -76,7 +90,9 @@ export function findRepositoryReferences(
     }
     if ([...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase())
       && !(sourcePin !== undefined && offset + match.index === sourcePin[0]
-        && offset + match.index + match[0].length === sourcePin[1]))) {
+        && offset + match.index + match[0].length === sourcePin[1])
+      && !artifactSizes.some(([start, end]) => offset + match.index === start
+        && offset + match.index + match[0].length === end))) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }
     offset += line.length + 1

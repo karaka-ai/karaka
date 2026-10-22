@@ -314,9 +314,11 @@ export async function clickPluginBundleSwitch(page: Page, toggle: Locator, name:
       expect(await response.finished()).toBeNull()
     }
     expect(await writeReply.json()).toMatchObject({ result: { ok: true, value: { application: 'applied' } } })
-    expect(await bundleReply.json()).toMatchObject({ result: { ok: true, value: expect.arrayContaining([
+    const bundleResult = await bundleReply.json() as { result: { ok: boolean; value: unknown } }
+    expect(bundleResult).toMatchObject({ result: { ok: true } })
+    expect(bundleResult.result.value).toEqual(expect.arrayContaining([
       expect.objectContaining({ name, enabled }),
-    ]) } })
+    ]))
     expect(await pluginReply.json()).toMatchObject({ result: { ok: true } })
   } finally {
     page.off('request', trackRead)
