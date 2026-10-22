@@ -4,6 +4,7 @@ import AgentPresetRegistry from '@deepseek-ai/dsh-agent-preset-registry'
 import LlmRuntime, { type UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, type SessionEvent, type SessionHeader, type SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SessionPersistence, { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
 import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import { ApplicationId, KarakaIdentity, TenantId, UserId, sameOwner, IdentityError, type ApplicationOwner } from '@karaka-ai/identity'
 import { onTestFinished, vi, type Mock } from 'vitest'
@@ -31,6 +32,8 @@ interface ApplicationFixture {
     authorizeSession: Mock<(session: Session, claimed: ApplicationOwner) => Promise<void>>
     markReady: Mock<(session: Session, claimed: ApplicationOwner) => Promise<void>>
     ownerOf: Mock<(session: Session) => Promise<ApplicationOwner | undefined>>
+    ownerOfId: Mock<(id: SessionId) => Promise<ApplicationOwner | undefined>>
+    restore: Mock<(id: SessionId, claimed: ApplicationOwner) => Promise<SessionHeader>>
   }
   factory: { createAgent: Mock<AgentFactory['createAgent']>; resume: Mock<AgentFactory['resume']> }
   presets: {
@@ -50,7 +53,7 @@ interface ApplicationFixture {
 
 interface ModelRequest { provider: string; model: string; reasoningEffort?: string }
 
-export async function applicationFixture(mountController = true): Promise<ApplicationFixture> {
+export async function applicationFixture(mountController = true, browserAgentIds: readonly string[] = ['main']): Promise<ApplicationFixture> {
   const ctx = new Context()
   onTestFinished(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(SessionStore)
@@ -89,7 +92,21 @@ export async function applicationFixture(mountController = true): Promise<Applic
     authorizeSession: vi.fn(async (session: Agent['session'], claimed: ApplicationOwner) => { authorize(session.id, claimed) }),
     markReady: vi.fn(async (session: Agent['session'], claimed: ApplicationOwner) => { authorize(session.id, claimed) }),
     ownerOf: vi.fn(async (session: Agent['session']) => owners.get(session.id)),
+    ownerOfId: vi.fn(async (id: SessionId) => owners.get(id)),
+    restore: vi.fn(async (id: SessionId, claimed: ApplicationOwner) => {
+      const header = headers.get(id)
+      if (header === undefined || header.parentSession !== undefined) throw new IdentityError('forbidden', 'not a persisted root')
+      const existing = owners.get(id)
+      if (existing !== undefined && !sameOwner(existing, claimed)) throw new IdentityError('forbidden', 'foreign chat')
+      owners.set(id, claimed)
+      return header
+    }),
   }
+  const persistence = { stat: async (id: SessionId) => {
+    const header = headers.get(id)
+    return header === undefined ? undefined : { header, revision: SessionPersistenceRevision('fixture') }
+  } }
+  ctx.provide('sessionPersistence', Object.setPrototypeOf(persistence, SessionPersistence.prototype) as SessionPersistence)
   // This fixture isolates controller orchestration; durable authority has its own storage tests.
   ctx.provide('karakaIdentity', Object.setPrototypeOf(identity, KarakaIdentity.prototype) as KarakaIdentity)
   const presets = {
@@ -139,7 +156,7 @@ export async function applicationFixture(mountController = true): Promise<Applic
     )),
   }
   ctx.agents.setFactory(factory)
-  const controller = mountController ? new ApplicationChatController(ctx) : undefined
+  const controller = mountController ? new ApplicationChatController(ctx, browserAgentIds) : undefined
   return { ctx, controller, identity, owners, headers, events, handles, factory, presets, removePresets, llm, observed,
     observeSession, followups, cancellations, disposals }
 }

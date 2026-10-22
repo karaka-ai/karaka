@@ -13,7 +13,7 @@ const answer: AskUserQuestionAnswer = { answers: [{ id: 'choice', selected: ['Ye
 
 async function interactionFixture(browserEnabled = true) {
   const state = await fixture(browserEnabled ? browser : { path: '/api', handleQuestions: true })
-  const { agent } = await state.factory.createAgent(state.ctx, { sessionId: SessionId('chat') })
+  const { agent } = await state.factory.createAgent(state.ctx, { sessionId: SessionId('chat'), meta: { agentPreset: 'main' } })
   state.owners.set(agent.id, owner)
   const fallback = vi.fn(() => Promise.resolve<AskUserQuestionAnswer>({ answers: [] }))
   const ask = (signal?: AbortSignal) => state.ctx.waterfall(
@@ -71,7 +71,7 @@ it('accepts an owner approval and denies foreign, invalid, and stale replies', a
   })
   const reply = { clientId: channel.clientId, eventId: event.eventId, outcome: { kind: 'result', value: 'allowed-once' } }
   state.browserAuthenticate.mockResolvedValueOnce({
-    kind: 'application', owner: { ...owner, userId: UserId('foreign') }, expiresAt: Date.now() + 60_000,
+    kind: 'application', owner: { ...owner, userId: UserId('foreign') }, chatId: SessionId('chat'), expiresAt: Date.now() + 60_000,
   })
   expect((await state.request('/browser/result', reply, { headers: browserHeaders })).status).toBe(403)
   expect((await state.request('/browser/result', { ...reply, clientId: 'missing' }, { headers: browserHeaders })).status).toBe(403)
@@ -109,10 +109,10 @@ it('delivers concurrent approvals only to their respective owners', async () => 
   const localEvent = await local.next()
   const foreignOwner = { ...owner, userId: UserId('foreign') }
   state.browserAuthenticate.mockResolvedValueOnce({
-    kind: 'application', owner: foreignOwner, expiresAt: Date.now() + 60_000,
+    kind: 'application', owner: foreignOwner, chatId: SessionId('foreign-chat'), expiresAt: Date.now() + 60_000,
   })
   const foreign = await browserChannel(state)
-  const { agent } = await state.factory.createAgent(state.ctx, { sessionId: SessionId('foreign-chat') })
+  const { agent } = await state.factory.createAgent(state.ctx, { sessionId: SessionId('foreign-chat'), meta: { agentPreset: 'main' } })
   state.owners.set(agent.id, foreignOwner)
   const foreignResult = state.ctx.waterfall(scopeTarget(agent, agent), 'approval/request', {
     agent, toolName: 'read', callId: ToolCallId('call'),
@@ -128,7 +128,7 @@ it('delivers concurrent approvals only to their respective owners', async () => 
     ...reply, eventId: localEvent.eventId,
   }, { headers: browserHeaders })).status).toBe(200)
   state.browserAuthenticate.mockResolvedValueOnce({
-    kind: 'application', owner: foreignOwner, expiresAt: Date.now() + 60_000,
+    kind: 'application', owner: foreignOwner, chatId: SessionId('foreign-chat'), expiresAt: Date.now() + 60_000,
   })
   expect((await state.request('/browser/result', {
     ...reply, clientId: foreign.clientId,
@@ -318,7 +318,7 @@ it('isolates pending backend questions while preserving a second subscriber afte
       })
     } finally { done.resolve(undefined) }
   })
-  const foreign = await state.factory.createAgent(state.ctx, { sessionId: SessionId('foreign-chat') })
+  const foreign = await state.factory.createAgent(state.ctx, { sessionId: SessionId('foreign-chat'), meta: { agentPreset: 'main' } })
   state.owners.set(foreign.agent.id, { ...owner, userId: UserId('foreign') })
   const cancelForeign = new AbortController()
   const pendingForeign = state.ctx.waterfall(scopeTarget(foreign.agent, foreign.agent), 'user-questions/request', {
@@ -342,4 +342,133 @@ it('isolates pending backend questions while preserving a second subscriber afte
   await foreignRejected
   await second.close()
   await stopped.get(2)?.promise
+})
+
+it('isolates live delivery, replay, cancellation and replies between chats of the same owner', async () => {
+  const state = await interactionFixture()
+  const local = await browserChannel(state)
+  const otherId = SessionId('other-chat')
+  const caller = { kind: 'application' as const, owner, chatId: otherId, expiresAt: Date.now() + 60_000 }
+  const { agent } = await state.factory.createAgent(state.ctx, { sessionId: otherId, meta: { agentPreset: 'main' } })
+  state.owners.set(otherId, owner)
+  state.browserAuthenticate.mockResolvedValueOnce(caller)
+  const other = await browserChannel(state)
+  const cancelled = new AbortController()
+  const localResult = state.approve(cancelled.signal)
+  const otherResult = state.ctx.waterfall(scopeTarget(agent, agent), 'approval/request', {
+    agent, toolName: 'read', signal: cancelled.signal,
+  }, () => Promise.resolve<ApprovalOutcome>('unavailable'))
+  try {
+    const localEvent = await local.next()
+    const otherEvent = await other.next()
+    expect(localEvent.chatId).toBe('chat')
+    expect(otherEvent.chatId).toBe(otherId)
+    const reply = { clientId: local.clientId, eventId: localEvent.eventId, outcome: { kind: 'result', value: 'rejected' } }
+    state.browserAuthenticate.mockResolvedValueOnce(caller)
+    expect((await state.request('/browser/result', reply, { headers: browserHeaders })).status).toBe(403)
+    await local.close()
+    state.browserAuthenticate.mockResolvedValueOnce(caller)
+    const otherReplay = await browserChannel(state)
+    expect(await otherReplay.next()).toEqual(otherEvent)
+    const localReplay = await browserChannel(state)
+    expect(await localReplay.next()).toEqual(localEvent)
+    expect((await state.request('/browser/result', { ...reply, clientId: localReplay.clientId }, { headers: browserHeaders })).status).toBe(200)
+    await expect(localResult).resolves.toBe('rejected')
+    expect(await localReplay.next()).toEqual({ type: 'cancel', eventId: localEvent.eventId })
+    state.browserAuthenticate.mockResolvedValueOnce(caller)
+    expect((await state.request('/browser/result', {
+      ...reply, clientId: other.clientId, eventId: otherEvent.eventId,
+    }, { headers: browserHeaders })).status).toBe(200)
+    await expect(otherResult).resolves.toBe('rejected')
+    expect(await other.next()).toEqual({ type: 'cancel', eventId: otherEvent.eventId })
+    expect(await otherReplay.next()).toEqual({ type: 'cancel', eventId: otherEvent.eventId })
+  } finally {
+    cancelled.abort(new Error('Test interaction ended'))
+    await Promise.allSettled([localResult, otherResult])
+  }
+})
+
+it.each([
+  {},
+  { agentPreset: 'background' },
+  { agentPreset: 'main', parentSession: SessionId('root') },
+])('delegates interactions from a disallowed Session created after the browser connects (%j)', async (meta) => {
+  const state = await fixture(browser)
+  const channel = await browserChannel(state)
+  const { agent } = await state.factory.createAgent(state.ctx, { sessionId: SessionId('chat'), meta })
+  state.owners.set(agent.id, owner)
+  const cancel = new AbortController()
+  onTestFinished(() => { cancel.abort(new Error('Interaction test finished')) })
+  const approve = state.ctx.waterfall(scopeTarget(agent, agent), 'approval/request', {
+    agent, toolName: 'bash', signal: cancel.signal,
+  }, () => Promise.resolve<ApprovalOutcome>('unavailable'))
+  const ask = state.ctx.waterfall(scopeTarget(agent, agent), 'user-questions/request', {
+    agent, questions, signal: cancel.signal,
+  }, () => Promise.resolve<AskUserQuestionAnswer>({ answers: [] }))
+  try {
+    await expect(approve).resolves.toBe('unavailable')
+    await expect(ask).resolves.toEqual({ answers: [] })
+    expect(state.identity.ownerOf).not.toHaveBeenCalled()
+  } finally {
+    cancel.abort(new Error('Interaction test finished'))
+    await Promise.allSettled([approve, ask])
+    await channel.close()
+  }
+})
+
+it('keeps an interaction pending when its current chat is missing or no longer browser-accessible', async () => {
+  const state = await interactionFixture()
+  const channel = await browserChannel(state)
+  const cancelled = new AbortController()
+  const pending = state.approve(cancelled.signal)
+  try {
+    const event = await channel.next()
+    const reply = { clientId: channel.clientId, eventId: event.eventId, outcome: { kind: 'result', value: 'rejected' } }
+    const lookup = vi.spyOn(state.ctx.sessions, 'get').mockReturnValueOnce(undefined)
+    try {
+      expect((await state.request('/browser/result', reply, { headers: browserHeaders })).status).toBe(403)
+    } finally { lookup.mockRestore() }
+    state.headers.set(state.agent.id, { ...state.agent.session.header, agentPreset: 'background' })
+    expect((await state.request('/browser/result', reply, { headers: browserHeaders })).status).toBe(403)
+    state.headers.delete(state.agent.id)
+    expect((await state.request('/browser/result', reply, { headers: browserHeaders })).status).toBe(200)
+    await expect(pending).resolves.toBe('rejected')
+  } finally {
+    cancelled.abort(new Error('Interaction test ended'))
+    await Promise.allSettled([pending])
+  }
+})
+
+it('rejects a reply when its interaction is cancelled during asynchronous authorization', async () => {
+  const state = await interactionFixture()
+  const channel = await browserChannel(state)
+  const cancelled = new AbortController()
+  const pending = state.approve(cancelled.signal)
+  const rejected = expect(pending).rejects.toThrow('Interaction cancelled during authorization')
+  const event = await channel.next()
+  const entered = Promise.withResolvers<undefined>()
+  const release = Promise.withResolvers<undefined>()
+  onTestFinished(() => { release.resolve(undefined) })
+  const original = state.ctx.karakaApplication.authorizeBrowser.bind(state.ctx.karakaApplication)
+  const authorization = vi.spyOn(state.ctx.karakaApplication, 'authorizeBrowser').mockImplementationOnce(async (request, caller) => {
+    entered.resolve(undefined)
+    await release.promise
+    return original(request, caller)
+  })
+  try {
+    const response = state.request('/browser/result', {
+      clientId: channel.clientId, eventId: event.eventId, outcome: { kind: 'result', value: 'allowed-once' },
+    }, { headers: browserHeaders })
+    await entered.promise
+    cancelled.abort(new Error('Interaction cancelled during authorization'))
+    await rejected
+    expect(await channel.next()).toEqual({ type: 'cancel', eventId: event.eventId })
+    release.resolve(undefined)
+    expect((await response).status).toBe(403)
+  } finally {
+    release.resolve(undefined)
+    cancelled.abort()
+    await Promise.allSettled([pending])
+    authorization.mockRestore()
+  }
 })

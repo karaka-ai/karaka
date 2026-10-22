@@ -75,5 +75,11 @@
     "cordis.patch.yml",
     "lib/types/**/*.d.ts"
   ],
-  "types": "lib/types/index.d.ts"
+  "types": "lib/types/index.d.ts",
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "jose": "^6.2.3"
+  }
 }

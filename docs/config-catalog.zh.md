@@ -4590,7 +4590,7 @@ export interface Config {
 
 ## `@karaka-ai/browser-auth`
 
-- `source`: [`packages/karaka/browser-auth/src/index.ts:24`](../packages/karaka/browser-auth/src/index.ts)
+- `source`: [`packages/karaka/browser-auth/src/index.ts:27`](../packages/karaka/browser-auth/src/index.ts)
 
 ```ts config-catalog
 /** Public verification keys and required credential claims. */
@@ -4615,23 +4615,6 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@karaka-ai/browser-auth -->
-
-<!-- BEGIN GENERATED config-catalog:@karaka-ai/identity -->
-<a id="karaka-aiidentity"></a>
-
-## `@karaka-ai/identity`
-
-- `inject`: `storage` · `sessions` · `sessionPersistence`
-- `source`: [`packages/karaka/identity/src/index.ts:28`](../packages/karaka/identity/src/index.ts)
-
-```ts config-catalog
-/** Authority records and their exclusive lock share this directory. */
-export interface Config {
-  /** Absolute directory dedicated to durable application authority. */
-  root: string
-}
-```
-<!-- END GENERATED config-catalog:@karaka-ai/identity -->
 
 <!-- BEGIN GENERATED config-catalog:@karaka-ai/mcp-application -->
 <a id="karaka-aimcp-application"></a>
@@ -4715,9 +4698,11 @@ export interface Config {
   readonly browserPath?: string
   /** Exact browser origins allowed on browserPath. */
   readonly browserOrigins?: string[]
+  /** Root Agent presets accessible through browser credentials; required with browserPath. */
+  readonly browserAgentIds?: string[]
   /** Browser operations mounted at browserPath; defaults to all six application methods. */
   readonly browserMethods?: ('applicationAgents' | 'applicationCreate' | 'applicationPrompt' | 'applicationHistory' | 'applicationFollow' | 'applicationCancel')[]
-  /** Owner-scoped interactions delivered to browsers; defaults to approvals and questions. */
+  /** Owner- and chat-scoped interactions delivered to browsers; defaults to approvals and questions. */
   readonly browserEvents?: ('approval/request' | 'user-questions/request')[]
 }
 ```
@@ -4837,6 +4822,7 @@ export interface Config {
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
+| `@karaka-ai/identity` | `sessions` · `sessionPersistence` | [`packages/karaka/identity/src/index.ts`](../packages/karaka/identity/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->
 
 ## Seam 包（不可直接加载）

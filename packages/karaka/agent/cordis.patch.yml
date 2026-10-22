@@ -74,8 +74,6 @@
         agents: []
     - id: identity
       name: '@karaka-ai/identity'
-      config:
-        root: !!js dshHomePath('karaka-identity')
     - id: server-auth
       name: '@karaka-ai/server-auth'
       config:
@@ -107,3 +105,4 @@
         path: /v1
         browserPath: !!js "process.env.KARAKA_BROWSER_AUTH ? '/karaka/browser' : undefined"
         browserOrigins: !!js JSON.parse(process.env.KARAKA_BROWSER_ORIGINS ?? '[]')
+        browserAgentIds: !!js JSON.parse(process.env.KARAKA_BROWSER_AGENT_IDS ?? '[]')

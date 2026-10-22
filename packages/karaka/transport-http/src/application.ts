@@ -4,7 +4,8 @@ import { installModelSelection, type Agent, type AgentHandle, type ModelSelectio
 import type { PromptContentPart } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type { ApplicationOwner } from '@karaka-ai/identity'
+import { sameOwner, type ApplicationOwner } from '@karaka-ai/identity'
+import type { BrowserCaller } from '@karaka-ai/browser-auth'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -12,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { applicationState, installApplicationProjection } from './application-state.ts'
 
-interface Address { readonly chatId: SessionId; readonly owner: ApplicationOwner }
+interface Address { readonly chatId: SessionId; readonly owner: ApplicationOwner; readonly browser?: BrowserCaller }
 /** Authorized baseline, durable event or transient assistant text emitted by follow(). */
 export type FollowFrame = { readonly type: 'snapshot'; readonly header: SessionHeader; readonly hasMore: false; readonly projections: { readonly asOfSeq: number; readonly values: Record<string, never> }; readonly cursor: number; readonly records: readonly { readonly type: 'event'; readonly event: SessionEvent }[] } | { readonly type: 'event'; readonly event: SessionEvent } | { readonly type: 'text-delta'; readonly cursor: number; readonly text: string }
 
@@ -20,14 +21,17 @@ declare module '@deepseek-ai/cordis' {
   interface Context { karakaApplication: ApplicationChatController }
 }
 
-/** Owns application activation and serialized durable message admission. */
+/**
+ * Owns application activation and durable message admission. Owners without a browser
+ * caller are app-verified authority; browser ingress must pass its verified caller.
+ */
 export class ApplicationChatController extends Service {
   private readonly handles = new Map<SessionId, AgentHandle>()
   private readonly selections = new WeakMap<Agent, ModelSelectionRef>()
   private readonly operations = new Set<Promise<unknown>>()
   private readonly lifetime = new AbortController()
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, private readonly browserAgentIds: readonly string[] = []) {
     super(ctx, 'karakaApplication')
     installApplicationProjection(ctx)
     ctx.effect(() => async () => {
@@ -57,18 +61,20 @@ export class ApplicationChatController extends Service {
 
   /**
    * Reserve ownership and create or resume a chat, acknowledging only after durable readiness.
-   * @param request - Chat identity, trusted owner and requested preset.
+   * @param request - App-verified owner, requested preset and verified browser caller when browser initiated.
    * @param signal - Cancellation checked before mutation begins.
    * @returns Chat and preset identifiers; an incompatible existing preset rejects.
    */
   async create(request: Address & { readonly agentId: string }, signal?: AbortSignal) {
     return this.run(request.chatId, async () => {
       signal?.throwIfAborted()
+      await this.prepare(request)
+      const header = await this.headerOf(request.chatId)
+      if (header !== undefined && header.agentPreset !== request.agentId) throw Object.assign(new Error('Chat already uses another Agent preset'), { code: 'session/conflict' })
       const status = await this.ctx.karakaIdentity.reserve(request.chatId, request.owner)
       let agent: Agent
       if (status === 'existing') {
         agent = await this.activate(request)
-        if (agent.session.header.agentPreset !== request.agentId) throw Object.assign(new Error('Chat already uses another Agent preset'), { code: 'session/conflict' })
       } else {
         const presets = this.ctx.get('agentPresets')
         if (presets === undefined) throw new Error('Application creation requires Agent presets')
@@ -93,7 +99,7 @@ export class ApplicationChatController extends Service {
 
   /**
    * Admit a prompt once per request ID and flush before acknowledgment.
-   * @param request - Trusted owner, request ID and text or image prompt content.
+   * @param request - App-verified owner, request ID, prompt content and verified browser caller when browser initiated.
    * @param signal - Cancellation checked before mutation begins.
    * @returns Acceptance and duplicate status; unavailable models or invalid attachments reject.
    */
@@ -177,6 +183,7 @@ export class ApplicationChatController extends Service {
    */
   async events(request: Address, signal?: AbortSignal): Promise<readonly SessionEvent[]> {
     signal?.throwIfAborted()
+    await this.run(request.chatId, () => this.prepare(request))
     await this.ctx.karakaIdentity.authorize(request.chatId, request.owner)
     using observed = await this.ctx.sessionQuery.observeSession(request.chatId, { projectionMode: 'none', ...(signal === undefined ? {} : { signal }) })
     return [...observed.events]
@@ -206,6 +213,7 @@ export class ApplicationChatController extends Service {
     signal.addEventListener('abort', abort, { once: true })
     try {
       signal.throwIfAborted()
+      await this.run(request.chatId, () => this.prepare(request))
       const header = await this.ctx.karakaIdentity.authorize(request.chatId, request.owner)
       const events = await this.events(request, signal)
       let cursor = events.at(-1)?.seq ?? -1
@@ -236,7 +244,58 @@ export class ApplicationChatController extends Service {
     }
   }
 
+  /**
+   * Check verified browser scope and allowed root presets without recording ownership.
+   * @param request - Target chat, owner and optional requested creation preset.
+   * @param caller - Caller returned by browser authentication.
+   * @returns Existing root header, or undefined for a new chat; denied targets reject.
+   */
+  async authorizeBrowser(request: Address & { readonly agentId?: string }, caller: BrowserCaller): Promise<SessionHeader | undefined> {
+    if (caller.expiresAt <= Date.now() || caller.chatId !== request.chatId || !sameOwner(caller.owner, request.owner)) {
+      throw Object.assign(new Error('Browser credential does not authorize this chat'), { code: 'CHAT_FORBIDDEN' })
+    }
+    const owner = await this.ctx.karakaIdentity.ownerOfId(request.chatId)
+    if (owner !== undefined && !sameOwner(owner, request.owner)) {
+      throw Object.assign(new Error('Chat is owned by another caller'), { code: 'CHAT_FORBIDDEN' })
+    }
+    const allowed = (id: string | undefined): boolean => id !== undefined && this.browserAgentIds.includes(id)
+    if (request.agentId !== undefined && !allowed(request.agentId)) {
+      throw Object.assign(new Error('Browser Agent preset is unavailable'), { code: 'CHAT_FORBIDDEN' })
+    }
+    const stored = (await this.ctx.sessionPersistence.stat(request.chatId))?.header
+    const live = this.ctx.sessions.get(request.chatId)?.header
+    for (const header of [stored, live]) {
+      if (header !== undefined && (header.parentSession !== undefined || !allowed(header.agentPreset))) {
+        throw Object.assign(new Error('Browser target is not an allowed root chat'), { code: 'CHAT_FORBIDDEN' })
+      }
+      if (header !== undefined && request.agentId !== undefined && header.agentPreset !== request.agentId) {
+        throw Object.assign(new Error('Chat already uses another Agent preset'), { code: 'session/conflict' })
+      }
+    }
+    return stored ?? live
+  }
+
+  private async headerOf(id: SessionId): Promise<SessionHeader | undefined> {
+    return (await this.ctx.sessionPersistence.stat(id))?.header ?? this.ctx.sessions.get(id)?.header
+  }
+
+  private async prepare(request: Address & { readonly agentId?: string }): Promise<void> {
+    if (request.browser !== undefined) await this.authorizeBrowser(request, request.browser)
+    const known = await this.ctx.karakaIdentity.ownerOfId(request.chatId)
+    if (known !== undefined) {
+      await this.ctx.karakaIdentity.authorize(request.chatId, request.owner)
+      return
+    }
+    const header = await this.headerOf(request.chatId)
+    if (header === undefined) return
+    if (request.agentId !== undefined && header.agentPreset !== request.agentId) {
+      throw Object.assign(new Error('Chat already uses another Agent preset'), { code: 'session/conflict' })
+    }
+    await this.ctx.karakaIdentity.restore(request.chatId, request.owner)
+  }
+
   private async activate(request: Address): Promise<Agent> {
+    await this.prepare(request)
     const header = await this.ctx.karakaIdentity.authorize(request.chatId, request.owner)
     const live = this.ctx.agents.get(request.chatId)
     if (live !== undefined) {

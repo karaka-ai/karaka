@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/karaka/identity/README.md
 /:
-  en: f475217174f85990
-  zh: 95f824640a6f9f65
+  en: 933c9a8508d9f92d
+  zh: 876223c99bc187f3
 /karaka-ai-identity:
   en: 50832e070a1c80d0
   zh: 55145f438a6726f4
 /karaka-ai-identity/summary:
-  en: 2f70184c19f916b5
-  zh: b76b94b47c21bf47
+  en: b59c383f50ce14ac
+  zh: 5db5f4ba645b2710
 /karaka-ai-identity/table-of-contents:
   en: d152484eb41ac6b4
   zh: 241a9f41d4857cbd
 /karaka-ai-identity/use-this-package:
-  en: 09fa928b57a8e0aa
-  zh: c5a13accd1272a15
+  en: 40fea6231c1a65cd
+  zh: 5bb315e65c923390
 /karaka-ai-identity/understand-the-implementation:
-  en: bcfab7f7d1463516
-  zh: 58cd5986ff3d0635
+  en: ecdacc2306619dca
+  zh: 232c051dcfb91328
 /karaka-ai-identity/further-exploration:
   en: a18bee4d19e76cf0
   zh: 1339f16005a498b3
@@ -39,8 +39,8 @@
   en: a1ae53dd10e6299c
   zh: d158720d30315de5
 /karaka-ai-identity/known-limitations-and-deferred-work:
-  en: f1a4db24ed261a4b
-  zh: 1d3970a5b8f80f53
+  en: 39c1337ffe5f00b0
+  zh: 62fb266226ba25ca
 /karaka-ai-identity/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 6c5f9788c6536776

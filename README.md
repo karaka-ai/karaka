@@ -27,7 +27,7 @@ Browser frontend                            Karaka process
 
 Backend integrations use `@karaka-ai/sdk` for chat over HTTP/SSE and for hosting authenticated MCP tools on the application's existing HTTP server. The backend supplies trusted tenant and user identifiers. Karaka binds those identifiers to the chat and forwards them to tool callbacks, where the application enforces business authorization. Installing the SDK starts no process and opens no port.
 
-Browser integrations use `@karaka-ai/agent/browser` with expiring credentials issued by the application backend. Each credential binds the application, tenant, and user identity; browser requests cannot choose another identity. See the [browser client setup](packages/karaka/transport-http) for authentication and server configuration.
+Browser integrations use `@karaka-ai/agent/browser` with expiring credentials issued by the application backend. Each credential binds the application, tenant, user identity, and one chat; browser requests cannot select another chat. The backend retains chat ownership and authorizes token issuance. See the [browser client setup](packages/karaka/transport-http) for authentication and server configuration.
 
 <a id="run"></a>
 ## Start here

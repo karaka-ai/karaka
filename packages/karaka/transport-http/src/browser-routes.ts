@@ -1,20 +1,25 @@
-/** JWT-authenticated browser operations and owner-scoped interaction delivery. */
+/** JWT-authenticated browser operations and owner- and chat-scoped interaction delivery. */
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import type { ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type { ApplicationOwner } from '@karaka-ai/identity'
 import { sameOwner } from '@karaka-ai/identity'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import type { AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions/types'
 import { ApplicationCreateChatRequestSchema, ApplicationPromptRequestSchema } from '@karaka-ai/sdk'
-import type {} from '@karaka-ai/browser-auth'
+import type { BrowserCaller } from '@karaka-ai/browser-auth'
 import { json, readObject, writeJsonEvent } from './http.ts'
 import type { Config } from './index.ts'
 
-interface Channel { readonly id: string; readonly owner: ApplicationOwner; readonly push: (event: unknown) => void }
+interface Channel {
+  readonly id: string
+  readonly owner: ApplicationOwner
+  readonly chatId: SessionId
+  readonly push: (event: unknown) => void
+}
 interface Pending {
   readonly id: string
   readonly chatId: string
@@ -38,7 +43,7 @@ const outcomeSchema = z.discriminatedUnion('kind', [
 const resultSchema = z.strictObject({ clientId: z.string(), eventId: z.string(), outcome: outcomeSchema })
 
 /**
- * Mount JWT-authenticated application methods and owner-scoped interaction delivery.
+ * Mount JWT-authenticated application methods and owner- and chat-scoped interaction delivery.
  * @param ctx - Context providing the application controller and authorization services.
  * @param config - Browser route, allowed origins and enabled capabilities.
  * @param ready - Whether the application has completed startup.
@@ -47,6 +52,8 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
   const path = config.browserPath
   if (path === undefined) return
   if (config.browserOrigins === undefined || config.browserOrigins.length === 0) throw new Error('Browser transport requires explicit origins')
+  if (config.browserAgentIds === undefined || config.browserAgentIds.length === 0 || config.browserAgentIds.some(id => !id.trim())) throw new Error('Browser transport requires explicit Agent presets')
+  const agentIds = new Set(config.browserAgentIds)
   const methods = new Set(config.browserMethods ?? ['applicationAgents', 'applicationCreate', 'applicationPrompt', 'applicationHistory', 'applicationFollow', 'applicationCancel'])
   const events = new Set(config.browserEvents ?? ['approval/request', 'user-questions/request'])
   const channels = new Map<string, Channel>()
@@ -63,7 +70,8 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
   })
 
   const ask = async (event: Pending['event'], chatId: string, owner: ApplicationOwner, request: unknown, signal?: AbortSignal) => {
-    const recipients = new Set([...channels.values()].filter(channel => sameOwner(channel.owner, owner)).map(channel => channel.id))
+    const recipients = new Set([...channels.values()]
+      .filter(channel => channel.chatId === chatId && sameOwner(channel.owner, owner)).map(channel => channel.id))
     if (recipients.size === 0) return { kind: 'next' as const }
     const deferred = Promise.withResolvers<
       { readonly kind: 'next' } | { readonly kind: 'result'; readonly value: unknown }
@@ -72,7 +80,10 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
       id: randomUUID(), chatId, owner, event, request, recipients, resolve: deferred.resolve, reject: deferred.reject,
     }
     pending.set(item.id, item)
-    const abort = (): void => { deferred.reject(signal?.reason ?? new Error('Interaction cancelled')) }
+    const abort = (): void => {
+      pending.delete(item.id)
+      deferred.reject(signal?.reason ?? new Error('Interaction cancelled'))
+    }
     signal?.addEventListener('abort', abort, { once: true })
     for (const id of recipients) channels.get(id)?.push(frame(item))
     try {
@@ -81,10 +92,13 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
     } finally {
       pending.delete(item.id)
       signal?.removeEventListener('abort', abort)
-      for (const channel of channels.values()) if (sameOwner(channel.owner, owner)) channel.push({ type: 'cancel', eventId: item.id })
+      for (const channel of channels.values()) if (channel.chatId === chatId && sameOwner(channel.owner, owner)) channel.push({ type: 'cancel', eventId: item.id })
     }
   }
+  const acceptsSession = (session: Session): boolean => session.header.parentSession === undefined
+    && session.header.agentPreset !== undefined && agentIds.has(session.header.agentPreset)
   if (events.has('approval/request')) ctx.on('approval/request', async (request, next) => {
+    if (!acceptsSession(request.agent.session)) return next()
     const owner = await ctx.karakaIdentity.ownerOf(request.agent.session)
     if (owner === undefined) return next()
     const result = await ask('approval/request', request.agent.id, owner, {
@@ -95,7 +109,7 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
     return result.kind === 'next' ? next() : result.value as ApprovalOutcome
   }, { global: true, prepend: true })
   if (events.has('user-questions/request')) ctx.on('user-questions/request', async (request, next) => {
-    if (request.agent === undefined) return next()
+    if (request.agent === undefined || !acceptsSession(request.agent.session)) return next()
     const owner = await ctx.karakaIdentity.ownerOf(request.agent.session)
     if (owner === undefined) return next()
     const result = await ask('user-questions/request', request.agent.id, owner, { agent: { id: request.agent.id }, questions: request.questions }, request.signal)
@@ -134,36 +148,45 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
       const body = await readObject(request, config.maxBodyBytes ?? 1_048_576, signal)
       if (method === 'events') {
         z.strictObject({}).parse(body)
-        await eventChannel(caller.owner, response, signal); return
+        await ctx.karakaApplication.authorizeBrowser({ chatId: caller.chatId, owner: caller.owner }, caller)
+        await eventChannel(caller, response, signal); return
       }
       if (method === 'result') {
         const result = resultSchema.parse(body)
         const channel = channels.get(result.clientId)
         const item = pending.get(result.eventId)
         if (channel === undefined || item === undefined || !sameOwner(channel.owner, caller.owner)
+          || channel.chatId !== caller.chatId || item.chatId !== caller.chatId
           || !sameOwner(item.owner, caller.owner) || !item.recipients.has(channel.id)) {
+          throw Object.assign(new Error('Interaction is unavailable to this caller'), { code: 'CHAT_FORBIDDEN' })
+        }
+        const header = await ctx.karakaApplication.authorizeBrowser({ chatId: caller.chatId, owner: caller.owner }, caller)
+        signal.throwIfAborted()
+        if (header === undefined || pending.get(item.id) !== item
+          || channels.get(channel.id) !== channel || !item.recipients.has(channel.id)) {
           throw Object.assign(new Error('Interaction is unavailable to this caller'), { code: 'CHAT_FORBIDDEN' })
         }
         if (result.outcome.kind === 'result') {
           const value = item.event === 'approval/request'
             ? z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable']).parse(result.outcome.value)
             : answer.parse(result.outcome.value)
+          pending.delete(item.id)
           item.resolve({ kind: 'result', value })
         } else {
           item.recipients.delete(channel.id)
-          if (item.recipients.size === 0) item.resolve({ kind: 'next' })
+          if (item.recipients.size === 0) { pending.delete(item.id); item.resolve({ kind: 'next' }) }
         }
         json(response, 200, { ok: true, value: null }); return
       }
       if (!methods.has(method)) { json(response, 403, { code: 'METHOD_FORBIDDEN', message: 'Browser method is unavailable' }); return }
       const owner = caller.owner
       let value: unknown
-      if (method === 'applicationAgents') { z.strictObject({}).parse(body); value = await ctx.karakaApplication.listAgents(signal) }
-      else if (method === 'applicationCreate') { const input = create.parse(body); value = await ctx.karakaApplication.create({ chatId: SessionId(input.chatId), agentId: input.agentId, owner }, signal) }
-      else if (method === 'applicationPrompt') { const input = prompt.parse(body); value = await ctx.karakaApplication.prompt({ requestId: input.requestId, chatId: SessionId(input.chatId), owner, content: input.content.map(part => part.type === 'text' ? part : { type: part.type, mediaType: part.mediaType, data: part.data, ...(part.name === undefined ? {} : { name: part.name }) }) }, signal) }
+      if (method === 'applicationAgents') { z.strictObject({}).parse(body); value = (await ctx.karakaApplication.listAgents(signal)).filter(agent => agentIds.has(agent.id)) }
+      else if (method === 'applicationCreate') { const input = create.parse(body); value = await ctx.karakaApplication.create({ chatId: SessionId(input.chatId), agentId: input.agentId, owner, browser: caller }, signal) }
+      else if (method === 'applicationPrompt') { const input = prompt.parse(body); value = await ctx.karakaApplication.prompt({ requestId: input.requestId, chatId: SessionId(input.chatId), owner, browser: caller, content: input.content.map(part => part.type === 'text' ? part : { type: part.type, mediaType: part.mediaType, data: part.data, ...(part.name === undefined ? {} : { name: part.name }) }) }, signal) }
       else {
         const input = address.parse(body)
-        const target = { chatId: SessionId(input.chatId), owner }
+        const target = { chatId: SessionId(input.chatId), owner, browser: caller }
         if (method === 'applicationHistory') value = await ctx.karakaApplication.events(target, signal)
         else if (method === 'applicationCancel') value = await ctx.karakaApplication.cancel(target, signal)
         else {
@@ -199,24 +222,29 @@ export function mountBrowserRoutes(ctx: Context, config: Config, ready: () => bo
     }
   } }))
 
-  async function eventChannel(owner: ApplicationOwner, response: ServerResponse, signal: AbortSignal): Promise<void> {
+  async function eventChannel(caller: BrowserCaller, response: ServerResponse, signal: AbortSignal): Promise<void> {
     const queue: unknown[] = []
     let wake = Promise.withResolvers<void>()
-    const channel: Channel = { id: randomUUID(), owner, push(event) { queue.push(event); wake.resolve() } }
+    const { owner, chatId } = caller
+    const channel: Channel = { id: randomUUID(), owner, chatId, push(event) { queue.push(event); wake.resolve() } }
     channels.set(channel.id, channel)
     const abort = (): void => { wake.resolve() }
     signal.addEventListener('abort', abort, { once: true })
     try {
       openEvents(response)
       channel.push({ type: 'ready', clientId: channel.id, host: { home: homedir() } })
-      for (const item of pending.values()) if (sameOwner(item.owner, owner)) { item.recipients.add(channel.id); channel.push(frame(item)) }
+      for (const item of pending.values()) {
+        if (item.chatId !== chatId || !sameOwner(item.owner, owner)) continue
+        item.recipients.add(channel.id)
+        channel.push(frame(item))
+      }
       while (!signal.aborted) {
         if (queue.length === 0) { await wake.promise; wake = Promise.withResolvers<void>(); continue }
         await writeJsonEvent(response, queue.shift(), signal)
       }
     } finally {
       channels.delete(channel.id)
-      // Pending interactions survive loss of the last connection and replay when its owner reconnects.
+      // Pending interactions survive disconnect and replay when the same owner and chat reconnect.
       for (const item of pending.values()) item.recipients.delete(channel.id)
       signal.removeEventListener('abort', abort)
     }

@@ -44,7 +44,7 @@ export async function fixture(config: Config = { path: '/api', handleQuestions: 
   const authenticate = vi.fn(async (): Promise<AuthenticatedApplication | undefined> => ({ applicationId: ApplicationId('app') }))
   const serverAuth = { authenticate }
   ctx.provide('serverAuth', Object.setPrototypeOf(serverAuth, ServerAuth.prototype) as ServerAuth)
-  const browserAuthenticate = vi.fn(async (): Promise<BrowserCaller | undefined> => ({ kind: 'application' as const, owner, expiresAt: Date.now() + 60_000 }))
+  const browserAuthenticate = vi.fn(async (): Promise<BrowserCaller | undefined> => ({ kind: 'application' as const, owner, chatId: SessionId('chat'), expiresAt: Date.now() + 60_000 }))
   const browserAuth = { authenticate: browserAuthenticate }
   const removeBrowserAuth = ctx.provide('karakaBrowserAuth', Object.setPrototypeOf(browserAuth, BrowserAuthentication.prototype) as BrowserAuthentication)
   apply(ctx, config)
@@ -92,5 +92,5 @@ export async function fixture(config: Config = { path: '/api', handleQuestions: 
 }
 
 export const identity = { tenantId: 'tenant', userId: 'user' }
-export const browser = { path: '/api', handleQuestions: false, browserPath: '/browser', browserOrigins: ['https://app.example'] }
+export const browser = { path: '/api', handleQuestions: false, browserPath: '/browser', browserOrigins: ['https://app.example'], browserAgentIds: ['main'] }
 export const browserHeaders = { origin: 'https://app.example', authorization: 'Bearer signed', 'content-type': 'application/json' }

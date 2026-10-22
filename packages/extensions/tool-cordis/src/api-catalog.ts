@@ -1430,24 +1430,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'async authenticate(credential: string): Promise<BrowserCaller | undefined>',
-        description: 'Verify signature, issuer, audience, owner claims, age, and issued lifetime.',
+        description: 'Verify signature, issuer, audience, owner and chat claims, age, and issued lifetime.',
         parameters: [{ name: 'credential', description: 'Complete compact JWT supplied by the browser.' }],
-        returns: 'The signed owner and expiry, or undefined for invalid credentials.',
+        returns: 'The signed owner, chat and expiry, or undefined for invalid credentials.',
         throws: ['Errors unrelated to JWT validation.'],
       },
     ],
   },
   {
     key: 'karakaIdentity',
-    summary: 'A single process owns authority records for this root.',
-    description: 'A single process owns authority records for this root. Application ingress serializes complete create/admit operations through withChatLock. No ownership is inferred from request-supplied lineage or written into a DSH Session.',
+    summary: 'Authenticated ingress restores root ownership explicitly.',
+    description: 'Authenticated ingress restores root ownership explicitly. Application ingress serializes complete create/admit operations through withChatLock. Read-only owner lookup never adopts a Session or infers ownership from request metadata.',
     methods: [
-      {
-        signature: 'async initialize(): Promise<void>',
-        description: 'Validate materialized roots before routes and background tools become available.',
-        parameters: [],
-        returns: 'Resolution after existing original headers have warmed lineage lookup.',
-      },
       {
         signature: 'async withChatLock<T>(id: SessionId, operation: () => Promise<T>): Promise<T>',
         description: 'Serialize one complete controller operation, including original engine calls.',
@@ -1464,13 +1458,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'async bind(session: Session, owner: ApplicationOwner): Promise<void>',
         description: 'Bind the actual unpublished Session during the original Agent setup callback.',
         parameters: [{ name: 'session', description: 'Original factory-created Session.' }, { name: 'owner', description: 'Reserved owner.' }],
-        returns: 'Resolution only after the immutable source binding is durable.',
+        returns: 'Resolution only after the immutable source binding is recorded in memory.',
       },
       {
         signature: 'async markReady(session: Session, owner: ApplicationOwner): Promise<void>',
-        description: 'Complete creation only after original JSONL flush and durable authority agree.',
+        description: 'Complete creation only after Session flush and persisted source checks succeed.',
         parameters: [{ name: 'session', description: 'Published original Session.' }, { name: 'owner', description: 'Authenticated owner.' }],
         returns: 'Resolution after the application can acknowledge this chat.',
+      },
+      {
+        signature: 'async restore(id: SessionId, owner: ApplicationOwner): Promise<SessionHeader>',
+        description: 'Restore ownership of a persisted root after ingress verifies application access. Call inside withChatLock, after verifying chat scope, preset, and root access. Missing data, child Sessions, conflicting owners, and changed sources are denied.',
+        parameters: [{ name: 'id', description: 'Persisted root authorized by the application.' }, { name: 'owner', description: 'Owner established by verified application authority.' }],
+        returns: 'The persisted immutable header, without resuming or repairing data.',
       },
       {
         signature: 'async authorize(id: SessionId, owner: ApplicationOwner): Promise<SessionHeader>',
@@ -1488,7 +1488,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'async ownerOf(session: Session): Promise<ApplicationOwner | undefined>',
         description: 'Resolve trusted identity for tool execution, including background child Agents.',
         parameters: [{ name: 'session', description: 'Executing original Session, never request-supplied metadata.' }],
-        returns: 'Its root authority owner, or undefined for an ordinary DSH Session.',
+        returns: 'Its root authority owner, or undefined until root ownership is established.',
       },
       {
         signature: 'async ownerOfId(id: SessionId): Promise<ApplicationOwner | undefined>',
@@ -1504,9 +1504,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async close(): Promise<void>',
-        description: 'Reject new authority calls, await admitted operations settling, and close storage.',
+        description: 'Reject new authority calls, await admitted operations, and clear identity caches.',
         parameters: [],
-        returns: 'Resolution after admitted operations settle and authority storage closes.',
+        returns: 'Resolution after admitted operations settle and identity caches are cleared.',
       },
     ],
   },
@@ -5105,7 +5105,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserCaller',
-    declaration: 'export interface BrowserCaller {\n    readonly kind: \'application\';\n    readonly owner: ApplicationOwner;\n    readonly expiresAt: number;\n}',
+    declaration: 'export interface BrowserCaller {\n    readonly kind: \'application\';\n    readonly owner: ApplicationOwner;\n    readonly chatId: SessionId;\n    readonly expiresAt: number;\n}',
   },
   {
     name: 'BrowserUseProviderName',

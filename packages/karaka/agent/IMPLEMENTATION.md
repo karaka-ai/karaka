@@ -23,7 +23,7 @@ The staged server carries the selected in-tree implementations rather than resol
 <a id="application-composition"></a>
 ## Application composition
 
-The [bundle patch](cordis.patch.yml) uses DSH's Session, Agent, loop, tool, model, JSONL, and query implementations. Karaka keeps durable application ownership in [identity](../identity/README.md) and authenticates callers through separate application adapters. It does not add ownership fields to DSH Session records.
+The [bundle patch](cordis.patch.yml) uses DSH's Session, Agent, loop, tool, model, JSONL, and query implementations. Karaka tracks verified application ownership in memory through [identity](../identity/README.md) and authenticates callers through separate application adapters. Applications authorize existing chats again after restart; ownership fields are absent from DSH Session records.
 
 The [MCP bridge](../mcp-application/README.md) uses shared DSH connection supervision and rich result conversion through programmatic extensions; [its source record](../mcp-application/UPSTREAM.json) identifies shared code and application-owned adapters. Endpoint permissions and preset permissions jointly limit application tools. The [HTTP transport](../transport-http/README.md) owns conversation operations and the browser facade.
 

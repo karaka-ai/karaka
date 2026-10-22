@@ -1,0 +1,69 @@
+- name: cordis:startup
+- name: cordis:timer
+- name: cordis:session
+- name: cordis:projections
+- name: cordis:persistence
+  config:
+    root: __SESSIONS__
+    compression: none
+- name: cordis:query
+  config:
+    path: ':memory:'
+    openAt: never
+- name: cordis:llm
+- name: cordis:tools
+- name: cordis:systemPrompt
+  config:
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+    personaPrefix: Ownership composition fixture.
+- name: cordis:agents
+- name: cordis:defaultModel
+  config:
+    provider: ownership-fixture
+    model: deterministic
+- name: cordis:presets
+  config:
+    default: application
+- name: cordis:preset
+  config:
+    id: application
+    plugins:
+      - name: cordis:presetObserver
+- name: cordis:preset
+  config:
+    id: background
+    plugins: []
+- name: cordis:loop
+  config:
+    agents: []
+- name: cordis:identity
+- name: cordis:credentials
+  config:
+    path: __CREDENTIALS__
+    watch: false
+- name: cordis:serverAuth
+  config:
+    applications: []
+- name: cordis:browserAuth
+  config:
+    applicationId: app
+    issuer: ownership-fixture
+    audience: karaka
+    maxTokenAgeSeconds: 300
+    keys:
+      - id: fixture
+        algorithm: ES256
+        publicKey: __PUBLIC_KEY__
+- name: cordis:webServer
+  config:
+    host: 127.0.0.1
+    port: 0
+- name: cordis:probe
+- name: cordis:transport
+  inject: [agentPresets, ownershipProbe]
+  config:
+    path: /v1
+    browserPath: /browser
+    browserOrigins: ['https://application.test']
+    browserAgentIds: [application]
