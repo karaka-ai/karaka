@@ -49,6 +49,30 @@ test('an fs.watch listener created outside a store does not read the writer’s 
   await expect(observed).resolves.toBeUndefined()
 })
 
+test('a watcher debounce callback retains its root context while the writer transaction is pending', async () => {
+  const als = new AsyncLocalStorage<string>()
+  const file = `${ROOT}/debounced.json`
+  workerFs.writeFileSync(file, '{}')
+  const release = Promise.withResolvers<undefined>()
+  const observed = Promise.withResolvers<string | undefined>()
+  const watcher = workerFs.watch(file, () => {
+    setTimeout(() => { observed.resolve(als.getStore()) }, 0)
+  })
+  const transaction = als.run('transaction', async () => {
+    workerFs.writeFileSync(file, '{"changed":true}')
+    await release.promise
+  })
+  try {
+    await expect(observed.promise).resolves.toBeUndefined()
+    expect(als.getStore()).toBe('transaction')
+  } finally {
+    watcher.close()
+    release.resolve(undefined)
+    await transaction
+    als.disable()
+  }
+})
+
 test('an fs.watch listener reads the store its watcher was created in', async () => {
   const als = new AsyncLocalStorage<string>()
   const file = `${ROOT}/patch.yml`
