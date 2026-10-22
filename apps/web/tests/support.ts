@@ -4,7 +4,7 @@ import { createServer } from 'node:net'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Browser, Locator, Page } from 'playwright'
+import type { Browser, Locator, Page, Request } from 'playwright'
 import { expect, vi, type MockInstance } from 'vitest'
 
 /** The built page under test; `pnpm run test:web` rebuilds it before running. */
@@ -269,6 +269,49 @@ export async function writeComposerDraft(
   await page.keyboard.press('ControlOrMeta+A')
   if (text === '') await page.keyboard.press('Backspace')
   else await page.keyboard.type(text)
+}
+
+/**
+ * Click a bundle switch and await its profile write and subsequent inventory reads.
+ * @param page - page containing the plugin manager.
+ * @param toggle - bundle switch being changed.
+ * @param name - exact bundle package name.
+ * @param enabled - requested bundle selection.
+ */
+export async function clickPluginBundleSwitch(page: Page, toggle: Locator, name: string, enabled: boolean): Promise<void> {
+  let writeReceived = false
+  const reads = new Set<Request>()
+  const inventoryPaths = ['/api/pluginManager/listBundles', '/api/pluginManager/listPlugins']
+  const trackRead = (request: Request): void => {
+    if (writeReceived && request.method() === 'POST' && inventoryPaths.includes(new URL(request.url()).pathname)) reads.add(request)
+  }
+  page.on('request', trackRead)
+  try {
+    const written = page.waitForResponse((response) => {
+      const request = response.request()
+      if (request.method() !== 'POST' || new URL(response.url()).pathname !== '/api/pluginManager/setBundleEnabled') return false
+      const body = request.postDataJSON() as { payload: { args: { name: string; enabled: boolean } } }
+      if (body.payload.args.name !== name || body.payload.args.enabled !== enabled) return false
+      writeReceived = true
+      return true
+    })
+    const bundles = page.waitForResponse(response => reads.has(response.request())
+      && new URL(response.url()).pathname === inventoryPaths[0])
+    const plugins = page.waitForResponse(response => reads.has(response.request())
+      && new URL(response.url()).pathname === inventoryPaths[1])
+    const [writeReply, bundleReply, pluginReply] = await Promise.all([written, bundles, plugins, toggle.click()])
+    for (const response of [writeReply, bundleReply, pluginReply]) {
+      expect(response.ok()).toBe(true)
+      expect(await response.finished()).toBeNull()
+    }
+    expect(await writeReply.json()).toMatchObject({ result: { ok: true, value: { application: 'applied' } } })
+    expect(await bundleReply.json()).toMatchObject({ result: { ok: true, value: expect.arrayContaining([
+      expect.objectContaining({ name, enabled }),
+    ]) } })
+    expect(await pluginReply.json()).toMatchObject({ result: { ok: true } })
+  } finally {
+    page.off('request', trackRead)
+  }
 }
 
 /** Failure evidence goes to the gitignored .artifacts/ (repo convention). */

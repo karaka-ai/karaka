@@ -15,7 +15,7 @@ import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, readPersistedEvents, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspaceZh, expandOwningTurnProcess, saveFailureShot, ZH_BROWSER_LOCALE } from './support.ts'
+import { clickPluginBundleSwitch, connectFreshWorkspaceZh, expandOwningTurnProcess, saveFailureShot, ZH_BROWSER_LOCALE } from './support.ts'
 
 const BUNDLE_NAME = '@deepseek-ai/dsh-experimental-cot-translation-bundle'
 const BUNDLE = fileURLToPath(new URL('../../../packages/experimental/cot-translation-bundle', import.meta.url))
@@ -168,7 +168,8 @@ it.skipIf(MODE === 'record')('reuses saved native Account Flash translations acr
   const panel = settings.locator('[data-plugin-panel]'), card = panel.locator(`[data-plugin-package="${BUNDLE_NAME}"]`)
   const toggle = card.getByRole('switch'); await toggle.waitFor()
   expect(await toggle.getAttribute('aria-checked')).toBe('false')
-  await toggle.click(); await expect.poll(() => toggle.getAttribute('aria-checked')).toBe('true')
+  await clickPluginBundleSwitch(settings, toggle, BUNDLE_NAME, true)
+  await expect.poll(() => toggle.getAttribute('aria-checked')).toBe('true')
   await card.getByRole('button').first().click()
   const provider = panel.getByLabel('翻译服务', { exact: true })
   await provider.waitFor(); expect(await provider.inputValue()).toBe('bing')
