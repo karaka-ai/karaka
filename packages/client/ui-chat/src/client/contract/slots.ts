@@ -68,6 +68,14 @@ export interface QuotaNoticeState {
   seq: number
 }
 
+/** Original reasoning offered to optional display-only renderers. */
+export interface ReasoningBodyOwnerProps {
+  /** Complete or streaming model-provided reasoning, unchanged by display extensions. */
+  text: string
+  /** Whether the reasoning tail is still streaming. */
+  running: boolean
+}
+
 /** Owner currency of one quota notice offered to the frame-wide chain. */
 export interface QuotaNoticeOwnerProps {
   /** Stable failure code retained in the Session log. */
@@ -307,6 +315,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * replaces that command renderer; an unoccupied key uses the generic card.
      */
     'conversation.chat.commandview': { kind: 'keyed'; scope: 'session'; owner: CommandRowOwnerProps }
+    /**
+     * Display-only rendering of an expanded reasoning body. The first matching
+     * contribution renders; an unclaimed body uses the original compact Markdown.
+     * Contributions must preserve access to the original model-provided text.
+     */
+    'conversation.chat.reasoning-body': { kind: 'chain'; scope: 'session'; owner: ReasoningBodyOwnerProps }
     /**
      * Ordered feature contributions before a completed Turn's action row. Each
      * entry receives the Turn, closing sequence, and file opener. A fresh `id`

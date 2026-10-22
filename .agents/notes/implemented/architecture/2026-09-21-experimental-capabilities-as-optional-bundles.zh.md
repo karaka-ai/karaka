@@ -10,9 +10,9 @@ Web 插件页只提供两个可选 bundle：Agent Teams 与语音输入。Auto r
 
 ## 决策
 
-`OPTIONAL_BUNDLES` 列出 Agent Teams、语音输入、Auto review、Inspector profile 与 Git 工作树。每个可选 bundle 都声明 `icon` 并导出带 `meta.title` 与 `meta.description` 的 `./locale/*.json`，官方分组因此能渲染本地化标题、描述和图片；`verify-default-product-isolation` 会拒绝缺少这些声明的可选 bundle。Inspector profile 管理按包名挂载的 bundle patch。独立 Inspector 的 `cordis.patch.yml` 通过本地构建入口提供显式仓库 overlay；[Session Inspector](../feature/2026-09-24-session-inspector.zh.md) 管理检查行为与启用选择。
+`OPTIONAL_BUNDLES` 列出 Agent Teams、语音输入、思考过程翻译、Auto review、Inspector profile 与 Git 工作树。每个可选 bundle 都声明 `icon` 并导出带 `meta.title` 与 `meta.description` 的 `./locale/*.json`，官方分组因此能渲染本地化标题、描述和图片；`verify-default-product-isolation` 会拒绝缺少这些声明的可选 bundle。Inspector profile 管理按包名挂载的 bundle patch。独立 Inspector 的 `cordis.patch.yml` 通过本地构建入口提供显式仓库 overlay；[Session Inspector](../feature/2026-09-24-session-inspector.zh.md) 管理检查行为与启用选择。
 
-可选 bundle 是安装的运行时依赖，其依赖图会随每次 `dsh` 安装一起下载。名单权衡新增安装成本：Auto review 复用安装闭包，Inspector profile 增加检查包、`serve-static`/`open`/`ws` 和 535 个镜像 DevTools 资源（未压缩约 11.95 MiB），但不携带另一个浏览器二进制。Inspector profile 在默认插件列表显示，选中前保持关闭。浏览器操作与电脑操作提供方仍保持显式组合：Playwright MCP、Chrome DevTools MCP 与原生 Cua Driver 运行时二进制会让每次安装多出约 85 MB、21 个包，无论 bundle 是否启用；而随附的 Cua Driver MCP 开关会提供一个安装本身并不携带其可执行文件的能力。这些提供方包保留 locale 显示元数据，供组件行使用。另有两个包因其他原因不纳入：`ptc-runtime-python` 会替换 PTC 运行时，而 `workflow-ptc` 在加载时拒绝非 TypeScript 运行时，且 Web preset 内含 bundle patch 无法触及的 `workflow-ptc` 行；`browser-use-stagehand-native` 在 schema 校验时就要求原生模型名称与 API 密钥，而插件页没有对应的配置表单。
+可选 bundle 是安装的运行时依赖，其依赖图会随每次 `dsh` 安装一起下载。名单权衡新增安装成本：Auto review 复用安装闭包，Inspector profile 增加检查包、`serve-static`/`open`/`ws` 和 535 个镜像 DevTools 资源（未压缩约 11.95 MiB），但不携带另一个浏览器二进制。[思考过程翻译](2026-10-05-anonymous-reasoning-translation.zh.md) 增加三个实验包，不增加第三方运行时依赖。Inspector profile 在默认插件列表显示，选中前保持关闭。浏览器操作与电脑操作提供方仍保持显式组合：Playwright MCP、Chrome DevTools MCP 与原生 Cua Driver 运行时二进制会让每次安装多出约 85 MB、21 个包，无论 bundle 是否启用；而随附的 Cua Driver MCP 开关会提供一个安装本身并不携带其可执行文件的能力。这些提供方包保留 locale 显示元数据，供组件行使用。另有两个包因其他原因不纳入：`ptc-runtime-python` 会替换 PTC 运行时，而 `workflow-ptc` 在加载时拒绝非 TypeScript 运行时，且 Web preset 内含 bundle patch 无法触及的 `workflow-ptc` 行；`browser-use-stagehand-native` 在 schema 校验时就要求原生模型名称与 API 密钥，而插件页没有对应的配置表单。
 
 ## 考虑过的替代方案
 

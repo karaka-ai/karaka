@@ -2,17 +2,31 @@
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { Config } from './index.ts'
-import type { TranslationProvider, TranslationSpec } from './types.ts'
+import type { AnonymousTranslationProvider, AnonymousTranslationSpec } from './types.ts'
 import { TranslationError } from './error.ts'
+import { createHash } from 'node:crypto'
 
-function language(tag: string, provider: TranslationProvider): string {
+/**
+ * Identify anonymous request semantics without provider-specific language normalization.
+ * @param provider - explicitly resolved endpoint route.
+ * @param config - deployment endpoints; raw endpoint values are excluded from stored recipes.
+ * @returns protocol revision and effective endpoint fingerprint for durable result reuse.
+ */
+export function anonymousRecipe(provider: AnonymousTranslationProvider, config: Config): string {
+  const url = new URL(provider === 'google' ? config.googleEndpoint : config.bingEndpoint)
+  const owned = provider === 'google' ? ['client', 'sl', 'tl', 'dt', 'q'] : ['from', 'to', 'isEnterpriseClient']
+  for (const key of owned) url.searchParams.delete(key)
+  return JSON.stringify([provider === 'google' ? 'google-form-v1' : 'bing-edge-v1', createHash('sha256').update(url.href).digest('hex')])
+}
+
+function language(tag: string, provider: AnonymousTranslationProvider): string {
   const lower = tag.toLowerCase()
   if (['zh', 'zh-cn', 'zh-sg', 'zh-hans'].includes(lower)) return provider === 'google' ? 'zh-CN' : 'zh-Hans'
   if (['zh-tw', 'zh-hk', 'zh-mo', 'zh-hant'].includes(lower)) return provider === 'google' ? 'zh-TW' : 'zh-Hant'
   return tag
 }
 
-function requestFor(spec: TranslationSpec, config: Config): { url: URL; init: RequestInit } {
+function requestFor(spec: AnonymousTranslationSpec, config: Config): { url: URL; init: RequestInit } {
   const source = language(spec.sourceLanguage, spec.provider)
   const target = language(spec.targetLanguage, spec.provider)
   switch (spec.provider) {
@@ -37,11 +51,11 @@ function requestFor(spec: TranslationSpec, config: Config): { url: URL; init: Re
   }
 }
 
-function invalidResponse(provider: TranslationProvider): TranslationError {
+function invalidResponse(provider: AnonymousTranslationProvider): TranslationError {
   return new TranslationError('TRANSLATION_INVALID_RESPONSE', `${provider} returned an invalid translation response`)
 }
 
-function translationOf(payload: unknown, provider: TranslationProvider): string {
+function translationOf(payload: unknown, provider: AnonymousTranslationProvider): string {
   if (!Array.isArray(payload)) throw invalidResponse(provider)
   const first: unknown = payload[0]
   switch (provider) {
@@ -70,7 +84,7 @@ function translationOf(payload: unknown, provider: TranslationProvider): string 
   }
 }
 
-async function responseJson(response: Response, config: Config, provider: TranslationProvider): Promise<unknown> {
+async function responseJson(response: Response, config: Config, provider: AnonymousTranslationProvider): Promise<unknown> {
   if (response.body === null) throw invalidResponse(provider)
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
@@ -104,7 +118,7 @@ async function responseJson(response: Response, config: Config, provider: Transl
  * @param signal - caller and service lifetime cancellation.
  * @returns provider-translated text, or a safe failure preserving cancellation.
  */
-export async function translateText(spec: TranslationSpec, config: Config, signal: AbortSignal): Promise<string> {
+export async function translateText(spec: AnonymousTranslationSpec, config: Config, signal: AbortSignal): Promise<string> {
   using timeout = deadline(signal, config.timeoutMs, 'TRANSLATION_TIMEOUT')
   try {
     timeout.signal.throwIfAborted()

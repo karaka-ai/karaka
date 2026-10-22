@@ -1,0 +1,3 @@
+- button "译文" [pressed]
+- button "原文"
+- paragraph: 用户要求只回复一个词，我会照做。

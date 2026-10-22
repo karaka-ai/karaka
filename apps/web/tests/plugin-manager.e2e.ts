@@ -186,9 +186,9 @@ describe('web e2e: plugin manager', () => {
         await official.locator('[data-plugin-package]').first().waitFor()
         // The Official group lists the shipped bundles and then the
         // configuration-only items; an item card carries no action cell, so the
-        // placeholder rows model the bundle cards alone.
-        const loaded = await measure(official, ':scope > ul > li[data-plugin-package]')
+        // placeholder rows model the first four bundle cards.
         expect(await official.locator('[data-plugin-package]').count()).toBe(OPTIONAL_BUNDLES.length)
+        const loaded = await measure(official, ':scope > ul > li[data-plugin-package]')
         expect(loaded.rows).toHaveLength(loading.rows.length)
         const compare = (name: string, a: typeof loading.pageHeader, b: typeof loaded.pageHeader, axes: readonly (keyof typeof a)[] = ['x', 'y', 'width', 'height']) => {
           for (const axis of axes) {

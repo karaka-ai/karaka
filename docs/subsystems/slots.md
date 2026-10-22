@@ -106,6 +106,8 @@ A reserved `hooks` object in that return value accepts bare `getSnapshot`/`subsc
 
 The owner of a slot may put an `inject` face in the child declaration when every occupant needs the same capability. Plain members reach all occupants unchanged. Function-valued members inside its `hooks` object are hook factories; they receive the slot's standard props and optional per-render `hookContext`, then return the constrained hook exposed to the occupant. `conversation.chat.node` uses this mechanism to provide `useTurnData(key)` for the node currently being rendered.
 
+The session-scoped `conversation.chat.reasoning-body` chain receives unchanged `text` and `running` values for an expanded reasoning body. Its owner renders original compact Markdown when all entries decline; display contributions retain access to the original reasoning.
+
 Use owner props for values already known at one render occurrence, registration `inject` for one entry's callbacks and private observables, slot-level `inject` for a capability controlled by the slot owner, and a declared store for mutable view state shared across entries or preserved across remounts. React nodes compose through child slots, not through injected values.
 
 ## Current hierarchy
@@ -147,6 +149,7 @@ root
 │     │  └─ conversation.view
 │     │     ├─ conversation.chat.node
 │     │     │  ├─ conversation.chat.assistant-actions
+│     │     │  ├─ conversation.chat.reasoning-body
 │     │     │  ├─ conversation.chat.commandview
 │     │     │  ├─ conversation.chat.turnTail
 │     │     │  └─ tool.call.toolview

@@ -3,11 +3,17 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/translation.md
 /text-translation:
-  en: b1e47fe6996df09d
-  zh: 974f44f8dae7aba0
+  en: fe10b0616f7bc164
+  zh: 84a392a62efdaab9
 /text-translation/requests-and-results:
-  en: 9d963e74f160b5ef
-  zh: 99f5a7c187148743
+  en: 485abf6107c73e68
+  zh: 78a274d488274035
 /text-translation/failures-and-data-handling:
-  en: 1c378d075d334bb0
-  zh: b7bb5b2474df3a89
+  en: cf92a1920650888c
+  zh: 3e8d3aa244cc8d46
+/text-translation/persistent-translations:
+  en: 40d175fbe66fd4cd
+  zh: bff18511a8d386e9
+/text-translation/reasoning-display:
+  en: 209dbbbf3000e087
+  zh: f8e661359d0f3cb5

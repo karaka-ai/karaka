@@ -105,6 +105,8 @@ Chat 通过 `uiConversation.groups` 注册过程 Group Definition。React 通过
 
 每个组拥有本地 `useDisclosure` 状态，组件保持挂载时，模式切换保留该状态。
 
+`conversation.chat.reasoning-body` 链仅在思考正文展开时提供原始思考文本和流式状态。未被认领的正文使用紧凑 Markdown；认领显示的扩展必须保留查看原文的能力。扩展不替换思考预览或展开策略。
+
 Chat 节点 slot 为推理与工具注入绑定重置来源的 `useDisclosure` 钩子。中间 renderer 只透传、不订阅，每次调用拥有独立展开状态。来源回调保留接收对象及稳定引用。外层轮次实际隐藏过程成员时，所在节点重置这些开合状态，不替换组件 key，也不改变钩子引用。展示模式切换保留展开状态。
 
 过程行的文字与图标在所有工作过程展示模式下共用一种颜色：默认 tertiary、悬停 secondary，错误与警告文字保留语义色。前置图标、折叠箭头及其容器随正文字号增量缩放。

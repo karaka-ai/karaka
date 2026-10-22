@@ -1,6 +1,7 @@
 /** Assistant reasoning disclosure, independent of Tool-call presentation. */
 import { memo, useMemo } from 'react'
 import { DisclosureRow, IconThinkOutlineRegular, MarkdownText, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatViewSlotProps, UseDisclosure, UsePresentation } from '../contract/slots.ts'
 import { markdownLabels } from '../markdown-labels.ts'
 import a11yCss from './accessibility.module.css'
@@ -41,14 +42,16 @@ function latestCompletedParagraphFirstLine(text: string): string {
  * @param props.running - whether this block is the streaming tail.
  * @param props.usePresentation - live display-policy selector for this reasoning row.
  * @param props.useDisclosure - independent open state with enclosing-Turn resets.
+ * @param props.renderReasoningBody - optional expanded-body extension with original Markdown fallback.
  * @param props.t - conversation locale seat for status and Markdown actions.
  * @returns the reasoning disclosure.
  */
-export const ReasoningRow = memo(function ReasoningRow({ text, running, usePresentation, useDisclosure, t }: {
+export const ReasoningRow = memo(function ReasoningRow({ text, running, usePresentation, useDisclosure, renderReasoningBody, t }: {
   text: string
   running: boolean
   useDisclosure: UseDisclosure
   usePresentation: UsePresentation
+  renderReasoningBody?: PropsRenderSlots<'conversation.chat.reasoning-body'>['renderSlotChain'] | undefined
   t: ChatViewSlotProps['t']
 }) {
   const { expanded, toggle } = useDisclosure()
@@ -69,9 +72,13 @@ export const ReasoningRow = memo(function ReasoningRow({ text, running, usePrese
   ), [running, summary])
   const content = useMemo(() => expanded ? (
     <div className={css.thinkBody}>
-      <MarkdownText text={text} streaming={running} labels={labels} variant="compact" />
+      {renderReasoningBody === undefined
+        ? <MarkdownText text={text} streaming={running} labels={labels} variant="compact" />
+        : renderReasoningBody('conversation.chat.reasoning-body', { text, running }, {
+          fallback: <MarkdownText text={text} streaming={running} labels={labels} variant="compact" />,
+        })}
     </div>
-  ) : undefined, [expanded, labels, running, text])
+  ) : undefined, [expanded, labels, renderReasoningBody, running, text])
 
   return (
     <div

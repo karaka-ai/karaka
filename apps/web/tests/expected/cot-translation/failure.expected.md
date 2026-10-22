@@ -1,0 +1,5 @@
+- button "译文" [disabled]
+- button "原文" [pressed]
+- status: 翻译失败，已保留原文
+- button "重试"
+- paragraph: The user wants me to reply with a single word. Let me comply.

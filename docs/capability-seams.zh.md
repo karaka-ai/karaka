@@ -18,6 +18,8 @@ flowchart LR
   svc_serverAuth["ctx.serverAuth<br/>Application server authentication"]
   pkg__karaka_ai_browser_auth["@karaka-ai/browser-auth"]
   svc_karakaBrowserAuth["ctx.karakaBrowserAuth<br/>Browser Connection credential verification"]
+  pkg_experimental_client_ui_cot_translation["experimental-client-ui-cot-translation"]
+  svc_cotTranslation["ctx.cotTranslation<br/>Reasoning translation Remote"]
   pkg_experimental_translator["experimental-translator"]
   svc_translator["ctx.translator<br/>Anonymous text translation"]
   pkg_hmr["hmr"]
@@ -345,6 +347,7 @@ flowchart LR
   pkg_experimental_browser_use_playwright_mcp --> svc_browserUse
   pkg_experimental_browser_use_stagehand_native --> svc_browserUse
   pkg_experimental_claude_code_mods --> svc_claudeCodeMods
+  pkg_experimental_client_ui_cot_translation --> svc_cotTranslation
   pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_experimental_computer_use_cua_driver_native --> svc_computerUse
   pkg_experimental_ptc_runtime_python --> svc_ptcRuntime
@@ -585,6 +588,7 @@ flowchart LR
   svc_tools --> pkg_tool_terminal
   svc_tools --> pkg_tool_todo
   svc_tools --> pkg_tool_web
+  svc_translator --> pkg_experimental_client_ui_cot_translation
   svc_typert --> pkg_api_gateway
   svc_typert --> pkg_typert_loader
   svc_userQuestions --> pkg_tool_ask_user
@@ -613,7 +617,8 @@ flowchart LR
 | `ctx.karakaIdentity` | `core` | `@karaka-ai/identity` | - | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | [identity 包](../packages/karaka/identity/README.zh.md) 在解析持久会话与 Session 引用前验证应用所有者的访问权限。 |
 | `ctx.serverAuth` | `seam` | `@karaka-ai/server-auth` | `@karaka-ai/server-auth` | `@karaka-ai/transport-http`, `@karaka-ai/mcp-application` | - | [server-auth 包](../packages/karaka/server-auth/README.zh.md) 声明可替换的入站和出站认证，并提供共享 bearer 凭证实现。 |
 | `ctx.karakaBrowserAuth` | `core` | `@karaka-ai/browser-auth` | - | `@karaka-ai/transport-http` | - | [browser-auth 包](../packages/karaka/browser-auth/README.zh.md) 在创建调用者身份前验证绑定应用的 JWT 和允许的浏览器源。 |
-| `ctx.translator` | `service` | [`experimental-translator`](../packages/experimental/translator) | - | - | - | 独立于 Session 解析 Google 或 Bing 请求，并限制 Provider 调用。 |
+| `ctx.cotTranslation` | `service` | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | - | - | 为展开的思考内容提供有界的 Session 翻译请求，不改变模型可见历史。 |
+| `ctx.translator` | `service` | [`experimental-translator`](../packages/experimental/translator) | - | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | 解析 Google 或 Bing 请求，并可选保留统一的实验性 Session 记录。 |
 | `ctx.hmr` | `core` | [`hmr`](../packages/boot/hmr) | - | [`app-boot`](../packages/boot/app-boot) | - | 负责模块和精确配置监听；应用修改共用其队列，自动重载等待应用文件锁。 |
 | `ctx.pluginRegistryProbe` | `core` | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | 在 Host 上并发比较公共安装源响应；初始安装源推荐由 Client 负责。 |
 | `ctx.pluginManager` | `core` | [`plugin-manager`](../packages/boot/plugin-manager) | - | [`plugin-manager`](../packages/boot/plugin-manager), `ui-settings-plugin-inventory` | - | 与 CLI 共享 profile 包操作，并向 Web 和 Agent 调用方分别报告持久状态与运行状态。 |

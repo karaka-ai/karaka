@@ -342,7 +342,8 @@ function makeHarness(
       case 'context':
         return <ContextMessageNodeView {...nodeProps} node={nodeOwner.node} />
       case 'assistant-step':
-        return <AssistantNodeView {...nodeProps} node={nodeOwner.node} usePresentation={props.usePresentation} />
+        return <AssistantNodeView {...nodeProps} node={nodeOwner.node} usePresentation={props.usePresentation}
+          renderSlotChain={(_slot, _owner, options) => options?.fallback} />
       case 'command':
         return (
           <CommandNodeView
