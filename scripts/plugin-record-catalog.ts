@@ -3,11 +3,11 @@
 import { globSync, readFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import ts from 'typescript'
+import { experimentalPackageRecordNamespace } from './experimental-package-policy.ts'
 import { parseJsDoc, pointer, rawJsDoc, reportViolations } from './jsdoc.ts'
 
 const SESSION_PACKAGE = '@deepseek-ai/dsh-session'
 const SESSION_TYPES_MODULE = `${SESSION_PACKAGE}/types`
-const PACKAGE_PREFIX = '@deepseek-ai/dsh-experimental-'
 const RECORD_NAME = /^plugin:[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)+$/u
 const printer = ts.createPrinter({ removeComments: true })
 
@@ -94,11 +94,12 @@ export function collectPluginRecords(scanRoot: string): PluginRecordEntry[] {
         violations.push(`${where} must augment declare module '${SESSION_TYPES_MODULE}'.`)
         return
       }
-      if (!file.startsWith('packages/experimental/') || owner === undefined || !owner.startsWith(PACKAGE_PREFIX)) {
-        violations.push(`${where} must belong to an experimental ${PACKAGE_PREFIX}<name> package.`)
+      const namespace = owner === undefined ? undefined : experimentalPackageRecordNamespace(owner)
+      if (!file.startsWith('packages/experimental/') || owner === undefined || namespace === undefined) {
+        violations.push(`${where} must belong to a package declared experimental by the package naming policy.`)
         return
       }
-      const prefix = `plugin:${owner.slice(PACKAGE_PREFIX.length)}/`
+      const prefix = `plugin:${namespace}/`
       for (const member of node.members) {
         const location = pointer(file, source, member)
         if (!ts.isPropertySignature(member) || member.type === undefined || member.questionToken !== undefined

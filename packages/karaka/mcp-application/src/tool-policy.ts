@@ -10,14 +10,14 @@ export const inject = ['tools']
 /** Tool presentation and inherited allow/deny lists for one Agent preset. */
 export interface Config {
   /** Tool presentation mode. Default: native. */
-  mode: 'native' | 'ptc' | 'both'
+  mode: 'native' | 'ptc'
   /** Allowed public names; omission preserves an ancestor's restriction. */
   allow?: string[]
   /** Denied public names; deny overrides allow throughout the scope chain. */
   deny?: string[]
 }
 export const Config = z.object({
-  mode: z.union(['native', 'ptc', 'both']).default('native'),
+  mode: z.union(['native', 'ptc']).default('native'),
   // An omitted list must stay omitted; Schemastery otherwise defaults arrays to [].
   allow: (z.array(String) as z<string[] | undefined>).default(undefined),
   deny: (z.array(String) as z<string[] | undefined>).default(undefined),

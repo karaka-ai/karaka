@@ -29,9 +29,9 @@ Mount this provider when a delegation should run as a complete Harness runtime i
 
 ### When to choose it
 
-Choose this backend when the child must be a full harness peer — its own composition, session persistence, model route, and tools — rather than an agent that shares the parent's process. Choose an in-process backend when the child must share the parent's composition or honor parent-enforced non-route capabilities: this provider accepts agent route options but rejects structured output, depth caps, tool filters, and personas rather than silently omitting them.
+Choose this backend when the child must be a full harness peer — its own composition, session persistence, model route, and tools — rather than an agent that shares the parent's process. Choose an in-process backend when the child must share the parent's composition or honor parent-enforced non-route capabilities: this provider accepts agent route options but rejects independent presets, structured output, and depth caps rather than silently omitting them.
 
-The provider advertises `agentOptions: true`, with `outputSchema`/`depthLimit`/`toolFilter`/`persona` false, and `inheritsParentContext: false`. Its immutable `agentRouteDefaults` publish the configured provider/model baseline to `dsh-tool-subagent` before model overrides and exact-route preflight; the backend applies the same configuration defaults during activation startup, including `maxTokens`. Agent route values cross the SDK wire as an explicit whitelist; the child remains a fresh runtime in another process, and the child process uses the selected effective directory while its Session retains the parent origin directory. `dsh-tool-subagent` deployments over this provider set `maxDepth: 'provider-managed'` — the child harness owns its own recursion budget.
+The provider advertises `agentOptions: true`, with `agentPreset`/`outputSchema`/`depthLimit` false, and `inheritsParentContext: false`. Its immutable `agentRouteDefaults` publish the configured provider/model baseline to `dsh-tool-subagent` before model overrides and exact-route preflight; the backend applies the same configuration defaults during activation startup, including `maxTokens`. Agent route values cross the SDK wire as an explicit whitelist; the child remains a fresh runtime in another process, and the child process uses the selected effective directory while its Session retains the parent origin directory. `dsh-tool-subagent` deployments over this provider set `maxDepth: 'provider-managed'` — the child harness owns its own recursion budget.
 
 ### Configuration
 
@@ -137,7 +137,7 @@ Read these pages when the package-level contract is not enough. They move from t
 
 #### What the model sees
 
-The child runtime's model receives the standalone task as its user message plus that runtime's own configured system prompt, tools, and fresh session. It receives no parent conversation. A parent tool call may choose the child provider, model, and reasoning effort for this run; the selected route and any deployment-owned output cap are fixed for the new child process. Persona, tool filtering, depth enforcement, and structured output remain unsupported and are rejected instead of silently omitted.
+The child runtime's model receives the standalone task as its user message plus that runtime's own configured system prompt, tools, and fresh session. It receives no parent conversation. A parent tool call may choose the child provider, model, and reasoning effort for this run; the selected route and any deployment-owned output cap are fixed for the new child process. Independent presets, depth enforcement, and structured output remain unsupported and are rejected instead of silently omitted.
 
 #### Token effect
 

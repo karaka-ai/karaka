@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-`dsh-session-snapshot` 提供无密钥已记录会话测试（`pnpm run test:snapshot`）背后的共享支持：封闭 manifest、类型化身份脱敏、规范化、workspace 比较、fixture（测试前置数据）保护，以及 headless、SDK、ACP（Agent Client Protocol）与 Web owner 使用的协议适配器。ACP 适配器以真实子进程启动被测 profile，驱动确定性输入脚本，并注册完整的录制、回放与刷新套件。每个场景都提交足够证据来证明模型可见输出与文件系统效果，不依赖 agent（智能体）自述。包入口会导入 vitest，因此只能在 vitest 运行中使用。
+`dsh-session-snapshot` 提供无密钥已记录会话测试（`pnpm run test:snapshot`）背后的共享支持：封闭 manifest、类型化身份脱敏、规范化、workspace 比较、fixture（测试前置数据）保护，以及 headless、SDK（`sdk` 与 `sdk-minimal`）、ACP（Agent Client Protocol）与 Web owner 使用的协议适配器。ACP 适配器以真实子进程启动被测 profile，驱动确定性输入脚本，并注册完整的录制、回放与刷新套件。每个场景都提交足够证据来证明模型可见输出与文件系统效果，不依赖 agent（智能体）自述。包入口会导入 vitest，因此只能在 vitest 运行中使用。
 
 ## 目录
 
@@ -92,7 +92,7 @@ Headless/ACP 与 SDK 适配器在规范化之前，将原始目录中的子创�
 
 ### 可能出什么问题
 
-- **持久记录等待超时**——即使首次日志收集就超过期限，`waitForTurnStart`、`waitForTurnEnd`、`waitForSubagentTurnEnd`、`waitForGoalPhase` 和 `waitForInboxMessage` 也会指出会话或子会话及等待期限。子会话等待还会指出目标轮次。这些等待都通过错误的 cause 保留底层失败。`waitForTurnStart` 会立即拒绝格式错误的轮次记录。
+- **持久记录等待超时**——即使首次日志收集就超过期限，`waitForTurnStart`、`waitForTurnEnd`、`waitForSubagentTurnEnd`、`waitForGoalPhase`、`waitForInboxMessage`、`waitForTitleAfterTurnEnd` 和 `waitForEventAfterTurnEnd` 也会指出会话或子会话及等待期限。子会话等待还会指出目标轮次。这些等待都通过错误的 cause 保留底层失败。`waitForTurnStart` 会立即拒绝格式错误的轮次记录。
 - **fixture 保护拒绝已提交文件**——遗留场景目录、缺失文件、一个 header 类别包含多个 pin、重复的伴随文件内容、未擦除的提示文本或工具 schema、没有前置 `system/message` 的 `request/header`，以及格式错误的 pin header 都会在比较运行前使套件失败。
 - **会话收集需要原始 JSONL mode**——快照配置使用 JSONL 后端的 `compression: 'none'`；压缩 JSONL 没有快照收集路径。
 - **构建 mode 需要当前产物**——选择 `DSH_EXAMPLE_MODE=lib` 前先运行 `pnpm run build`；源 mode 仍是零构建路径。

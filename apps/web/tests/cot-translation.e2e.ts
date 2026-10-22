@@ -16,6 +16,7 @@ import { clickPluginBundleSwitch, connectFreshWorkspaceZh, expandOwningTurnProce
 
 const BUNDLE_NAME = '@deepseek-ai/dsh-experimental-cot-translation-bundle'
 const BUNDLE = fileURLToPath(new URL('../../../packages/experimental/cot-translation-bundle', import.meta.url))
+const { version: bundleVersion } = JSON.parse(await readFile(join(BUNDLE, 'package.json'), 'utf8')) as { version: string }
 const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/lifecycle-chrome/session.v4.jsonl', import.meta.url))
 const EXPECTED = fileURLToPath(new URL('./expected/cot-translation', import.meta.url))
 const MODE = webSnapshotMode()
@@ -193,6 +194,7 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await settings.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
   await settings.getByRole('button', { name: '插件', exact: true }).click()
   const panel = settings.locator('[data-plugin-panel]')
+  await panel.getByRole('button', { name: '更多', exact: true }).click()
   const card = panel.locator(`[data-plugin-package="${BUNDLE_NAME}"]`)
   const toggle = card.getByRole('switch')
   await toggle.waitFor()
@@ -206,9 +208,11 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   expect(await provider.inputValue()).toBe('bing')
   expect(await target.inputValue()).toBe('auto')
   await panel.getByText('展开的思考内容会发送给所选翻译服务，可能包含私有代码或对话细节。', { exact: true }).waitFor()
+  await panel.getByText(`v${bundleVersion}`, { exact: true }).waitFor()
+  await panel.getByText(bundleVersion, { exact: true }).waitFor()
   await compareOrRefreshGolden(join(EXPECTED, 'preferences.expected.md'),
     await captureStableAria(settings, '[data-plugin-panel]', scaffold.workspaceCwd, {
-      replacements: [[BUNDLE, '{{bundle}}']],
+      replacements: [[BUNDLE, '{{bundle}}'], [bundleVersion, '{{version}}']],
     }), MODE)
   expect(calls).toEqual([])
   await reasoning.locator('[data-disclosure-row]').first().click()
@@ -217,11 +221,35 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await expect.poll(() => body.getAttribute('data-translation-state')).toBe('ready')
   expect(calls).toEqual([{ provider: 'bing', text: ORIGINAL, target: 'zh-Hans', hasAuthorization: false, hasCookie: false }])
   await compareOrRefreshGolden(join(EXPECTED, 'bing.expected.md'),
-    await captureStableAria(page, '[data-cot-translation]', scaffold.workspaceCwd), MODE)
-  await body.getByRole('button', { name: '原文', exact: true }).click()
+    await captureStableAria(page, '[data-variant="think"]', scaffold.workspaceCwd), MODE)
+  const markdown = body.locator('[data-markdown-variant="compact"]')
+  const typography = () => markdown.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.color, style.padding, style.margin]
+  })
+  const translatedTypography = await typography()
+  const originalAction = body.getByRole('button', { name: '查看原文', exact: true })
+  await composer.focus()
+  await page.mouse.move(0, 0)
+  await expect.poll(() => originalAction.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  expect(await originalAction.evaluate(element => element.closest('[data-disclosure-header]') === null)).toBe(true)
+  await originalAction.focus()
+  await expect.poll(() => originalAction.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  await originalAction.press('Enter')
   await body.getByText(ORIGINAL, { exact: true }).waitFor()
   expect(await body.getAttribute('data-translation-view')).toBe('original')
-  await body.getByRole('button', { name: '译文', exact: true }).click()
+  expect(await typography()).toEqual(translatedTypography)
+  await page.mouse.move(0, 0)
+  const translationAction = body.getByRole('button', { name: '查看译文', exact: true })
+  const titleBox = await reasoning.getByRole('button', { name: '思考', exact: true }).boundingBox()
+  const actionBox = await translationAction.boundingBox()
+  if (titleBox === null || actionBox === null) throw new Error('Reasoning title and translation action must be visible')
+  expect(actionBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height)
+  expect(await translationAction.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  await translationAction.click()
+  await composer.focus()
+  await reasoning.hover()
+  await expect.poll(() => originalAction.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
   await body.getByText(BING_TRANSLATION, { exact: true }).waitFor()
   expect(calls).toHaveLength(1)
   const savedBing = await readPersistedEvents(scaffold, sessionId)
@@ -273,13 +301,13 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await save.click()
   await expect.poll(() => save.isDisabled()).toBe(true)
   await expect.poll(() => body.getAttribute('data-translation-state')).toBe('failed')
-  await body.getByText('翻译失败，已保留原文', { exact: true }).waitFor()
+  await body.getByText('翻译暂不可用，已显示原文', { exact: true }).waitFor()
   await body.getByText(ORIGINAL, { exact: true }).waitFor()
   expect(await body.getAttribute('data-translation-view')).toBe('original')
   expect(calls[2]).toEqual({ provider: 'google', text: ORIGINAL, target: 'ja', hasAuthorization: false, hasCookie: false })
   expect(calls).toHaveLength(3)
   await compareOrRefreshGolden(join(EXPECTED, 'failure.expected.md'),
-    await captureStableAria(page, '[data-cot-translation]', scaffold.workspaceCwd), MODE)
+    await captureStableAria(page, '[data-variant="think"]', scaffold.workspaceCwd), MODE)
   fail = false
   await body.getByRole('button', { name: '重试', exact: true }).click()
   await body.getByText(JAPANESE_TRANSLATION, { exact: true }).waitFor()
@@ -313,7 +341,7 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   await expect.poll(() => body.getAttribute('data-translation-state')).toBe('ready')
   expect(calls).toHaveLength(6)
 
-  await panel.getByRole('button', { name: '返回插件列表', exact: true }).click()
+  await panel.getByRole('button', { name: '返回 实验性插件', exact: true }).click()
   await clickPluginBundleSwitch(settings, toggle, BUNDLE_NAME, false)
   await expect.poll(() => toggle.getAttribute('aria-checked')).toBe('false')
   await body.waitFor({ state: 'detached' })

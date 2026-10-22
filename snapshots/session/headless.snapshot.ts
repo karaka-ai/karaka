@@ -1,7 +1,7 @@
 /** Recorded-session replay through the shipped headless `dsh` profile. */
 
 import { startHttpMcpFixture } from '../../packages/mcp/mcp-client/tests/http-fixture.ts'
-import { cp, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { cp, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, utimes, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -118,6 +118,8 @@ function bindsOsAssignedPort(argument: ts.Expression | undefined): boolean {
   if (argument === undefined) return false
   if (ts.isNumericLiteral(argument)) return Number(argument.text) === 0
   if (!ts.isObjectLiteralExpression(argument)) return false
+  if (argument.properties.some(property => !ts.isSpreadAssignment(property) && propertyName(property.name) === 'path')
+    && argument.properties.every(property => !ts.isSpreadAssignment(property) && propertyName(property.name) !== 'port')) return true
   let portIsZero: boolean | undefined
   for (const property of argument.properties) {
     if (ts.isSpreadAssignment(property)) {
@@ -188,9 +190,11 @@ function headerOf(log: string): JsonObject {
 
 function contextOf(logs: readonly string[]): NormalizeContext {
   const headers = logs.map(headerOf)
+  const cwd = typeof headers[0]?.cwd === 'string' ? headers[0].cwd : '\0missing-cwd\0'
   return {
     sessionIds: headers.flatMap(header => typeof header.id === 'string' ? [header.id] : []),
-    cwd: typeof headers[0]?.cwd === 'string' ? headers[0].cwd : '\0missing-cwd\0',
+    cwd,
+    cwdAliases: [cwd.split(sep).join('/')],
   }
 }
 
@@ -252,6 +256,9 @@ async function writeSessionFixtures(
   const replacements = mode === 'refresh'
     ? refreshFixtureReplacements(actualLogs.map(harvested), prior)
     : []
+  for (const replacement of [...replacements]) {
+    if (replacement.from === ctx.cwd) replacements.push({ from: ctx.cwd.split(sep).join('/'), to: replacement.to })
+  }
   const fresh = actualLogs.map((log, index) => {
     const stable = tokenizeSessionFixtureCwd(mode === 'refresh'
       ? stabilizeRefreshLog(log.content, prior[index] as string, replacements, ctx)
@@ -496,8 +503,15 @@ const workspaceSetups: Record<string, (cwd: string) => Promise<void>> = {
   },
   async 'office-skills'(cwd) {
     await cp(join(repoRoot, 'packages/skill/skill-office/assets'), join(cwd, 'office-skills'), { recursive: true })
-    await symlink(process.execPath, join(cwd, 'office-node'))
-    await symlink(join(repoRoot, 'packages/skill/skill-office/node_modules/@deepseek-ai/libreoffice-kit/lib/cli.js'), join(cwd, 'office-cli.js'))
+    // A copied macOS Node binary cannot find its adjacent libnode.dylib.
+    const nodePath = process.execPath.replaceAll("'", "'\\''")
+    await writeFile(join(cwd, 'office-node'), `#!/bin/sh\nexec '${nodePath}' "$@"\n`, { mode: 0o755 })
+    await copyFile(join(repoRoot, 'packages/skill/skill-office/node_modules/@deepseek-ai/libreoffice-kit/lib/cli.js'), join(cwd, 'office-cli.js'))
+  },
+  async 'office-retired-ptc'(cwd) {
+    await workspaceSetups['office-skills']!(cwd)
+    // Keep the removed-tool error without process-specific stack locations.
+    await writeFile(join(cwd, 'office-ptc-node'), '#!/bin/sh\nexec "$(dirname "$0")/office-node" --stack-trace-limit=0 "$@"\n', { mode: 0o755 })
   },
   async 'git-worktree'(cwd) {
     snapshotGit(cwd, ['init', '--initial-branch=main', '--object-format=sha1'])
@@ -652,6 +666,42 @@ async function verifySessionQuerySpill(log: string, spillRoot: string, locatorRo
   expect(full).toContain('session_event_search')
 }
 
+/** Preserve successful native, program, direct-child, and workflow execution in one flow. */
+function verifyAdvancedToolchain(logs: readonly SessionLog[]): void {
+  expect(logs).toHaveLength(3)
+  const events = parseSessionLog(logs[0]!.content)
+  const calls = events.flatMap(event => event.type === 'tool/call' ? [event.data.name] : [])
+  expect(calls).toEqual(['cordis_inspect_list', 'run_code', 'subagent', 'workflow', 'cordis_inspect_list'])
+  const results = events.flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
+  expect(results).toHaveLength(5)
+  expect(results.every(result => result.isError === false)).toBe(true)
+  const dispatches = events.flatMap(event => event.type === 'tool/ptc-dispatch' ? [event.data] : [])
+  expect(dispatches).toEqual([expect.objectContaining({ name: 'cordis_inspect_list', isError: false })])
+  const textOf = (index: number) => results[index]!.content
+    .flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+  expect(JSON.parse(textOf(1))).toEqual(['Service', 'Event', 'Config', 'Tool'])
+  expect(textOf(2)).toBe(`started subagent ${logs[1]!.header.id}`)
+  const completions = events.flatMap(event => event.type === 'user/message'
+    && event.data.source.kind === 'subagent-settled' ? [{
+      sender: event.data.source.senderSessionId,
+      text: event.data.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n'),
+    }] : [])
+  expect(completions).toHaveLength(1)
+  expect(completions[0]?.sender).toBe(logs[1]!.header.id)
+  expect(completions[0]?.text).toContain('DIRECT_CHILD_OK')
+  expect(textOf(3)).toContain('WORKFLOW_CHILD_OK')
+  expect(finalTextFromSession(logs[1]!.content)).toBe('DIRECT_CHILD_OK')
+  expect(finalTextFromSession(logs[2]!.content)).toBe('WORKFLOW_CHILD_OK')
+  const headers = events.flatMap(event => event.type === 'request/header' ? [event.data.header] : [])
+  expect(headers).toHaveLength(3)
+  expect(headers[1]!.tools?.map(tool => tool.name)).toEqual(['run_code'])
+  for (const header of [headers[0]!, headers[2]!]) {
+    const names = header.tools?.map(tool => tool.name) ?? []
+    expect(names).toEqual(expect.arrayContaining(['cordis_inspect_list', 'subagent', 'workflow']))
+    expect(names).not.toContain('run_code')
+  }
+}
+
 /** Require real resource results and literal instructions before recording or replay succeeds. */
 function verifyMcpResources(log: string, ptc: boolean): void {
   const events = parseSessionLog(log)
@@ -704,10 +754,16 @@ function verifyNoMcpServers(log: string, ptc: boolean): void {
 
 /** Require an admitted failed job and zero process allocations before updating its recorded oracle. */
 async function verifyBackgroundConfinementFailure(log: string, cwd: string): Promise<void> {
-  const results = parseSessionLog(log).flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
+  const events = parseSessionLog(log)
+  const results = events.flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
   const started = results.find(result => result.toolCallId === 'async-confinement-start')
   const inspected = results.find(result => result.toolCallId === 'async-confinement-result')
-  expect(started).toMatchObject({ isError: false, content: [{ type: 'text', text: 'started background job bash-1' }] })
+  const registered = events.find(event => event.type === 'job/registered')
+  if (registered?.type !== 'job/registered') throw new Error('missing registered job')
+  expect(registered.data.jobId).toMatch(/^bash-[0-9a-f]{16}$/)
+  expect(started).toMatchObject({
+    isError: false, content: [{ type: 'text', text: `started background job ${registered.data.jobId}` }],
+  })
   expect(inspected?.isError).toBe(false)
   const text = inspected?.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
   expect(text).toContain('[status: failed,')
@@ -908,12 +964,16 @@ describe('headless recorded-session snapshots', () => {
       "server.listen(0, '127.0.0.1')",
       "server.listen({ port: 0, host: '127.0.0.1' })",
       'server.listen({ ...options, port: 0 })',
+      'server.listen({ path: socketPath })',
     ].join('\n'))).toEqual([])
     expect(listenerPortViolations('fixed.mjs', 'server.listen(43118)')).toEqual([
       'fixed.mjs:1: listener port 43118 must use listen(0, ...) or listen({ port: 0, ... })',
     ])
     expect(listenerPortViolations('dynamic.mjs', 'server.listen({ port, ...options })')).toEqual([
       'dynamic.mjs:1: listener port { port, ...options } must use listen(0, ...) or listen({ port: 0, ... })',
+    ])
+    expect(listenerPortViolations('mixed.mjs', 'server.listen({ path, port: 43118 })')).toEqual([
+      'mixed.mjs:1: listener port { path, port: 43118 } must use listen(0, ...) or listen({ port: 0, ... })',
     ])
   })
 
@@ -1201,9 +1261,7 @@ describe('headless recorded-session snapshots', () => {
         ...existsSync(join(scenario.dir, 'runtime.cordis.yml')) ? [join(scenario.dir, 'runtime.cordis.yml')] : [],
       ]
       const patchRoot = '.snapshot-patches'
-      const patches = patchSources.map((source, index) => source.endsWith('.snapshot.yml')
-        ? join(patchRoot, `${String(index)}-${basename(source)}`)
-        : source)
+      const patches = patchSources.map((source, index) => join(patchRoot, `${String(index)}-${basename(source)}`))
 
       let actualLogs: SessionLog[] = []
       let initialWorkspace: WorkspaceSnapshotEntry[] | undefined
@@ -1259,9 +1317,7 @@ describe('headless recorded-session snapshots', () => {
             if (scenario.manifest.workspace?.parent === 'outside-temp') assertWorkspaceOutsideTemp(cwd)
             await mkdir(join(cwd, patchRoot), { recursive: true })
             patchSources.forEach((source, index) => {
-              if (source.endsWith('.snapshot.yml')) {
-                materializeProfilePatch(source, cwd, 'headless', join(cwd, patchRoot), index)
-              }
+              materializeProfilePatch(source, cwd, 'headless', join(cwd, patchRoot), index)
             })
             if (mcpDemo !== undefined) {
               const profileDir = join(cwd, '.dsh/profiles/headless')
@@ -1287,6 +1343,14 @@ describe('headless recorded-session snapshots', () => {
               expect(saved).toContain('id: demo')
               expect(saved).toContain('disabled: false')
             }
+            if (scenario.name.startsWith('office-progressive-')) {
+              const log = actualLogs[0]!.content
+              const results = parseSessionLog(log).flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
+              expect(results).toHaveLength(4)
+              expect(results.every(result => result.isError === false)).toBe(true)
+              expect(log).toContain('# Office task routing')
+            }
+            if (scenario.name === 'advanced-toolchain') verifyAdvancedToolchain(actualLogs)
             if (scenario.name === 'session-query-spill') {
               await verifySessionQuerySpill(actualLogs[0]!.content, spillRoot, locatorRoot)
             }

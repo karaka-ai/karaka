@@ -343,7 +343,7 @@ afterEach(() => {
 })
 
 describe('task admission and package contracts', () => {
-  it('ships one independently installable provider-only Bundle patch', () => {
+  it('ships the provider with a global delegation tool', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
@@ -358,9 +358,9 @@ describe('task admission and package contracts', () => {
     )
     expect(manifest.dependencies).toHaveProperty(
       '@modelcontextprotocol/sdk',
-      '^1.29.0',
+      '^1.31.0',
     )
-    expect(manifest.dependencies).toHaveProperty('zod', '^4.4.3')
+    expect(manifest.dependencies).toHaveProperty('zod', '4.4.3')
     expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-subagent-codex')
 
     const sdkRoot = dirname(fileURLToPath(
@@ -393,14 +393,13 @@ describe('task admission and package contracts', () => {
     }
 
     const parsed = yaml.load(readFileSync(resolve(root, manifest.dsh!.bundle!.patch!), 'utf8'))
-    const rows = Array.isArray(parsed)
-      ? (parsed as Array<{ insert?: Array<{ id?: string; name?: string }> }>).flatMap(entry => entry.insert ?? [])
-      : []
-    expect(rows).toEqual([{
-      id: 'subagent-claude-code',
-      name: '@deepseek-ai/dsh-subagent-claude-code',
-    }])
-    expect(JSON.stringify(rows)).not.toContain('tool-subagent')
+    expect(parsed).toEqual([{ insert: [
+      { id: 'subagent-claude-code', name: '@deepseek-ai/dsh-subagent-claude-code' },
+      { id: 'tool-subagent-claude-code', name: '@deepseek-ai/dsh-tool-subagent', config: {
+        provider: 'claude-code', toolName: 'subagent_claude_code', maxDepth: 'provider-managed',
+      } },
+    ] }])
+    expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-tool-subagent', 'workspace:*')
   })
 
   it('preserves text sequences and rejects empty, blank, and non-text tasks', () => {
@@ -448,10 +447,9 @@ describe('task admission and package contracts', () => {
     expect(ctx.subagents.getProvider('claude-code')).toMatchObject({
       name: 'claude-code',
       capabilities: {
+        agentPreset: false,
         outputSchema: false,
         depthLimit: false,
-        toolFilter: false,
-        persona: false,
       },
       inheritsParentContext: false,
     })

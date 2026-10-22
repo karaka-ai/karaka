@@ -359,7 +359,7 @@ function expectedFailureDiagnostic(
 }
 
 describe('task admission and package contracts', () => {
-  it('ships one independently installable provider-only Bundle patch', () => {
+  it('ships the provider with a global delegation tool', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>
@@ -406,14 +406,13 @@ describe('task admission and package contracts', () => {
     }
 
     const parsed = yaml.load(readFileSync(resolve(root, manifest.dsh!.bundle!.patch!), 'utf8'))
-    const rows = Array.isArray(parsed)
-      ? (parsed as Array<{ insert?: Array<{ id?: string; name?: string }> }>).flatMap(entry => entry.insert ?? [])
-      : []
-    expect(rows).toEqual([{
-      id: 'subagent-codex',
-      name: '@deepseek-ai/dsh-subagent-codex',
-    }])
-    expect(JSON.stringify(rows)).not.toContain('tool-subagent')
+    expect(parsed).toEqual([{ insert: [
+      { id: 'subagent-codex', name: '@deepseek-ai/dsh-subagent-codex' },
+      { id: 'tool-subagent-codex', name: '@deepseek-ai/dsh-tool-subagent', config: {
+        provider: 'codex', toolName: 'subagent_codex', maxDepth: 'provider-managed',
+      } },
+    ] }])
+    expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-tool-subagent', 'workspace:*')
   })
 
   it('accepts one or more text blocks and rejects empty or non-text tasks', () => {
@@ -439,10 +438,9 @@ describe('task admission and package contracts', () => {
     expect(provider).toMatchObject({
       name: 'codex',
       capabilities: {
+        agentPreset: false,
         outputSchema: false,
         depthLimit: false,
-        toolFilter: false,
-        persona: false,
       },
       inheritsParentContext: false,
     })
@@ -823,6 +821,55 @@ describe('CodexAppServerWire', () => {
     wire.close()
   })
 
+  it('ranks final_answer above partial_answer above nullable-phase answers and never selects commentary', async () => {
+    const scenarios: Array<{
+      readonly frames: JsonObject[]
+      readonly text: string
+    }> = [
+      {
+        frames: [
+          agentMessage('partial', 'partial_answer'),
+          agentMessage('final', 'final_answer'),
+        ],
+        text: 'final',
+      },
+      {
+        frames: [
+          agentMessage('final', 'final_answer'),
+          agentMessage('partial after final', 'partial_answer'),
+        ],
+        text: 'final',
+      },
+      {
+        frames: [agentMessage('only partial', 'partial_answer')],
+        text: 'only partial',
+      },
+      {
+        frames: [
+          agentMessage('unphased', null),
+          agentMessage('commentary before partial', 'commentary'),
+          agentMessage('first partial', 'partial_answer'),
+          agentMessage('last partial', 'partial_answer'),
+          agentMessage('commentary after partial', 'commentary'),
+          agentMessage('unphased after partial', null),
+        ],
+        text: 'last partial',
+      },
+    ]
+    for (const scenario of scenarios) {
+      const { child, wire } = await initializeWire()
+      const result = wire.runTurn(['task'], new AbortController().signal)
+      const turnStart = await child.peer.nextMethod('turn/start')
+      child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
+      child.peer.send(...scenario.frames, turnCompleted('completed'))
+      await expect(result).resolves.toEqual({
+        output: [{ type: 'text', text: scenario.text }],
+        stopReason: 'completed',
+      })
+      wire.close()
+    }
+  })
+
   it('groups representative string errors without changing stop reasons', async () => {
     const scenarios = [
       ['contextWindowExceeded', 'limit', 'max-tokens'],
@@ -960,7 +1007,7 @@ describe('CodexAppServerWire', () => {
     }> = [
       {
         frames: [turnCompleted('completed')],
-        message: 'without a final answer',
+        message: 'without an answer',
         category: 'invalid-result',
       },
       {
@@ -969,7 +1016,7 @@ describe('CodexAppServerWire', () => {
           agentMessage(' \n ', 'final_answer'),
           turnCompleted('completed'),
         ],
-        message: 'without a final answer',
+        message: 'without an answer',
         category: 'invalid-result',
       },
       {

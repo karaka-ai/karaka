@@ -55,9 +55,8 @@ session 组让对话持久保存，恢复已发布的日志格式，并使已提
 | 包 | 职责 | ctx key |
 |---|---|---|
 | [`session-title/`](session-title/README.zh.md) | 基于日志的会话标题，带确定性回退与一个可选提供方 | `ctx.sessionTitle` |
-| [`session-title-llm/`](session-title-llm/README.zh.md) | 供提供方包共享的模型标题生成策略 | 库，不使用 ctx key |
+| [`session-title-llm/`](session-title-llm/README.zh.md) | 为提供方自有的标题策略提供的共享有界执行 | 库，不使用 ctx key |
 | [`session-title-first-prompt-llm/`](session-title-first-prompt-llm/README.zh.md) | 根据第一条合格的人类消息为会话生成标题 | 注册到 `ctx.sessionTitle` |
-| [`session-title-all-prompts-llm/`](session-title-all-prompts-llm/README.zh.md) | 根据所有合格的人类消息为会话生成标题 | 注册到 `ctx.sessionTitle` |
 
 ### 遥测
 
@@ -79,6 +78,8 @@ session 组让对话持久保存，恢复已发布的日志格式，并使已提
 - [会话标题子系统](../../docs/subsystems/session-title.zh.md)——标题资格、回退与提供方流程。
 - [会话遥测子系统](../../docs/subsystems/session-telemetry.zh.md)——捕获、脱敏与投递模式。
 - [会话子系统](../../docs/subsystems/session.zh.md)——本组每个包持久化或派生的实时事件日志。
+
+实验性可选能力见 [`session-title-all-prompts-llm`](../experimental/session-title-all-prompts-llm/README.zh.md)。
 
 <a id="dev-note"></a>
 ## 开发备注

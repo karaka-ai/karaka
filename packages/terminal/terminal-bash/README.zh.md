@@ -121,7 +121,7 @@ Scrollback 和尚未读取的发送输出保留独立拥有的字符串，并增
 
 - [终端子系统参考](../../../docs/subsystems/terminal.zh.md)——此后端实现的服务约定与生成的 `ctx.terminals` 接口面。
 - [terminal 服务](../terminal/README.zh.md)——后端注册、所有者限制与清理语义。
-- [tool-terminal 工具](../tool-terminal/README.zh.md)——操作会话的面向模型工具。
+- [tool-terminal 工具](../../experimental/tool-terminal/README.zh.md)——操作会话的面向模型工具。
 - [子进程 seam](../../../docs/subsystems/subprocess.zh.md)——负责 PTY 分配与进程树清理的终端原语。
 - [持久 PTY Agent Note](../../../.agents/notes/implemented/feature/2026-07-16-persistent-pty-sessions.zh.md)——能力设计与暂缓边界。
 - [持久 pwsh Agent Note](../../../.agents/notes/archived/architecture/2026-08-11-pwsh-persistent-pty.md)——Windows 基底与 pwsh 方言。

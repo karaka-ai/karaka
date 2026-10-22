@@ -25,19 +25,15 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当委派应以父级工作区中的真实 Claude Code 会话运行时，挂载本提供方。常用路径是显式的：把 Bundle 安装进 Profile，可选地配置提供方行，并通过委派工具行把它暴露给模型。
+当任务需要在父工作区中运行全新的原生 Claude Code 会话时，在 Web 或 Desktop 插件页启用 **Claude Code 子智能体**。
 
 ### 安装 Bundle
 
-把包安装进目标 Profile，然后重启该 Profile。安装会把锁定的 Agent SDK 与一个兼容的平台 CLI 载荷带入 Profile；声明的 patch 层只注册休眠的提供方，不启动任何 Claude 进程。
+官方条目可离线显示。启用时，普通 bundle 安装器会安装[当前 DSH 安装对应的目标](../../boot/plugin-manager/README.zh.md#use-this-package)并选择其配置层。此层注册提供方，并为所有智能体添加全局工具 `subagent_claude_code`；实际委派前不会启动原生进程。安装器提示需要重启时，请重启应用。
 
-```sh
-dsh plugin --profile <name> add @deepseek-ai/dsh-subagent-claude-code
-dsh plugin --profile <name> remove @deepseek-ai/dsh-subagent-claude-code
-dsh --profile <name>
-```
+关闭只会取消选择配置层，保留已安装的包。移除是独立的包操作。启用或关闭会在运行中的 Host 注册或移除该全局工具，正在运行的智能体会在下一次请求时看到变化。
 
-移除包后，下一次 Profile 启动会撤回提供方及其私有运行时闭包。安装决定 Host 可用性，而不是模型权限：模型只能通过你组合的委派工具行触达提供方。
+此层只插入 Host 条目，因此任何配置（包括随附的 headless、SDK 和 ACP）都可以选择它。原有仅提供方用法请遵循[升级指南](../../../docs/upgrade-guide/v0.2.1-alpha.1/native-subagent-bundle-tools/guide.zh.md)。
 
 ### 配置
 
@@ -59,17 +55,21 @@ dsh --profile <name>
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-claude-code)是每个受支持字段及其 JSDoc 的穷尽式真源。已配置的 `model` 会原样传给该提供方实例的每次 query；省略时保留原生模型选择。具有凭证特征的环境变量会在显式 `env` 覆盖生效前被移除，因此供子进程使用的 API 密钥必须在该配置中显式提供。提供方省略 SDK 的 `settingSources` 选项，因此 Claude Code 会相对于所选子级工作目录 读取宿主机常规的用户、项目与本地设置。它不会复制或过滤这些文件、创建或修改登录状态、检查 `PATH`，也不会回退到宿主 `claude` 可执行文件。
 
+<a id="exposing-the-tool"></a>
 ### 暴露工具
 
-每个委派工具行指名一个提供方，并需要独立的 `toolName`，因此模型看到的是静态工具，而不是动态提供方选择器。完整 Agent Preset 携带对应的默认工具行并设置 `disabled: true`；复制一个 preset 后删除该字段，即可只向由该副本组装的 agent（智能体）暴露 `subagent_claude_code`。
+Bundle 将 `tool-subagent-claude-code` 作为 Host 条目插入，因此 `subagent_claude_code` 是所有预设（包括 minimal）都可见的全局工具。后续用户补丁可以按 id 配置或禁用该行。预设自行注册的同名工具会为其智能体遮蔽该全局工具。若要不选择 bundle 层而挂载提供方和工具，在 `cordis.patch.yml` 中插入相同的条目：
 
 ```yaml
-- id: tool-subagent-claude
-  name: '@deepseek-ai/dsh-tool-subagent'
-  config:
-    provider: claude-code
-    toolName: subagent_claude_code
-    maxDepth: provider-managed
+- insert:
+    - id: subagent-claude-code
+      name: '@deepseek-ai/dsh-subagent-claude-code'
+    - id: tool-subagent-claude-code
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: claude-code
+        toolName: subagent_claude_code
+        maxDepth: provider-managed
 ```
 
 工具接受任务后返回 child id；任务完成后向父 agent 发送结果通知。外部 activation 只执行一次，不支持追加输入或恢复对话。
@@ -105,7 +105,7 @@ dsh --profile <name>
 | [`src/index.ts`](src/index.ts) | 插件入口：配置 schema、提供方注册 |
 | [`src/run.ts`](src/run.ts) | SDK query 生命周期、结果接受与权限处理 |
 | [`src/process.ts`](src/process.ts) | dispose（资源释放）时的 managed-range 逐级终止 |
-| [`cordis.patch.yml`](cordis.patch.yml) | 注册休眠提供方的 Profile patch 层 |
+| [`cordis.patch.yml`](cordis.patch.yml) | 注册提供方并添加预设委派工具的 Profile 配置层 |
 
 ### 运行流程
 
@@ -173,7 +173,7 @@ Claude Code 子级会在一个全新的 SDK query 中接收独立文本任务。
 - **委派时必须存在 SDK 平台载荷**——省略 optional dependencies 的安装、不受支持的平台以及缺失或损坏的载荷都会在第一次 query 时失败；不会回退到宿主 CLI。
 - **没有人工交互路径**——`AskUserQuestion` 被禁用，权限提示会被拒绝，MCP elicitation 会被拒绝，阻塞对话会以拒绝方式失败而不会挂起。
 - **assistant 载荷仅包含最终文本**——失败运行还可公开独立的安全诊断；推理、中间消息、工具通信、用量、stderr 与工作区差异不会进入父 Session。任务身份与终态结果保存在父日志中。
-- **没有可选的共享能力**——对于本提供方，共享服务会拒绝 `agentOptions`、输出 schema、子任务角色设定、工具筛选和 harness 深度强制约束。
+- **没有可选的共享能力**——对于本提供方，共享服务会拒绝 `agentPreset`、`agentOptions`、输出 schema 和 harness 深度强制约束。
 - **没有按实际经过时间触发的超时或副作用回滚**——长时间运行的工作由调用方取消，且取消前已更改的文件或外部系统不会恢复原状。
 
 <a id="dev-note"></a>

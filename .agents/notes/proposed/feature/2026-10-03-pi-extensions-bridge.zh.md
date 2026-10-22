@@ -8,7 +8,7 @@ Status: proposed
 
 Pi 1.0.0 的扩展是进程内的 TypeScript 工厂函数 `(pi: ExtensionAPI) => void`。工厂函数订阅约四十个生命周期、上下文、工具与提供方事件，注册模型工具、斜杠命令、模型提供商与 MCP server，并通过 `ctx.ui` 与用户交互（[扩展指南](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/extensions.md)、[API 类型](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/src/core/extensions/types.ts)）。该 API 已发布并被广泛使用：截至 2026 年 10 月，npm 上约有 11,000 个包带有 `pi-package` 关键字。
 
-DSH 已为另外两个生态提供桥接：为 Claude Code 与 Codex 编写的 shell 钩子（[hooks 组](../../../../packages/hooks/README.zh.md)），以及 Claude Code mods（[兼容性页面](../../../../docs/subsystems/claude-code-mods.zh.md)）。Pi 的扩展 API 比两者都宽。它允许一个进程内模块改写单次请求的消息、编辑工具参数、追加自己的持久记录，并让已经结束的运行继续。用 DSH 扩展点提供这套 API 可以回答两个问题：为另一个 harness 编写的扩展有多少能原样运行，以及 DSH 的哪些核心机制比 Pi 窄。
+DSH 已为另外两个生态提供桥接：为 Claude Code 与 Codex 编写的 shell 钩子（[hooks 组](../../../../packages/experimental/README.zh.md)），以及 Claude Code mods（[兼容性页面](../../../../docs/subsystems/claude-code-mods.zh.md)）。Pi 的扩展 API 比两者都宽。它允许一个进程内模块改写单次请求的消息、编辑工具参数、追加自己的持久记录，并让已经结束的运行继续。用 DSH 扩展点提供这套 API 可以回答两个问题：为另一个 harness 编写的扩展有多少能原样运行，以及 DSH 的哪些核心机制比 Pi 窄。
 
 ## 提案
 

@@ -62,7 +62,7 @@ class VisionAdapter extends LlmAdapter {
   stream(_options: GenerateOptions): AsyncIterable<StreamChunk> { throw new Error('fixture does not stream') }
 }
 
-async function setup(content: JsonValue[], maxInlineTokens: number) {
+async function setup(content: JsonValue[], maxInlineTokens: number, mode: 'native' | 'ptc' = 'native') {
   const root = await mkdtemp(join(tmpdir(), 'dsh-multimodal-spill-'))
   const ctx = new Context()
   provideWorkingDirectoryFixture(ctx, root)
@@ -70,7 +70,7 @@ async function setup(content: JsonValue[], maxInlineTokens: number) {
     try { await ctx.fiber.dispose() } finally { await rm(root, { recursive: true, force: true }) }
   })
   await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime, { mode: 'both' })
+  await ctx.plugin(ToolRuntime, { mode })
   const fsFiber = await ctx.plugin(FileSystem, { cwd: root })
   await ctx.plugin(TestAttachments, root)
   await ctx.plugin(LocalSpillStore, { root: join(root, 'spill'), cleanupPeriodDays: 0 })
@@ -82,7 +82,7 @@ async function setup(content: JsonValue[], maxInlineTokens: number) {
     inputSchema: { type: 'object' }, call: async () => ({ content }),
   }))
   const session = Session.create(SessionId('mixed-spill'))
-  const agent = { session, options: { provider: 'vision', model: 'vision' } } as Agent
+  const agent = { ctx, session, options: { provider: 'vision', model: 'vision' } } as Agent
   const execute = (name = 'inspect') => ctx.tools.execute({
     signal: new AbortController().signal, callId: ToolCallId('mixed-call'), name,
     arguments: name === 'run_code' ? { code: 'return await tools.inspect({})', description: 'Inspect a window' } : {}, agent,
@@ -180,7 +180,7 @@ describe('multimodal spill', () => {
 
   it.each([false, true])('forwards omitted-image recovery only for successful PTC results (failure: %s)', async (failure) => {
     const original = [text('A'.repeat(4000)), image(), text('C'.repeat(4000))]
-    const { ctx, execute, session } = await setup(original, 200)
+    const { ctx, execute, session } = await setup(original, 200, 'ptc')
     if (failure) {
       const attachment = await ctx.attachments.saveImage({ data: PNG, mediaType: 'image/png' })
       ctx.on('tools/execute', async (exec, next) => {

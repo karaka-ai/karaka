@@ -25,7 +25,7 @@ kind: "package-reference"
 
 在应用组合中挂载此插件，并提供 Tools、Agent、[身份](../identity/README.zh.md)及[服务器认证](../server-auth/README.zh.md)服务。配置 `applicationId`、稳定的 `serverName` 和 HTTP(S) `url`。公开名称采用 `mcp__<serverName>__<rawName>`；模型命名限制要求调整时使用确定性的规范化结果。
 
-端点的 `allow` 和 `deny` 列表使用公开工具名，默认均为空。Agent 预设还必须挂载带有明确允许列表的 `./tool-policy`。每层祖先允许列表都必须接收该工具，任一拒绝列表均可拒绝它。`mode` 选择原生、PTC 或两种展示方式。预设卸载时撤销工具策略注册。
+端点的 `allow` 和 `deny` 列表使用公开工具名，默认均为空。Agent 预设还必须挂载带有明确允许列表的 `./tool-policy`。每层祖先允许列表都必须接收该工具，任一拒绝列表均可拒绝它。`mode` 选择原生或 PTC 展示方式。预设卸载时撤销工具策略注册。
 
 `headers` 提供静态请求头，`serverAuth` 在每个 HTTP 请求前提供当前授权信息。重定向被拒绝。`toolCallTimeoutMs` 默认为 60,000，`failOnStartupError` 默认为 true。可选的 `reconnect` 控制传输关闭后的恢复：默认启用，初始延迟为 500 毫秒，最大延迟为 30,000 毫秒，每次中断最多允许十次失败尝试。
 

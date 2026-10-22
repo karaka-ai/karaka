@@ -25,7 +25,7 @@ Applications can expose selected MCP tools only to Agents with matching trusted 
 
 Mount the plugin in the application composition with Tools, Agents, [identity](../identity/README.md) and [server authentication](../server-auth/README.md). Configure `applicationId`, a stable `serverName`, and an HTTP(S) `url`. Public names use `mcp__<serverName>__<rawName>`, with deterministic normalization when required by model naming limits.
 
-The endpoint `allow` and `deny` lists use public tool names and default to empty. An Agent preset must also mount `./tool-policy` with an explicit allow list. Every enclosing allow list must admit the tool; any deny list rejects it. `mode` selects native, PTC or both presentations. Tool-policy registrations unwind when their preset unloads.
+The endpoint `allow` and `deny` lists use public tool names and default to empty. An Agent preset must also mount `./tool-policy` with an explicit allow list. Every enclosing allow list must admit the tool; any deny list rejects it. `mode` selects native or PTC presentation. Tool-policy registrations unwind when their preset unloads.
 
 `headers` supplies static headers, while `serverAuth` supplies current authorization before each HTTP request. Redirects are rejected. `toolCallTimeoutMs` defaults to 60,000. `failOnStartupError` defaults to true. Optional `reconnect` controls transport-close recovery: enabled by default, with a 500 ms initial delay, a 30,000 ms maximum delay and ten failed attempts per outage.
 

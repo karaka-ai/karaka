@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util'
 import { pnpmInvocation } from '../pnpm-invocation.ts'
 import { releaseFamily, tarballName, type ReleaseFamily, type ReleaseMember } from './families.ts'
 import { isEntry, runConcurrent } from './process.ts'
-import { PUBLISH_ORDER_FILE, tarballFiles } from './tarball.ts'
+import { PUBLISH_ORDER_FILE, packedManifest, tarballFiles } from './tarball.ts'
 
 /** Where pack output lands when `--out` is omitted. */
 const DEFAULT_OUTPUT = 'dist/npm'
@@ -31,6 +31,7 @@ function validatePackedMember(family: ReleaseFamily, member: ReleaseMember, dest
   const tarball = join(destination, filename)
   if (!existsSync(tarball)) throw new Error(`${member.name} produced no tarball at ${tarball}`)
   family.validatePayload(member, tarballFiles(tarball))
+  family.validatePackedManifest(member, packedManifest(tarball))
   return filename
 }
 

@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS } from './experimental-package-policy.ts'
 import { collectPluginRecords } from './plugin-record-catalog.ts'
 import { persistenceCatalogArtifacts, render, renderPluginRecordCatalog } from './gen-persistence-catalog.ts'
 import { extractPersistenceSchema } from './persistence-schema.ts'
@@ -43,6 +44,20 @@ function augmentation(members: string, heritage = ''): string {
 const ENTRY = "    /** Retains a bridge entry. */\n    'plugin:bridge/entry': SavedEntry"
 
 describe('plugin record declarations', () => {
+  it.each(Object.entries(EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS))('retains the persisted namespace for %s', (directory, owner) => {
+    const namespace = directory.split('/').at(-1)!
+    const source = `${directory}/src/records.ts`
+    const root = fixture({
+      [`${directory}/package.json`]: JSON.stringify({ name: owner }),
+      [source]: augmentation(`/** Retains the capability event. */\n'plugin:${namespace}/entry': SavedEntry`),
+    })
+    expect(collectPluginRecords(root)).toEqual([{
+      name: `plugin:${namespace}/entry`, owner, payload: 'SavedEntry', doc: 'Retains the capability event.', source,
+    }])
+    put(root, source, augmentation("/** Another package event. */\n'plugin:unrelated/entry': SavedEntry"))
+    expect(() => collectPluginRecords(root)).toThrow(`must use 'plugin:${namespace}/<name>'`)
+  })
+
   it('accepts an empty inventory only when the owning empty map exists', () => {
     expect(collectPluginRecords(fixture())).toEqual([])
     expect(() => collectPluginRecords(fixture({ [OWNER]: 'export {}\n' })))
@@ -99,7 +114,7 @@ describe('plugin record declarations', () => {
       'packages/core/bridge/package.json': '{"name":"@deepseek-ai/dsh-experimental-bridge"}',
       'packages/core/bridge/src/records.ts': augmentation(ENTRY),
     })
-    expect(() => collectPluginRecords(root)).toThrow('must belong to an experimental')
+    expect(() => collectPluginRecords(root)).toThrow('must belong to a package declared experimental')
   })
 
   it('requires the types module augmentation and verifiable package ownership', () => {

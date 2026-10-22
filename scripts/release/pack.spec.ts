@@ -320,6 +320,19 @@ describe('release pack CLI', () => {
     expect(existsSync(join(root, 'packed', PUBLISH_ORDER_FILE))).toBe(false)
   })
 
+  it.each(['dependencies', 'optionalDependencies', 'peerDependencies'])(
+    'rejects nonexact DSH %s in the produced tarball before recording publication', async (section) => {
+      const root = fixture()
+      packageFixture(root, 'packages/util/probe', '@deepseek-ai/dsh-probe', { [section]: { '@deepseek-ai/dsh-library': '^1.2.3' } })
+      write(join(root, 'apps/web/dist/index.html'), '<main></main>')
+      writeClientBuildRecord(root, officialClientBuildEnvironment(root, { DSH_CLIENT_COMMIT_HASH: commit }))
+      const result = await runPack(root, ['--family', 'dsh'])
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(`packed ${section}.@deepseek-ai/dsh-library must equal 1.2.3`)
+      expect(existsSync(join(root, 'packed', PUBLISH_ORDER_FILE))).toBe(false)
+    },
+  )
+
   it('stops the ready pack hook and its stalled descendant before fixture cleanup', async () => {
     const root = fixture()
     packageFixture(root, 'vendor/stalled', '@deepseek-ai/stalled', { scripts: { prepack: 'node stalled.cjs' } })

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-session-snapshot` provides the shared support behind keyless recorded-session tests (`pnpm run test:snapshot`): closed manifests, typed identity redaction, normalization, workspace comparison, fixture guards, and protocol adapters for headless, SDK, ACP, and Web owners. The ACP adapter launches the tested profile as a real subprocess, drives a deterministic input script, and registers the complete record, replay, and refresh suite. Every scenario owns enough committed evidence to prove model-visible output and filesystem effects without trusting the agent's report. The package entry imports vitest and is therefore available only inside a vitest run.
+`dsh-session-snapshot` provides the shared support behind keyless recorded-session tests (`pnpm run test:snapshot`): closed manifests, typed identity redaction, normalization, workspace comparison, fixture guards, and protocol adapters for headless, SDK (`sdk` and `sdk-minimal`), ACP, and Web owners. The ACP adapter launches the tested profile as a real subprocess, drives a deterministic input script, and registers the complete record, replay, and refresh suite. Every scenario owns enough committed evidence to prove model-visible output and filesystem effects without trusting the agent's report. The package entry imports vitest and is therefore available only inside a vitest run.
 
 ## Table of Contents
 
@@ -92,7 +92,7 @@ A scenario requiring a non-Windows host declares `posixOnly`, which skips its ru
 
 ### What can go wrong
 
-- **A durable wait times out** — `waitForTurnStart`, `waitForTurnEnd`, `waitForSubagentTurnEnd`, `waitForGoalPhase`, and `waitForInboxMessage` identify the session or child and deadline even when the first log harvest exceeds that deadline. Child waits also name the requested turn. All retain the underlying failure as the error cause. `waitForTurnStart` rejects malformed turn records immediately.
+- **A durable wait times out** — `waitForTurnStart`, `waitForTurnEnd`, `waitForSubagentTurnEnd`, `waitForGoalPhase`, `waitForInboxMessage`, `waitForTitleAfterTurnEnd`, and `waitForEventAfterTurnEnd` identify the session or child and deadline even when the first log harvest exceeds that deadline. Child waits also name the requested turn. All retain the underlying failure as the error cause. `waitForTurnStart` rejects malformed turn records immediately.
 - **A fixture guard rejects the committed files** — orphan scenario dirs, missing files, multiple pins for one header class, duplicate sidecar content, unscrubbed prompt text or tool schemas, a `request/header` with no preceding `system/message`, and malformed pinning headers all fail the suite before comparisons run.
 - **The session harvest needs raw JSONL mode** — snapshot configs set the JSONL backend's `compression: 'none'`; compressed JSONL has no snapshot-harvest path.
 - **Built mode needs current artifacts** — run `pnpm run build` before selecting `DSH_EXAMPLE_MODE=lib`; source mode remains the zero-build path.
