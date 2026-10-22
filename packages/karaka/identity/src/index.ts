@@ -1,14 +1,8 @@
-/** Durable application authority over unchanged DSH Session and persistence services. */
+/** Process-local application authority over unchanged DSH Session and persistence services. */
 import type { Context } from '@deepseek-ai/cordis'
-import schema from '@deepseek-ai/schemastery'
 import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import '@deepseek-ai/dsh-session-persistence'
-import '@deepseek-ai/dsh-storage'
-import { DomainFacility, type Domain } from '@deepseek-ai/dsh-storage-domain'
-import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
-import { isAbsolute } from 'node:path'
-import { identityDomain, bindingOf, matchesBinding, type IdentityRecord } from './records.ts'
-import { lockAuthority } from './lock.ts'
+import { bindingOf, matchesBinding, type IdentityRecord } from './records.ts'
 import { IdentityError, sameOwner, type ApplicationOwner } from './owner.ts'
 
 export * from './owner.ts'
@@ -22,49 +16,20 @@ declare module '@deepseek-ai/cordis' {
 /** Loader plugin name. */
 export const name = 'karaka-identity'
 /** Original services used without replacement. */
-export const inject = ['storage', 'sessions', 'sessionPersistence']
-
-/** Authority records and their exclusive lock share this directory. */
-export interface Config {
-  /** Absolute directory dedicated to durable application authority. */
-  root: string
-}
-
-/** Loader configuration; the server explicitly owns its storage location. */
-export const Config: schema<Config> = schema.object({ root: schema.string().required() })
+export const inject = ['sessions', 'sessionPersistence']
 
 /**
- * A single process owns authority records for this root. Application ingress
- * serializes complete create/admit operations through withChatLock. No ownership
- * is inferred from request-supplied lineage or written into a DSH Session.
+ * Authenticated ingress restores root ownership explicitly. Application ingress
+ * serializes complete create/admit operations through withChatLock. Read-only
+ * owner lookup never adopts a Session or infers ownership from request metadata.
  */
 export class KarakaIdentity {
-  private readonly chats
+  private readonly chats = new Map<SessionId, IdentityRecord>()
   private readonly chains = new Map<SessionId, Promise<unknown>>()
   private readonly headers = new Map<SessionId, SessionHeader>()
   private closed = false
 
-  constructor(private readonly ctx: Context, private readonly domain: Domain<typeof identityDomain>) {
-    this.chats = domain.table('chats')
-  }
-
-  /**
-   * Validate materialized roots before routes and background tools become available.
-   * @returns Resolution after existing original headers have warmed lineage lookup.
-   */
-  async initialize(): Promise<void> {
-    for (const snapshot of await this.ctx.sessionPersistence.list()) this.headers.set(snapshot.header.id, snapshot.header)
-    for (const [id, record] of this.chats.entries()) {
-      const header = this.headers.get(id)
-      if (record.state === 'reserved') {
-        if (header !== undefined) throw new IdentityError('unavailable', 'Unbound Karaka chat data exists')
-      } else if (header === undefined) {
-        if (record.state === 'ready') throw new IdentityError('unavailable', 'Acknowledged Karaka chat data is missing')
-      } else {
-        this.checkBinding(record, header)
-      }
-    }
-  }
+  constructor(private readonly ctx: Context) {}
 
   /**
    * Serialize one complete controller operation, including original engine calls.
@@ -98,7 +63,7 @@ export class KarakaIdentity {
     const header = await this.observe(id)
     if (record === undefined) {
       if (header !== undefined) throw new IdentityError('forbidden', 'Chat is not owned by this caller')
-      await this.chats.put(id, { state: 'reserved', owner: Object.freeze({ ...owner }) })
+      this.chats.set(id, { state: 'reserved', owner: Object.freeze({ ...owner }) })
       return 'create'
     }
     if (header !== undefined) {
@@ -107,9 +72,9 @@ export class KarakaIdentity {
       return 'existing'
     }
     if (record.state === 'ready') throw new IdentityError('unavailable', 'Acknowledged chat data is missing')
-    // A crashed unpublished attempt did not materialize. Its same owner may
+    // A failed unpublished attempt did not materialize. Its same owner may
     // retry with the actual new timestamp supplied by the original factory.
-    if (record.state === 'bound') await this.chats.put(id, { state: 'reserved', owner: record.owner })
+    if (record.state === 'bound') this.chats.set(id, { state: 'reserved', owner: record.owner })
     return 'create'
   }
 
@@ -117,7 +82,7 @@ export class KarakaIdentity {
    * Bind the actual unpublished Session during the original Agent setup callback.
    * @param session - Original factory-created Session.
    * @param owner - Reserved owner.
-   * @returns Resolution only after the immutable source binding is durable.
+   * @returns Resolution only after the immutable source binding is recorded in memory.
    */
   async bind(session: Session, owner: ApplicationOwner): Promise<void> {
     this.assertOpen()
@@ -133,13 +98,13 @@ export class KarakaIdentity {
         if (inherited === undefined) throw new IdentityError('forbidden', 'Chat parent has no application owner')
         this.checkOwner(inherited, owner)
       }
-      await this.chats.put(session.id, { state: 'bound', owner: record.owner, binding: bindingOf(session.header) })
+      this.chats.set(session.id, { state: 'bound', owner: record.owner, binding: bindingOf(session.header) })
     }
     this.headers.set(session.id, session.header)
   }
 
   /**
-   * Complete creation only after original JSONL flush and durable authority agree.
+   * Complete creation only after Session flush and persisted source checks succeed.
    * @param session - Published original Session.
    * @param owner - Authenticated owner.
    * @returns Resolution after the application can acknowledge this chat.
@@ -153,7 +118,35 @@ export class KarakaIdentity {
     this.checkBinding(record ?? { state: 'bound', owner, binding: bindingOf(session.header) }, stored.header)
     // A runtime-created child inherits authority through its parent; flushing
     // it must not invent another direct owner record.
-    if (record !== undefined && record.state !== 'ready') await this.chats.put(session.id, { ...record, state: 'ready' })
+    if (record !== undefined && record.state !== 'ready') this.chats.set(session.id, { ...record, state: 'ready' })
+  }
+
+  /**
+   * Restore ownership of a persisted root after ingress verifies application access.
+   * Call inside withChatLock, after verifying chat scope, preset, and root access.
+   * Missing data, child Sessions, conflicting owners, and changed sources are denied.
+   * @param id - Persisted root authorized by the application.
+   * @param owner - Owner established by verified application authority.
+   * @returns The persisted immutable header, without resuming or repairing data.
+   */
+  async restore(id: SessionId, owner: ApplicationOwner): Promise<SessionHeader> {
+    this.assertOpen()
+    const record = this.chats.get(id)
+    if (record !== undefined) this.checkOwner(record.owner, owner)
+    const stored = await this.ctx.sessionPersistence.stat(id)
+    if (stored === undefined) throw new IdentityError('forbidden', 'Chat is unavailable for restoration')
+    const header = stored.header
+    if (header.parentSession !== undefined) {
+      throw new IdentityError('forbidden', 'Only application root chats can restore ownership')
+    }
+    if (record?.state === 'reserved') throw new IdentityError('unavailable', 'Chat has no bound authority')
+    const restored = record ?? { state: 'ready', owner: Object.freeze({ ...owner }), binding: bindingOf(header) }
+    this.checkBinding(restored, header)
+    const live = this.ctx.sessions.get(id)
+    if (live !== undefined) this.checkBinding(restored, live.header)
+    this.chats.set(id, { ...restored, state: 'ready' })
+    this.headers.set(id, header)
+    return header
   }
 
   /**
@@ -187,7 +180,7 @@ export class KarakaIdentity {
   /**
    * Resolve trusted identity for tool execution, including background child Agents.
    * @param session - Executing original Session, never request-supplied metadata.
-   * @returns Its root authority owner, or undefined for an ordinary DSH Session.
+   * @returns Its root authority owner, or undefined until root ownership is established.
    */
   async ownerOf(session: Session): Promise<ApplicationOwner | undefined> {
     this.assertOpen()
@@ -234,13 +227,14 @@ export class KarakaIdentity {
   }
 
   /**
-   * Reject new authority calls, await admitted operations settling, and close storage.
-   * @returns Resolution after admitted operations settle and authority storage closes.
+   * Reject new authority calls, await admitted operations, and clear identity caches.
+   * @returns Resolution after admitted operations settle and identity caches are cleared.
    */
   async close(): Promise<void> {
     this.closed = true
     await Promise.all([...this.chains.values()])
-    await this.domain.close()
+    this.chats.clear()
+    this.headers.clear()
   }
 
   private async resolveOwner(initial: SessionHeader): Promise<ApplicationOwner | undefined> {
@@ -296,37 +290,13 @@ export class KarakaIdentity {
 }
 
 /**
- * Mount an exclusively locked JSON authority using original DSH storage providers.
+ * Mount application authority without local files or startup Session enumeration.
  * @param ctx - Plugin context.
- * @param config - Explicit authority directory.
- * @returns Resolution after durable authority has been validated.
  */
-export async function apply(ctx: Context, config: Config): Promise<void> {
-  if (!isAbsolute(config.root)) throw new Error('Karaka identity root must be an absolute path')
-  let identity: KarakaIdentity | undefined
-  await ctx.effect(async () => {
-    const lock = await lockAuthority(config.root)
-    const backend = new JsonStorageBackend(config.root)
-    let unregister: (() => void) | undefined
-    let facility: DomainFacility | undefined
-    const close = async () => {
-      try {
-        if (identity !== undefined) await identity.close()
-        else await facility?.closeAll()
-      } finally {
-        try { await backend.close() } finally { unregister?.(); await lock.close() }
-      }
-    }
-    try {
-      unregister = ctx.storage.backend.register('karaka-identity-json', backend)
-      facility = new DomainFacility(ctx, { backend: 'karaka-identity-json' })
-      identity = new KarakaIdentity(ctx, await facility.open(identityDomain))
-      await identity.initialize()
-      ctx.provide('karakaIdentity', identity)
-      return close
-    } catch (error) {
-      await close()
-      throw error
-    }
+export function apply(ctx: Context): void {
+  ctx.effect(() => {
+    const identity = new KarakaIdentity(ctx)
+    ctx.provide('karakaIdentity', identity)
+    return () => identity.close()
   })
 }

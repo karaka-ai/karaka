@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/karaka-chat-authority/guide.md
+/:
+  en: 4c35eeeeb312d72f
+  zh: 2020ab75e08dcba1
+/karaka-applications-retain-chat-authority:
+  en: dd8c1e6e5a567fbc
+  zh: cdb7f55164d1d696
+/karaka-applications-retain-chat-authority/change:
+  en: dcb8c88da65989c4
+  zh: 080c7d1791b9d793
+/karaka-applications-retain-chat-authority/migration:
+  en: ec73064e0557bf87
+  zh: d6dc2832432ac3d0

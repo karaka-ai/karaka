@@ -15,13 +15,13 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import {
   DeepSeekHarness,
   type DeepSeekHarnessOptions,
-  type HarnessNotification,
   JsonRpcResponseError,
   SdkProtocolError,
   TransportClosedError,
+  validatedSessionEvent,
 } from '@deepseek-ai/dsh-sdk-client'
 import type { ContentBlock, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent, SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
+import type { SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
 import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@deepseek-ai/dsh-subagent'
 import { AssistantOutputFold, settleRunResult, subprocessRunHandle } from '@deepseek-ai/dsh-subagent'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
@@ -297,9 +297,16 @@ export async function startSdkRun(request: SubagentStartRequest, spec: SdkRunSpe
   // The child's final answer under the seam's canonical selection rule
   // (`AssistantOutputFold`); a partial answer survives cancel and error paths.
   const fold = new AssistantOutputFold()
-  const observe = (notification: HarnessNotification): void => {
-    if (notification.method !== 'session.event' || notification.params.sessionId !== childSessionId) return
-    fold.push(notification.params.event as SessionEvent)
+  const subscription = harness.client.subscribe(notification =>
+    notification.method === 'session.event' && notification.params.sessionId === childSessionId)
+  let lastEnd: TurnEndReason | undefined
+  const drainNotifications = (): void => {
+    let notification
+    while ((notification = subscription.tryNext()) !== undefined) {
+      const event = validatedSessionEvent(notification.params.event)
+      fold.push(event)
+      if (event.type === 'turn/end') lastEnd = event.data.reason
+    }
   }
   const collectOutput = (): readonly ContentBlock[] => fold.collect() ?? []
   const teardown = async (): Promise<void> => {
@@ -311,27 +318,31 @@ export async function startSdkRun(request: SubagentStartRequest, spec: SdkRunSpe
     }
   }
 
-  // Race the child turn against local cancellation; the shared settlement
+  // Race the child task against local cancellation; the shared settlement
   // flattens failures under the seam's never-reject contract.
   let diagnostic: string | undefined
+  let accepted = false
   const result: Promise<SubagentResult> = settleRunResult({
     attempt: async () => {
       try {
-        const child = harness.session(childSessionId)
-        const run = async () => {
-          await child.setWorkingDirectory(spec.cwd)
-          if (flags.cancelled) return 'cancelled' as const
-          return child.run(request.prompt, { onNotification: observe })
+        try {
+          await Promise.race([
+            (async () => {
+              await harness.session(childSessionId).setWorkingDirectory(spec.cwd)
+              if (flags.cancelled) return
+              await harness.client.prompt(childSessionId, request.prompt)
+              accepted = true
+              await harness.client.request('session/wait', { sessionId: childSessionId })
+            })(),
+            cancelSettled,
+          ])
+        } finally {
+          // The wait response follows committed notifications on the same pipe.
+          // Cancellation and transport failure retain every event already received.
+          if (accepted) drainNotifications()
         }
-        const turn = await Promise.race([
-          run(),
-          cancelSettled.then(() => 'cancelled' as const),
-        ])
-        if (turn === 'cancelled') return { output: collectOutput(), stopReason: 'aborted' }
-        const lastEnd = turn.events.findLast(
-          (event): event is Extract<SessionEvent, { type: 'turn/end' }> => event.type === 'turn/end',
-        )
-        const outcome = sdkChildOutcome(lastEnd?.data.reason)
+        if (flags.cancelled) return { output: collectOutput(), stopReason: 'aborted' }
+        const outcome = sdkChildOutcome(lastEnd)
         diagnostic = outcome.diagnostic
         return {
           output: collectOutput(),
@@ -340,6 +351,8 @@ export async function startSdkRun(request: SubagentStartRequest, spec: SdkRunSpe
       } catch (error: unknown) {
         diagnostic = failureDiagnostic(sdkFailure(error, 'session-run').facts)
         throw error
+      } finally {
+        subscription.close()
       }
     },
     collectOutput,

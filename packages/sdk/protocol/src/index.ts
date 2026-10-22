@@ -22,6 +22,8 @@ export type {
   SessionStatusNotification,
   SessionPromptParams,
   SessionPromptResult,
+  SessionResumeParams,
+  SessionWaitParams,
   SessionWorkingDirectoryParams,
   SessionWorkingDirectorySetParams,
   SessionWorkingDirectoryResult,

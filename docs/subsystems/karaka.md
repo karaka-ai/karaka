@@ -6,9 +6,9 @@ Karaka applications authenticate users, retain ownership of conversations, and e
 
 ## Ownership and credentials
 
-[Identity](../../packages/karaka/identity/README.md) binds each chat to an application, tenant and user. Durable ownership records and the session header must agree before a caller can resume the chat. [Server authentication](../../packages/karaka/server-auth/README.md) resolves server credentials through the configured credential provider; [browser authentication](../../packages/karaka/browser-auth/README.md) verifies signed user credentials before the transport constructs an owner.
+[Identity](../../packages/karaka/identity/README.md) tracks verified application, tenant and user ownership in memory. Applications retain ownership authority and authorize cold chats again after restart; the runtime checks immutable session headers before restoring their owner. [Server authentication](../../packages/karaka/server-auth/README.md) resolves server credentials through the configured credential provider; [browser authentication](../../packages/karaka/browser-auth/README.md) verifies signed chat credentials before the transport accepts an owner.
 
-The trusted owner type, [`ApplicationOwner`](../../packages/karaka/identity/src/owner.ts), combines branded `ApplicationId`, `TenantId` and `UserId` values. [`AuthenticatedApplication`](../../packages/karaka/server-auth/src/index.ts) identifies the server whose credential matched. [`BrowserCaller`](../../packages/karaka/browser-auth/src/index.ts) adds the signed user owner and token expiration in milliseconds; the transport ends access at that expiration.
+The trusted owner type, [`ApplicationOwner`](../../packages/karaka/identity/src/owner.ts), combines branded `ApplicationId`, `TenantId` and `UserId` values. [`AuthenticatedApplication`](../../packages/karaka/server-auth/src/index.ts) identifies the server whose credential matched. [`BrowserCaller`](../../packages/karaka/browser-auth/src/index.ts) adds the signed user owner, required `chatId` and token expiration in milliseconds; the transport ends access at that expiration.
 
 ## Chat and tools
 
@@ -30,9 +30,9 @@ Verifies signed browser credentials without storing tokens or signing keys.
 
 ```ts cordis-catalog
 /**
- * Verify signature, issuer, audience, owner claims, age, and issued lifetime.
+ * Verify signature, issuer, audience, owner and chat claims, age, and issued lifetime.
  * @param credential - Complete compact JWT supplied by the browser.
- * @returns The signed owner and expiry, or undefined for invalid credentials.
+ * @returns The signed owner, chat and expiry, or undefined for invalid credentials.
  * @throws Errors unrelated to JWT validation.
  */
 async authenticate(credential: string): Promise<BrowserCaller | undefined>
@@ -44,15 +44,9 @@ Source: [`packages/karaka/browser-auth/src/index.ts`](../../packages/karaka/brow
 
 ### `ctx.karakaIdentity` — `KarakaIdentity`
 
-A single process owns authority records for this root. Application ingress serializes complete create/admit operations through withChatLock. No ownership is inferred from request-supplied lineage or written into a DSH Session.
+Authenticated ingress restores root ownership explicitly. Application ingress serializes complete create/admit operations through withChatLock. Read-only owner lookup never adopts a Session or infers ownership from request metadata.
 
 ```ts cordis-catalog
-/**
- * Validate materialized roots before routes and background tools become available.
- * @returns Resolution after existing original headers have warmed lineage lookup.
- */
-async initialize(): Promise<void>
-
 /**
  * Serialize one complete controller operation, including original engine calls.
  * @param id - Chat being changed.
@@ -73,17 +67,27 @@ async reserve(id: SessionId, owner: ApplicationOwner): Promise<'create' | 'exist
  * Bind the actual unpublished Session during the original Agent setup callback.
  * @param session - Original factory-created Session.
  * @param owner - Reserved owner.
- * @returns Resolution only after the immutable source binding is durable.
+ * @returns Resolution only after the immutable source binding is recorded in memory.
  */
 async bind(session: Session, owner: ApplicationOwner): Promise<void>
 
 /**
- * Complete creation only after original JSONL flush and durable authority agree.
+ * Complete creation only after Session flush and persisted source checks succeed.
  * @param session - Published original Session.
  * @param owner - Authenticated owner.
  * @returns Resolution after the application can acknowledge this chat.
  */
 async markReady(session: Session, owner: ApplicationOwner): Promise<void>
+
+/**
+ * Restore ownership of a persisted root after ingress verifies application access.
+ * Call inside withChatLock, after verifying chat scope, preset, and root access.
+ * Missing data, child Sessions, conflicting owners, and changed sources are denied.
+ * @param id - Persisted root authorized by the application.
+ * @param owner - Owner established by verified application authority.
+ * @returns The persisted immutable header, without resuming or repairing data.
+ */
+async restore(id: SessionId, owner: ApplicationOwner): Promise<SessionHeader>
 
 /**
  * Authorize using read-only observation before calling original agents.resume.
@@ -104,7 +108,7 @@ async authorizeSession(session: Session, owner: ApplicationOwner): Promise<void>
 /**
  * Resolve trusted identity for tool execution, including background child Agents.
  * @param session - Executing original Session, never request-supplied metadata.
- * @returns Its root authority owner, or undefined for an ordinary DSH Session.
+ * @returns Its root authority owner, or undefined until root ownership is established.
  */
 async ownerOf(session: Session): Promise<ApplicationOwner | undefined>
 
@@ -124,8 +128,8 @@ async ownerOfId(id: SessionId): Promise<ApplicationOwner | undefined>
 ownerOfCached(session: Session): ApplicationOwner | undefined
 
 /**
- * Reject new authority calls, await admitted operations settling, and close storage.
- * @returns Resolution after admitted operations settle and authority storage closes.
+ * Reject new authority calls, await admitted operations, and clear identity caches.
+ * @returns Resolution after admitted operations settle and identity caches are cleared.
  */
 async close(): Promise<void>
 ```

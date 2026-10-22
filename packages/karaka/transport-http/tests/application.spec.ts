@@ -9,8 +9,8 @@ import { applicationFixture, owner } from './application-fixture.ts'
 const chatId = SessionId('chat')
 const address = { chatId, owner }
 
-async function fixture() {
-  const state = await applicationFixture()
+async function fixture(browserAgentIds?: readonly string[]) {
+  const state = await applicationFixture(true, browserAgentIds)
   if (state.controller === undefined) throw new Error('controller was not mounted')
   return { ...state, controller: state.controller }
 }
@@ -248,4 +248,93 @@ it('ignores non-text stream frames without exposing them to follow subscribers',
   expect((await next).value).toMatchObject({ type: 'text-delta', text: 'visible' })
   cancel.abort()
   await stream.return?.()
+})
+
+it('rejects mismatched signed chat and owner before recording ownership or activating an Agent', async () => {
+  const { controller, identity, factory, observeSession } = await fixture()
+  const caller = { kind: 'application' as const, chatId: SessionId('other'), owner, expiresAt: Date.now() + 60_000 }
+  for (const browser of [caller, { ...caller, chatId, owner: { ...owner, userId: UserId('foreign') } }]) {
+    const request = { ...address, browser }
+    await expect(controller.create({ ...request, agentId: 'main' })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+    await expect(controller.prompt({ ...request, requestId: 'r', content: [] })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+    await expect(controller.cancel(request)).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+    await expect(controller.selectModel({ ...request, provider: 'mock', model: 'chat' })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+    await expect(controller.events(request)).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+    await expect(controller.follow(request, new AbortController().signal)[Symbol.asyncIterator]().next()).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+  }
+  expect(identity.reserve).not.toHaveBeenCalled()
+  expect(identity.restore).not.toHaveBeenCalled()
+  expect(factory.createAgent).not.toHaveBeenCalled()
+  expect(factory.resume).not.toHaveBeenCalled()
+  expect(observeSession).not.toHaveBeenCalled()
+})
+
+it('rejects browser presets and persisted child targets before ownership restoration', async () => {
+  const { controller, headers, owners, identity, factory } = await fixture()
+  const browser = { kind: 'application' as const, chatId, owner, expiresAt: Date.now() + 60_000 }
+  const request = { ...address, browser }
+  await expect(controller.create({ ...request, agentId: 'background' })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+  for (const meta of [{ agentPreset: 'background' }, { agentPreset: 'main', parentSession: SessionId('root') }]) {
+    headers.set(chatId, { ...Session.create(chatId).header, ...meta })
+    await expect(controller.events(request)).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+    await expect(controller.create({ ...request, agentId: 'main' })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+  }
+  expect(owners.size).toBe(0)
+  expect(identity.reserve).not.toHaveBeenCalled()
+  expect(identity.restore).not.toHaveBeenCalled()
+  expect(factory.createAgent).not.toHaveBeenCalled()
+  expect(factory.resume).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('restores a cold root for authorized history without creating an Agent (browser=%s)', async (browserAccess) => {
+  const { controller, headers, owners, identity, factory, ctx } = await fixture()
+  headers.set(chatId, { ...Session.create(chatId).header, agentPreset: 'main' })
+  const browser = { kind: 'application' as const, chatId, owner, expiresAt: Date.now() + 60_000 }
+  const request = { ...address, ...(browserAccess ? { browser } : {}) }
+  if (browserAccess) {
+    await expect(controller.authorizeBrowser(request, browser)).resolves.toMatchObject({ id: chatId })
+    expect(owners.size).toBe(0)
+  }
+  expect(await controller.events(request)).toEqual([])
+  expect(identity.restore).toHaveBeenCalledExactlyOnceWith(chatId, owner)
+  expect(owners.get(chatId)).toEqual(owner)
+  expect(ctx.sessions.get(chatId)).toBeUndefined()
+  expect(factory.createAgent).not.toHaveBeenCalled()
+  expect(factory.resume).not.toHaveBeenCalled()
+  const stream = controller.follow(request, new AbortController().signal)[Symbol.asyncIterator]()
+  expect((await stream.next()).value).toMatchObject({ type: 'snapshot', header: { id: chatId } })
+  await stream.return?.()
+  expect(identity.restore).toHaveBeenCalledOnce()
+})
+
+it('restores before resuming a cold root and rejects a conflicting creation preset first', async () => {
+  const { controller, headers, owners, identity, factory, presets } = await fixture()
+  headers.set(chatId, { ...Session.create(chatId).header, agentPreset: 'main' })
+  await expect(controller.create({ ...address, agentId: 'other' })).rejects.toMatchObject({ code: 'session/conflict' })
+  expect(owners.size).toBe(0)
+  expect(identity.restore).not.toHaveBeenCalled()
+  await controller.prompt({ ...address, requestId: 'r', content: [] })
+  expect(identity.restore.mock.invocationCallOrder[0]).toBeLessThan(factory.resume.mock.invocationCallOrder[0] ?? Infinity)
+  expect(identity.authorizeSession.mock.invocationCallOrder[0]).toBeLessThan(presets.mount.mock.invocationCallOrder[0] ?? Infinity)
+})
+
+it('creates and reopens the signed browser chat while rejecting expiry and cached owner conflicts', async () => {
+  const { controller, owners, identity } = await fixture()
+  const browser = { kind: 'application' as const, chatId, owner, expiresAt: Date.now() + 60_000 }
+  const request = { ...address, browser, agentId: 'main' }
+  await expect(controller.create(request)).resolves.toEqual({ chatId, agentId: 'main' })
+  await expect(controller.create(request)).resolves.toEqual({ chatId, agentId: 'main' })
+  await expect(controller.authorizeBrowser(request, { ...browser, expiresAt: 0 })).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+  owners.set(chatId, { ...owner, userId: UserId('foreign') })
+  await expect(controller.authorizeBrowser(request, browser)).rejects.toMatchObject({ code: 'CHAT_FORBIDDEN' })
+  expect(identity.restore).not.toHaveBeenCalled()
+})
+
+it('rejects a different allowed browser preset before restoring a cold root', async () => {
+  const { controller, headers, owners, identity } = await fixture(['main', 'plain'])
+  headers.set(chatId, { ...Session.create(chatId).header, agentPreset: 'main' })
+  const browser = { kind: 'application' as const, chatId, owner, expiresAt: Date.now() + 60_000 }
+  await expect(controller.create({ ...address, browser, agentId: 'plain' })).rejects.toMatchObject({ code: 'session/conflict' })
+  expect(owners.size).toBe(0)
+  expect(identity.restore).not.toHaveBeenCalled()
 })

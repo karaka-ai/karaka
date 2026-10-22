@@ -16,7 +16,7 @@ import {
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import { createMessage, createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionSeq, SESSION_FORMAT_VERSION, SessionId, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { describe, expect, it } from 'vitest'
 
 const fixtureDir = fileURLToPath(new URL('./expected/subagent-inheritance', import.meta.url))
@@ -132,11 +132,12 @@ describe('parent-only override inheritance snapshot', () => {
         const childRecords = child.trimEnd().split('\n').map(
           line => JSON.parse(line) as Record<string, unknown>,
         )
-        expect(childRecords[1]).toMatchObject({
+        expect(childRecords.find(record => record.type === 'sandbox/mode')).toMatchObject({
           type: 'sandbox/mode',
-          seq: SessionSeq(0),
           data: { mode: 'read-only', source: 'delegation' },
         })
+        expect(childRecords.findIndex(record => record.type === 'sandbox/mode'))
+          .toBeLessThan(childRecords.findIndex(record => record.type === 'turn/start'))
 
         const runtimeContexts = (content: string): string[] => content.trimEnd().split('\n').flatMap((line) => {
           const record = JSON.parse(line) as {

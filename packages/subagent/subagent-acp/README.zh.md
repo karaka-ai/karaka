@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 何时选择
 
-当子 agent 必须在独立进程中运行、拥有自己的运行时、模型和工具时选择此后端——例如来自其他项目的 ACP agent——或者你希望委派完全无法触及父 harness 时。当子 agent 必须共享父级组合或遵守父级强制执行的能力约束时，请选择进程内后端：本提供方不声明任何可选启动时能力，因此 seam 会拒绝要求 `agentOptions`、结构化输出、深度上限、工具过滤或 persona 的请求，而不是静默省略。
+当子 agent 必须在独立进程中运行、拥有自己的运行时、模型和工具时选择此后端——例如来自其他项目的 ACP agent——或者你希望委派完全无法触及父 harness 时。当子 agent 必须共享父级组合或遵守父级强制执行的能力约束时，请选择进程内后端：本提供方不声明任何可选启动时能力，因此 seam 会拒绝要求 `agentPreset`、`agentOptions`、结构化输出或深度上限 的请求，而不是静默省略。
 
 ### 配置
 
@@ -90,7 +90,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 ### 启动与所有权流程
 
-一次启动先解析子 agent 的工作目录（请求覆盖值，否则取父级当前有效目录），经子进程 seam spawn 命令，完成 ACP `initialize` 与 `newSession` 握手，然后才发布运行。兑现意味着远程会话已就绪、所有权已转移给调用方。dispose（资源释放）是幂等的：先关闭 stdin 并按配置的宽限等待协作式完全停稳，再经 SIGTERM 升级到 SIGKILL，并等待整个 managed range 退出。清理失败会作为有序的安全事实保持可观察，且绝不声称已经完全停稳。
+一次启动使用管理器解析的子 agent 工作目录（请求覆盖值，否则取父级当前有效目录），经子进程 seam spawn 命令，完成 ACP `initialize` 与 `newSession` 握手，然后才发布运行。兑现后，外部运行由 activation 管理器接管。任务接受后会解除启动信号的绑定；activation 凭据用于取消执行并等待清理。每个 activation 只运行一个任务，不能接收追加输入。dispose（资源释放）是幂等的：先关闭 stdin 并按配置的宽限等待协作式完全停稳，再经 SIGTERM 升级到 SIGKILL，并等待整个 managed range 退出。清理失败会作为有序的安全事实保持可观察，且绝不声称已经完全停稳。
 
 ### 停止原因映射
 
@@ -124,7 +124,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 #### 模型看到什么
 
-远程子 agent 通过 ACP 接收独立任务内容，并使用其自身进程配置的系统提示词、工具和全新会话。它不接收父级对话。本提供方不声明可选启动时能力，因此本地服务会拒绝要求 `agentOptions`、persona、工具过滤、深度强制或结构化输出的请求，而不是静默省略。
+远程子 agent 通过 ACP 接收独立任务内容，并使用其自身进程配置的系统提示词、工具和全新会话。它不接收父级对话。本提供方不声明可选启动时能力，因此本地服务会拒绝要求 `agentPreset`、`agentOptions`、深度强制或结构化输出的请求，而不是静默省略。
 
 #### Token 影响
 
@@ -138,11 +138,11 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 #### 模型看到什么
 
-通过 `dsh-tool-subagent`，父级只接收子 agent 最终的流式 assistant 文本或该消费方给出的精确停止原因错误，不接收中间消息或工具流量。未完成的结果会先呈现安全诊断，再单独保留部分 assistant 输出。发布前已经取消的请求会精确变为 `Error: subagent request was aborted before the ACP child started`；其他启动失败只包含固定的 `Subagent failure (...)` 行。
+通过 `dsh-tool-subagent`，父模型先收到 child id，随后收到含最终或部分 assistant 文本、停止原因与安全诊断的完成通知。父会话保留外部任务身份与已送达的完成通知；activation 凭据提供完整捕获结果，但不另行持久化归档。中间消息与工具通信不进入父会话。
 
 #### Token 影响
 
-父级输入只增加最终结果或错误，其内容依赖数据，并保留到压缩（compaction）为止。本提供方自身不会添加父级 schema。
+父级输入增加启动确认与完成通知，内容大小取决于数据，并保留到压缩（compaction）为止。本提供方自身不会向父级添加任何 schema。
 
 #### KV Cache 影响
 
@@ -157,7 +157,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先证明 ma
 
 - **每次运行使用全新进程**——没有进程池；每次委派都要付出完整的 spawn 与 ACP 握手成本。
 - **仅支持本地工作区**——解析后的工作目录是交给同一台机器上子进程的本地路径；远程工作区映射尚未设计。
-- **不支持可选启动时能力**——本提供方无法在远程进程内应用 `agentOptions`、`outputSchema`、深度上限、工具过滤器或 persona，因此 seam 会拒绝需要它们的请求。
+- **不支持可选启动时能力**——本提供方无法在远程进程内应用 `agentPreset`、`agentOptions`、`outputSchema` 或深度上限，因此 seam 会拒绝需要它们的请求。
 - **只收集已提交的 `agent_message_chunk` 文本**——自动化服务器把推理（reasoning）、工具活动、计划和其他 trace 数据保留在子 agent 会话日志中，不通过 ACP 发出。
 - **权限提示自动应答**（`permission: allow | reject`）——不会把子 agent 的 `session/request_permission` 呈现给人。
 

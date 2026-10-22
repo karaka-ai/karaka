@@ -27,7 +27,7 @@ Browser frontend                            Karaka process
 
 后端集成使用 `@karaka-ai/sdk` 通过 HTTP/SSE（Server-Sent Events）聊天，并在应用现有的 HTTP 服务器上托管带认证的 MCP 工具。后端提供可信的租户与用户标识。Karaka 将这些标识绑定到聊天并转发给工具回调，由应用执行业务授权。安装 SDK 不会启动进程或监听端口。
 
-浏览器集成使用 `@karaka-ai/agent/browser`，凭证由应用后端签发并设有有效期。每个凭证绑定应用、租户与用户身份；浏览器请求不能选择其他身份。认证与服务器配置详见[浏览器客户端设置](packages/karaka/transport-http)。
+浏览器集成使用 `@karaka-ai/agent/browser`，凭证由应用后端签发并设有有效期。每个凭证绑定应用、租户、用户身份和一个聊天；浏览器请求不能选择其他聊天。后端保留聊天归属，并在签发凭证前验证权限。认证与服务器配置详见[浏览器客户端设置](packages/karaka/transport-http)。
 
 <a id="run"></a>
 ## 从这里开始

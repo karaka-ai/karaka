@@ -55,9 +55,8 @@ The group splits into four families: durable storage (persistence seam, backends
 | Package | Role | ctx key |
 |---|---|---|
 | [`session-title/`](session-title/README.md) | Log-backed session titles with a deterministic fallback and one optional provider | `ctx.sessionTitle` |
-| [`session-title-llm/`](session-title-llm/README.md) | Shared model-backed title-generation policy for the provider packages | library — no ctx key |
+| [`session-title-llm/`](session-title-llm/README.md) | Shared bounded execution for provider-owned title strategies | library — no ctx key |
 | [`session-title-first-prompt-llm/`](session-title-first-prompt-llm/README.md) | Titles a session from its first eligible human message | registers on `ctx.sessionTitle` |
-| [`session-title-all-prompts-llm/`](session-title-all-prompts-llm/README.md) | Titles a session from all eligible human messages | registers on `ctx.sessionTitle` |
 
 ### Telemetry
 
@@ -79,6 +78,8 @@ Only one title provider may register at a time; without one, the title service k
 - [Session titles subsystem](../../docs/subsystems/session-title.md) — title eligibility, fallback, and provider flow.
 - [Session telemetry subsystem](../../docs/subsystems/session-telemetry.md) — capture, redaction, and delivery modes.
 - [Session subsystem](../../docs/subsystems/session.md) — the live event log every package in this group persists or derives from.
+
+See [`session-title-all-prompts-llm`](../experimental/session-title-all-prompts-llm/README.md) for the experimental optional capability.
 
 <a id="dev-note"></a>
 ## Dev Note

@@ -58,6 +58,18 @@ export interface SessionPromptResult {
   messageId: string
 }
 
+/** Restore a persisted session without enqueueing a prompt. */
+export interface SessionResumeParams {
+  /** Persisted session identity; missing or already owned sessions are rejected. */
+  sessionId: string
+}
+
+/** Wait for an existing SDK session and its managed descendants to finish. */
+export interface SessionWaitParams {
+  /** An SDK-owned session id; waiting never creates a session. */
+  sessionId: string
+}
+
 /** Session whose effective working directory is requested; an unknown id creates the Session. */
 export interface SessionWorkingDirectoryParams {
   /** SDK-side Session identity. */
@@ -133,6 +145,8 @@ export interface HarnessSdkNotificationMap {
 export interface HarnessSdkRequestMap {
   'initialize': { params: InitializeParams; result: InitializeResult }
   'session/prompt': { params: SessionPromptParams; result: SessionPromptResult }
+  'session/resume': { params: SessionResumeParams; result: Record<string, never> }
+  'session/wait': { params: SessionWaitParams; result: Record<string, never> }
   'session/working-directory/get': { params: SessionWorkingDirectoryParams; result: SessionWorkingDirectoryResult }
   'session/working-directory/set': { params: SessionWorkingDirectorySetParams; result: SessionWorkingDirectoryResult }
   'shutdown': { params: undefined; result: Record<string, never> }

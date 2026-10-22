@@ -8,6 +8,7 @@ import { expect, it, vi } from 'vitest'
 import { launchWebScaffold, seedSession, watchConsole, webSnapshotMode } from '../../apps/web/tests/scaffold.ts'
 import { newEnglishPage } from '../../apps/web/tests/support.ts'
 import { ciTimeBudget, PERFORMANCE_BUDGET_HEADROOM } from '../support/calibration.ts'
+import { recordTimings, type BenchmarkCase } from '../support/scaling-report.ts'
 import { HISTORY_TURNS, SESSION_ID, FIRST, DONE, DELTAS, PACE_MS, syntheticHistory, syntheticReply } from './synthetic-history.ts'
 
 const SAMPLES = 3
@@ -20,6 +21,15 @@ const OPEN_BUDGET_MS = Math.ceil(EXPECTED_OPEN_CI_MS * PERFORMANCE_BUDGET_HEADRO
 const PAGE_BUDGET_MS = Math.ceil(EXPECTED_PAGE_CI_MS * PERFORMANCE_BUDGET_HEADROOM)
 const TRAJECTORY_BUDGET_MS = Math.ceil(EXPECTED_TRAJECTORY_CI_MS * PERFORMANCE_BUDGET_HEADROOM)
 const REPLAY_DURATION_MS = (DELTAS + 4) * PACE_MS
+/** Endpoints without paced replay waits, so CPU scaling applies to their whole duration. */
+const SCALED_ENDPOINTS = ['open', 'page', 'trajectory', 'streamTask'] as const
+/** Estimated storage wait: the Host reads the seeded Session log, which the page cache usually holds. */
+const IO_SHARE = 0.05
+const CASE: BenchmarkCase = {
+  id: 'long-session-browser',
+  measures: 'Chromium on the built Web GUI: opening a 240-turn Session, the slowest older page, first Trajectory view, and main-thread task time while a reply streams.',
+  affects: 'Everyday Web GUI use with a long Session.',
+}
 
 async function painted(page: Page): Promise<void> {
   // Two rAF callbacks include a rendering opportunity, not a GPU presentation timestamp.
@@ -439,5 +449,6 @@ it('opens, pages, navigates and streams into a 240-turn browser history', async 
     open: OPEN_BUDGET_MS, page: PAGE_BUDGET_MS, trajectory: TRAJECTORY_BUDGET_MS,
   }
   console.log(JSON.stringify({ benchmark: 'long-session-browser/median', turns: HISTORY_TURNS, deltas: DELTAS, paceMs: PACE_MS, samples, aggregate, referenceMs: REFERENCE, expectedOpenCiMs: EXPECTED_OPEN_CI_MS, expectedPageCiMs: EXPECTED_PAGE_CI_MS, expectedTrajectoryCiMs: EXPECTED_TRAJECTORY_CI_MS, budgets }))
+  recordTimings(CASE, Object.fromEntries(SCALED_ENDPOINTS.map(key => [key, { ms: aggregate[key]!, ioShare: IO_SHARE }])), budgets)
   for (const [key, value] of Object.entries(aggregate)) expectEndpointWithinBudget(value, budgets[key]!)
 })

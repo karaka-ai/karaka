@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Verify application-issued browser credentials with public keys while keeping signing keys in the application backend. Require an explicit application, issuer, audience, and lifetime. Successful verification returns the signed tenant and user plus the expiry time. The transport owns connection expiry and request authorization.
+Verify application-issued browser credentials with public keys while keeping signing keys in the application backend. Require an explicit application, issuer, audience, and lifetime. Successful verification returns the signed tenant, user, chat ID and expiry time. The transport owns connection expiry and request authorization.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Verify application-issued browser credentials with public keys while keeping sig
 
 Mount `@karaka-ai/browser-auth` in `cordis.yml`. Supply nonempty `applicationId`, `issuer`, and `audience`, a positive `maxTokenAgeSeconds`, and at least one `keys` entry containing `id`, `algorithm`, and SPKI PEM `publicKey`. Supported algorithms are `ES256`, `RS256`, and `EdDSA`. Duplicate key IDs or invalid public keys prevent mounting.
 
-JWTs must contain `exp`, `iat`, `applicationId`, `tenantId`, and `userId`. Verification rejects invalid signatures, unknown key IDs, mismatched claims, expired tokens, and issued lifetimes exceeding the configured maximum. Validation failures return `undefined`; unrelated runtime errors propagate.
+JWTs must contain `exp`, `iat`, `applicationId`, `tenantId`, `userId`, and a nonempty string `chatId`. Verification rejects invalid signatures, unknown key IDs, mismatched claims, missing or invalid chat IDs, expired tokens, and issued lifetimes exceeding the configured maximum. Validation failures return `undefined`; unrelated runtime errors propagate.
 
 
 -----
@@ -38,7 +38,7 @@ JWTs must contain `exp`, `iat`, `applicationId`, `tenantId`, and `userId`. Verif
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The [verifier](src/index.ts) imports configured public keys before providing `karakaBrowserAuth`. Each JWT selects one key by its protected `kid`, and that key must match the protected algorithm. Returned expiration timestamps use milliseconds since the Unix epoch.
+The [verifier](src/index.ts) imports configured public keys before providing `karakaBrowserAuth`. Each JWT selects one key by its protected `kid`, and that key must match the protected algorithm. The result preserves the signed chat ID as a branded `SessionId`. Returned expiration timestamps use milliseconds since the Unix epoch.
 
 No invariant companion is published because JWT verification has no mutable ownership registry or independently derived authentication state to compare.
 
@@ -65,7 +65,7 @@ No invariant companion is published because JWT verification has no mutable owne
 
 #### What the model sees
 
-`karakaBrowserAuth` adds no model context or tools; the transport consumes its verified owner.
+`karakaBrowserAuth` adds no model context or tools; the transport consumes its verified owner and chat ID.
 
 #### Token effect
 
@@ -82,7 +82,7 @@ JWT verification does not change the model request prefix or KV-cache reuse.
 Deployments must account for these constraints.
 
 - Verification keys are configured at mount time; this service does not fetch JWKS or manage signing keys.
-- The transport must enforce `expiresAt` after authentication; this service does not own browser connections or implement the DSH Connection wire protocol.
+- The transport must restrict requests to the verified `chatId` and enforce `expiresAt` after authentication; this service does not own browser connections or implement the DSH Connection wire protocol.
 
 <a id="dev-note"></a>
 ### Dev Note

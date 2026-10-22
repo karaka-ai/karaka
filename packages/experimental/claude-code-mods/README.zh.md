@@ -148,7 +148,7 @@ Blast Radius 的 DSH 包装使用当前运行的可执行文件提供 Node 计�
 - [Claude Code 模组参考](https://code.claude.com/docs/en/plugins/mods/reference) — 本桥接镜像的事件、方法与限制。
 - [Web 横幅](../client-ui-claude-code-mods/README.zh.md) — 在输入停靠区绘制 `ui.render` 树的 Client 包。
 - [实验性包](../README.zh.md) — 发布策略与依赖隔离。
-- [Hooks 组](../../hooks/README.zh.md) — 设置钩子桥接；插件 `hooks.json` 中的设置钩子需要 `dsh-hooks-claude-code`。
+- [Claude Code 钩子桥接](../hooks-claude-code/README.zh.md) — 设置钩子桥接；插件 `hooks.json` 中的设置钩子需要 `dsh-hooks-claude-code`。
 - [工具执行流水线](../../../docs/tool-execution-pipeline.zh.md) — `tool.call` 所包裹的瀑布流。
 - [人类命令](../../interaction/commands/README.zh.md) — `$.command.register` 落到的注册表。
 

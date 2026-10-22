@@ -27,7 +27,7 @@ Each package owns one part of application access or deployment.
 | Package | Role |
 |---|---|
 | [`agent`](agent/README.md) | Compose and launch the Karaka application profile |
-| [`identity`](identity/README.md) | Keep durable conversation ownership separate from DSH Session logs |
+| [`identity`](identity/README.md) | Track verified application ownership in memory without changing DSH Session logs |
 | [`server-auth`](server-auth/README.md) | Authenticate server requests and resolve application credentials |
 | [`browser-auth`](browser-auth/README.md) | Verify browser credentials against configured issuers and applications |
 | [`transport-http`](transport-http/README.md) | Serve owner-filtered conversation operations to server and browser clients |

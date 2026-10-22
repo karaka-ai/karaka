@@ -79,7 +79,7 @@ interface HarnessOptions {
   /** Config per mod plugin, by name: the `options` its `register` receives. */
   readonly modConfig?: Record<string, Record<string, string | number | boolean | string[]>>
   readonly services?: (ctx: Context, workspace: string) => Promise<void>
-  readonly tools?: { mode?: 'native' | 'ptc' | 'both' }
+  readonly tools?: { mode?: 'native' | 'ptc' }
 }
 
 interface Harness {

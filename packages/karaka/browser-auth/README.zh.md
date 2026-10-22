@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用公钥验证应用签发的浏览器凭据，签名私钥保留在应用后端。必须明确指定应用、签发者、受众与有效期。验证成功后返回签名中的租户、用户及到期时间。传输层负责连接到期与请求授权。
+使用公钥验证应用签发的浏览器凭据，签名私钥保留在应用后端。必须明确指定应用、签发者、受众与有效期。验证成功后返回签名中的租户、用户、聊天 ID 及到期时间。传输层负责连接到期与请求授权。
 
 ## 目录
 
@@ -27,7 +27,7 @@ kind: "package-reference"
 
 在 `cordis.yml` 中挂载 `@karaka-ai/browser-auth`。提供非空 `applicationId`、`issuer` 和 `audience`、正数 `maxTokenAgeSeconds`，以及至少一个包含 `id`、`algorithm` 和 SPKI PEM `publicKey` 的 `keys` 项。支持 `ES256`、`RS256` 和 `EdDSA` 算法。重复密钥 ID 或无效公钥会阻止挂载。
 
-JWT 必须包含 `exp`、`iat`、`applicationId`、`tenantId` 和 `userId`。验证会拒绝无效签名、未知密钥 ID、不匹配的声明、已过期令牌，以及超过配置上限的签发有效期。验证失败返回 `undefined`；其他运行时错误向上传播。
+JWT 必须包含 `exp`、`iat`、`applicationId`、`tenantId`、`userId`，以及非空字符串 `chatId`。验证会拒绝无效签名、未知密钥 ID、不匹配的声明、缺失或无效的聊天 ID、已过期令牌，以及超过配置上限的签发有效期。验证失败返回 `undefined`；其他运行时错误向上传播。
 
 
 -----
@@ -38,7 +38,7 @@ JWT 必须包含 `exp`、`iat`、`applicationId`、`tenantId` 和 `userId`。验
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-[验证器](src/index.ts)在提供 `karakaBrowserAuth` 之前导入配置的公钥。每个 JWT 通过受保护的 `kid` 选择密钥，该密钥必须匹配受保护的算法。返回的到期时间戳以 Unix 纪元起的毫秒数表示。
+[验证器](src/index.ts)在提供 `karakaBrowserAuth` 之前导入配置的公钥。每个 JWT 通过受保护的 `kid` 选择密钥，该密钥必须匹配受保护的算法。结果将签名中的聊天 ID 保留为品牌类型 `SessionId`。返回的到期时间戳以 Unix 纪元起的毫秒数表示。
 
 不发布不变量伴随模块，因为 JWT 验证没有可变的所有权注册表或独立派生的身份验证状态可供比较。
 
@@ -65,7 +65,7 @@ JWT 必须包含 `exp`、`iat`、`applicationId`、`tenantId` 和 `userId`。验
 
 #### 模型看到的内容
 
-`karakaBrowserAuth` 不增加模型上下文或工具；传输层使用其验证后的所有者。
+`karakaBrowserAuth` 不增加模型上下文或工具；传输层使用其验证后的所有者和聊天 ID。
 
 #### Token 影响
 
@@ -82,7 +82,7 @@ JWT 验证不改变模型请求前缀或 KV 缓存复用。
 部署时须考虑以下限制。
 
 - 验证密钥在挂载时配置；此服务不获取 JWKS，也不管理签名密钥。
-- 传输层必须在身份验证后执行 `expiresAt` 限制；此服务不管理浏览器连接，也不实现 DSH Connection 线协议。
+- 传输层必须将请求限制在验证后的 `chatId` 内，并在身份验证后执行 `expiresAt` 限制；此服务不管理浏览器连接，也不实现 DSH Connection 线协议。
 
 <a id="dev-note"></a>
 ### 开发备注

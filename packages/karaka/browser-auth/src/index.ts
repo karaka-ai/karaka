@@ -2,16 +2,19 @@
 
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { importSPKI, jwtVerify, errors } from 'jose'
 import { ApplicationId, TenantId, UserId } from '@karaka-ai/identity'
 import type { ApplicationOwner } from '@karaka-ai/identity'
 
-/** Verified application user and the instant when the transport must end access. */
+/** Verified application user, authorized chat, and credential expiry. */
 export interface BrowserCaller {
   /** Credential category accepted by application transports. */
   readonly kind: 'application'
   /** Signed application, tenant, and user identity. */
   readonly owner: ApplicationOwner
+  /** Signed chat authorized by the application. */
+  readonly chatId: SessionId
   /** JWT expiry in milliseconds since the Unix epoch. */
   readonly expiresAt: number
 }
@@ -77,9 +80,9 @@ export class BrowserAuthentication extends Service {
   }
 
   /**
-   * Verify signature, issuer, audience, owner claims, age, and issued lifetime.
+   * Verify signature, issuer, audience, owner and chat claims, age, and issued lifetime.
    * @param credential - Complete compact JWT supplied by the browser.
-   * @returns The signed owner and expiry, or undefined for invalid credentials.
+   * @returns The signed owner, chat and expiry, or undefined for invalid credentials.
    * @throws Errors unrelated to JWT validation.
    */
   async authenticate(credential: string): Promise<BrowserCaller | undefined> {
@@ -93,14 +96,15 @@ export class BrowserAuthentication extends Service {
         issuer: config.issuer,
         audience: config.audience,
         algorithms: [...new Set([...this.keys.values()].map(entry => entry.algorithm))],
-        requiredClaims: ['exp', 'iat', 'applicationId', 'tenantId', 'userId'],
+        requiredClaims: ['exp', 'iat', 'applicationId', 'tenantId', 'userId', 'chatId'],
         maxTokenAge: config.maxTokenAgeSeconds,
       })
-      const { applicationId, tenantId, userId, exp, iat } = payload
+      const { applicationId, tenantId, userId, chatId, exp, iat } = payload
       if (applicationId !== config.applicationId || typeof tenantId !== 'string' || tenantId.length === 0
-        || typeof userId !== 'string' || userId.length === 0 || typeof exp !== 'number' || typeof iat !== 'number'
+        || typeof userId !== 'string' || userId.length === 0 || typeof chatId !== 'string' || chatId.length === 0
+        || typeof exp !== 'number' || typeof iat !== 'number'
         || !Number.isFinite(exp) || !Number.isFinite(iat) || exp <= iat || exp - iat > config.maxTokenAgeSeconds) return undefined
-      return { kind: 'application', owner: { applicationId: ApplicationId(applicationId), tenantId: TenantId(tenantId), userId: UserId(userId) }, expiresAt: exp * 1000 }
+      return { kind: 'application', owner: { applicationId: ApplicationId(applicationId), tenantId: TenantId(tenantId), userId: UserId(userId) }, chatId: SessionId(chatId), expiresAt: exp * 1000 }
     } catch (error) {
       if (error instanceof errors.JOSEError) return undefined
       throw error

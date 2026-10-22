@@ -1,3 +1,5 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
+import { startExternalActivation } from '../../subagent/tests/external-activation-helpers.ts'
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
@@ -107,6 +109,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)(
       contexts.push(ctx)
       await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
       const harness = await mountAgentLoopTestHarness(ctx)
+      await mountWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       const handles: SubprocessHandle[] = []
@@ -128,7 +131,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)(
 
       const nonce = `DSH_CLAUDE_DEEPSEEK_${randomUUID()}`
       const parent = await harness.create(SessionId('deepseek-e2e-parent'), {}, { cwd: workspace })
-      const run = await ctx.subagents.start('claude-code', {
+      const run = await startExternalActivation(ctx, 'claude-code', {
         prompt: [{
           type: 'text',
           text: `Reply with exactly ${nonce} and nothing else. Do not use tools.`,

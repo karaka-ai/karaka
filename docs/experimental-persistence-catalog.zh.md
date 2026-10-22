@@ -11,4 +11,7 @@
 
 共享 Session 事件声明与解析后的 schema 见[会话持久化事件目录](persistence-catalog.zh.md)。
 
-当前没有生产包声明插件记录。
+| 记录 | 所属包 | 用途 | 载荷与源码 |
+|---|---|---|---|
+| `plugin:translator/request` | `@deepseek-ai/dsh-experimental-translator` | Provider-independent translation input, retained before dispatch. | <code>TranslationRequestRecord</code> · [`packages/experimental/translator/src/types.ts`](../packages/experimental/translator/src/types.ts) |
+| `plugin:translator/result` | `@deepseek-ai/dsh-experimental-translator` | Successful translation, retained before it is returned to the consumer. | <code>TranslationResultRecord</code> · [`packages/experimental/translator/src/types.ts`](../packages/experimental/translator/src/types.ts) |

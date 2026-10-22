@@ -4,7 +4,7 @@ import { createServer } from 'node:net'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Browser, Locator, Page } from 'playwright'
+import type { Browser, Locator, Page, Request } from 'playwright'
 import { expect, vi, type MockInstance } from 'vitest'
 
 /** The built page under test; `pnpm run test:web` rebuilds it before running. */
@@ -41,8 +41,14 @@ export const ZH_BROWSER_LOCALE = 'zh-CN'
 /** Same-day anchor for seeded event times and the Asia/Shanghai browser clock. */
 export const WEB_FIXTURE_TIME = Date.parse('2026-01-15T12:00:00+08:00')
 
-/** How often a pinned browser clock advances, in milliseconds. */
-const PINNED_CLOCK_STEP_MS = 250
+/**
+ * Budget for a plugin-manager switch to republish its state after a click: the
+ * click starts a Host profile write, and the store's follow-up `load()` re-reads
+ * its inventory before the switch shows the new value. That chain measured
+ * 0.5-0.8 s on an idle host and 2.0-4.8 s across 32 samples in a 16-worker lane,
+ * so Vitest's 1-second `expect.poll` default expires first.
+ */
+export const PLUGIN_TOGGLE_SETTLE_MS = 10_000
 
 /**
  * Pin the Host clock to the shared fixture day for one scenario suite.
@@ -65,31 +71,36 @@ export function pinHostClock(): MockInstance<typeof Date.now> {
 }
 
 /**
- * Pin a scenario page's clock to the shared fixture day, advancing with real
+ * Pin a scenario page's calendar to the shared fixture day, advancing with real
  * time. Pair it with {@link pinHostClock} for a scenario that stamps its own
  * message times, and with `seedSession`'s `createdAt` for a seeded one.
  *
- * The frozen instant is re-applied from the anchor on an interval rather than
- * left at one value, because product logic reads two `Date.now()` values to
- * decide a minimum display hold or a deadline window; a permanently frozen
- * clock stops supplying elapsed time, so a title that owes its golden settled
- * text keeps rendering its previous one. Both clocks therefore advance at the
- * real rate and stay within one step of each other.
- * @param page - page whose clock is pinned.
- * @returns the disposer that stops re-pinning; call it in teardown.
+ * Only the page's `Date` reads the fixture day; native timers and
+ * `requestAnimationFrame` keep their real scheduling. Playwright's
+ * `page.clock` is not used: its server records clock state with the Vitest
+ * worker's `Date.now`, which {@link pinHostClock} replaces, so after a
+ * navigation the page clock replays the gap between the real and fixture days
+ * and hands the resulting negative delay to native `setTimeout`. The browser
+ * truncates that delay to a 32-bit integer, and in about half of the dates the
+ * result is a positive delay of weeks that stops every page timer. The `Date`
+ * override is installed for every later document and on the current one, and
+ * stays until the page closes.
+ * @param page - page whose calendar is pinned.
  */
-export async function pinBrowserClock(page: Page): Promise<() => void> {
-  const startedAt = Date.now()
-  const step = async (): Promise<void> => {
-    try {
-      await page.clock.setFixedTime(WEB_FIXTURE_TIME + (Date.now() - startedAt))
-    } catch {
-      // The page closed under the interval; teardown owns the last word.
-    }
+export async function pinBrowserClock(page: Page): Promise<void> {
+  // The worker's `new Date()` keeps the real clock even when `Date.now` is pinned.
+  const offset = WEB_FIXTURE_TIME - new Date().getTime()
+  const install = (offset: number): void => {
+    const NativeDate = Date
+    const now = (): number => NativeDate.now() + offset
+    globalThis.Date = new Proxy(NativeDate, {
+      construct: (target, args, newTarget): Date => Reflect.construct(target, args.length === 0 ? [now()] : args, newTarget) as Date,
+      apply: () => new NativeDate(now()).toString(),
+      get: (target, property, receiver): unknown => property === 'now' ? now : Reflect.get(target, property, receiver),
+    })
   }
-  await step()
-  const timer = setInterval(() => { void step() }, PINNED_CLOCK_STEP_MS)
-  return () => { clearInterval(timer) }
+  await page.addInitScript(install, offset)
+  await page.evaluate(install, offset)
 }
 
 /**
@@ -269,6 +280,51 @@ export async function writeComposerDraft(
   else await page.keyboard.type(text)
 }
 
+/**
+ * Click a bundle switch and await its profile write and subsequent inventory reads.
+ * @param page - page containing the plugin manager.
+ * @param toggle - bundle switch being changed.
+ * @param name - exact bundle package name.
+ * @param enabled - requested bundle selection.
+ */
+export async function clickPluginBundleSwitch(page: Page, toggle: Locator, name: string, enabled: boolean): Promise<void> {
+  let writeReceived = false
+  const reads = new Set<Request>()
+  const inventoryPaths = ['/api/pluginManager/listBundles', '/api/pluginManager/listPlugins']
+  const trackRead = (request: Request): void => {
+    if (writeReceived && request.method() === 'POST' && inventoryPaths.includes(new URL(request.url()).pathname)) reads.add(request)
+  }
+  page.on('request', trackRead)
+  try {
+    const written = page.waitForResponse((response) => {
+      const request = response.request()
+      if (request.method() !== 'POST' || new URL(response.url()).pathname !== '/api/pluginManager/setBundleEnabled') return false
+      const body = request.postDataJSON() as { payload: { args: { name: string; enabled: boolean } } }
+      if (body.payload.args.name !== name || body.payload.args.enabled !== enabled) return false
+      writeReceived = true
+      return true
+    })
+    const bundles = page.waitForResponse(response => reads.has(response.request())
+      && new URL(response.url()).pathname === inventoryPaths[0])
+    const plugins = page.waitForResponse(response => reads.has(response.request())
+      && new URL(response.url()).pathname === inventoryPaths[1])
+    const [writeReply, bundleReply, pluginReply] = await Promise.all([written, bundles, plugins, toggle.click()])
+    for (const response of [writeReply, bundleReply, pluginReply]) {
+      expect(response.ok()).toBe(true)
+      expect(await response.finished()).toBeNull()
+    }
+    expect(await writeReply.json()).toMatchObject({ result: { ok: true, value: { application: 'applied' } } })
+    const bundleResult = await bundleReply.json() as { result: { ok: boolean; value: unknown } }
+    expect(bundleResult).toMatchObject({ result: { ok: true } })
+    expect(bundleResult.result.value).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name, enabled }),
+    ]))
+    expect(await pluginReply.json()).toMatchObject({ result: { ok: true } })
+  } finally {
+    page.off('request', trackRead)
+  }
+}
+
 /** Failure evidence goes to the gitignored .artifacts/ (repo convention). */
 export async function saveFailureShot(page: Page, name: string): Promise<void> {
   const dir = fileURLToPath(new URL('../../../.artifacts', import.meta.url))
@@ -318,16 +374,11 @@ export function conversationContextKey(kind: string, id: string): string {
   return `${kind.length}:${kind}${id}`
 }
 
-/** Open Settings through the Web gear or Desktop account menu.
+/** Open Settings through the sidebar account menu.
  * @param page - browser page with the mounted sidebar.
  * @param locale - current UI language.
  */
 export async function openSettings(page: Page, locale: 'en' | 'zh'): Promise<void> {
-  const label = locale === 'zh' ? '设置' : 'Settings'
-  if (await page.evaluate(() => 'dshDesktop' in globalThis)) {
-    await page.getByRole('button', { name: locale === 'zh' ? '账号菜单' : 'Account menu', exact: true }).click()
-    await page.getByRole('menuitem', { name: label, exact: true }).click()
-  } else {
-    await page.getByRole('button', { name: label, exact: true }).click()
-  }
+  await page.getByRole('button', { name: locale === 'zh' ? '账号菜单' : 'Account menu', exact: true }).click()
+  await page.getByRole('menuitem', { name: locale === 'zh' ? '设置' : 'Settings', exact: true }).click()
 }

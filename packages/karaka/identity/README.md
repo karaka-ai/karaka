@@ -1,5 +1,5 @@
 ---
-description: "Durable application ownership, Session lineage authorization, and owner-filtered references for Karaka deployments."
+description: "Process-local application ownership, explicit root restoration, and owner-filtered Session references for Karaka deployments."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Keep application, tenant, and user ownership durable across chat creation and restart. Authorize a chat before resuming its DSH Session, and inherit ownership through trusted parent headers. Filter Session references to the same owner. Back up authority records together with Session logs and their ancestors.
+Authorize chats using application, tenant, and user ownership in memory. Restore existing root ownership only after the application verifies access. Inherit ownership through trusted parent headers and limit Session references to verified owners. Restart discards ownership; applications must verify access again before reopening chats.
 
 ## Table of Contents
 
@@ -25,11 +25,11 @@ Keep application, tenant, and user ownership durable across chat creation and re
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount `@karaka-ai/identity` in `cordis.yml` with DSH storage, Sessions, and Session persistence. Configure an absolute `root` dedicated to this server’s authority records. Preserve this directory alongside the JSONL store in backups.
+Mount `@karaka-ai/identity` in `cordis.yml` with Sessions and Session persistence. The plugin requires no configuration or local ownership files.
 
-Hold `withChatLock` across reservation, Agent creation or authorized resume, and acknowledgement. Bind the actual unpublished Session inside Agent setup; `markReady` flushes Session data before recording readiness. Authorization must precede resume because resume can repair persisted data.
+Hold `withChatLock` across reservation, Agent creation or authorized resume, and acknowledgement. Before calling `restore` for an existing root, ingress must verify application authority, chat scope, and allowed preset. Ordinary authorization and owner lookups never adopt unowned Sessions. Bind new Sessions inside Agent setup; `markReady` flushes and verifies persisted headers before acknowledgement. Authorization must precede resume because resume can repair persisted data.
 
-Select `@karaka-ai/identity/session-reference` as the Session reference provider. Application Agents can reference only the same application, tenant, and user; ordinary DSH Agents cannot reference application chats. Candidates are filtered before applying the result limit.
+Select `@karaka-ai/identity/session-reference` as the Session reference provider. Both Sessions must have a resolved owner with the same application, tenant, and user. Unowned Sessions cannot supply or receive references. Candidates are filtered before applying the result limit.
 
 
 -----
@@ -40,11 +40,11 @@ Select `@karaka-ai/identity/session-reference` as the Session reference provider
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The [authority service](src/index.ts) stores reserved, bound, or ready records in the DSH JSON storage domain. [Bindings](src/records.ts) compare immutable Session fields without including the physical format version. Corrupt authority, conflicting bindings, and missing acknowledged data prevent access or startup. A same-owner retry may recreate an unmaterialized attempt, but cannot adopt an existing unowned log.
+The [authority service](src/index.ts) retains reserved, bound, or ready records in memory without enumerating persisted Sessions at startup. [Bindings](src/records.ts) compare immutable Session fields without including the physical format version. Conflicting bindings and missing acknowledged data prevent access. A same-owner retry may recreate an unmaterialized attempt; only explicit verified restoration can adopt an existing root.
 
 Tools derive owners from their executing Session and server-written `parentSession` lineage. Cached observations support synchronous catalog selection; execution resolves authority again. Cycles, missing ancestors, and conflicting owners grant no application access. Ordinary DSH Sessions have no application owner.
 
-No invariant companion is published because the authority service checks durable records against observed Session headers at reservation, binding, authorization, and recovery; no separate diagnostic projection is maintained.
+No invariant companion is published because the authority service checks ownership records against observed Session headers at reservation, binding, authorization, and restoration; no separate diagnostic projection is maintained.
 
 </details>
 
@@ -85,8 +85,8 @@ Authority checks do not alter an existing request prefix; authorized reference c
 
 Deployments must account for these constraints.
 
-- The exclusive writer lock requires native POSIX flock and supports Linux/macOS. Windows authority locking is unsupported; no unlocked fallback is provided. Keep the permanent lock file intact.
-- All processes accessing an authority directory must use this plugin. Preserve the authority file and ancestor logs together; isolated child-log backups cannot reconstruct ownership. Independent child retention and external subagent-provider identity are unsupported.
+- Ownership is process-local. Every process and restart requires verified restoration; independent processes cannot detect conflicting owner assignments.
+- Retain ancestor logs with child Sessions. Child ownership remains unavailable until the application restores its root. Independent child retention and external subagent-provider identity are unsupported.
 - Generic Session query tools retain workspace authorization. Cwd-free application roots have same-session history access; application-wide history search requires an owner-aware consumer.
 
 <a id="dev-note"></a>

@@ -2,7 +2,7 @@
   "name": "@karaka-ai/identity",
   "version": "0.1.2-alpha.2",
   "private": true,
-  "description": "Durable application authority over unchanged DSH sessions",
+  "description": "Process-local application authority over unchanged DSH sessions",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -35,17 +35,10 @@
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-reference": "workspace:*",
-    "@deepseek-ai/dsh-session-persistence": "workspace:*",
-    "@deepseek-ai/dsh-storage": "workspace:*"
+    "@deepseek-ai/dsh-session-persistence": "workspace:*"
   },
   "dependencies": {
-    "@deepseek-ai/cosmokit": "workspace:~",
-    "@deepseek-ai/dsh-brand": "workspace:*",
-    "@deepseek-ai/dsh-storage-domain": "workspace:*",
-    "@deepseek-ai/dsh-storage-json": "workspace:*",
-    "@deepseek-ai/node-addon-system": "workspace:~",
-    "@deepseek-ai/schemastery": "workspace:~",
-    "zod": "^4.4.3"
+    "@deepseek-ai/dsh-brand": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -54,7 +47,6 @@
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-reference": "workspace:*",
     "@deepseek-ai/dsh-session-persistence": "workspace:*",
-    "@deepseek-ai/dsh-session-query": "workspace:*",
-    "@deepseek-ai/dsh-storage": "workspace:*"
+    "@deepseek-ai/dsh-session-query": "workspace:*"
   }
 }

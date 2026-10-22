@@ -21,10 +21,9 @@ describe('NO_START_CAPABILITIES', () => {
   it('advertises nothing and is frozen (shared by every out-of-process backend)', () => {
     expect(NO_START_CAPABILITIES).toEqual({
       agentOptions: false,
+      agentPreset: false,
       outputSchema: false,
       depthLimit: false,
-      toolFilter: false,
-      persona: false,
     })
     expect(Object.isFrozen(NO_START_CAPABILITIES)).toBe(true)
   })
@@ -71,7 +70,6 @@ describe('child cwd resolution', () => {
       rmSync(tmp, { recursive: true, force: true })
     }
   })
-
 
 
 
@@ -158,7 +156,6 @@ describe('subprocessRunHandle', () => {
       requestCancel,
       teardown,
     })
-    expect(run.localAgent).toBeUndefined()
     expect(String(run.id)).toBe('run-1')
     const disposal = run.dispose()
     expect(run.dispose()).toBe(disposal)

@@ -98,9 +98,11 @@ it('enforces browser origins, preflight, credentials, and POST-only methods', as
 
 it('derives browser operation owners from signed claims and refuses caller-supplied owner fields', async () => {
   const state = await fixture(browser)
+  const caller = { kind: 'application' as const, chatId: SessionId('chat'), owner, expiresAt: Date.now() + 60_000 }
+  state.browserAuthenticate.mockResolvedValue(caller)
   expect((await state.request('/browser/applicationAgents', {}, { headers: browserHeaders })).status).toBe(200)
   expect((await state.request('/browser/applicationCreate', { chatId: 'chat', agentId: 'main' }, { headers: browserHeaders })).status).toBe(200)
-  expect(state.create).toHaveBeenCalledWith({ chatId: 'chat', agentId: 'main', owner }, expect.any(AbortSignal))
+  expect(state.create).toHaveBeenCalledWith({ chatId: 'chat', agentId: 'main', owner, browser: caller }, expect.any(AbortSignal))
   expect((await state.request('/browser/applicationCreate', { chatId: 'chat', agentId: 'main', userId: 'foreign' }, { headers: browserHeaders })).status).toBe(400)
   expect((await state.request('/browser/applicationPrompt', { chatId: 'chat', requestId: 'r', content: [{ type: 'text', text: 'hi' }] }, { headers: browserHeaders })).status).toBe(200)
   expect((await state.request('/browser/applicationHistory', { chatId: 'chat' }, { headers: browserHeaders })).status).toBe(200)
@@ -216,12 +218,14 @@ it('projects current Session history and preserves cursor filtering for snapshot
 
 it('admits named and unnamed browser images and optional backend model effort', async () => {
   const state = await fixture({ ...browser, maxBodyBytes: 4096, browserEvents: [] })
+  const caller = { kind: 'application' as const, chatId: SessionId('chat'), owner, expiresAt: Date.now() + 60_000 }
+  state.browserAuthenticate.mockResolvedValue(caller)
   const images = [
     { type: 'image', mediaType: 'image/png', data: 'eA==' },
     { type: 'image', mediaType: 'image/png', data: 'eA==', name: 'named.png' },
   ]
   expect((await state.request('/browser/applicationPrompt', { chatId: 'chat', requestId: 'images', content: images }, { headers: browserHeaders })).status).toBe(200)
-  expect(state.prompt).toHaveBeenCalledWith({ chatId: 'chat', requestId: 'images', content: images, owner }, expect.any(AbortSignal))
+  expect(state.prompt).toHaveBeenCalledWith({ chatId: 'chat', requestId: 'images', content: images, owner, browser: caller }, expect.any(AbortSignal))
   expect((await state.request('/api/chats/chat/messages', { ...identity, requestId: 'images', content: images })).status).toBe(202)
   expect((await state.request('/api/chats/chat/model', { ...identity, provider: 'mock', model: 'chat' })).status).toBe(200)
 })
@@ -242,7 +246,7 @@ it('handles an absent Node request URL without granting an implicit route', asyn
 it('expires an admitted browser operation and closes the response', async () => {
   const state = await fixture(browser)
   const cancelled = Promise.withResolvers<undefined>()
-  state.browserAuthenticate.mockResolvedValueOnce({ kind: 'application', owner, expiresAt: 0 })
+  state.browserAuthenticate.mockResolvedValueOnce({ kind: 'application', owner, chatId: SessionId('chat'), expiresAt: 0 })
   state.listAgents.mockImplementationOnce(async (signal) => {
     if (signal === undefined) throw new Error('browser signal missing')
     await new Promise<never>((_resolve, reject) => {
@@ -274,4 +278,12 @@ it('projects records from repeated snapshots and validates an invalid opening fr
 it('mounts the published backend path when no path override is configured', async () => {
   const state = await fixture({ handleQuestions: false })
   expect((await state.request(`${KARAKA_APPLICATION_API_PATH}/agents`)).status).toBe(200)
+})
+
+it.each([undefined, [], ['']])('requires explicit nonempty browser root presets (%s)', async (browserAgentIds) => {
+  const { ctx } = await applicationFixture(false)
+  const config = { browserPath: browser.browserPath, browserOrigins: browser.browserOrigins,
+    ...(browserAgentIds === undefined ? {} : { browserAgentIds }) }
+  expect(() => { mountBrowserRoutes(ctx, config, () => true) }).toThrow('requires explicit Agent presets')
+  await expect(fixture(config)).rejects.toThrow('requires explicit Agent presets')
 })

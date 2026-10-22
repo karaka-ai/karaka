@@ -14,7 +14,7 @@ describe('workflow program environment', () => {
     await ctx.plugin(SubagentRuntime)
     ctx.subagents.registerProvider({
       name: 'stub',
-      capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      capabilities: { agentOptions: false, agentPreset: false, outputSchema: false, depthLimit: false },
       inheritsParentContext: false,
       start: () => Promise.reject(new Error('environment script must not start a child')),
     })
@@ -29,7 +29,7 @@ describe('workflow program environment', () => {
       const run = ctx.workflowEngine.start({
         script: "return { ...globalThis.constructor.constructor('return process')().env }",
         meta: { name: 'environment', description: 'program environment' },
-        parent: fakeParent(ctx),
+        parent: await fakeParent(ctx),
       })
       try {
         const result = await run.result

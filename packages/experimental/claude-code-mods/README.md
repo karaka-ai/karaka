@@ -148,7 +148,7 @@ A call whose service is not composed rejects with the missing service's package 
 - [Claude Code mods reference](https://code.claude.com/docs/en/plugins/mods/reference) — the events, methods, and limits this bridge mirrors.
 - [The Web band](../client-ui-claude-code-mods/README.md) — the Client package that draws `ui.render` trees in the input dock.
 - [Experimental packages](../README.md) — publication policy and dependency isolation.
-- [Hooks group](../../hooks/README.md) — the settings-hook bridges; a plugin's `hooks.json` settings hooks need `dsh-hooks-claude-code`.
+- [Claude Code hook bridge](../hooks-claude-code/README.md) — the settings-hook bridge; a plugin's `hooks.json` settings hooks need `dsh-hooks-claude-code`.
 - [Tool execution pipeline](../../../docs/tool-execution-pipeline.md) — the waterfalls `tool.call` runs around.
 - [Human commands](../../interaction/commands/README.md) — the registry `$.command.register` lands on.
 

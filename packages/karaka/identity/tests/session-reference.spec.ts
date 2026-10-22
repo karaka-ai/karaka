@@ -41,18 +41,20 @@ it('filters foreign references before applying the configured candidate cap', as
   expect((await resolver.listCandidates(agent(target), 'another', 5)).map(row => row.sessionId)).toEqual([SessionId('another')])
 })
 
-it('keeps ordinary DSH references separate from application chats', async () => {
+it('denies references when either Session has no verified application owner', async () => {
   const { ctx, stored, create, resolver, readSurface } = await references()
   const application = await create()
   const ordinary = ctx.sessions.create(SessionId('ordinary'))
   const other = ctx.sessions.create(SessionId('other-ordinary'))
   stored.set(ordinary.id, ordinary.header)
   stored.set(other.id, other.header)
-  expect((await resolver.listCandidates(agent(ordinary))).map(row => row.sessionId)).toEqual([other.id])
+  expect((await resolver.listCandidates(agent(ordinary))).map(row => row.sessionId)).toEqual([])
   expect((await resolver.listCandidates(agent(application))).map(row => row.sessionId)).toEqual([])
   await expect(resolver.prepare(agent(ordinary), [], [{ sessionId: application.id }])).rejects.toMatchObject({ code: 'forbidden' })
   expect(readSurface).not.toHaveBeenCalled()
-  expect((await resolver.prepare(agent(ordinary), [], [{ sessionId: other.id }])).additionalContext?.source.kind).toBe('session-reference')
+  await expect(resolver.prepare(agent(ordinary), [], [{ sessionId: other.id }])).rejects.toMatchObject({ code: 'forbidden' })
+  await expect(resolver.prepare(agent(application), [], [{ sessionId: other.id }])).rejects.toMatchObject({ code: 'forbidden' })
+  expect(readSurface).not.toHaveBeenCalled()
 })
 
 it('authorizes every target before reading any reference and retains upstream context rendering', async () => {

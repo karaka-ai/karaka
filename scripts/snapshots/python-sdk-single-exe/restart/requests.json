@@ -23,7 +23,6 @@
       "job_kill",
       "job_list",
       "job_output",
-      "run_code",
       "subagent",
       "workflow",
       "working_directory"
@@ -53,7 +52,6 @@
       "job_kill",
       "job_list",
       "job_output",
-      "run_code",
       "subagent",
       "workflow",
       "working_directory"

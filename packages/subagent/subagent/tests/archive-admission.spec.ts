@@ -1,3 +1,4 @@
+import { mountWorkingDirectoryFixture } from './working-directory-fixture.ts'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -9,7 +10,6 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SessionActivity } from '@deepseek-ai/dsh-workspace'
 import SubagentRuntime, { SUBAGENT_DESCRIPTOR_VERSION } from '../src/index.ts'
 import { TestSessionQuery } from './test-session-query.ts'
-import { mountWorkingDirectoryFixture } from './working-directory-fixture.ts'
 
 type CancelCall = [AgentCancelCause, CancelOptions | undefined]
 

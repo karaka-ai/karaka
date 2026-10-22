@@ -6,9 +6,9 @@ Karaka 应用通过 DSH 配置档案验证用户身份、保留对话归属并�
 
 ## 归属与凭证
 
-[身份模块](../../packages/karaka/identity/README.zh.md)将每个聊天绑定到应用、租户和用户。调用方恢复聊天前，持久化归属记录必须与会话头一致。[服务器认证](../../packages/karaka/server-auth/README.zh.md)通过已配置的凭证提供方解析服务器凭证；[浏览器认证](../../packages/karaka/browser-auth/README.zh.md)在传输层构造归属身份前验证签名用户凭证。
+[身份模块](../../packages/karaka/identity/README.zh.md)在内存中跟踪已验证的应用、租户和用户归属。应用保留归属权限，并在重启后重新授权冷聊天；运行时在恢复归属前检查不可变的会话头。[服务器认证](../../packages/karaka/server-auth/README.zh.md)通过已配置的凭证提供方解析服务器凭证；[浏览器认证](../../packages/karaka/browser-auth/README.zh.md)在传输层接受归属身份前验证签名聊天凭证。
 
-可信归属类型 [`ApplicationOwner`](../../packages/karaka/identity/src/owner.ts)组合带品牌的 `ApplicationId`、`TenantId` 和 `UserId` 值。[`AuthenticatedApplication`](../../packages/karaka/server-auth/src/index.ts)标识凭证匹配的服务器。[`BrowserCaller`](../../packages/karaka/browser-auth/src/index.ts)包含签名用户归属和以毫秒表示的令牌到期时间；传输层在到期时终止访问。
+可信归属类型 [`ApplicationOwner`](../../packages/karaka/identity/src/owner.ts)组合带品牌的 `ApplicationId`、`TenantId` 和 `UserId` 值。[`AuthenticatedApplication`](../../packages/karaka/server-auth/src/index.ts)标识凭证匹配的服务器。[`BrowserCaller`](../../packages/karaka/browser-auth/src/index.ts)包含签名用户归属、必需的 `chatId` 和以毫秒表示的令牌到期时间；传输层在到期时终止访问。
 
 ## 聊天与工具
 
@@ -30,9 +30,9 @@ Verifies signed browser credentials without storing tokens or signing keys.
 
 ```ts cordis-catalog
 /**
- * Verify signature, issuer, audience, owner claims, age, and issued lifetime.
+ * Verify signature, issuer, audience, owner and chat claims, age, and issued lifetime.
  * @param credential - Complete compact JWT supplied by the browser.
- * @returns The signed owner and expiry, or undefined for invalid credentials.
+ * @returns The signed owner, chat and expiry, or undefined for invalid credentials.
  * @throws Errors unrelated to JWT validation.
  */
 async authenticate(credential: string): Promise<BrowserCaller | undefined>
@@ -44,15 +44,9 @@ Source: [`packages/karaka/browser-auth/src/index.ts`](../../packages/karaka/brow
 
 ### `ctx.karakaIdentity` — `KarakaIdentity`
 
-A single process owns authority records for this root. Application ingress serializes complete create/admit operations through withChatLock. No ownership is inferred from request-supplied lineage or written into a DSH Session.
+Authenticated ingress restores root ownership explicitly. Application ingress serializes complete create/admit operations through withChatLock. Read-only owner lookup never adopts a Session or infers ownership from request metadata.
 
 ```ts cordis-catalog
-/**
- * Validate materialized roots before routes and background tools become available.
- * @returns Resolution after existing original headers have warmed lineage lookup.
- */
-async initialize(): Promise<void>
-
 /**
  * Serialize one complete controller operation, including original engine calls.
  * @param id - Chat being changed.
@@ -73,17 +67,27 @@ async reserve(id: SessionId, owner: ApplicationOwner): Promise<'create' | 'exist
  * Bind the actual unpublished Session during the original Agent setup callback.
  * @param session - Original factory-created Session.
  * @param owner - Reserved owner.
- * @returns Resolution only after the immutable source binding is durable.
+ * @returns Resolution only after the immutable source binding is recorded in memory.
  */
 async bind(session: Session, owner: ApplicationOwner): Promise<void>
 
 /**
- * Complete creation only after original JSONL flush and durable authority agree.
+ * Complete creation only after Session flush and persisted source checks succeed.
  * @param session - Published original Session.
  * @param owner - Authenticated owner.
  * @returns Resolution after the application can acknowledge this chat.
  */
 async markReady(session: Session, owner: ApplicationOwner): Promise<void>
+
+/**
+ * Restore ownership of a persisted root after ingress verifies application access.
+ * Call inside withChatLock, after verifying chat scope, preset, and root access.
+ * Missing data, child Sessions, conflicting owners, and changed sources are denied.
+ * @param id - Persisted root authorized by the application.
+ * @param owner - Owner established by verified application authority.
+ * @returns The persisted immutable header, without resuming or repairing data.
+ */
+async restore(id: SessionId, owner: ApplicationOwner): Promise<SessionHeader>
 
 /**
  * Authorize using read-only observation before calling original agents.resume.
@@ -104,7 +108,7 @@ async authorizeSession(session: Session, owner: ApplicationOwner): Promise<void>
 /**
  * Resolve trusted identity for tool execution, including background child Agents.
  * @param session - Executing original Session, never request-supplied metadata.
- * @returns Its root authority owner, or undefined for an ordinary DSH Session.
+ * @returns Its root authority owner, or undefined until root ownership is established.
  */
 async ownerOf(session: Session): Promise<ApplicationOwner | undefined>
 
@@ -124,8 +128,8 @@ async ownerOfId(id: SessionId): Promise<ApplicationOwner | undefined>
 ownerOfCached(session: Session): ApplicationOwner | undefined
 
 /**
- * Reject new authority calls, await admitted operations settling, and close storage.
- * @returns Resolution after admitted operations settle and authority storage closes.
+ * Reject new authority calls, await admitted operations, and clear identity caches.
+ * @returns Resolution after admitted operations settle and identity caches are cleared.
  */
 async close(): Promise<void>
 ```

@@ -8,6 +8,8 @@
  *
  * Script vocabulary (all optional):
  * - `FAKE_TEXT`: assistant text for each turn (default `hello from fake runtime`).
+ * - `FAKE_SESSION_EVENT`: one JSON event forwarded after the assistant with owned seq/time.
+ * - `FAKE_SESSION_EVENTS`: JSON event array forwarded in order after the assistant with owned seq/time.
  * - `FAKE_STATUS`: the `session.finished` status (default `ok`).
  * - `FAKE_REASON_KIND`: the `session.finished` reason kind (default `completed`; `none` omits the reason).
  * - `FAKE_ABORT_REASON_KIND`: nested cause for an `aborted` turn (default `user`).
@@ -166,6 +168,22 @@ function runTurn(sessionId: string): void {
     },
     stream: env.FAKE_EMPTY_MESSAGE !== undefined ? usageOnlyStream() : textStream(text),
   })
+  if (env.FAKE_SESSION_EVENT !== undefined) {
+    const scripted: unknown = JSON.parse(env.FAKE_SESSION_EVENT)
+    if (scripted === null || typeof scripted !== 'object' || Array.isArray(scripted)) {
+      throw new Error('FAKE_SESSION_EVENT must be a JSON event object')
+    }
+    notify('session.event', { sessionId, event: { ...scripted, seq: seq++, time: 0 } })
+  }
+  if (env.FAKE_SESSION_EVENTS !== undefined) {
+    const scripted: unknown = JSON.parse(env.FAKE_SESSION_EVENTS)
+    if (!Array.isArray(scripted)) throw new Error('FAKE_SESSION_EVENTS must be a JSON event array')
+    const events: unknown[] = scripted
+    for (const value of events) {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('FAKE_SESSION_EVENTS contains a non-object event')
+      notify('session.event', { sessionId, event: { ...value, seq: seq++, time: 0 } })
+    }
+  }
   const reasonKind = env.FAKE_REASON_KIND ?? 'completed'
   if (reasonKind !== 'none') {
     if (env.FAKE_MALFORMED_REASON === 'no-data') {
@@ -224,6 +242,7 @@ function sessionIdOf(params: Record<string, unknown> | undefined): string {
 }
 
 const reader = createInterface({ input: process.stdin })
+const settledSessions = new Set<string>()
 reader.on('line', (line) => {
   if (line.trim().length === 0) return
   const frame = JSON.parse(line) as { id?: string | number; method?: string; params?: Record<string, unknown> }
@@ -263,6 +282,13 @@ reader.on('line', (line) => {
         return
       }
       respond({ serverInfo: { name: 'deepseek-harness-sdk-runtime', version: '0.0.1' } })
+      return
+    case 'session/resume':
+      if (env.FAKE_RESUME_ERROR !== undefined) {
+        write({ jsonrpc: '2.0', id: frame.id, error: { code: -32603, message: 'session not found' } })
+      } else {
+        respond({})
+      }
       return
     case 'session/working-directory/get':
     case 'session/working-directory/set': {
@@ -327,9 +353,13 @@ reader.on('line', (line) => {
       }
       runTurn(sessionId)
       notify('session.status', { sessionId, status: 'idle' })
+      settledSessions.add(sessionId)
       respond({ messageId })
       return
     }
+    case 'session/wait':
+      if (settledSessions.has(sessionIdOf(frame.params))) respond({})
+      return
     case 'shutdown':
       respond({})
       // An EOF-ignoring fake also refuses the protocol exit, so the client's

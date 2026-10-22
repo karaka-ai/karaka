@@ -42,7 +42,7 @@ const text = (value: string): ContentBlock => ({ type: 'text', text: value })
 const textOf = (content: readonly ContentBlock[]): string => content.filter(block => block.type === 'text').map(block => block.text).join('')
 const imagesOf = (content: readonly ContentBlock[]): ImageBlock[] => content.filter((block): block is ImageBlock => block.type === 'image')
 
-async function setup() {
+async function setup(mode: 'native' | 'ptc' = 'native') {
   const root = await mkdtemp(join(tmpdir(), 'dsh-image-recovery-'))
   const ctx = new Context()
   provideWorkingDirectoryFixture(ctx, root)
@@ -50,7 +50,7 @@ async function setup() {
     try { await ctx.fiber.dispose() } finally { await rm(root, { recursive: true, force: true }) }
   })
   await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime, { mode: 'both' })
+  await ctx.plugin(ToolRuntime, { mode })
   await ctx.plugin(FileSystem, { cwd: root })
   await ctx.plugin(LocalAttachments, { dshHome: join(root, 'home') })
   await ctx.plugin(ToolFs)
@@ -177,7 +177,7 @@ describe('multimodal recovery through real providers', () => {
   })
 
   it.each(['sequential', 'parallel'] as const)('keeps budgets and image identities separate across %s Node PTC calls', async (mode) => {
-    const { ctx, session, execute, cost, requestImages, gates } = await setup()
+    const { ctx, session, execute, cost, requestImages, gates } = await setup('ptc')
     await ctx.plugin(Subprocess)
     await ctx.plugin(Sandbox, {})
     await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access' })

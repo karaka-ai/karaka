@@ -50,15 +50,14 @@ function normalizeSubagentDiagnostic(result: SubagentResult): SubagentResult {
 /**
  * The capability advertisement of an out-of-process backend: NONE. A child in
  * another process cannot honor parent-enforced start features
- * (`agentOptions`/`outputSchema`/`maxDepth`/`toolFilter`/`persona`), so the service rejects a
+ * (`agentOptions`/`agentPreset`/`outputSchema`/`maxDepth`), so the service rejects a
  * request needing any of them before `start` runs — never accepted-then-ignored.
  */
 export const NO_START_CAPABILITIES: SubagentCapabilities = Object.freeze({
   agentOptions: false,
+  agentPreset: false,
   outputSchema: false,
   depthLimit: false,
-  toolFilter: false,
-  persona: false,
 })
 
 /**
@@ -200,13 +199,12 @@ export interface SubprocessRunHandleParts {
  * local cancellation — there is no assumption the child cooperates — and then
  * awaits the backend's teardown to actual exit.
  * @param parts - the run identity, result, cancellation wiring, and teardown.
- * @returns the seam run handle (`localAgent` is `undefined` for remote runs).
+ * @returns the external run handle.
  */
 export function subprocessRunHandle(parts: SubprocessRunHandleParts): SubagentRun {
   let disposal: Promise<void> | undefined
   return {
     id: parts.id,
-    localAgent: undefined,
     result: parts.result,
     dispose(): Promise<void> {
       if (disposal !== undefined) return disposal

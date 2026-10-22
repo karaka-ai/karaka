@@ -2,9 +2,11 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { Server, type IncomingMessage } from 'node:http'
+import type { Duplex } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type {} from '@deepseek-ai/dsh-tool-present/types'
 import { deriveReplayScript, parseSessionLog } from '@deepseek-ai/dsh-llm-replay'
 import {
@@ -20,6 +22,62 @@ const MODE = webSnapshotMode()
 const RECORD_PROMPT = '简单画一个 SVG 表示冯诺依曼架构，保存为 von-neumann.svg，并提供独立文件卡片，方便打开。'
 const FILE = 'von-neumann.svg'
 
+/** Observe only this fixture's upgraded sockets; record close owners without changing transport policy. */
+function watchSocketClosures(scaffold: WebScaffold, diagnostics: string[]): () => void {
+  const server: unknown = Reflect.get(scaffold.ctx.webServer, 'server')
+  if (!(server instanceof Server)) throw new Error('SVG socket diagnostics require the scaffold HTTP server')
+  const cleanups = new Set<() => void>()
+  let socketId = 0
+  const upgraded = (request: IncomingMessage, socket: Duplex): void => {
+    const id = ++socketId
+    const path = new URL(request.url ?? '/', scaffold.baseUrl).pathname
+    let lastInbound = Date.now()
+    const record = (event: string, detail: object = {}): void => {
+      if (diagnostics.length >= 64) return
+      diagnostics.push(JSON.stringify({ side: 'host', id, path, event, sinceInboundMs: Date.now() - lastInbound, ...detail }))
+    }
+    const received = (): void => { lastInbound = Date.now() }
+    const failed = (error: Error): void => { record('error', { message: error.message }) }
+    const destroy = socket.destroy.bind(socket)
+    const end = socket.end.bind(socket)
+    const write = socket.write.bind(socket)
+    const destroySpy = vi.spyOn(socket, 'destroy').mockImplementation((error) => {
+      record('destroy', { message: error?.message, stack: new Error('socket destroy owner').stack })
+      return destroy(error)
+    })
+    const endSpy = vi.spyOn(socket, 'end').mockImplementation((...args) => {
+      record('end', { stack: new Error('socket end owner').stack })
+      return end(...args)
+    })
+    const writeSpy = vi.spyOn(socket, 'write').mockImplementation((...args) => {
+      const chunk: unknown = args[0]
+      if (Buffer.isBuffer(chunk) && chunk[0] === 0x88) {
+        record('close-frame', { stack: new Error('socket close frame owner').stack })
+      }
+      return write(...args)
+    })
+    const cleanup = (): void => {
+      destroySpy.mockRestore()
+      endSpy.mockRestore()
+      writeSpy.mockRestore()
+      socket.off('data', received)
+      socket.off('error', failed)
+      socket.off('close', closed)
+      cleanups.delete(cleanup)
+    }
+    const closed = (hadError: boolean): void => { record('closed', { hadError }); cleanup() }
+    cleanups.add(cleanup)
+    socket.on('data', received)
+    socket.on('error', failed)
+    socket.once('close', closed)
+  }
+  server.prependListener('upgrade', upgraded)
+  return () => {
+    server.off('upgrade', upgraded)
+    for (const cleanup of [...cleanups]) cleanup()
+  }
+}
+
 describe('web e2e: requested SVG is explicitly delivered', () => {
   let scaffold: WebScaffold
   let browser: Browser
@@ -27,6 +85,7 @@ describe('web e2e: requested SVG is explicitly delivered', () => {
   let tripwire: ReturnType<typeof watchConsole>
   let cwd: string
   let replayRoot: string | undefined
+  let stopSocketDiagnostics: (() => void) | undefined
   const connectionDiagnostics: string[] = []
 
   beforeAll(async () => {
@@ -44,21 +103,37 @@ describe('web e2e: requested SVG is explicitly delivered', () => {
       extraOverlayPath: fileURLToPath(new URL('./present-svg.overlay.yml', import.meta.url)),
       ...(replayOverride === undefined ? {} : { replayFixture: FIXTURE, replayOverride }),
     })
+    stopSocketDiagnostics = watchSocketClosures(scaffold, connectionDiagnostics)
     browser = await chromium.launch()
     page = await browser.newPage({
       viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE, timezoneId: 'Asia/Shanghai',
     })
     tripwire = watchConsole(page)
+    const recordConnection = (message: string): void => {
+      if (connectionDiagnostics.length < 64) connectionDiagnostics.push(message)
+    }
     page.on('console', (message) => {
-      if (message.text().startsWith('[connection]')) connectionDiagnostics.push(message.text())
+      if (/^(?:\[connection\]|SVG_SOCKET_CLOSE)/.test(message.text())) recordConnection(message.text())
+    })
+    await page.addInitScript(() => {
+      const NativeWebSocket = globalThis.WebSocket
+      globalThis.WebSocket = class extends NativeWebSocket {
+        constructor(url: string | URL, protocols?: string | string[]) {
+          super(url, protocols)
+          this.addEventListener('close', (event) => {
+            console.info('SVG_SOCKET_CLOSE', JSON.stringify({ path: new URL(this.url).pathname,
+              code: event.code, reason: event.reason, wasClean: event.wasClean }))
+          })
+        }
+      }
     })
     page.on('websocket', (socket) => {
       const openedAt = Date.now()
       let received = 0
       socket.on('framereceived', () => { received++ })
-      socket.on('socketerror', (error) => { connectionDiagnostics.push(error) })
+      socket.on('socketerror', recordConnection)
       socket.on('close', () => {
-        connectionDiagnostics.push(`WebSocket closed after ${Date.now() - openedAt}ms and ${received} received frames`)
+        recordConnection(`WebSocket closed after ${Date.now() - openedAt}ms and ${received} received frames`)
       })
     })
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
@@ -73,6 +148,7 @@ describe('web e2e: requested SVG is explicitly delivered', () => {
       try {
         await scaffold?.close()
       } finally {
+        stopSocketDiagnostics?.()
         if (replayRoot !== undefined) await rm(replayRoot, { recursive: true, force: true })
       }
     }
