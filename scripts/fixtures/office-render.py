@@ -5,18 +5,90 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+
+
+def _windows_file_owners(path: str) -> dict[str, object]:
+    """Sample read-only Restart Manager ownership once; never stop or restart applications."""
+    import ctypes
+
+    class FileTime(ctypes.Structure):
+        _fields_ = [("low", ctypes.c_uint32), ("high", ctypes.c_uint32)]
+
+    class UniqueProcess(ctypes.Structure):
+        _fields_ = [("pid", ctypes.c_uint32), ("started", FileTime)]
+
+    class ProcessInfo(ctypes.Structure):
+        _fields_ = [("process", UniqueProcess), ("name", ctypes.c_wchar * 256),
+                    ("service", ctypes.c_wchar * 64), ("type", ctypes.c_int32),
+                    ("status", ctypes.c_uint32), ("session", ctypes.c_uint32), ("restartable", ctypes.c_int32)]
+
+    # restartmanager.h defines DWORD/UINT as 32-bit and the session key as 32 WCHARs plus NUL.
+    api = ctypes.WinDLL("rstrtmgr")
+    uint = ctypes.c_uint32
+    pointer = ctypes.POINTER
+    for function, arguments in (
+        (api.RmStartSession, [pointer(uint), uint, ctypes.c_wchar_p]),
+        (api.RmRegisterResources, [uint, uint, pointer(ctypes.c_wchar_p), uint, pointer(UniqueProcess),
+                                   uint, pointer(ctypes.c_wchar_p)]),
+        (api.RmGetList, [uint, pointer(uint), pointer(uint), pointer(ProcessInfo), pointer(uint)]),
+        (api.RmEndSession, [uint]),
+    ):
+        function.argtypes = arguments
+        function.restype = uint
+    session = uint()
+    report: dict[str, object] = {"stage": "start", "status": api.RmStartSession(ctypes.byref(session), 0,
+                                                                             ctypes.create_unicode_buffer(33))}
+    if report["status"] != 0:
+        return report
+    try:
+        files = (ctypes.c_wchar_p * 1)(path)
+        report.update(stage="register", status=api.RmRegisterResources(session, 1, files, 0, None, 0, None))
+        if report["status"] != 0:
+            return report
+        needed, count, reasons = uint(), uint(32), uint()
+        owners = (ProcessInfo * count.value)()
+        status = api.RmGetList(session, ctypes.byref(needed), ctypes.byref(count), owners, ctypes.byref(reasons))
+        report.update(stage="list", status=status, needed=needed.value, reboot_reasons=reasons.value)
+        if status == 0:
+            report["owners"] = [{"pid": entry.process.pid, "name": entry.name, "service": entry.service,
+                                 "started": entry.process.started.low | (entry.process.started.high << 32)}
+                                for entry in owners[:count.value]]
+        return report
+    finally:
+        report["end_status"] = api.RmEndSession(session)
+
+
+def _report_cleanup_failure(error: OSError) -> None:
+    """Recover the first sharing violation; owner sampling occurs after tempfile's fallback attempts."""
+    current: BaseException | None = error
+    sharing: OSError | None = None
+    while current is not None:
+        if isinstance(current, OSError) and getattr(current, "winerror", None) == 32 and current.filename:
+            sharing = current
+        current = current.__cause__ or current.__context__
+    if sharing is None:
+        return
+    report: dict[str, object] = {"path": sharing.filename, "winerror": 32, "sample": "after-cleanup-fallback"}
+    try:
+        report["restart_manager"] = _windows_file_owners(str(sharing.filename))
+    except Exception as diagnostic_error:
+        report["diagnostic_failure"] = f"{type(diagnostic_error).__name__}: {diagnostic_error}"
+    print("office-workspace-cleanup: " + json.dumps(report), file=sys.stderr)
+
 
 @contextmanager
 def workspace(artifacts: Path | None = None, *, prefix: str = "dsh-office-render-") -> Iterator[Path]:
     """Retain only Office inputs, PNG batches, and errors before cleaning the temporary root."""
     if artifacts is not None:
         artifacts.mkdir(parents=True, exist_ok=False)
-    with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
-        root = Path(temporary).resolve()
+    temporary = tempfile.TemporaryDirectory(prefix=prefix)
+    try:
+        root = Path(temporary.name).resolve()
         try:
             yield root
         except Exception as error:
@@ -39,6 +111,14 @@ def workspace(artifacts: Path | None = None, *, prefix: str = "dsh-office-render
                             for file in batch.iterdir():
                                 if file.is_file() and (file.suffix == ".png" or file.name == "manifest.json"):
                                     shutil.copy2(file, destination / file.name)
+    finally:
+        try:
+            temporary.cleanup()
+        except OSError as error:
+            try:
+                _report_cleanup_failure(error)
+            finally:
+                raise error
 
 
 def copy_documents(directory: Path) -> dict[str, Path]:

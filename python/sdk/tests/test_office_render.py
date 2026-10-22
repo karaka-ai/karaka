@@ -124,3 +124,198 @@ def test_cli_can_check_metadata_without_pillow(tmp_path: Path, monkeypatch: pyte
     )
     monkeypatch.setitem(CHECKS, "check_image", lambda path: pytest.fail(f"unexpected pixel check: {path}"))
     CHECKS["render_cli"](["kit"], {"docx": document}, tmp_path, "native", {}, check_content=False)
+
+
+def sharing_error(path: Path) -> PermissionError:
+    error = PermissionError(13, "file is in use", str(path))
+    error.winerror = 32
+    return error
+
+
+@pytest.mark.parametrize("failure", [None, "ordinary", "sharing", "fallback"])
+def test_workspace_reports_only_sharing_failures_and_preserves_error_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failure: str | None,
+) -> None:
+    original = sharing_error(tmp_path / "first.exe") if failure in ("sharing", "fallback") else OSError("cleanup failed")
+    error = original
+    if failure == "fallback":
+        second = sharing_error(tmp_path / "fallback.exe")
+        second.__context__ = original
+        error = NotADirectoryError("tempfile fallback failed")
+        error.__context__ = second
+    cleanups = []
+    observations = []
+
+    class Temporary:
+        name = str(tmp_path)
+
+        def __init__(self, **options: object) -> None:
+            pass
+
+        def cleanup(self) -> None:
+            cleanups.append(True)
+            if failure is not None:
+                raise error
+
+    def owners(path: str) -> dict[str, object]:
+        observations.append(path)
+        return {"status": 0, "owners": [{"pid": 17}]}
+
+    namespace = CHECKS["_report_cleanup_failure"].__globals__
+    with monkeypatch.context() as patch:
+        patch.setattr(CHECKS["tempfile"], "TemporaryDirectory", Temporary)
+        patch.setitem(namespace, "_windows_file_owners", owners)
+        if failure is None:
+            with CHECKS["workspace"]() as root:
+                assert root == tmp_path
+        else:
+            with pytest.raises(OSError) as raised:
+                with CHECKS["workspace"]():
+                    pass
+            assert raised.value is error
+    assert cleanups == [True]
+    output = capsys.readouterr().err
+    if failure in ("sharing", "fallback"):
+        assert observations == [str(tmp_path / "first.exe")]
+        report = CHECKS["json"].loads(output.removeprefix("office-workspace-cleanup: "))
+        assert report == {"path": str(tmp_path / "first.exe"), "winerror": 32,
+                          "sample": "after-cleanup-fallback", "restart_manager": {"status": 0, "owners": [{"pid": 17}]}}
+    else:
+        assert observations == []
+        assert output == ""
+
+
+def test_workspace_diagnostic_failure_does_not_replace_cleanup_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    original = sharing_error(tmp_path / "locked.exe")
+
+    class Temporary:
+        name = str(tmp_path)
+
+        def __init__(self, **options: object) -> None:
+            pass
+
+        def cleanup(self) -> None:
+            raise original
+
+    def unavailable(path: str) -> dict[str, object]:
+        raise OSError("Restart Manager unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(CHECKS["tempfile"], "TemporaryDirectory", Temporary)
+        patch.setitem(CHECKS["_report_cleanup_failure"].__globals__, "_windows_file_owners", unavailable)
+        with pytest.raises(PermissionError) as raised:
+            with CHECKS["workspace"]():
+                pass
+        assert raised.value is original
+    assert "OSError: Restart Manager unavailable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("failure", [None, "start", "register", "list", "more-data", "exception"])
+def test_restart_manager_observation_is_bounded_and_ends_acquired_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None,
+) -> None:
+    import ctypes
+
+    calls = []
+    path = str(tmp_path / "libreoffice-kit.exe")
+
+    def start(session: object, flags: int, key: object) -> int:
+        calls.append("start")
+        assert flags == 0 and len(key) == 33
+        session._obj.value = 17
+        return 5 if failure == "start" else 0
+
+    def register(session: object, count: int, files: object, processes: int,
+                 applications: object, services: int, names: object) -> int:
+        calls.append("register")
+        assert session.value == 17 and count == 1 and files[0] == path
+        assert (processes, applications, services, names) == (0, None, 0, None)
+        if failure == "exception":
+            raise OSError("registration failed")
+        return 5 if failure == "register" else 0
+
+    def get_list(session: object, needed: object, count: object, owners: object, reasons: object) -> int:
+        calls.append("list")
+        assert session.value == 17 and count._obj.value == len(owners) == 32
+        needed._obj.value = 33 if failure == "more-data" else 1
+        count._obj.value = 1
+        owners[0].process.pid = 31
+        owners[0].process.started.low = 7
+        owners[0].process.started.high = 2
+        owners[0].name = "LibreOffice helper"
+        owners[0].service = ""
+        return 234 if failure == "more-data" else 5 if failure == "list" else 0
+
+    def end(session: object) -> int:
+        calls.append("end")
+        assert session.value == 17
+        return 0
+
+    api = SimpleNamespace(RmStartSession=start, RmRegisterResources=register, RmGetList=get_list, RmEndSession=end)
+    monkeypatch.setattr(ctypes, "WinDLL", lambda name: api, raising=False)
+    if failure == "exception":
+        with pytest.raises(OSError, match="registration failed"):
+            CHECKS["_windows_file_owners"](path)
+    else:
+        report = CHECKS["_windows_file_owners"](path)
+        if failure is None:
+            assert report == {"stage": "list", "status": 0, "needed": 1, "reboot_reasons": 0,
+                              "owners": [{"pid": 31, "name": "LibreOffice helper", "service": "", "started": (2 << 32) | 7}],
+                              "end_status": 0}
+        elif failure == "start":
+            assert report == {"stage": "start", "status": 5}
+        else:
+            assert report["status"] == (234 if failure == "more-data" else 5)
+            assert report["end_status"] == 0
+            assert "owners" not in report
+    assert calls == (["start"] if failure == "start" else
+                     ["start", "register", "end"] if failure in ("register", "exception") else
+                     ["start", "register", "list", "end"])
+
+
+def test_workspace_body_sharing_error_does_not_query_cleanup_owners(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    original = sharing_error(tmp_path / "input.docx")
+
+    def unexpected(path: str) -> dict[str, object]:
+        pytest.fail(f"owner lookup outside cleanup: {path}")
+
+    monkeypatch.setitem(CHECKS["_report_cleanup_failure"].__globals__, "_windows_file_owners", unexpected)
+    with pytest.raises(PermissionError) as raised:
+        with CHECKS["workspace"]():
+            raise original
+    assert raised.value is original
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("diagnostic_type", [RuntimeError, OSError])
+def test_workspace_reporter_failure_preserves_cleanup_error_and_diagnostic_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, diagnostic_type: type[Exception],
+) -> None:
+    original = sharing_error(tmp_path / "locked.exe")
+    diagnostic = diagnostic_type("diagnostic stream unavailable")
+
+    class Temporary:
+        name = str(tmp_path)
+
+        def __init__(self, **options: object) -> None:
+            pass
+
+        def cleanup(self) -> None:
+            raise original
+
+    def broken_reporter(error: OSError) -> None:
+        assert error is original
+        raise diagnostic
+
+    with monkeypatch.context() as patch:
+        patch.setattr(CHECKS["tempfile"], "TemporaryDirectory", Temporary)
+        patch.setitem(CHECKS["_report_cleanup_failure"].__globals__, "_report_cleanup_failure", broken_reporter)
+        with pytest.raises(PermissionError) as raised:
+            with CHECKS["workspace"]():
+                pass
+        assert raised.value is original
+        assert raised.value.__context__ is diagnostic
