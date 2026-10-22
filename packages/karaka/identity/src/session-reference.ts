@@ -32,7 +32,7 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
    * @param query - Original substring query.
    * @param limit - Positive result cap.
    * @param signal - Caller cancellation.
-   * @returns Same-owner application candidates or unowned ordinary candidates.
+   * @returns Candidates with the same resolved application owner.
    */
   override async listCandidates(
     agent: Agent,
@@ -86,7 +86,7 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
 }
 
 function canReference(owner: ApplicationOwner | undefined, target: ApplicationOwner | undefined): boolean {
-  return owner === undefined ? target === undefined : target !== undefined && sameOwner(owner, target)
+  return owner !== undefined && target !== undefined && sameOwner(owner, target)
 }
 
 function assertNotCancelled(signal: AbortSignal | undefined): void {

@@ -153,6 +153,7 @@ try {
     KARAKA_PRESET_TOOL_ALLOW: JSON.stringify(['mcp__application__delivery_status']),
     KARAKA_BROWSER_AUTH: JSON.stringify({ applicationId: 'flow-app', issuer: 'karaka-flow', audience: 'karaka-browser', maxTokenAgeSeconds: 600, keys: [{ id: 'flow-key', algorithm: 'ES256', publicKey: await exportSPKI(keyPair.publicKey) }] }),
     KARAKA_BROWSER_ORIGINS: JSON.stringify([browserOrigin]),
+    KARAKA_BROWSER_AGENT_IDS: JSON.stringify(['application']),
   }
   delete env.TSX_TSCONFIG_PATH
   delete env.NODE_OPTIONS
@@ -196,7 +197,7 @@ try {
   evidence.stages.push('model-called-authenticated-application-tool-and-answered')
   await stopServer()
   await startServer()
-  const credential = await new SignJWT({ applicationId: 'flow-app', tenantId: 'tenant-a', userId: 'alice' })
+  const credential = await new SignJWT({ applicationId: 'flow-app', tenantId: 'tenant-a', userId: 'alice', chatId: chat.chatId })
     .setProtectedHeader({ alg: 'ES256', kid: 'flow-key' }).setIssuer('karaka-flow').setAudience('karaka-browser').setIssuedAt().setExpirationTime('5m').sign(keyPair.privateKey)
   browserClient = await createBrowserClient({ endpoint, credential: () => credential })
   const resumedHistory = await browserClient.chats.applicationHistory({ chatId: chat.chatId }, deadline)

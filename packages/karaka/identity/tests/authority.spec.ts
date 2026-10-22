@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { KarakaIdentity, ApplicationId, TenantId, UserId } from '../src/index.ts'
-import { bindingOf } from '../src/records.ts'
 import { fixture, owner } from './helpers.ts'
 
 describe('application authority', () => {
-  it('persists ownership and refuses each foreign owner component', async () => {
-    const { authority, domain, create } = await fixture()
+  it('records ownership and refuses each foreign owner component', async () => {
+    const { authority, create } = await fixture()
     const session = await create()
-    expect(domain.table('chats').get(session.id)).toMatchObject({ state: 'ready', owner })
     expect(await authority.authorize(session.id, owner)).toEqual(session.header)
     for (const claimed of [
       { ...owner, applicationId: ApplicationId('other') },
@@ -16,49 +14,103 @@ describe('application authority', () => {
       { ...owner, userId: UserId('other') },
     ]) {
       await expect(authority.reserve(session.id, claimed)).rejects.toMatchObject({ code: 'forbidden' })
+      await expect(authority.restore(session.id, claimed)).rejects.toMatchObject({ code: 'forbidden' })
       await expect(authority.authorize(session.id, claimed)).rejects.toMatchObject({ code: 'forbidden' })
     }
   })
 
-  it('refuses to claim an existing unowned Session or expose a missing chat', async () => {
-    const { ctx, authority, domain } = await fixture()
-    const session = ctx.sessions.create(SessionId('unowned'))
-    await expect(authority.reserve(session.id, owner)).rejects.toMatchObject({ code: 'forbidden' })
-    await expect(authority.authorize(SessionId('missing'), owner)).rejects.toMatchObject({ code: 'forbidden' })
-    expect(await authority.ownerOf(session)).toBeUndefined()
-    expect(domain.table('chats').get(session.id)).toBeUndefined()
+  it('starts empty and requires explicit verified restoration without activating Sessions', async () => {
+    const { ctx, stored, persistence } = await fixture()
+    const root = Session.create(SessionId('cold-root'))
+    const child = Session.create(SessionId('cold-child'), [], { ...Session.create(SessionId('cold-child')).header, parentSession: root.id })
+    stored.set(root.id, root.header)
+    stored.set(child.id, child.header)
+    const restarted = new KarakaIdentity(ctx)
+    try {
+      expect(persistence.list).not.toHaveBeenCalled()
+      expect(await restarted.ownerOfId(root.id)).toBeUndefined()
+      expect(await restarted.ownerOfId(child.id)).toBeUndefined()
+      expect(restarted.ownerOfCached(root)).toBeUndefined()
+      await expect(restarted.authorize(root.id, owner)).rejects.toMatchObject({ code: 'forbidden' })
+      await expect(restarted.reserve(root.id, owner)).rejects.toMatchObject({ code: 'forbidden' })
+      expect(await restarted.restore(root.id, owner)).toEqual(root.header)
+      expect(await restarted.reserve(root.id, owner)).toBe('existing')
+      expect(await restarted.ownerOfId(child.id)).toEqual(owner)
+      expect(restarted.ownerOfCached(child)).toEqual(owner)
+      expect(ctx.sessions.get(root.id)).toBeUndefined()
+      expect(ctx.sessions.get(child.id)).toBeUndefined()
+      expect(persistence.list).not.toHaveBeenCalled()
+    } finally { await restarted.close() }
   })
 
-  it('inherits a child owner without writing a second authority record', async () => {
-    const { ctx, authority, domain, create } = await fixture()
+  it('refuses to restore missing, unpublished, or child Sessions without adopting them', async () => {
+    const { ctx, authority, stored, create } = await fixture()
+    const live = ctx.sessions.create(SessionId('unpublished'))
+    await expect(authority.restore(live.id, owner)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(authority.restore(SessionId('missing'), owner)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(authority.authorize(SessionId('missing'), owner)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(authority.authorizeSession(live, owner)).rejects.toMatchObject({ code: 'forbidden' })
+    expect(await authority.ownerOfId(SessionId('missing'))).toBeUndefined()
+    const parent = await create()
+    const child = ctx.sessions.create(SessionId('child'), { meta: { parentSession: parent.id } })
+    stored.set(child.id, child.header)
+    await expect(authority.restore(child.id, owner)).rejects.toMatchObject({ code: 'forbidden' })
+    expect(await authority.ownerOf(live)).toBeUndefined()
+    expect(await authority.ownerOf(child)).toEqual(owner)
+  })
+
+  it('inherits a child owner and refuses missing ancestors or conflicting child reservations', async () => {
+    const { ctx, authority, create } = await fixture()
+    const orphan = ctx.sessions.create(SessionId('orphan'), { meta: { parentSession: SessionId('missing') } })
+    expect(await authority.ownerOf(orphan)).toBeUndefined()
+    expect(authority.ownerOfCached(orphan)).toBeUndefined()
     const parent = await create()
     const child = ctx.sessions.create(SessionId('child'), { meta: { parentSession: parent.id } })
     expect(await authority.ownerOf(child)).toEqual(owner)
     expect(authority.ownerOfCached(child)).toEqual(owner)
     await authority.markReady(child, owner)
-    expect(domain.table('chats').get(child.id)).toBeUndefined()
     await expect(authority.authorizeSession(child, { ...owner, userId: UserId('foreign') })).rejects.toMatchObject({ code: 'forbidden' })
-  })
-
-  it('refuses missing ancestors and conflicting child ownership', async () => {
-    const { ctx, authority, create } = await fixture()
-    const orphan = ctx.sessions.create(SessionId('orphan'), { meta: { parentSession: SessionId('missing') } })
-    expect(await authority.ownerOf(orphan)).toBeUndefined()
-    const parent = await create()
     const id = SessionId('foreign-child')
     const foreign = { ...owner, userId: UserId('foreign') }
     await authority.reserve(id, foreign)
-    const child = ctx.sessions.create(id, { meta: { parentSession: parent.id } })
-    await expect(authority.bind(child, foreign)).rejects.toMatchObject({ code: 'forbidden' })
+    const conflicting = ctx.sessions.create(id, { meta: { parentSession: parent.id } })
+    await expect(authority.bind(conflicting, foreign)).rejects.toMatchObject({ code: 'forbidden' })
   })
 
-  it('refuses acknowledged missing data and mismatched source headers during recovery', async () => {
-    const { ctx, domain, stored, create } = await fixture()
-    const session = await create()
-    stored.delete(session.id)
-    await expect(new KarakaIdentity(ctx, domain).initialize()).rejects.toMatchObject({ code: 'unavailable' })
-    stored.set(session.id, { ...session.header, createdAt: session.header.createdAt + 1 })
-    await expect(new KarakaIdentity(ctx, domain).initialize()).rejects.toMatchObject({ code: 'unavailable' })
+  it('checks both direct child and inherited root ownership when a child was explicitly reserved', async () => {
+    const { ctx, authority, create } = await fixture()
+    const parent = await create()
+    const id = SessionId('reserved-child')
+    await authority.reserve(id, owner)
+    const child = ctx.sessions.create(id, { meta: { parentSession: parent.id } })
+    await authority.bind(child, owner)
+    expect(await authority.ownerOf(child)).toEqual(owner)
+    expect(authority.ownerOfCached(child)).toEqual(owner)
+  })
+
+  it('rejects changed persisted or live source fields before restoring ownership', async () => {
+    const { authority, stored, create } = await fixture()
+    const root = await create()
+    for (const changed of [
+      { ...root.header, createdAt: root.header.createdAt + 1 },
+      { ...root.header, agentPreset: 'other' },
+    ]) {
+      stored.set(root.id, changed)
+      await expect(authority.restore(root.id, owner)).rejects.toMatchObject({ code: 'unavailable' })
+    }
+    stored.set(root.id, root.header)
+    expect(await authority.restore(root.id, owner)).toEqual(root.header)
+    const replaced = Session.create(root.id, [], { ...root.header, createdAt: root.header.createdAt + 1 })
+    await expect(authority.ownerOf(replaced)).rejects.toMatchObject({ code: 'unavailable' })
+    expect(() => authority.ownerOfCached(replaced)).toThrow('source does not match')
+  })
+
+  it('refuses persisted headers that disagree with an unowned live Session', async () => {
+    const { ctx, authority, stored } = await fixture()
+    const live = ctx.sessions.create(SessionId('different-live'))
+    stored.set(live.id, { ...live.header, createdAt: live.header.createdAt + 1 })
+    await expect(authority.restore(live.id, owner)).rejects.toMatchObject({ code: 'unavailable' })
+    expect(await authority.ownerOfId(live.id)).toBeUndefined()
   })
 
   it('serializes one chat through failures while allowing another chat to progress', async () => {
@@ -87,8 +139,8 @@ describe('application authority', () => {
     expect(order).toEqual(['first', 'other', 'second'])
   })
 
-  it('reuses a bound materialized chat and keeps reservation recovery fail-closed', async () => {
-    const { ctx, authority, domain, stored, create } = await fixture()
+  it('keeps reserved materializations fail-closed and allows a failed unpublished creation to retry', async () => {
+    const { ctx, authority, stored, create } = await fixture()
     const ready = await create()
     expect(await authority.reserve(ready.id, owner)).toBe('existing')
     await authority.bind(ready, owner)
@@ -101,24 +153,23 @@ describe('application authority', () => {
     await expect(authority.authorizeSession(session, owner)).rejects.toMatchObject({ code: 'forbidden' })
     await expect(authority.reserve(id, owner)).rejects.toMatchObject({ code: 'unavailable' })
     stored.set(id, session.header)
-    await expect(new KarakaIdentity(ctx, domain).initialize()).rejects.toMatchObject({ code: 'unavailable' })
+    await expect(authority.restore(id, owner)).rejects.toMatchObject({ code: 'unavailable' })
+    const attempted = Session.create(SessionId('unmaterialized'))
+    await authority.reserve(attempted.id, owner)
+    await authority.bind(attempted, owner)
+    expect(await authority.reserve(attempted.id, owner)).toBe('create')
+    const retry = Session.create(attempted.id, [], { ...attempted.header, createdAt: attempted.header.createdAt + 1 })
+    await authority.bind(retry, owner)
+    expect(await authority.ownerOf(retry)).toEqual(owner)
   })
 
-  it('retries an unmaterialized bound attempt but refuses missing acknowledged data', async () => {
-    const { ctx, authority, domain } = await fixture()
-    const id = SessionId('unmaterialized')
-    const header = Session.create(id).header
-    await domain.table('chats').put(id, { state: 'bound', owner, binding: bindingOf(header) })
-    await new KarakaIdentity(ctx, domain).initialize()
-    expect(await authority.reserve(id, owner)).toBe('create')
-    expect(domain.table('chats').get(id)?.state).toBe('reserved')
-    await new KarakaIdentity(ctx, domain).initialize()
-    await domain.table('chats').put(id, { state: 'ready', owner, binding: bindingOf(header) })
-    await expect(authority.reserve(id, owner)).rejects.toMatchObject({ code: 'unavailable' })
-  })
-
-  it('rejects binding without a reservation, an absent parent, or an unowned parent', async () => {
-    const { ctx, authority } = await fixture()
+  it('refuses missing acknowledged data and binding without a valid reservation or parent', async () => {
+    const { ctx, authority, stored } = await fixture()
+    const ready = Session.create(SessionId('ready'))
+    stored.set(ready.id, ready.header)
+    await authority.restore(ready.id, owner)
+    stored.delete(ready.id)
+    await expect(authority.reserve(ready.id, owner)).rejects.toMatchObject({ code: 'unavailable' })
     await expect(authority.bind(ctx.sessions.create(SessionId('unreserved')), owner)).rejects.toMatchObject({ code: 'forbidden' })
     const missing = SessionId('missing-parent-child')
     await authority.reserve(missing, owner)
@@ -127,62 +178,38 @@ describe('application authority', () => {
     const child = SessionId('unowned-parent-child')
     await authority.reserve(child, owner)
     await expect(authority.bind(ctx.sessions.create(child, { meta: { parentSession: parent.id } }), owner)).rejects.toMatchObject({ code: 'forbidden' })
-    await expect(authority.authorize(parent.id, owner)).rejects.toMatchObject({ code: 'forbidden' })
-    await expect(authority.authorizeSession(parent, owner)).rejects.toMatchObject({ code: 'forbidden' })
   })
 
-  it('checks cold authority and cached lineage without activating Sessions', async () => {
-    const { authority, domain, stored } = await fixture()
-    const root = Session.create(SessionId('cold-root'))
-    const child = Session.create(SessionId('cold-child'), [], { ...Session.create(SessionId('cold-child')).header, parentSession: root.id })
-    await domain.table('chats').put(root.id, { state: 'ready', owner, binding: bindingOf(root.header) })
-    stored.set(root.id, root.header)
-    stored.set(child.id, child.header)
-    expect(await authority.ownerOfId(child.id)).toEqual(owner)
-    expect(authority.ownerOfCached(child)).toEqual(owner)
-    expect(await authority.ownerOfId(SessionId('absent'))).toBeUndefined()
-    expect(authority.ownerOfCached(Session.create(SessionId('ordinary')))).toBeUndefined()
-    const orphan = Session.create(SessionId('orphan'), [], { ...child.header, id: SessionId('orphan'), parentSession: SessionId('absent') })
-    expect(authority.ownerOfCached(orphan)).toBeUndefined()
-  })
-
-  it('rejects cycles and conflicting direct child records from durable authority', async () => {
-    const { ctx, authority, domain, stored, create } = await fixture()
-    const root = await create()
-    const id = SessionId('bound-child')
-    await authority.reserve(id, owner)
-    const child = ctx.sessions.create(id, { meta: { parentSession: root.id } })
-    await authority.bind(child, owner)
-    expect(await authority.ownerOf(child)).toEqual(owner)
-    expect(authority.ownerOfCached(child)).toEqual(owner)
-    await domain.table('chats').put(id, { state: 'bound', owner: { ...owner, userId: UserId('foreign') }, binding: bindingOf(child.header) })
-    await expect(authority.ownerOf(child)).rejects.toMatchObject({ code: 'forbidden' })
-    expect(() => authority.ownerOfCached(child)).toThrow('not owned')
-    const cyclicId = SessionId('cyclic')
-    const cyclic = Session.create(cyclicId, [], { ...Session.create(cyclicId).header, parentSession: cyclicId })
-    stored.set(cyclic.id, cyclic.header)
+  it('rejects cyclic lineage in asynchronous and cached lookups', async () => {
+    const { authority, stored } = await fixture()
+    const id = SessionId('cyclic')
+    const cyclic = Session.create(id, [], { ...Session.create(id).header, parentSession: id })
+    stored.set(id, cyclic.header)
     await expect(authority.ownerOf(cyclic)).rejects.toThrow('Cyclic chat lineage')
     expect(() => authority.ownerOfCached(cyclic)).toThrow('Cyclic chat lineage')
   })
 
-  it('does not acknowledge a chat when flushing or durable observation fails', async () => {
-    const { ctx, authority, domain } = await fixture()
+  it('does not acknowledge failed flushes, absent data, or mismatched durable headers', async () => {
+    const { ctx, authority, stored } = await fixture()
     const id = SessionId('pending')
     await authority.reserve(id, owner)
-    const session = ctx.sessions.create(id)
+    const session = ctx.sessions.prepare(id)
+    const detach = ctx.sessions.enter(session)
     await authority.bind(session, owner)
     const flush = vi.spyOn(ctx.sessions, 'flush').mockResolvedValue(false)
     try {
       await expect(authority.markReady(session, owner)).rejects.toThrow('no durability provider')
       flush.mockResolvedValue(true)
       await expect(authority.markReady(session, owner)).rejects.toThrow('Flushed chat data is unavailable')
-      expect(domain.table('chats').get(id)?.state).toBe('bound')
-    } finally {
-      flush.mockRestore()
-    }
+      stored.set(id, { ...session.header, createdAt: session.header.createdAt + 1 })
+      await expect(authority.markReady(session, owner)).rejects.toThrow('source does not match')
+      stored.delete(id)
+      detach()
+      expect(await authority.reserve(id, owner)).toBe('create')
+    } finally { flush.mockRestore(); detach() }
   })
 
-  it('settles admitted operations before closing storage and refuses subsequent authority calls', async () => {
+  it('waits for admitted operations during close and refuses subsequent authority calls', async () => {
     const { authority } = await fixture()
     const entered = Promise.withResolvers<undefined>()
     const release = Promise.withResolvers<undefined>()
@@ -196,6 +223,7 @@ describe('application authority', () => {
     void close.then(settled)
     try {
       await expect(authority.reserve(SessionId('other'), owner)).rejects.toMatchObject({ code: 'unavailable' })
+      expect(() => authority.ownerOfCached(Session.create(SessionId('closed')))).toThrow('authority is closed')
       expect(settled).not.toHaveBeenCalled()
     } finally {
       release.resolve(undefined)
@@ -203,6 +231,6 @@ describe('application authority', () => {
       await close
     }
     expect(settled).toHaveBeenCalledOnce()
+    await expect(authority.withChatLock(SessionId('closed'), async () => {})).rejects.toMatchObject({ code: 'unavailable' })
   })
-
 })

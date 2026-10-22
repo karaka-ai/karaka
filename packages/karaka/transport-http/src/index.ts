@@ -41,9 +41,11 @@ export interface Config {
   readonly browserPath?: string
   /** Exact browser origins allowed on browserPath. */
   readonly browserOrigins?: string[]
+  /** Root Agent presets accessible through browser credentials; required with browserPath. */
+  readonly browserAgentIds?: string[]
   /** Browser operations mounted at browserPath; defaults to all six application methods. */
   readonly browserMethods?: ('applicationAgents' | 'applicationCreate' | 'applicationPrompt' | 'applicationHistory' | 'applicationFollow' | 'applicationCancel')[]
-  /** Owner-scoped interactions delivered to browsers; defaults to approvals and questions. */
+  /** Owner- and chat-scoped interactions delivered to browsers; defaults to approvals and questions. */
   readonly browserEvents?: ('approval/request' | 'user-questions/request')[]
 }
 
@@ -53,6 +55,7 @@ export const Config: z<Config> = z.object({
   maxBodyBytes: z.natural().default(1_048_576),
   browserPath: z.string(),
   browserOrigins: z.array(z.string()),
+  browserAgentIds: z.array(z.string()),
   browserMethods: z.array(z.union(['applicationAgents', 'applicationCreate', 'applicationPrompt', 'applicationHistory', 'applicationFollow', 'applicationCancel'])).default(['applicationAgents', 'applicationCreate', 'applicationPrompt', 'applicationHistory', 'applicationFollow', 'applicationCancel']),
   browserEvents: z.array(z.union(['approval/request', 'user-questions/request'])).default(['approval/request', 'user-questions/request']),
 })
@@ -76,7 +79,7 @@ interface ActiveHttpRequest {
 /** Mount authenticated application routes onto the shared Host web server. */
 export function apply(ctx: Context, config: Config): void {
   const startup = ctx.karakaStartup
-  new ApplicationChatController(ctx)
+  new ApplicationChatController(ctx, config.browserAgentIds)
   const base = normalizeBase(config.path ?? KARAKA_APPLICATION_API_PATH)
   const maxBodyBytes = config.maxBodyBytes ?? 1_048_576
   const pending = new Map<string, PendingInteraction>()
@@ -124,6 +127,7 @@ export function apply(ctx: Context, config: Config): void {
   mount(base)
   if (config.browserPath !== undefined) {
     if (config.browserOrigins === undefined || config.browserOrigins.length === 0) throw new Error('Browser transport requires explicit origins')
+    if (config.browserAgentIds === undefined || config.browserAgentIds.length === 0 || config.browserAgentIds.some(id => !id.trim())) throw new Error('Browser transport requires explicit Agent presets')
     const browserBase = normalizeBase(config.browserPath)
     if (browserBase === base || browserBase.startsWith(`${base}/`) || base.startsWith(`${browserBase}/`)) throw new Error('Browser and backend paths must be disjoint')
     mountBrowserRoutes(ctx, config, () => startup.ready)

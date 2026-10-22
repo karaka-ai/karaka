@@ -27,7 +27,7 @@ Karaka 让应用创建归属明确的会话、认证浏览器和服务端客户�
 | 包 | 职责 |
 |---|---|
 | [`agent`](agent/README.zh.md) | 组合并启动 Karaka 应用 profile |
-| [`identity`](identity/README.zh.md) | 将持久化会话归属与 DSH Session 日志分开保存 |
+| [`identity`](identity/README.zh.md) | 在内存中跟踪已验证的应用归属，不修改 DSH Session 日志 |
 | [`server-auth`](server-auth/README.zh.md) | 认证服务端请求并解析应用凭据 |
 | [`browser-auth`](browser-auth/README.zh.md) | 按配置的签发者和应用验证浏览器凭据 |
 | [`transport-http`](transport-http/README.zh.md) | 向服务端和浏览器客户端提供按归属筛选的会话操作 |

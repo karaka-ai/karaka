@@ -38,18 +38,19 @@ async function verifier() {
 async function credential(overrides: Record<string, unknown> = {}, kid = 'key') {
   const now = Math.floor(Date.now() / 1000)
   return new SignJWT({
-    applicationId: 'app', tenantId: 'tenant', userId: 'user',
+    applicationId: 'app', tenantId: 'tenant', userId: 'user', chatId: 'chat',
     iss: 'issuer', aud: 'karaka', iat: now, exp: now + 120, ...overrides,
   }).setProtectedHeader({ alg: 'ES256', kid }).sign(keys.privateKey)
 }
 
 describe('browser credentials', () => {
-  it('returns the signed owner and expiration in milliseconds', async () => {
+  it('returns the signed owner, chat and expiration in milliseconds', async () => {
     const auth = await verifier()
     const exp = Math.floor(Date.now() / 1000) + 120
     expect(await auth.authenticate(await credential({ exp }))).toEqual({
       kind: 'application',
       owner: { applicationId: 'app', tenantId: 'tenant', userId: 'user' },
+      chatId: 'chat',
       expiresAt: exp * 1000,
     })
   })
@@ -61,11 +62,21 @@ describe('browser credentials', () => {
     ['empty tenant', { tenantId: '' }],
     ['non-string user', { userId: 1 }],
     ['missing owner claim', { userId: undefined }],
+    ['missing chat claim', { chatId: undefined }],
+    ['empty chat claim', { chatId: '' }],
+    ['non-string chat claim', { chatId: 1 }],
+    ['null chat claim', { chatId: null }],
     ['expired credential', { iat: 1, exp: 2 }],
     ['excessive issued lifetime', { iat: 1, exp: 4_102_444_800 }],
     ['future issuance', { iat: 4_102_444_000, exp: 4_102_444_100 }],
   ])('denies %s', async (_label, claims) => {
     expect(await (await verifier()).authenticate(await credential(claims))).toBeUndefined()
+  })
+
+  it('preserves the exact signed chat when one owner has multiple chats', async () => {
+    const auth = await verifier()
+    expect((await auth.authenticate(await credential({ chatId: 'another-chat' })))?.chatId).toBe('another-chat')
+    expect((await auth.authenticate(await credential()))?.chatId).toBe('chat')
   })
 
   it('denies malformed tokens, unknown keys, and signatures from another key', async () => {

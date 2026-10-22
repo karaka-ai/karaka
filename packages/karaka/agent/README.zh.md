@@ -31,7 +31,7 @@ Karaka CLI 启动此包的 `karaka-agent` 可执行文件。该文件准备 `kar
 
 [bundle 补丁](cordis.patch.yml) 组合完整应用，而非扩展 `dsh-base`。应用记录来自 `KARAKA_APPLICATIONS`；其凭据引用由 [server-auth](../server-auth/README.zh.md) 解析。DeepSeek 提供方通过共享的[凭据提供方](../../credentials/credentials-local/README.zh.md) 解析 `DEEPSEEK_API_KEY` 和端点。`KARAKA_MODEL` 选择默认模型。bundle 补丁中的声明式 `application` preset 通过 `KARAKA_PRESET_TOOL_ALLOW` 控制可用的应用工具。部署方可在 profile 补丁中添加或替换 `@deepseek-ai/dsh-agent-preset` 配置行。
 
-`KARAKA_MCP_URL` 启用[应用 MCP 桥接](../mcp-application/README.zh.md)。端点允许/拒绝设置与 preset 权限共同约束工具。`KARAKA_BROWSER_AUTH` 启用[浏览器认证](../browser-auth/README.zh.md)；还必须通过 `KARAKA_BROWSER_ORIGINS` 配置浏览器来源。[HTTP 传输](../transport-http/README.zh.md) 定义公开路由和归属规则。
+`KARAKA_MCP_URL` 启用[应用 MCP 桥接](../mcp-application/README.zh.md)。端点允许/拒绝设置与 preset 权限共同约束工具。`KARAKA_BROWSER_AUTH` 启用[浏览器认证](../browser-auth/README.zh.md)；通过 `KARAKA_BROWSER_ORIGINS` 配置浏览器来源，通过 `KARAKA_BROWSER_AGENT_IDS` 配置允许访问的根 preset，两者均为 JSON 数组。浏览器凭证仅授权一个聊天。[HTTP 传输](../transport-http/README.zh.md) 定义公开路由和归属规则。
 
 此 profile 显式禁用 `session-log-deepseek` 插件向请求附加 `dsh_session_log` 的功能。普通模型请求和本地 JSONL 持久化保持不变。部署方可在自己的 profile 补丁中，将该配置项的 `config.enabled` 设为 `true` 以启用此功能。
 

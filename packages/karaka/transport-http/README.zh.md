@@ -8,7 +8,7 @@ kind: "package-reference"
 
 ## 概述
 
-后端应用可通过经过认证的 JSON 和 SSE 请求创建、恢复及订阅具有所有者限制的聊天。浏览器可使用独立的 JWT 认证端点，且必须明确配置允许的来源。聊天操作沿用 DSH Agent、Session 和持久化服务，Karaka 负责校验应用、租户和用户归属。不得针对同一应用数据存储暴露不受限制的 Host 远程接口。
+后端应用可通过经过认证的 JSON 和 SSE 请求创建、恢复及订阅具有所有者限制的聊天。浏览器可使用独立的 JWT 认证端点，访问仅限签名指定的单个聊天及明确允许的来源和根预设。聊天操作沿用 DSH Agent、Session 和持久化服务，Karaka 负责校验应用、租户和用户归属。不得针对同一应用数据存储暴露不受限制的 Host 远程接口。
 
 ## 目录
 
@@ -27,11 +27,11 @@ kind: "package-reference"
 
 独立挂载 `@karaka-ai/transport-http/startup`，并提供启动器的 `appReady`、`appExit` 服务及 Loader。[Karaka profile](../agent/cordis.patch.yml) 让 `webserver` 注入其 `karakaStartup` 服务，因此守卫缺失或加载失败会阻止必需的 Web 服务器启动。DSH 完成启动处理后，此守卫仅在所有已启用的 Loader 条目均处于活动状态时接收 HTTP 和浏览器请求；禁用的条目会被跳过。导入、激活、依赖解析或禁用表达式失败时，入口保持关闭，并请求以退出码 1 执行有时限的关闭。此守卫不会否决 DSH 启动器自身的就绪通知。这是启动检查，而非持续的服务健康监控。
 
-后端 `path` 默认为 `/v1`，`maxBodyBytes` 默认为 1,048,576 字节。每个请求都通过 `serverAuth` 认证；应用身份来自凭证，请求体提供租户和用户标识符。无效凭证返回 401，所有权校验被拒绝时返回 403。应用就绪前请求返回 503。
+后端 `path` 默认为 `/v1`，`maxBodyBytes` 默认为 1,048,576 字节。每个请求都通过 `serverAuth` 认证；应用身份来自凭证，请求体提供租户和用户标识符。经过认证的应用必须在转发请求前校验聊天访问权限；重启后，应用可为已持久化的根聊天建立所有权。无效凭证返回 401，所有权校验被拒绝时返回 403。应用就绪前请求返回 503。
 
-设置 `browserPath` 以启用浏览器访问，提供非空的 `browserOrigins` 列表，并挂载[浏览器认证](../browser-auth/README.zh.md)。后端与浏览器路径不得重叠。`browserMethods` 选择应用操作，`browserEvents` 选择审批和问题投递；两个列表默认包含所有受支持条目。后端问题投递的 `handleQuestions` 默认为 true。
+设置 `browserPath` 以启用浏览器访问，提供非空的 `browserOrigins` 和 `browserAgentIds` 列表，并挂载[浏览器认证](../browser-auth/README.zh.md)。后端与浏览器路径不得重叠。`browserMethods` 选择应用操作，`browserEvents` 选择审批和问题投递；两个列表默认包含所有受支持条目。后端问题投递的 `handleQuestions` 默认为 true。
 
-浏览器安全入口 `./browser` 导出 `createBrowserClient`。调用者需提供 HTTP(S) 服务器来源及可更新的凭证回调；其默认路径为 `/karaka/browser`。各客户端独立拥有凭证、聊天作用域监听器和连接观察器。`reconnect()` 更新连接，`dispose()` 等待连接及回调清理完成。签名中的归属信息控制交互投递，凭证过期时浏览器流关闭。
+浏览器安全入口 `./browser` 导出 `createBrowserClient`。调用者需提供 HTTP(S) 服务器来源及可更新的凭证回调；其默认路径为 `/karaka/browser`。各客户端独立拥有凭证、聊天作用域监听器和连接观察器。`reconnect()` 更新连接，`dispose()` 等待连接及回调清理完成。签名中的归属信息和聊天标识控制交互投递及回复，凭证过期时浏览器流关闭。
 
 -----
 
@@ -41,9 +41,9 @@ kind: "package-reference"
 <details>
 <summary>所有权与持久化接收</summary>
 
-聊天创建先保留持久化 Karaka 身份，再创建 DSH Agent。发布前的设置过程绑定头部、挂载所选预设并安装模型选择钩子。创建和提示接收只在持久化就绪后确认。恢复过程在激活 Agent 前校验持久化数据，并在设置期间检查重建后的 Session。变更按聊天串行执行。仅供 Host 使用的 [Session 投影](src/application-state.ts) 恢复请求接收记录和模型选择状态，并根据已提交事件更新它们。请求 ID 在聊天生命周期内保留，以拒绝重复接收。
+聊天创建先在内存中保留 Karaka 身份，再创建 DSH Agent。发布前的设置过程绑定头部、挂载所选预设并安装模型选择钩子。创建和提示接收只在持久化就绪后确认。恢复过程在激活 Agent 前校验持久化数据，并在设置期间检查重建后的 Session。变更按聊天串行执行。仅供 Host 使用的 [Session 投影](src/application-state.ts) 恢复请求接收记录和模型选择状态，并根据已提交事件更新它们。请求 ID 在聊天生命周期内保留，以拒绝重复接收。
 
-历史查询和先发送快照的流均校验请求中的所有者。取消操作保留收件箱。模型变更追加已有的 DSH 模型选择事件。[应用操作](src/application.ts)、[HTTP 帧处理](src/http.ts)和[浏览器路由](src/browser-routes.ts)负责这些行为。
+历史查询和先发送快照的流均校验请求中的所有者，并恢复冷根聊天的所有权而不激活 Agent。浏览器请求在恢复或创建前校验签名中的聊天、所有者及允许的根预设。自定义浏览器处理器通过 `browser` 向控制器操作传入已验证的调用者；处理器记录请求授权前可调用 `authorizeBrowser` 执行相同的只读检查。取消操作保留收件箱。模型变更追加已有的 DSH 模型选择事件。[应用操作](src/application.ts)、[HTTP 帧处理](src/http.ts)和[浏览器路由](src/browser-routes.ts)负责这些行为。
 
 本包不发布运行时不变量伴随模块：HTTP 请求和监听器没有独立的生命周期事件流；Session 所有权由身份服务检查，持久化序列连续性在订阅投递时强制校验。
 
