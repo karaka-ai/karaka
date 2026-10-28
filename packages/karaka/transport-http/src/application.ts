@@ -1,6 +1,6 @@
 /** Application operations over unchanged DSH Agents, Sessions and persistence. */
 import { Service, type Context } from '@deepseek-ai/cordis'
-import { installModelSelection, type Agent, type AgentHandle, type ModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import { installModelSelection, type Agent, type AgentHandle, type ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { PromptContentPart } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
@@ -11,7 +11,8 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import { applicationState, installApplicationProjection } from './application-state.ts'
+import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
+import { applicationState, type ApplicationState } from './application-state.ts'
 
 interface Address { readonly chatId: SessionId; readonly owner: ApplicationOwner; readonly browser?: BrowserCaller }
 /** Authorized baseline, durable event or transient assistant text emitted by follow(). */
@@ -27,13 +28,15 @@ declare module '@deepseek-ai/cordis' {
  */
 export class ApplicationChatController extends Service {
   private readonly handles = new Map<SessionId, AgentHandle>()
-  private readonly selections = new WeakMap<Agent, ModelSelectionRef>()
   private readonly operations = new Set<Promise<unknown>>()
   private readonly lifetime = new AbortController()
 
-  constructor(ctx: Context, private readonly browserAgentIds: readonly string[] = []) {
+  constructor(
+    ctx: Context,
+    private readonly projection: ProjectionHandle<ApplicationState>,
+    private readonly browserAgentIds: readonly string[] = [],
+  ) {
     super(ctx, 'karakaApplication')
-    installApplicationProjection(ctx)
     ctx.effect(() => async () => {
       this.lifetime.abort(new Error('Application controller disposed'))
       await Promise.allSettled(this.operations)
@@ -86,7 +89,7 @@ export class ApplicationChatController extends Service {
           setup: async (agentCtx, unpublished) => {
             await this.ctx.karakaIdentity.bind(unpublished.session, request.owner)
             await presets.mount(agentCtx, preset.id)
-            this.installSelection(unpublished)
+            installModelSelection(agentCtx)
           },
         })
         this.handles.set(request.chatId, handle)
@@ -107,9 +110,9 @@ export class ApplicationChatController extends Service {
     return this.run(request.chatId, async () => {
       signal?.throwIfAborted()
       const agent = await this.activate(request)
-      const duplicate = applicationState(this.ctx, agent.session).requestIds.includes(request.requestId)
+      const duplicate = applicationState(this.projection, agent.session).requestIds.includes(request.requestId)
       if (!duplicate) {
-        const selection = this.selections.get(agent)?.current ?? this.ctx.agentDefaultModel.currentSelection()
+        const selection = agent.model.current() ?? this.ctx.agentDefaultModel.currentSelection()
         if (!this.ctx.llm.listProviders().some(provider => provider.id === selection.provider)) throw Object.assign(new Error('Selected model provider is unavailable'), { code: 'session/model-unavailable' })
         const attachments = this.ctx.get('attachments')
         if (request.content.some(part => part.type === 'image')) {
@@ -166,10 +169,7 @@ export class ApplicationChatController extends Service {
         model: resolved.model,
         ...(resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort }),
       }
-      agent.session.append('model/selection', selected)
-      const selection = this.selections.get(agent)
-      if (selection === undefined) throw new Error('Application Agent has no model selection')
-      selection.current = selected
+      agent.model.select(selected)
       await this.ctx.karakaIdentity.markReady(agent.session, request.owner)
       return { selected }
     })
@@ -311,21 +311,11 @@ export class ApplicationChatController extends Service {
       setup: async (agentCtx, agent) => {
         await this.ctx.karakaIdentity.authorizeSession(agent.session, request.owner)
         await presets.mount(agentCtx, header.agentPreset)
-        this.installSelection(agent)
+        installModelSelection(agentCtx)
       },
     })
     this.handles.set(request.chatId, handle)
     return handle.agent
-  }
-
-  private installSelection(agent: Agent): void {
-    const state = applicationState(this.ctx, agent.session)
-    const selection: ModelSelectionRef = {
-      current: state.pending ?? state.lastUsed ?? this.ctx.agentDefaultModel.currentSelection(),
-      assembled: undefined,
-    }
-    agent.ctx.effect(() => installModelSelection(agent.ctx, selection))
-    this.selections.set(agent, selection)
   }
 
   private run<Value>(id: SessionId, operation: () => Promise<Value>): Promise<Value> {

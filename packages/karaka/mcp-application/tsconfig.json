@@ -27,7 +27,10 @@
       "path": "../server-auth"
     },
     {
-      "path": "../../core/agent-tool-presentation"
+      "path": "../../core/tool-executor-native"
+    },
+    {
+      "path": "../../core/tool-executor-ptc"
     },
     {
       "path": "../../../vendor/schemastery"

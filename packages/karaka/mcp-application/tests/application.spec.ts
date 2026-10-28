@@ -2,10 +2,12 @@
 import { createServer } from 'node:http'
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry, type Agent } from '@deepseek-ai/dsh-agent'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime, { type ToolRunContext, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import { ApplicationId, KarakaIdentity, TenantId, UserId, type ApplicationOwner } from '@karaka-ai/identity'
 import { ServerAuth } from '@karaka-ai/server-auth'
@@ -21,7 +23,10 @@ async function applicationFixture() {
   onTestFinished(async () => { await root.fiber.dispose() })
   await root.plugin(SystemPrompt)
   await root.plugin(ToolRuntime)
+  await root.plugin(SessionStore)
+  await root.plugin(SessionProjectionRegistry)
   await root.plugin(AgentRegistry)
+  await root.plugin(NativeToolExecutor)
   const owners = new WeakMap<Session, ApplicationOwner>()
   // This fixture supplies trusted authority answers; identity persistence has its own suite.
   const identity = {
@@ -89,10 +94,15 @@ async function applicationFixture() {
     await apply(fiber.ctx, Object.assign({}, config, overrides))
     return fiber
   }
-  const invoke = (agent?: Agent) => root.tools.execute({
-    name: 'mcp__app__read', callId: ToolCallId('application-call'), arguments: {},
-    signal: new AbortController().signal, ...(agent === undefined ? {} : { agent }),
-  })
+  const invoke = async (agent?: Agent) => {
+    const batch = await root.tools.execute({
+      calls: [{ type: 'tool-call', name: 'mcp__app__read', id: ToolCallId('application-call'), arguments: '{}' }],
+      signal: new AbortController().signal, ...(agent === undefined ? {} : { agent }),
+    })
+    const outcome = batch.results[0]
+    if (outcome === undefined) throw new Error('Application call did not settle')
+    return outcome.result
+  }
   return { root, owner, owners, requests, agent, mount, invoke, setCatalog(next: Tool[]) { catalog = next } }
 }
 

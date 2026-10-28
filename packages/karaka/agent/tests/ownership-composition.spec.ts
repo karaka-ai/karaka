@@ -17,6 +17,7 @@ import AgentDefaultModel from '@deepseek-ai/dsh-agent-default-model'
 import AgentPresetRegistry from '@deepseek-ai/dsh-agent-preset-registry'
 import AgentPreset from '@deepseek-ai/dsh-agent-preset'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Credentials from '@deepseek-ai/dsh-credentials-local'
@@ -61,7 +62,7 @@ it('restores only authorized root chats after restart without local ownership fi
     Object.assign(ctx.loader.builtins, {
       include: Include, startup: Startup, timer: Timer,
       session: SessionStore, projections: SessionProjectionRegistry, persistence: JsonlSessionPersistence,
-      query: SqliteSessionQuery, llm: LlmRuntime, tools: ToolRuntime, systemPrompt: SystemPrompt,
+      query: SqliteSessionQuery, llm: LlmRuntime, tools: ToolRuntime, nativeExecutor: NativeToolExecutor, systemPrompt: SystemPrompt,
       agents: AgentRegistry, defaultModel: AgentDefaultModel, presets: AgentPresetRegistry, preset: AgentPreset,
       loop: AgentLoop, identity: Identity, credentials: Credentials, serverAuth: ServerAuth,
       browserAuth: BrowserAuth, webServer: WebServer, probe: Probe, presetObserver: Probe.presetObserver, transport: Transport,
