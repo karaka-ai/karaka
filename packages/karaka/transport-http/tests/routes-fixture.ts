@@ -47,7 +47,7 @@ export async function fixture(config: Config = { path: '/api', handleQuestions: 
   const browserAuthenticate = vi.fn(async (): Promise<BrowserCaller | undefined> => ({ kind: 'application' as const, owner, chatId: SessionId('chat'), expiresAt: Date.now() + 60_000 }))
   const browserAuth = { authenticate: browserAuthenticate }
   const removeBrowserAuth = ctx.provide('karakaBrowserAuth', Object.setPrototypeOf(browserAuth, BrowserAuthentication.prototype) as BrowserAuthentication)
-  apply(ctx, config)
+  await apply(ctx, config)
   const app = ctx.karakaApplication
   const listAgents = vi.spyOn(app, 'listAgents').mockResolvedValue([{ id: 'main', name: 'Main' }])
   const create = vi.spyOn(app, 'create').mockImplementation(async request => ({ chatId: request.chatId, agentId: request.agentId }))

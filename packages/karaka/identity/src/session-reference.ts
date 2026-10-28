@@ -1,7 +1,7 @@
 /** Owner-aware references using the original resolver's public virtual methods. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import SessionReferenceResolver, {
   DEFAULT_CANDIDATE_LIMIT,
   SessionReferenceError,
@@ -65,6 +65,7 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
    * @param agent - Target Agent.
    * @param content - Direct user content.
    * @param references - Requested original Session references.
+   * @param route - Resolved provider and model for the original reference budget.
    * @param signal - Cancellation.
    * @returns The original resolver's durable, budgeted reference context.
    */
@@ -72,6 +73,7 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
     agent: Agent,
     content: ContentBlock[],
     references: SessionReferenceInput[],
+    route: Readonly<Pick<LlmCallConfig, 'provider' | 'model'>>,
     signal?: AbortSignal,
   ): Promise<PreparedReferencedMessage> {
     const owner = await this.ctx.karakaIdentity.ownerOf(agent.session)
@@ -81,7 +83,7 @@ export class KarakaSessionReferenceResolver extends SessionReferenceResolver {
       if (!canReference(owner, targetOwner)) throw new IdentityError('forbidden', 'Referenced chat is not owned by this caller')
     }
     assertNotCancelled(signal)
-    return super.prepare(agent, content, references, signal)
+    return super.prepare(agent, content, references, route, signal)
   }
 }
 

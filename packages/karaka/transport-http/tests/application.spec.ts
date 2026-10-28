@@ -212,7 +212,7 @@ it('rejects a stream when its persisted snapshot omits an event before subscript
 })
 
 
-it('uses the default for a factory that omitted setup and refuses a selection without installed state', async () => {
+it('uses factory-owned model selection even when optional setup is omitted', async () => {
   const { controller, factory, headers, followups } = await fixture()
   const create = factory.createAgent.getMockImplementation()
   if (create === undefined) throw new Error('missing factory')
@@ -222,7 +222,7 @@ it('uses the default for a factory that omitted setup and refuses a selection wi
   await controller.create({ ...address, agentId: 'main' })
   await controller.prompt({ ...address, requestId: 'r', content: [{ type: 'text', text: 'default model' }] })
   expect(followups.get(chatId)).toHaveBeenCalledOnce()
-  await expect(controller.selectModel({ ...address, provider: 'mock', model: 'chat' })).rejects.toThrow('has no model selection')
+  await expect(controller.selectModel({ ...address, provider: 'mock', model: 'chat' })).resolves.toEqual({ selected: { provider: 'mock', model: 'chat' } })
 })
 
 it('ignores non-text stream frames without exposing them to follow subscribers', async () => {

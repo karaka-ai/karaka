@@ -50,10 +50,10 @@ it('denies references when either Session has no verified application owner', as
   stored.set(other.id, other.header)
   expect((await resolver.listCandidates(agent(ordinary))).map(row => row.sessionId)).toEqual([])
   expect((await resolver.listCandidates(agent(application))).map(row => row.sessionId)).toEqual([])
-  await expect(resolver.prepare(agent(ordinary), [], [{ sessionId: application.id }])).rejects.toMatchObject({ code: 'forbidden' })
+  await expect(resolver.prepare(agent(ordinary), [], [{ sessionId: application.id }], { provider: 'mock', model: 'mock' })).rejects.toMatchObject({ code: 'forbidden' })
   expect(readSurface).not.toHaveBeenCalled()
-  await expect(resolver.prepare(agent(ordinary), [], [{ sessionId: other.id }])).rejects.toMatchObject({ code: 'forbidden' })
-  await expect(resolver.prepare(agent(application), [], [{ sessionId: other.id }])).rejects.toMatchObject({ code: 'forbidden' })
+  await expect(resolver.prepare(agent(ordinary), [], [{ sessionId: other.id }], { provider: 'mock', model: 'mock' })).rejects.toMatchObject({ code: 'forbidden' })
+  await expect(resolver.prepare(agent(application), [], [{ sessionId: other.id }], { provider: 'mock', model: 'mock' })).rejects.toMatchObject({ code: 'forbidden' })
   expect(readSurface).not.toHaveBeenCalled()
 })
 
@@ -62,9 +62,9 @@ it('authorizes every target before reading any reference and retains upstream co
   const target = await create(SessionId('target'))
   const allowed = await create(SessionId('allowed'))
   const foreign = await create(SessionId('foreign'), { ...owner, userId: UserId('foreign') })
-  await expect(resolver.prepare(agent(target), [], [{ sessionId: allowed.id }, { sessionId: foreign.id }])).rejects.toMatchObject({ code: 'forbidden' })
+  await expect(resolver.prepare(agent(target), [], [{ sessionId: allowed.id }, { sessionId: foreign.id }], { provider: 'mock', model: 'mock' })).rejects.toMatchObject({ code: 'forbidden' })
   expect(readSurface).not.toHaveBeenCalled()
-  const result = await resolver.prepare(agent(target), [{ type: 'text', text: 'read this' }], [{ sessionId: allowed.id }])
+  const result = await resolver.prepare(agent(target), [{ type: 'text', text: 'read this' }], [{ sessionId: allowed.id }], { provider: 'mock', model: 'mock' })
   expect(result.content).toEqual([{ type: 'text', text: 'read this' }])
   expect(result.additionalContext?.source).toMatchObject({ kind: 'session-reference', references: [{ sessionId: allowed.id }] })
   expect(readSurface).toHaveBeenCalledWith(allowed.id)
@@ -85,7 +85,7 @@ it('stops reference preparation when cancellation occurs during an ownership loo
     return owner
   })
   try {
-    await expect(resolver.prepare(agent(target), [], [{ sessionId: source.id }], controller.signal)).rejects.toMatchObject({ code: 'SESSION_REFERENCE_CANCELLED' })
+    await expect(resolver.prepare(agent(target), [], [{ sessionId: source.id }], { provider: 'mock', model: 'mock' }, controller.signal)).rejects.toMatchObject({ code: 'SESSION_REFERENCE_CANCELLED' })
     expect(readSurface).not.toHaveBeenCalled()
   } finally {
     lookup.mockRestore()

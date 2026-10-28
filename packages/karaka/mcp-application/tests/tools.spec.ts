@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { createMcpToolDefinition } from '@deepseek-ai/dsh-mcp-client'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime, { type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Tool } from '@modelcontextprotocol/client'
 import { expect, it, onTestFinished, vi } from 'vitest'
@@ -28,6 +29,7 @@ it('removes the schema dialect and rejects invalid input before the wrapped invo
   onTestFinished(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   const original = definition({
     $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object',
     properties: { id: { type: 'integer' } }, required: ['id'], additionalProperties: false,
@@ -36,9 +38,13 @@ it('removes the schema dialect and rejects invalid input before the wrapped invo
   expect(prepared.parameters).not.toHaveProperty('$schema')
   ctx.effect(() => ctx.tools.register(prepared))
   async function invoke(args: unknown) {
-    return ctx.tools.execute({
-      name: prepared.name, arguments: args, callId: ToolCallId('application-call'), signal: new AbortController().signal,
+    const batch = await ctx.tools.execute({
+      calls: [{ type: 'tool-call', name: prepared.name, arguments: JSON.stringify(args), id: ToolCallId('application-call') }],
+      signal: new AbortController().signal,
     })
+    const outcome = batch.results[0]
+    if (outcome === undefined) throw new Error('Application call did not settle')
+    return outcome.result
   }
   for (const args of [null, 'item', [], { id: 'wrong' }, { id: 1, unexpected: true }]) {
     const result = await invoke(args)
@@ -54,6 +60,7 @@ it.each(['required', 'optional'] as const)('retains task-support rejection order
   onTestFinished(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   // SDK2's modern wire codec omits taskSupport; the public factory still accepts it.
   const tool: Tool = {
     name: 'read', execution: { taskSupport },
@@ -70,9 +77,12 @@ it.each(['required', 'optional'] as const)('retains task-support rejection order
   const prepared = prepareApplicationTool(original, tool)
   expect(prepared.parameters).not.toHaveProperty('$schema')
   ctx.effect(() => ctx.tools.register(prepared))
-  const result = await ctx.tools.execute({
-    name: prepared.name, arguments: {}, callId: ToolCallId('application-call'), signal: new AbortController().signal,
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', name: prepared.name, arguments: '{}', id: ToolCallId('application-call') }],
+    signal: new AbortController().signal,
   })
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('Application call did not settle')
   expect(result.isError).toBe(true)
   if (taskSupport === 'required') {
     expect(result.error?.message).toContain('requires task-based execution')

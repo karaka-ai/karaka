@@ -24,9 +24,11 @@
     "./startup": {
       "types": "./lib/types/startup.d.ts",
       "default": "./lib/startup.js"
-    }
+    },
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/types/**/*.d.ts",
     "lib/browser.js",

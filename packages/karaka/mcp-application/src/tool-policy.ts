@@ -2,7 +2,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-tools'
-import * as Presentation from '@deepseek-ai/dsh-agent-tool-presentation'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
 import { applicationToolNames, registerPolicy } from './policy.ts'
 
 export const name = 'karaka-tool-policy'
@@ -25,7 +26,7 @@ export const Config = z.object({
 
 /** Mount tool presentation and reversible Agent-scoped restrictions. */
 export function apply(ctx: Context, config: Config): void {
-  Presentation.apply(ctx, { mode: config.mode })
+  ctx.plugin(config.mode === 'native' ? NativeToolExecutor : PtcToolExecutor)
   if (config.allow === undefined && config.deny === undefined) return
   const application = applicationToolNames(ctx)
   ctx.tools.restrict({

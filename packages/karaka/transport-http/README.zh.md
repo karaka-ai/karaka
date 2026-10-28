@@ -41,7 +41,7 @@ kind: "package-reference"
 <details>
 <summary>所有权与持久化接收</summary>
 
-聊天创建先在内存中保留 Karaka 身份，再创建 DSH Agent。发布前的设置过程绑定头部、挂载所选预设并安装模型选择钩子。创建和提示接收只在持久化就绪后确认。恢复过程在激活 Agent 前校验持久化数据，并在设置期间检查重建后的 Session。变更按聊天串行执行。仅供 Host 使用的 [Session 投影](src/application-state.ts) 恢复请求接收记录和模型选择状态，并根据已提交事件更新它们。请求 ID 在聊天生命周期内保留，以拒绝重复接收。
+聊天创建先在内存中保留 Karaka 身份，再创建 DSH Agent。发布前的设置过程绑定头部、挂载所选预设并安装模型选择钩子。创建和提示接收只在持久化就绪后确认。恢复过程在激活 Agent 前校验持久化数据，并在设置期间检查重建后的 Session。变更按聊天串行执行。保留的 Host 专用 [Session 投影](src/application-state.ts) 从已提交事件恢复请求接收记录。原始 Agent 模型服务负责选择、恢复和选择事件。请求 ID 在聊天生命周期内保留，以拒绝重复接收。
 
 历史查询和先发送快照的流均校验请求中的所有者，并恢复冷根聊天的所有权而不激活 Agent。浏览器请求在恢复或创建前校验签名中的聊天、所有者及允许的根预设。自定义浏览器处理器通过 `browser` 向控制器操作传入已验证的调用者；处理器记录请求授权前可调用 `authorizeBrowser` 执行相同的只读检查。取消操作保留收件箱。模型变更追加已有的 DSH 模型选择事件。[应用操作](src/application.ts)、[HTTP 帧处理](src/http.ts)和[浏览器路由](src/browser-routes.ts)负责这些行为。
 

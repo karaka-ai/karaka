@@ -22,9 +22,11 @@
     "./tool-policy": {
       "types": "./lib/types/tool-policy.d.ts",
       "default": "./lib/tool-policy.js"
-    }
+    },
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
+    "locale/*.json",
     "lib/**/*.js",
     "UPSTREAM.json",
     "lib/types/**/*.d.ts"
@@ -37,7 +39,8 @@
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@karaka-ai/identity": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
-    "@deepseek-ai/dsh-agent-tool-presentation": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-ptc": "workspace:*",
     "@deepseek-ai/dsh-mcp-client": "workspace:*"
   },
   "dependencies": {
@@ -52,7 +55,8 @@
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@karaka-ai/identity": "workspace:^",
     "@karaka-ai/server-auth": "workspace:^",
-    "@deepseek-ai/dsh-agent-tool-presentation": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
+    "@deepseek-ai/dsh-tool-executor-ptc": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-mcp-client": "workspace:*",
