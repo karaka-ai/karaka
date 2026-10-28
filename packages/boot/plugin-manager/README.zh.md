@@ -59,7 +59,7 @@ kind: "package-reference"
 
 `installBundle` 在启动 pnpm 前通过 `git ls-remote` 检查 GitHub 仓库，使用 profile 目录及安装器的 Git 与代理配置。`githubConnectionTimeoutMs` 默认为 5000 毫秒，只限制这次检查，不限制包下载或构建。检查禁用凭据助手和认证提示；只有网络失败与超时会停止安装，通过现有失败类型与诊断日志返回，并标记 `failedAt: 'spec-host'`。认证、仓库查找及其他失败继续交给 pnpm，包括其 HTTPS 到 SSH 的回退。取消安装或销毁管理器会停止检查及其子进程。注册表包、本地路径、压缩包和其他 Git 主机跳过此检查。仓库可达后，下载或组合包验证仍可能失败。
 
-HTTP(S) Git URL 指向 pnpm 没有 HTTPS 到 SSH 回退的主机（即 `hosted-git-info` 不认识的任何主机，例如自托管 GitLab）时，在启动 pnpm 前通过 `git ls-remote` 探测。探测使用安装器的 Git 配置与凭据助手，并禁用 Git 的终端与 askpass 提示；在 POSIX 上探测也没有控制终端，因此 SSH 无法提示。HTTP(S) 无法读取仓库而 `ssh://git@<host>/<path>` 可以读取时，pnpm 以该 SSH URL 加上原片段安装，profile 也记录该 URL。否则按原 spec 安装。每次探测受 `gitTransportTimeoutMs` 限制，默认为 5000 毫秒；取消安装或销毁管理器会停止探测。带凭据或查询串的 URL 跳过探测。
+HTTP(S) Git URL 指向 pnpm 没有 HTTPS 到 SSH 回退的主机（即 `hosted-git-info` 不认识的任何主机，例如自托管 GitLab）时，在启动 pnpm 前通过 `git ls-remote` 探测。探测使用安装器的 Git 配置与凭据助手，并禁用 Git 的终端与 askpass 提示；在 POSIX 上探测也没有控制终端，因此 SSH 无法提示。HTTP(S) 无法读取仓库而 `ssh://git@<host>/<path>` 可以读取时，pnpm 以该 SSH URL 加上原片段安装，profile 也记录该 URL。否则按原 spec 安装。每次探测受 `gitTransportTimeoutMs` 限制，默认为 5000 毫秒；取消安装或销毁管理器会停止探测。带凭据或查询串的 URL，以及在选择传输方式前已取消的请求，跳过探测。
 
 注册表按顺序询问。计划从 `options.registry` 开始，否则从配置的 `registry`（`null` 即 pnpm 自身配置指定的那个）开始，并在一个注册表不可达、超时或答复没有这个包或版本（尚未同步的镜像会如此）时继续问 `fallbackRegistries`。配置集合之外的注册表只问它自己，因而私有源永远不会落到公共源；pnpm 自身的注册表只在它指向的地址（每次做计划前经 `pnpm config get registry` 读出）是 npm 官方源或某个备选源时才算集合成员，否则视为私有源只问它自己。pnpm 自身配置已经指向的注册表只问一次。查询以 `--registry` 运行 `pnpm view` 且不带 pnpm 自身的重试，所以死掉的注册表会在 `inspectTimeoutMs` 内报告并转问下一个；pnpm 把拒绝以 JSON 打印在 stdout，读法与 stderr 相同。安装保留 pnpm 的重试设置。`registries()` 把配置集合和 pnpm 指向的地址答复给选择器。[注册表 Agent Note](../../../.agents/notes/implemented/architecture/2026-09-18-plugin-install-registries.zh.md) 拥有理由。
 

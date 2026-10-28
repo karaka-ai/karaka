@@ -225,6 +225,26 @@ it('uses factory-owned model selection even when optional setup is omitted', asy
   await expect(controller.selectModel({ ...address, provider: 'mock', model: 'chat' })).resolves.toEqual({ selected: { provider: 'mock', model: 'chat' } })
 })
 
+it('uses the deployment default for an Agent without a recorded or configured model', async () => {
+  const { controller, factory, handles, followups, llm, ctx } = await fixture()
+  const create = factory.createAgent.getMockImplementation()
+  if (create === undefined) throw new Error('missing factory')
+  factory.createAgent.mockImplementationOnce((context, options) => create(context, { ...options, agentOptions: {} }))
+  await controller.create({ ...address, agentId: 'main' })
+  expect(handles.get(chatId)?.agent.model.current()).toBeUndefined()
+
+  const currentSelection = vi.spyOn(ctx.agentDefaultModel, 'currentSelection')
+  const prompt = { ...address, requestId: 'default-route', content: [{ type: 'text' as const, text: 'hello' }] }
+  llm.listProviders.mockReturnValueOnce([{ id: 'other' }])
+  await expect(controller.prompt(prompt)).rejects.toMatchObject({ code: 'session/model-unavailable' })
+  expect(followups.get(chatId)).not.toHaveBeenCalled()
+  await expect(controller.prompt(prompt)).resolves.toEqual({ accepted: true, duplicate: false })
+  expect(currentSelection).toHaveBeenCalledTimes(2)
+  expect(currentSelection).toHaveLastReturnedWith({ provider: 'mock', model: 'chat' })
+  expect(followups.get(chatId)).toHaveBeenCalledOnce()
+  expect(handles.get(chatId)?.agent.model.current()).toBeUndefined()
+})
+
 it('ignores non-text stream frames without exposing them to follow subscribers', async () => {
   const { controller, handles, ctx } = await fixture()
   await controller.create({ ...address, agentId: 'main' })

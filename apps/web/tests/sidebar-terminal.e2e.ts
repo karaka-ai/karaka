@@ -20,7 +20,12 @@ async function openTerminal(page: Page, waitForShell = true): Promise<void> {
   const entry = page.locator('[data-sidebar-right-guide-entry="terminal"]')
   if (!await entry.isVisible()) await page.locator('[data-dockkit-add-tab]').click()
   await entry.getByRole('button', { name: /^New terminal/u }).click()
-  if (waitForShell) await expect.poll(async () => await page.locator('.xterm-rows:visible').innerText()).toContain('bash-')
+  if (waitForShell) {
+    // Prompt assertions start after the output attachment supplies its initial screen.
+    await page.locator('.xterm-rows:visible').waitFor()
+    await page.locator('[data-sidebar-terminal]:visible').getByRole('status').waitFor({ state: 'hidden' })
+    await expect.poll(async () => await page.locator('.xterm-rows:visible').innerText()).toContain('bash-')
+  }
 }
 
 async function command(page: Page, text: string): Promise<void> {

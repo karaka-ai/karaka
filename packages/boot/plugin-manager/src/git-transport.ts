@@ -42,6 +42,7 @@ export function sshGitSpec(spec: ParsedInstallSpec): string | undefined {
  * @returns Whether `git ls-remote` listed the repository's HEAD.
  */
 async function readable(repository: string, dir: string, options: GitTransportOptions): Promise<boolean> {
+  if (options.signal.aborted) return false
   const result = await execa('git', ['-c', 'core.askPass=', 'ls-remote', '--exit-code', '--', repository, 'HEAD'], {
     cwd: dir,
     env: {
@@ -56,7 +57,7 @@ async function readable(repository: string, dir: string, options: GitTransportOp
 
 /**
  * Choose how pnpm clones an HTTP(S) Git repository that {@link sshGitSpec} has an SSH form for: probe the spec's URL,
- * and when HTTP(S) cannot read it, probe the SSH form.
+ * and when HTTP(S) cannot read it, probe the SSH form. An already cancelled request starts no probe.
  * @param spec The parsed installation address.
  * @param dir The profile directory where installation runs.
  * @param options The deadline of each probe, cancellation and the installer's environment.

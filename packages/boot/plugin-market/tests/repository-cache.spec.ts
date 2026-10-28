@@ -5,9 +5,20 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, sym
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import * as subprocess from 'execa'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { DetailFailure } from '@deepseek-ai/dsh-plugin-detail'
 import { RepositoryCache, type RepositoryCacheOptions } from '../src/repository-cache.ts'
+
+const probe = vi.hoisted(() => ({ blockVersion: false }))
+vi.mock('execa', async (original) => {
+  const module = await original<typeof import('execa')>()
+  return { ...module, execa: vi.fn((file: string | URL, args: readonly string[], options: subprocess.Options) => {
+    // The version probe must not finish before its deadline, regardless of how fast the host's Git starts.
+    if (probe.blockVersion && file === 'git' && args.at(-1) === '--version') return module.execa(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], options)
+    return module.execa(file, args, options)
+  }) }
+})
 
 /** Await a rejection that matches `fields` and whose message contains `message`. */
 async function expectRejection(promise: Promise<unknown>, fields: object, message: string): Promise<void> {
@@ -29,6 +40,7 @@ beforeEach(() => {
   vi.stubEnv('XDG_CONFIG_HOME', join(root, 'home'))
 })
 afterEach(() => {
+  probe.blockVersion = false
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   rmSync(root, { recursive: true, force: true })
@@ -149,13 +161,27 @@ it('reports an unreachable host as a network failure, a failed local command as 
   await expect(broken).rejects.toThrow('git update-ref')
   await expect(broken).rejects.not.toBeInstanceOf(DetailFailure)
   expect(readdirSync(join(root, 'cache'))).toEqual([])
-  // Git that cannot answer `git --version` within the deadline cannot run.
   const other = repository('t2', { 'README.md': 'x' })
-  await expectRejection(cache({ timeoutMs: 1 }).read(other.url, other.commit, 'README.md', 100, signal), { reason: 'git-unavailable' }, 'timed out')
   vi.stubEnv('PATH', join(root, 'no-git'))
   const missing = cache().read(other.url, other.commit, 'README.md', 100, signal)
   await expectRejection(missing, { reason: 'git-unavailable' }, 'git --version')
   expect(readdirSync(join(root, 'cache'))).toEqual([])
+})
+
+it('reports a version probe that exceeds its deadline as Git unavailable without initializing a clone', async () => {
+  const source = repository('version-timeout', { 'README.md': 'x' })
+  const run = vi.mocked(subprocess.execa)
+  run.mockClear()
+  probe.blockVersion = true
+  try {
+    await expectRejection(cache({ timeoutMs: 1 }).read(source.url, source.commit, 'README.md', 100, signal), { reason: 'git-unavailable' }, 'timed out')
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(run).toHaveBeenCalledWith('git', expect.arrayContaining(['--version']), expect.objectContaining({ timeout: 1 }))
+    await expect(run.mock.results[0]?.value).resolves.toMatchObject({ timedOut: true, isCanceled: false })
+    expect(readdirSync(join(root, 'cache'))).toEqual([])
+  } finally {
+    probe.blockVersion = false
+  }
 })
 
 it('reports a repository Git cannot fetch as denied', async () => {

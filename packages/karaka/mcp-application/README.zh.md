@@ -27,6 +27,8 @@ kind: "package-reference"
 
 端点的 `allow` 和 `deny` 列表使用公开工具名，默认均为空。Agent 预设还必须挂载带有明确允许列表的 `./tool-policy`。每层祖先允许列表都必须接收该工具，任一拒绝列表均可拒绝它。`mode` 选择原生或 PTC 展示方式。预设卸载时撤销工具策略注册。
 
+对于 `mode: ptc`，须在执行器激活前挂载[兼容的 PTC 运行时](../../core/tool-executor-ptc/README.zh.md#use-this-package)。
+
 `headers` 提供静态请求头，`serverAuth` 在每个 HTTP 请求前提供当前授权信息。重定向被拒绝。`toolCallTimeoutMs` 默认为 60,000，`failOnStartupError` 默认为 true。可选的 `reconnect` 控制传输关闭后的恢复：默认启用，初始延迟为 500 毫秒，最大延迟为 30,000 毫秒，每次中断最多允许十次失败尝试。
 
 输入模式必须采用 DSH 支持的以对象为根的 JSON Schema 子集。根 `$schema` 标记被省略，不受支持的输入关键字会导致目录接收失败。本地参数校验在任何 MCP 回调发生前以 `INVALID_ARGS` 拒绝调用；远程失败并不能证明操作没有产生效果。

@@ -143,11 +143,11 @@ it('ends an in-flight HTTPS probe on cancellation and keeps the spec', async () 
   expect(run.mock.calls[0]?.[1]).toEqual(['-c', 'core.askPass=', 'ls-remote', '--exit-code', '--', 'https://git.example/team/sub/plugin.git', 'HEAD'])
 })
 
-it('does not probe SSH after cancellation', async () => {
+it('starts no probe when already cancelled', async () => {
   const { controller, choose } = await fixture()
   const run = vi.mocked(subprocess.execa)
   run.mockClear()
   controller.abort()
   expect(await choose(SPEC)).toBe(SPEC)
-  expect(run).toHaveBeenCalledTimes(1)
+  expect(run).not.toHaveBeenCalled()
 })
