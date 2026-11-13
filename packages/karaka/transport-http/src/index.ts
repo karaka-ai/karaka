@@ -23,6 +23,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from './startup.ts'
 import type {} from '@karaka-ai/server-auth'
 import type {} from '@karaka-ai/browser-auth'
+import { installApplicationProjection } from './application-state.ts'
 import { mountBrowserRoutes } from './browser-routes.ts'
 import { json, readObject, writeEvent } from './http.ts'
 
@@ -77,9 +78,9 @@ interface ActiveHttpRequest {
 }
 
 /** Mount authenticated application routes onto the shared Host web server. */
-export function apply(ctx: Context, config: Config): void {
+export async function apply(ctx: Context, config: Config): Promise<void> {
   const startup = ctx.karakaStartup
-  new ApplicationChatController(ctx, config.browserAgentIds)
+  new ApplicationChatController(ctx, await installApplicationProjection(ctx), config.browserAgentIds)
   const base = normalizeBase(config.path ?? KARAKA_APPLICATION_API_PATH)
   const maxBodyBytes = config.maxBodyBytes ?? 1_048_576
   const pending = new Map<string, PendingInteraction>()

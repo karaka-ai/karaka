@@ -12,6 +12,7 @@
     openAt: never
 - name: cordis:llm
 - name: cordis:tools
+- name: cordis:nativeExecutor
 - name: cordis:systemPrompt
   config:
     includeHarnessIdentity: false

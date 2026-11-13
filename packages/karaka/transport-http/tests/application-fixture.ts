@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { type Agent, type AgentHandle, type AgentSetup, type AgentOptions, type AgentFactory } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { AgentModel, modelSelectionProjectionDefinition, type Agent, type AgentHandle, type AgentSetup, type AgentOptions, type AgentFactory } from '@deepseek-ai/dsh-agent'
 import AgentPresetRegistry from '@deepseek-ai/dsh-agent-preset-registry'
 import LlmRuntime, { type UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, type SessionEvent, type SessionHeader, type SessionId } from '@deepseek-ai/dsh-session'
@@ -8,6 +8,7 @@ import SessionPersistence, { SessionPersistenceRevision } from '@deepseek-ai/dsh
 import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import { ApplicationId, KarakaIdentity, TenantId, UserId, sameOwner, IdentityError, type ApplicationOwner } from '@karaka-ai/identity'
 import { onTestFinished, vi, type Mock } from 'vitest'
+import { installApplicationProjection } from '../src/application-state.ts'
 import { ApplicationChatController } from '../src/application.ts'
 
 export const owner: ApplicationOwner = {
@@ -133,8 +134,10 @@ export async function applicationFixture(mountController = true, browserAgentIds
     const session = ctx.sessions.get(id) ?? ctx.sessions.create(id, { meta: header ?? { agentPreset: 'main' } })
     const followup = vi.fn((message: UserMessage) => { session.append('user/message', message, { surfaceOp: 'append' }) })
     const cancel = vi.fn()
-    const partialAgent: Pick<Agent, 'id' | 'session' | 'ctx' | 'options' | 'followup' | 'cancel'> = {
+    const projection = await ctx.sessionProjections.register(modelSelectionProjectionDefinition)
+    const partialAgent: Pick<Agent, 'id' | 'session' | 'ctx' | 'options' | 'followup' | 'cancel' | 'model'> = {
       id, session, ctx: ctx.extend(), options, followup, cancel,
+      model: new AgentModel(projection.readerFor(session), session, options),
     }
     const agent = partialAgent as Agent
     followups.set(id, followup)
@@ -156,7 +159,9 @@ export async function applicationFixture(mountController = true, browserAgentIds
     )),
   }
   ctx.agents.setFactory(factory)
-  const controller = mountController ? new ApplicationChatController(ctx, browserAgentIds) : undefined
+  const controller = mountController
+    ? new ApplicationChatController(ctx, await installApplicationProjection(ctx), browserAgentIds)
+    : undefined
   return { ctx, controller, identity, owners, headers, events, handles, factory, presets, removePresets, llm, observed,
     observeSession, followups, cancellations, disposals }
 }

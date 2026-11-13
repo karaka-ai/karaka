@@ -27,6 +27,8 @@ Mount the plugin in the application composition with Tools, Agents, [identity](.
 
 The endpoint `allow` and `deny` lists use public tool names and default to empty. An Agent preset must also mount `./tool-policy` with an explicit allow list. Every enclosing allow list must admit the tool; any deny list rejects it. `mode` selects native or PTC presentation. Tool-policy registrations unwind when their preset unloads.
 
+For `mode: ptc`, mount a [compatible PTC runtime](../../core/tool-executor-ptc/README.md#use-this-package) before the executor activates.
+
 `headers` supplies static headers, while `serverAuth` supplies current authorization before each HTTP request. Redirects are rejected. `toolCallTimeoutMs` defaults to 60,000. `failOnStartupError` defaults to true. Optional `reconnect` controls transport-close recovery: enabled by default, with a 500 ms initial delay, a 30,000 ms maximum delay and ten failed attempts per outage.
 
 Input schemas must use the supported object-rooted DSH JSON Schema subset. The root `$schema` marker is omitted, and unsupported input keywords reject catalog admission. Local argument validation rejects with `INVALID_ARGS` before any MCP callback; remote failures do not prove the operation had no effect.

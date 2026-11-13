@@ -1,12 +1,21 @@
 /** Preset policy preserves DSH global tools and scoped application authorization together. */
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import * as ToolPolicy from '../src/tool-policy.ts'
 import { policyAllows, registerCatalog, registerPolicy } from '../src/policy.ts'
+
+/** Supplies presentation metadata; this policy fixture must never execute programs. */
+class PresentationRuntime extends PtcRuntime {
+  readonly language = 'typescript'
+  readonly isolation = 'fixture'
+  resolve(): never { throw new Error('presentation fixture must not execute programs') }
+  run(): never { throw new Error('presentation fixture must not execute programs') }
+}
 
 async function fixture() {
   const root = new Context()
@@ -47,6 +56,28 @@ describe('preset tool policy', () => {
     expect(policyAllows(f.agent, 'mcp__app__read')).toBe(true)
     await fiber.dispose()
     expect(f.visible()).toEqual(['read', 'write'])
+    expect(policyAllows(f.agent, 'mcp__app__read')).toBe(false)
+  })
+
+  it('selects PTC presentation with scoped restrictions and revokes it on disposal', async () => {
+    const f = await fixture()
+    await f.root.plugin(PresentationRuntime)
+    await f.root.plugin(ToolPolicy, { mode: 'native' })
+    const assemble = () => f.root.systemPrompt.assemble({ scope: f.agent })
+    expect((await assemble()).tools.map(tool => tool.name)).toEqual(['read', 'write'])
+
+    const fiber = await f.scope.ctx.plugin(ToolPolicy, { mode: 'ptc', allow: ['read', 'mcp__app__read'] })
+    expect(f.visible()).toEqual(['read'])
+    expect(policyAllows(f.agent, 'mcp__app__read')).toBe(true)
+    const presentation = await assemble()
+    expect(presentation.tools.map(tool => tool.name)).toEqual(['run_code'])
+    const sdk = presentation.sections.find(section => section.name === 'tools:sdk')
+    expect(sdk?.text).toContain('read: Record<string, JsonValue>')
+    expect(sdk?.text).not.toContain('write:')
+
+    await fiber.dispose()
+    expect(f.visible()).toEqual(['read', 'write'])
+    await expect(assemble()).rejects.toThrow('selected tool executor is unavailable')
     expect(policyAllows(f.agent, 'mcp__app__read')).toBe(false)
   })
 

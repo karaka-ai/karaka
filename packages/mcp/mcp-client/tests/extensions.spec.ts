@@ -1,4 +1,5 @@
 /** Optional MCP hooks preserve ordinary wire calls and own custom catalog lifetimes. */
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -40,7 +41,7 @@ async function fixture() {
       ...(extensions === undefined ? {} : { extensions }),
     }, registered)
   }
-  const invoke = () => ctx.tools.execute({
+  const invoke = () => executeToolFixture(ctx, {
     name: 'mcp__hooks__read', arguments: {}, callId: ToolCallId('hooks-call'), signal: new AbortController().signal,
   })
   return { ctx, called, transport, connect, sync, invoke, setCatalog(next: Tool[]) { catalog = next } }

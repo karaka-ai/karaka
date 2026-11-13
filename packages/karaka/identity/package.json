@@ -15,9 +15,11 @@
       "types": "./lib/types/session-reference.d.ts",
       "default": "./lib/session-reference.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/session-reference.js",
     "lib/types/**/*.d.ts",

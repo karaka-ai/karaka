@@ -20,7 +20,12 @@ async function openTerminal(page: Page, waitForShell = true): Promise<void> {
   const entry = page.locator('[data-sidebar-right-guide-entry="terminal"]')
   if (!await entry.isVisible()) await page.locator('[data-dockkit-add-tab]').click()
   await entry.getByRole('button', { name: /^New terminal/u }).click()
-  if (waitForShell) await expect.poll(async () => await page.locator('.xterm-rows:visible').innerText()).toContain('bash-')
+  if (waitForShell) {
+    // Prompt assertions start after the output attachment supplies its initial screen.
+    await page.locator('.xterm-rows:visible').waitFor()
+    await page.locator('[data-sidebar-terminal]:visible').getByRole('status').waitFor({ state: 'hidden' })
+    await expect.poll(async () => await page.locator('.xterm-rows:visible').innerText()).toContain('bash-')
+  }
 }
 
 async function command(page: Page, text: string): Promise<void> {
@@ -478,10 +483,18 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
       .filter(key => key.startsWith('dsh.terminal.binding.v1.')).map(key => localStorage.getItem(key)))
     const saved = await bindings()
     expect(saved).toHaveLength(2)
+    const closed = Promise.withResolvers<undefined>()
+    const close = scaffold.ctx.terminalController.close.bind(scaffold.ctx.terminalController)
+    vi.spyOn(scaffold.ctx.terminalController, 'close').mockImplementation((agent, id) => {
+      const result = close(agent, id)
+      closed.resolve(result.then(() => undefined))
+      return result
+    })
     const selected = second.locator('[data-dockkit-tab][aria-selected="true"]')
     await selected.hover()
-    await selected.locator('[data-dockkit-tab-close]').click()
-    await expect.poll(() => alive(secondProcess)).toBe(false)
+    // Tab removal starts background cleanup; the Host promise includes process termination.
+    await Promise.all([selected.locator('[data-dockkit-tab-close]').click(), closed.promise])
+    expect(alive(secondProcess)).toBe(false)
     expect(alive(firstProcess)).toBe(true)
     await expect.poll(() => bindings()).toHaveLength(1)
     expect(saved).toContain((await bindings())[0])
@@ -673,7 +686,7 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('RECONNECT_READY')
     const transport = await controlTransport(page)
     await page.reload({ waitUntil: 'load' })
-    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('RECONNECT_READY')
+    await page.locator('.xterm-rows:visible').filter({ hasText: 'RECONNECT_READY' }).waitFor({ timeout: 30_000 })
     await transport.disconnect()
     const reconnect = page.getByRole('button', { name: 'Reconnect', exact: true })
     await reconnect.waitFor()

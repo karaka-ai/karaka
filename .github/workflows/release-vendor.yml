@@ -32,7 +32,7 @@ jobs:
     # Persistent runners accept only trusted, credential-free rehearsals.
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
-        && github.repository == 'deepseek-harness/deepseek-harness'
+        && github.repository == 'karaka-ai/karaka'
         && github.actor != 'dependabot[bot]'
         && ((github.event_name == 'push' && github.ref == 'refs/heads/main')
           || (github.event_name == 'pull_request'
